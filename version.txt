@@ -1,0 +1,45 @@
+Notice: 
+To let the Carvera work perfectly, please make sure both your controller software and firmware are up to date. For firmware, download the new firmware first, then use the 'update' function to upgrade the firmware, and reset the machine after the update is complete.
+
+[0.9.7]
+Bug Fixing: The laser clustering setting function has been withdrawn due to its potential to cause random crashes. (We will reintroduce this feature once we have resolved the issue and conducted a full test.)
+
+[0.9.6]
+1、Bug fixing：4th axis position is not accurate after large-angle continuous rotation.
+2、Bug fixing：4th axis rotation direction is reversed, should follow the right-hand rule (Please check if you manually changed the post processor for the previous false, need to restore that after the upgrade).
+3、Bug fixing： Moving wrongly after pause/resume in arc processing.
+4、Bug Fixing： The first tool sometimes does not appear in the preview UI panel.
+5、Bug Fixing： Incomplete display of the UI in the Android version.
+6、Bug Fixing： The Android version cannot access local files.
+7、Bug Fixing: Added a laser clustering setting to optimize laser offset issues when engraving at high resolution, particularly with Lightburn software. Note: This feature was withdrawn in version 0.9.7 due to its potential to cause random crashes.
+8、Optimizing: Auto leveling, restricting the Z Probe to the 0,0 position from path origin, to ensure leveling accuracy.
+9、Optimizing: The software limit switch can now be configured to be on or off, and the limit travel distance can be set.
+10、Optimizing: XYZ Probe UI integrated into the Work Origin settings.
+11、Optimizing: Adding support for multiple languages (now support English and Chinese).
+12、Optimizing: Adding a display for the processing time of the previous task.
+13、Optimizing: Input fields in the controller can now be switched with the Tab key.
+14、Optimizing: Adding a width-changing feature for the MDI window in the controller.
+15、Optimizing: Auto Leveling results can be visually observed on the Z-axis dropdown and a clearing function is provided.
+16、Optimizing: Holding the main button for more than 3 seconds allows automatic repetition of the previous task, facilitating the repetitive execution of tasks.
+
+[0.9.5]
+Optimized the WiFi connection file transfer speed and stability.
+Added software limit functions to reduce machine resets caused by the false triggering of limit switches.
+
+[0.9.4]
+Added the 'goto' function for resuming a job from a certain line.
+Added the WiFi Access Point password setting and enable/disable function.
+
+See the usage at: https://github.com/MakeraInc/CarveraFirmware/releases/tag/v0.9.4
+
+[0.9.3]
+Fixed the WiFi special character bug.
+Fixed the identical WiFi SSID display problem.
+Fixed the WiFi connectivity unstable problem.
+Fixed the spindle stop earlier issue when doing a tool change.
+
+[0.9.2]
+Initial version.
+
+[0.9.1]
+Beta version.

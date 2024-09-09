@@ -18,14 +18,18 @@ class StreamOutput;
 // Object to represent a Gcode command
 class Gcode {
     public:
-        Gcode(const string&, StreamOutput*, bool strip=true);
+        Gcode(const string&, StreamOutput*, bool strip = true, unsigned int line = 0);
         Gcode(const Gcode& to_copy);
         Gcode& operator= (const Gcode& to_copy);
         ~Gcode();
 
         const char* get_command() const { return command; }
         bool has_letter ( char letter ) const;
+        // 2024
+        // int  index_of_letter( char letter, int start = 0) const;
         float get_value ( char letter, char **ptr= nullptr ) const;
+        // 2024
+        // float get_value_at_index(int index) const;
         int get_int ( char letter, char **ptr= nullptr ) const;
         uint32_t get_uint ( char letter, char **ptr= nullptr ) const;
         int get_num_args() const;
@@ -36,6 +40,8 @@ class Gcode {
         // FIXME these should be private
         unsigned int m;
         unsigned int g;
+
+        unsigned int line;
 
         struct {
             bool add_nl:1;

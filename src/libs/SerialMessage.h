@@ -8,5 +8,6 @@ class StreamOutput;
 struct SerialMessage {
         StreamOutput* stream;
         std::string message;
+        unsigned int line;
 };
 #endif

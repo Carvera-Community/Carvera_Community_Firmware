@@ -27,6 +27,7 @@ public:
     static bool parse_command(const char *cmd, string args, StreamOutput *stream);
     static void print_mem(StreamOutput *stream) { mem_command("", stream); }
     static void version_command(string parameters, StreamOutput *stream );
+    static void ftype_command( string parameters, StreamOutput *stream );
 
 private:
 
@@ -41,7 +42,6 @@ private:
     static void rm_command(string parameters, StreamOutput *stream );
     static void mv_command(string parameters, StreamOutput *stream );
     static void mkdir_command(string parameters, StreamOutput *stream );
-    static void upload_command(string parameters, StreamOutput *stream );
     static void break_command(string parameters, StreamOutput *stream );
     static void reset_command(string parameters, StreamOutput *stream );
     static void dfu_command(string parameters, StreamOutput *stream );
@@ -57,6 +57,11 @@ private:
     static void mem_command(string parameters, StreamOutput *stream );
 
     static void net_command( string parameters, StreamOutput *stream);
+    static void ap_command( string parameters, StreamOutput *stream);
+    static void wlan_command( string parameters, StreamOutput *stream);
+    static void diagnose_command( string parameters, StreamOutput *stream);
+    static void sleep_command( string parameters, StreamOutput *stream);
+    static void power_command( string parameters, StreamOutput *stream);
 
     static void load_command( string parameters, StreamOutput *stream);
     static void save_command( string parameters, StreamOutput *stream);
@@ -64,6 +69,14 @@ private:
     static void remount_command( string parameters, StreamOutput *stream);
 
     static void test_command( string parameters, StreamOutput *stream);
+
+    static void time_command( string parameters, StreamOutput *stream);
+
+    static void config_get_all_command(string parameters, StreamOutput *stream );
+
+    static void config_restore_command(string parameters, StreamOutput *stream );
+
+    static void config_default_command(string parameters, StreamOutput *stream );
 
     typedef void (*PFUNC)(string parameters, StreamOutput *stream);
     typedef struct {
@@ -73,4 +86,5 @@ private:
 
     static const ptentry_t commands_table[];
     static int reset_delay_secs;
+
 };

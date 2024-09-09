@@ -40,10 +40,13 @@ class Robot : public Module {
         float get_seconds_per_minute() const { return seconds_per_minute; }
         float get_z_maxfeedrate() const { return this->max_speeds[Z_AXIS]; }
         float get_default_acceleration() const { return default_acceleration; }
-        void setToolOffset(const float offset[N_PRIMARY_AXIS]);
+        void loadToolOffset(const float offset[N_PRIMARY_AXIS]);
+        void saveToolOffset(const float offset[N_PRIMARY_AXIS], const float cur_tool_mz);
         float get_feed_rate() const;
         float get_s_value() const { return s_value; }
         void set_s_value(float s) { s_value= s; }
+        float get_max_delta() const { return max_delta; }
+        void set_max_delta(float delta) {max_delta = delta; }
         void  push_state();
         void  pop_state();
         void check_max_actuator_speeds();
@@ -61,6 +64,8 @@ class Robot : public Module {
         bool delta_move(const float delta[], float rate_mm_s, uint8_t naxis);
         uint8_t register_motor(StepperMotor*);
         uint8_t get_number_registered_motors() const {return n_motors; }
+        uint8_t get_current_motion_mode() const {return current_motion_mode; }
+        void clearLaserOffset();
 
         BaseSolution* arm_solution;                           // Selected Arm solution ( millimeters to step calculation )
 
@@ -68,7 +73,7 @@ class Robot : public Module {
         std::vector<StepperMotor*> actuators;
 
         // set by a leveling strategy to transform the target of a move according to the current plan
-        std::function<void(float*, bool)> compensationTransform;
+        std::function<void(float*, bool, bool)> compensationTransform;
         // set by an active extruder, returns the amount to scale the E parameter by (to convert mm³ to mm)
         std::function<float(void)> get_e_scale_fnc;
 
@@ -106,7 +111,7 @@ class Robot : public Module {
         };
 
         void load_config();
-        bool append_milestone(const float target[], float rate_mm_s);
+        bool append_milestone(const float target[], float rate_mm_s, unsigned int line);
         bool append_line( Gcode* gcode, const float target[], float rate_mm_s, float delta_e);
         bool append_arc( Gcode* gcode, const float target[], const float offset[], float radius, bool is_clockwise );
         bool compute_arc(Gcode* gcode, const float offset[], const float target[], enum MOTION_MODE_T motion_mode);
@@ -116,6 +121,7 @@ class Robot : public Module {
         float theta(float x, float y);
         void select_plane(uint8_t axis_0, uint8_t axis_1, uint8_t axis_2);
         void clearToolOffset();
+        void setLaserOffset();
         int get_active_extruder() const;
 
         std::array<wcs_t, MAX_WCS> wcs_offsets; // these are persistent once saved with M500
@@ -124,7 +130,8 @@ class Robot : public Module {
         wcs_t tool_offset; // used for multiple extruders, sets the tool offset for the current extruder applied first
         std::tuple<float, float, float, uint8_t> last_probe_position{0,0,0,0};
 
-        using saved_state_t= std::tuple<float, float, bool, bool, bool, uint8_t>; // save current feedrate and absolute mode, e absolute mode, inch mode, current_wcs
+        uint8_t current_motion_mode;
+        using saved_state_t= std::tuple<float, float, bool, bool, bool, bool, uint8_t>; // save current feedrate and absolute mode, e absolute mode, inch mode, is_g123, current_wcs
         std::stack<saved_state_t> state_stack;               // saves state from M120
 
         float machine_position[k_max_actuators]; // Last requested position, in millimeters, which is what we were requested to move to in the gcode after offsets applied but before compensation transform
@@ -139,9 +146,19 @@ class Robot : public Module {
         float seconds_per_minute;                            // for realtime speed change
         float default_acceleration;                          // the defualt accleration if not set for each axis
         float s_value;                                       // modal S value
+        // 2024
+        /*
+        float s_values[8];                                   // block S values
+		int   s_count;
+		*/
         float arc_milestone[3];                              // used as start of an arc command
+        float max_delta;
 
-        // Number of arc generation iterations by small angle approximation before exact arc trajectory
+        float laser_module_offset_x;
+		float laser_module_offset_y;
+		float laser_module_offset_z;
+
+		// Number of arc generation iterations by small angle approximation before exact arc trajectory
         // correction. This parameter may be decreased if there are issues with the accuracy of the arc
         // generations. In general, the default value is more than enough for the intended CNC applications
         // of grbl, and should be on the order or greater than the size of the buffer to help with the

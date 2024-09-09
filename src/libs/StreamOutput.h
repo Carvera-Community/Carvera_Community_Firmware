@@ -26,8 +26,10 @@ class StreamOutput {
         virtual int printf(const char *format, ...) __attribute__ ((format(printf, 2, 3)));
         virtual int _putc(int c) { return 1; }
         virtual int _getc(void) { return 0; }
-        virtual int puts(const char* str) = 0;
+        virtual int gets(char** buf, int size = 0) { return 0; }
+        virtual int puts(const char* buf, int size = 0) = 0;
         virtual bool ready() { return true; };
+        virtual int type() {return 0; }; // 0: serial, 1: wifi
 
         static NullStreamOutput NullStream;
 };
@@ -35,7 +37,7 @@ class StreamOutput {
 class NullStreamOutput : public StreamOutput {
     public:
         int printf(const char *format, ...) { return 0; }
-        int puts(const char* str) { return strlen(str); }
+        int puts(const char* str, int size = 0) { return strlen(str); }
 };
 
 #endif

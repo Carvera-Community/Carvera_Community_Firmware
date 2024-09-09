@@ -43,6 +43,8 @@ struct dirent *FATDirHandle::readdir() {
         memcpy(cur_entry.d_name, fn, stringSize);
         cur_entry.d_isdir= (finfo.fattrib & AM_DIR);
         cur_entry.d_fsize= finfo.fsize;
+        cur_entry.d_date = finfo.fdate;
+        cur_entry.d_time = finfo.ftime;
         return &cur_entry;
     }
 }

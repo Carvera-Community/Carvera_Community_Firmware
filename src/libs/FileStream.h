@@ -9,7 +9,7 @@ class FileStream : public StreamOutput {
     public:
         FileStream(const char *filename) { fd= fopen(filename, "w"); }
         virtual ~FileStream(){ close(); }
-        int puts(const char *str){ return (fd == NULL) ? 0 : fwrite(str, 1, strlen(str), fd); }
+        int puts(const char *str, int size = 0) { return (fd == NULL) ? 0 : fwrite(str, 1, strlen(str), fd); }
         void close() { if(fd != NULL) fclose(fd); fd= NULL; }
         bool is_open() { return fd != NULL; }
 

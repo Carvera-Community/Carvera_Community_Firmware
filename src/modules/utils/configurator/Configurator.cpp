@@ -129,4 +129,3 @@ void Configurator::config_load_command( string parameters, StreamOutput *stream 
         stream->printf( "unsupported option: must be one of load|unload|dump|checksum\n" );
     }
 }
-

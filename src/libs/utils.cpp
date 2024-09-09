@@ -122,13 +122,39 @@ string remove_non_number( string str )
 string shift_parameter( string &parameters )
 {
     size_t beginning = parameters.find_first_of(" ");
-    if( beginning == string::npos ) {
+    if ( beginning == string::npos ) {
         string temp = parameters;
         parameters = "";
+        for (int i = 0; i < temp.length(); i ++) {
+        	if (temp[i] == 0x01) {
+        		temp[i] = ' ';
+        	} else if (temp[i] == 0x02) {
+        		temp[i] = '?';
+        	} else if (temp[i] == 0x03) {
+        		temp[i] = '*';
+        	} else if (temp[i] == 0x04) {
+        		temp[i] = '!';
+        	} else if (temp[i] == 0x05) {
+        		temp[i] = '~';
+        	}
+        }
         return temp;
     }
     string temp = parameters.substr( 0, beginning );
     parameters = parameters.substr(beginning + 1, parameters.size());
+    for (int i = 0; i < temp.length(); i ++) {
+    	if (temp[i] == 0x01) {
+    		temp[i] = ' ';
+    	} else if (temp[i] == 0x02) {
+    		temp[i] = '?';
+    	} else if (temp[i] == 0x03) {
+    		temp[i] = '*';
+    	} else if (temp[i] == 0x04) {
+    		temp[i] = '!';
+    	} else if (temp[i] == 0x05) {
+    		temp[i] = '~';
+    	}
+    }
     return temp;
 }
 
@@ -170,7 +196,7 @@ void system_reset( bool dfu )
 }
 
 // Convert a path indication ( absolute or relative ) into a path ( absolute )
-string absolute_from_relative( string path )
+std::string absolute_from_relative( std::string path )
 {
     string cwd = THEKERNEL->current_path;
 
@@ -199,6 +225,71 @@ string absolute_from_relative( string path )
     }
 
     return cwd + '/' + path;
+}
+
+// Change from origin path to sub path
+std::string change_to_md5_path( std::string origin )
+{
+	unsigned found = origin.find("gcodes/");
+	string filename = origin.substr(found + 7);
+	string path = "/sd/gcodes";
+	DIR * d = opendir(path.c_str());
+	if(NULL == d )
+	{
+		mkdir(path.c_str(), 0);
+	}
+	else
+	{
+		closedir(d);	
+	}
+	path = "/sd/gcodes/.md5";
+	d = opendir(path.c_str());
+	if(NULL == d )
+	{
+		mkdir(path.c_str(), 0);
+	}
+	else
+	{
+		closedir(d);	
+	}
+	
+	return "/sd/gcodes/.md5/" + filename;
+}
+
+// Change from origin path to quicklz file sub path
+std::string change_to_lz_path( std::string origin )
+{
+	unsigned found = origin.find("gcodes/");
+	string filename = origin.substr(found + 7);	
+	string path = "/sd/gcodes/.lz";
+	DIR * d = opendir(path.c_str());
+	if(NULL == d )
+	{
+		mkdir(path.c_str(), 0);
+	}
+	else
+	{
+		closedir(d);	
+	}
+	return "/sd/gcodes/.lz/" + filename;
+}
+
+
+// Check the quicklz/md5 file path
+#define	FR_OK 0
+#define FR_EXIST 8
+void check_and_make_path( std::string origin )
+{
+	size_t pos = 0;
+    std::string dir;
+    int res;
+    int ret = 0;
+
+    while ((pos = origin.find_first_of('/', pos)) != std::string::npos) {
+        dir = origin.substr(0, pos++);
+        if (dir.empty()) continue;  // Skip leading '/'
+        mkdir(dir.c_str(),0);
+    }
 }
 
 // FIXME this does not handle empty strings correctly
@@ -275,3 +366,30 @@ void safe_delay_us(uint32_t dus)
         THEKERNEL->call_event(ON_IDLE);
     }
 }
+
+struct tm *get_fftime(unsigned short t_date, unsigned short t_time, struct tm *timeinfo) {
+
+	// uint16_t mask = (1 << (end - begin + 1)) - 1;
+	// return (value >> begin) & mask;
+
+    // Setup a tm structure based on the RTC
+
+    timeinfo->tm_sec = (t_time >> 0) & ((1 << 5) - 1);	// 0..4
+    timeinfo->tm_min = (t_time >> 5) & ((1 << 6) - 1);	// 5..10
+    timeinfo->tm_hour = (t_time >> 11) & ((1 << 5) - 1);	// 11..15
+    timeinfo->tm_mday = (t_date >> 0) & ((1 << 5) - 1);	// 0..4
+    timeinfo->tm_mon = (t_date >> 5) & ((1 << 4) - 1);	// 5..8
+    timeinfo->tm_year = (t_date >> 9) & ((1 << 7) - 1);	// 9..15
+
+    // Convert to timestamp
+
+    return timeinfo;
+}
+
+
+// trim from left
+void ltrim(std::string& s, const char* t)
+{
+    s.erase(0, s.find_first_not_of(t));
+}
+

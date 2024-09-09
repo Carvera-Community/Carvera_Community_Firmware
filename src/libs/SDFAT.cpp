@@ -15,14 +15,14 @@ int SDFAT::disk_status()
     return d->disk_status();
 }
 
-int SDFAT::disk_read(char *buffer, int sector)
+int SDFAT::disk_read(char *buffer, uint32_t sector, uint32_t count)
 {
-    return d->disk_read(buffer, sector);
+    return d->disk_read(buffer, sector, count);
 }
 
-int SDFAT::disk_write(const char *buffer, int sector)
+int SDFAT::disk_write(const char *buffer, uint32_t sector, uint32_t count)
 {
-    return d->disk_write(buffer, sector);
+    return d->disk_write(buffer, sector, count);
 }
 
 int SDFAT::disk_sync()

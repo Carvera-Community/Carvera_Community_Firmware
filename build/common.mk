@@ -208,6 +208,7 @@ AS_FLAGS += -g3 $(DEVICE_FLAGS)
 LDFLAGS = $(DEVICE_FLAGS) -specs=$(BUILD_DIR)/startfile.spec
 LDFLAGS += -Wl,-Map=$(OUTDIR)/$(PROJECT).map,--cref,--gc-sections,--wrap=_isatty,--wrap=malloc,--wrap=realloc,--wrap=free$(MRI_WRAPS)
 LDFLAGS += -T$(LSCRIPT)  -L $(EXTERNAL_DIR)/gcc/LPC1768
+#LDFLAGS += -L $(BUILD_DIR) -lM8266WIFI
 ifneq "$(NO_FLOAT_SCANF)" "1"
 LDFLAGS += -u _scanf_float
 endif
@@ -275,7 +276,7 @@ $(OUTDIR)/$(PROJECT).disasm: $(OUTDIR)/$(PROJECT).elf
 $(OUTDIR)/$(PROJECT).elf: $(LSCRIPT) $(OBJECTS)
 	@echo Linking $@
 	$(Q) $(MKDIR) $(call convert-slash,$(dir $@)) $(QUIET)
-	$(Q) $(LD) $(LDFLAGS) $(OBJECTS) $(LIBS) -o $@
+	$(Q) $(LD) $(LDFLAGS) $(OBJECTS) ../build/M8266WIFIDrv_LPC17xx.a $(LIBS) -o $@
 
 size: $(OUTDIR)/$(PROJECT).elf
 	$(Q) $(SIZE) $<

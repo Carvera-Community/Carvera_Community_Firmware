@@ -3,6 +3,7 @@
 #include <stdint.h>
 #include <string>
 #include <vector>
+#include "time.h"
 
 std::string lc(const std::string& str);
 
@@ -32,6 +33,9 @@ bool file_exists( const std::string file_name );
 void system_reset( bool dfu= false );
 
 std::string absolute_from_relative( std::string path );
+std::string change_to_md5_path( std::string origin );
+std::string change_to_lz_path( std::string origin );
+void check_and_make_path( std::string origin );
 
 int append_parameters(char *buf, std::vector<std::pair<char,float>> params, size_t bufsize);
 std::string wcs2gcode(int wcs);
@@ -39,5 +43,10 @@ void safe_delay_us(uint32_t delay);
 void safe_delay_ms(uint32_t delay);
 
 #define confine(value, min, max) (((value) < (min))?(min):(((value) > (max))?(max):(value)))
+
+struct tm *get_fftime(unsigned short t_date, unsigned short t_time, struct tm *timeinfo);
+
+void ltrim(std::string& s, const char* t = " \t\n\r\f\v");
+
 
 //#define dd(...) LPC_GPIO2->FIODIR = 0xffff; LPC_GPIO2->FIOCLR = 0xffff; LPC_GPIO2->FIOSET = __VA_ARGS__

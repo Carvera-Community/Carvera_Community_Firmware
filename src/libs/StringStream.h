@@ -8,7 +8,7 @@
 class StringStream : public StreamOutput {
     public:
         StringStream() {}
-        int puts(const char *str){ output.append(str); return strlen(str); }
+        int puts(const char *str, int size = 0) { output.append(str); return strlen(str); }
         void clear() { output.clear(); }
         std::string getOutput() const { return output; }
 

@@ -34,22 +34,28 @@ class Switch : public Module {
         void on_halt(void *arg);
 
         uint32_t pinpoll_tick(uint32_t dummy);
-        enum OUTPUT_TYPE {NONE, SIGMADELTA, DIGITAL, HWPWM, SWPWM};
+        enum OUTPUT_TYPE {NONE, SIGMADELTA, DIGITAL, HWPWM, SWPWM, DIGITALPWM};
 
     private:
         void flip();
         void send_gcode(std::string msg, StreamOutput* stream);
         bool match_input_on_gcode(const Gcode* gcode) const;
         bool match_input_off_gcode(const Gcode* gcode) const;
+        void turn_on_switch(float value);
+        void turn_off_switch();
 
         float switch_value;
         float default_on_value;
+        float min_pwm;
+        float max_pwm;
 
         OUTPUT_TYPE output_type;
         union {
             Pin          *input_pin;
             Pin          *digital_pin;
             Pwm          *sigmadelta_pin;
+        };
+        union {
             mbed::PwmOut *pwm_pin;
             SoftPWM      *swpwm_pin;
         };

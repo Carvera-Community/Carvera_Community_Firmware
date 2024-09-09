@@ -36,13 +36,17 @@ DRESULT disk_read (
 )
 {
 	FFSDEBUG("disk_read(sector %d, count %d) on drv [%d]\n", sector, count, drv);
-	for(unsigned int s=sector; s<sector+count; s++) {
-		FFSDEBUG(" disk_read(sector %d)\n", s);
-		int res = FATFileSystem::_ffs[drv]->disk_read((char*)buff, s);
-		if(res) {
-			return RES_PARERR;
-		}
-		buff += 512;
+//	for(unsigned int s=sector; s<sector+count; s++) {
+//		FFSDEBUG(" disk_read(sector %d)\n", s);
+//		int res = FATFileSystem::_ffs[drv]->disk_read((char*)buff, s);
+//		if(res) {
+//			return RES_PARERR;
+//		}
+//		buff += 512;
+//	}
+	int res = FATFileSystem::_ffs[drv]->disk_read((char*)buff, sector, count);
+	if(res) {
+		return RES_PARERR;
 	}
 	return RES_OK;
 }
@@ -56,13 +60,17 @@ DRESULT disk_write (
 )
 {
 	FFSDEBUG("disk_write(sector %d, count %d) on drv [%d]\n", sector, count, drv);
-	for(unsigned int s=sector; s<sector+count; s++) {
-		FFSDEBUG(" disk_write(sector %d)\n", s);
-		int res = FATFileSystem::_ffs[drv]->disk_write((char*)buff, s);
-		if(res) {
-			return RES_PARERR;
-		}
-		buff += 512;
+//	for(unsigned int s=sector; s<sector+count; s++) {
+//		FFSDEBUG(" disk_write(sector %d)\n", s);
+//		int res = FATFileSystem::_ffs[drv]->disk_write((char*)buff, s);
+//		if(res) {
+//			return RES_PARERR;
+//		}
+//		buff += 512;
+//	}
+	int res = FATFileSystem::_ffs[drv]->disk_write((char*)buff, sector, count);
+	if(res) {
+		return RES_PARERR;
 	}
 	return RES_OK;
 }
