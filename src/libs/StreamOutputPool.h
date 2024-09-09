@@ -22,7 +22,7 @@ public:
     StreamOutputPool(){
     }
 
-    int puts(const char* s)
+    int puts(const char* s, int size)
     {
         int r = 0;
         for(set<StreamOutput*>::iterator i = this->streams.begin(); i != this->streams.end(); i++)

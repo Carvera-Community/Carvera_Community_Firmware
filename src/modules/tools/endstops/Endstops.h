@@ -40,15 +40,17 @@ class Endstops : public Module{
         void process_home_command(Gcode* gcode);
         void set_homing_offset(Gcode* gcode);
         uint32_t read_endstops(uint32_t dummy);
-        void handle_park();
+        void handle_park_g28();
 
         // global settings
-        float saved_position[3]{0}; // save G28 (in grbl mode)
+        float g28_position[3]{0}; // save G28 (in grbl mode)
         uint32_t debounce_count;
         uint32_t  debounce_ms;
         axis_bitmap_t axis_to_home;
 
         float trim_mm[3];
+
+        Pin cover_endstop_pin;
 
         // per endstop settings
         using endstop_info_t = struct {
@@ -62,6 +64,16 @@ class Endstops : public Module{
             };
         };
 
+        // motor alarm settings
+        using motor_alarm_info_t = struct {
+        	Pin pin;
+            struct {
+                uint16_t debounce:16;
+                char axis:8; // one of XYZABC
+                uint8_t axis_index:3;
+            };
+        };
+
         using homing_info_t = struct {
             float homing_position;
             float home_offset;
@@ -70,6 +82,7 @@ class Endstops : public Module{
             float fast_rate;
             float slow_rate;
             endstop_info_t *pin_info;
+            Pin motor_alarm_pin;
 
             struct {
                 char axis:8; // one of XYZABC
@@ -81,6 +94,9 @@ class Endstops : public Module{
 
         // array of endstops
         std::vector<endstop_info_t *> endstops;
+
+        // array of motor alarm
+        std::vector<motor_alarm_info_t *> motor_alarms;
 
         // axis that can be homed, 0,1,2 always there and optionally 3 is A, 4 is B, 5 is C
         std::vector<homing_info_t> homing_axis;

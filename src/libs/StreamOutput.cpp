@@ -20,7 +20,7 @@ int StreamOutput::printf(const char *format, ...)
     }
     va_end(args);
 
-    puts(buffer);
+    puts(buffer, strlen(buffer));
 
     if (buffer != b)
         delete[] buffer;

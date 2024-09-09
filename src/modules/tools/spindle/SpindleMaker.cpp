@@ -26,7 +26,7 @@
 void SpindleMaker::load_spindle(){
 
     // If the spindle module is disabled load no Spindle 
-    if( !THEKERNEL->config->value( spindle_checksum, enable_checksum  )->by_default(false)->as_bool() ) {
+    if( !THEKERNEL->config->value( spindle_checksum, enable_checksum  )->by_default(true)->as_bool() ) {
         THEKERNEL->streams->printf("NOTE: Spindle Module is disabled\n");
         return;    
     }
@@ -58,6 +58,9 @@ void SpindleMaker::load_spindle(){
     if( spindle != NULL) {
 
         spindle->register_for_event(ON_GCODE_RECEIVED);
+        spindle->register_for_event(ON_GET_PUBLIC_DATA);
+        spindle->register_for_event(ON_SET_PUBLIC_DATA);
+        spindle->register_for_event(ON_IDLE);
         if (!THEKERNEL->config->value(spindle_checksum, spindle_ignore_on_halt_checksum)->by_default(false)->as_bool()) {
             spindle->register_for_event(ON_HALT);
         }

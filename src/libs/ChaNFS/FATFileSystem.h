@@ -50,8 +50,8 @@ public:
 
     virtual int disk_initialize() { return 0; }
     virtual int disk_status() { return 0; }
-    virtual int disk_read(char *buffer, int sector) = 0;
-    virtual int disk_write(const char *buffer, int sector) = 0;
+    virtual int disk_read(char *buffer, uint32_t sector, uint32_t count) = 0;
+    virtual int disk_write(const char *buffer, uint32_t sector, uint32_t count) = 0;
     virtual int disk_sync() { return 0; }
     virtual int disk_sectors() = 0;
 

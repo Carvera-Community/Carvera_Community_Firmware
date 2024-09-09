@@ -31,6 +31,8 @@ class SpindleControl: public Module {
         virtual void set_i_term(float) {};
         virtual void set_d_term(float) {};
         virtual void report_settings(void) {};
+
+        virtual void set_factor(float) {};
 };
 
 #endif

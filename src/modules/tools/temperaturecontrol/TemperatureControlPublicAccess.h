@@ -14,6 +14,7 @@
 #define temperature_pwm_checksum          CHECKSUM("temperature_pwm")
 #define pool_index_checksum               CHECKSUM("pool_index")
 #define poll_controls_checksum            CHECKSUM("poll_controllers")
+#define spindle_temperature_checksum	  CHECKSUM("spindle")
 
 struct pad_temperature {
     float current_temperature;

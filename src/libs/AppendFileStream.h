@@ -9,7 +9,7 @@ class AppendFileStream : public StreamOutput {
     public:
         AppendFileStream(const char *filename) { fn= strdup(filename); }
         virtual ~AppendFileStream(){ free(fn); }
-        int puts(const char*);
+        int puts(const char*, int size = 0);
 
     private:
         char *fn;

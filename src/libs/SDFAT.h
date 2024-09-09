@@ -10,8 +10,8 @@ public:
 
     virtual int disk_initialize();
     virtual int disk_status();
-    virtual int disk_read(char *buffer, int sector);
-    virtual int disk_write(const char *buffer, int sector);
+    virtual int disk_read(char *buffer, uint32_t sector, uint32_t count);
+    virtual int disk_write(const char *buffer, uint32_t sector, uint32_t count);
     virtual int disk_sync();
     virtual int disk_sectors();
 

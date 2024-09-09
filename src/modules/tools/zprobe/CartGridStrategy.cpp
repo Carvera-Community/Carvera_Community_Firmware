@@ -392,7 +392,7 @@ bool CartGridStrategy::handleGcode(Gcode *gcode)
             if(!doProbe(gcode)) {
                 gcode->stream->printf("Probe failed to complete, check the initial probe height and/or initial_height settings\n");
             } else {
-                gcode->stream->printf("Probe completed. Enter M374 to save this grid\n");
+                gcode->stream->printf("Probe completed.\n");
             }
             THEROBOT->disable_segmentation= false;
 
@@ -454,7 +454,7 @@ bool CartGridStrategy::handleGcode(Gcode *gcode)
             if(gcode->subcode == 1) {
                 print_bed_level(gcode->stream);
             } else {
-                if(load_grid(gcode->stream)) setAdjustFunction(true);
+                if (load_grid(gcode->stream)) setAdjustFunction(true);
             }
             return true;
 
@@ -491,26 +491,27 @@ void CartGridStrategy::setAdjustFunction(bool on)
         // set the compensationTransform in robot
         using std::placeholders::_1;
         using std::placeholders::_2;
-        THEROBOT->compensationTransform = std::bind(&CartGridStrategy::doCompensation, this, _1, _2); // [this](float *target, bool inverse) { doCompensation(target, inverse); };
+        using std::placeholders::_3;
+        THEROBOT->compensationTransform = std::bind(&CartGridStrategy::doCompensation, this, _1, _2, _3); // [this](float *target, bool inverse) { doCompensation(target, inverse); };
     } else {
         // clear it
         THEROBOT->compensationTransform = nullptr;
     }
 }
 
-bool CartGridStrategy::findBed(float x, float y)
+bool CartGridStrategy::findBed(float x, float y, float z)
 {
     if(!isnan(initial_height)) {
         zprobe->coordinated_move(NAN, NAN, initial_height, zprobe->getFastFeedrate()); // move Z only to initial_height
     }
     zprobe->coordinated_move(x - X_PROBE_OFFSET_FROM_EXTRUDER, y - Y_PROBE_OFFSET_FROM_EXTRUDER, NAN, zprobe->getFastFeedrate()); // move at initial_height to x, y
 
-    // find bed at 0,0 run at slow rate so as to not hit bed hard
+    // find bed at 0,0 run at fast feed rate
     float mm;
-    if(!zprobe->run_probe_return(mm, zprobe->getSlowFeedrate())) return false;
+    if(!zprobe->run_probe_return(mm, zprobe->getFastFeedrate())) return false;
 
     // leave head probe_height above bed
-    float dz = zprobe->getProbeHeight() - mm;
+    float dz = z - mm;
     zprobe->coordinated_move(NAN, NAN, dz, zprobe->getFastFeedrate(), true); // relative move
 
     return true;
@@ -539,12 +540,12 @@ bool CartGridStrategy::scan_bed(Gcode *gc)
     _x_start = THEROBOT->get_axis_position(X_AXIS) + X_PROBE_OFFSET_FROM_EXTRUDER;
     _y_start = THEROBOT->get_axis_position(Y_AXIS) + Y_PROBE_OFFSET_FROM_EXTRUDER;
 
-    if(!findBed(_x_start, _y_start)) return false;
+    if(!findBed(_x_start, _y_start, gc->has_letter('H') ? gc->get_value('H') : zprobe->getProbeHeight())) return false;
 
     // do first reference probe at start
     float mm;
     if(!zprobe->doProbeAt(mm, _x_start - X_PROBE_OFFSET_FROM_EXTRUDER, _y_start - Y_PROBE_OFFSET_FROM_EXTRUDER)) return false;
-    float z_reference = zprobe->getProbeHeight() - mm;
+    float z_reference = (gc->has_letter('H') ? gc->get_value('H') : zprobe->getProbeHeight()) - mm;
     gc->stream->printf("first probe at X%1.3f, Y%1.3f is %1.3f mm\n", _x_start, _y_start, z_reference);
     float max_delta= fabs(z_reference);
 
@@ -556,7 +557,7 @@ bool CartGridStrategy::scan_bed(Gcode *gc)
         for (int r = 0; r < n; ++r) {
             float x = _x_start + x_step * r;
             if(!zprobe->doProbeAt(mm, x - X_PROBE_OFFSET_FROM_EXTRUDER, y - Y_PROBE_OFFSET_FROM_EXTRUDER)) return false;
-            float z = zprobe->getProbeHeight() - mm - z_reference;
+            float z = (gc->has_letter('H') ? gc->get_value('H') : zprobe->getProbeHeight()) - mm - z_reference;
             char buf[16];
             size_t n= snprintf(buf, sizeof(buf), "%1.3f ", z);
             scanline.append(buf, n);
@@ -579,7 +580,7 @@ bool CartGridStrategy::doProbe(Gcode *gc)
         if(gc->get_int('R') == 1) {
             only_by_two_corners= true;
             use_wcs= true;
-            gc->stream->printf("NOTE: only by two corners mode using current position for start, offset by XY\n");
+            gc->stream->printf("Leveling start, offset by XY\n");
         }else{
             only_by_two_corners= false;
         }
@@ -643,17 +644,18 @@ bool CartGridStrategy::doProbe(Gcode *gc)
     }
 
     // find bed, and leave probe probe_height above bed
-    if(!findBed(x_start, y_start)) {
+    if(!findBed(x_start, y_start, gc->has_letter('H') ? gc->get_value('H') : zprobe->getProbeHeight())) {
         gc->stream->printf("Finding bed failed, check the initial height setting\n");
         return false;
     }
 
-    gc->stream->printf("Probe start ht: %0.3f mm, start MCS x,y: %0.3f,%0.3f, rectangular bed width,height in mm: %0.3f,%0.3f, grid size: %dx%d\n", zprobe->getProbeHeight(), x_start, y_start, x_size, y_size, current_grid_x_size, current_grid_y_size);
+    gc->stream->printf("Probe start ht: %0.3f mm, start MCS x,y: %0.3f,%0.3f, rectangular bed width,height in mm: %0.3f,%0.3f, grid size: %dx%d\n", gc->has_letter('H') ? gc->get_value('H') : zprobe->getProbeHeight(),
+    		x_start, y_start, x_size, y_size, current_grid_x_size, current_grid_y_size);
 
     // do first probe at start point
     float mm;
     if(!zprobe->doProbeAt(mm, this->x_start - X_PROBE_OFFSET_FROM_EXTRUDER, this->y_start - Y_PROBE_OFFSET_FROM_EXTRUDER)) return false;
-    float z_reference = zprobe->getProbeHeight() - mm; // this should be zero
+    float z_reference = (gc->has_letter('H') ? gc->get_value('H') : zprobe->getProbeHeight()) - mm; // this should be zero
     gc->stream->printf("probe at 0,0 is %1.3f mm\n", z_reference);
 
     // keep track of worst case delta
@@ -680,7 +682,7 @@ bool CartGridStrategy::doProbe(Gcode *gc)
                 return false;
             }
 
-            float measured_z = zprobe->getProbeHeight() - mm - z_reference; // this is the delta z from bed at 0,0
+            float measured_z = (gc->has_letter('H') ? gc->get_value('H') : zprobe->getProbeHeight()) - mm - z_reference; // this is the delta z from bed at 0,0
             gc->stream->printf("DEBUG: X%1.3f, Y%1.3f, Z%1.3f\n", xProbe, yProbe, measured_z);
             grid[xCount + (this->current_grid_x_size * yCount)] = measured_z;
             if(fabs(measured_z) > max_delta) max_delta= fabs(measured_z);
@@ -702,10 +704,12 @@ bool CartGridStrategy::doProbe(Gcode *gc)
 
     setAdjustFunction(true);
 
+    THEROBOT->set_max_delta(max_delta);
+
     return true;
 }
 
-void CartGridStrategy::doCompensation(float *target, bool inverse)
+void CartGridStrategy::doCompensation(float *target, bool inverse, bool debug)
 {
     // Adjust print surface height by linear interpolation over the bed_level array.
     // offset scale: 1 for default (use offset as is)
@@ -730,12 +734,19 @@ void CartGridStrategy::doCompensation(float *target, bool inverse)
 
     // clamp the input to the bounds of the compensation grid
     // if a point is beyond the bounds of the grid, it will get the offset of the closest grid point
-    float x_target = std::min(std::max(target[X_AXIS], min_x), max_x);
-    float y_target = std::min(std::max(target[Y_AXIS], min_y), max_y);
+    //    float x_target = std::min(std::max(target[X_AXIS], min_x), max_x);
+    //    float y_target = std::min(std::max(target[Y_AXIS], min_y), max_y);
+
+    // change to set offset = 0 if a point is beyond the bounds of the grid
+    float x_target = target[X_AXIS];
+    float y_target = target[Y_AXIS];
+    if (x_target < min_x - 0.001 || x_target > max_x + 0.001 || y_target < min_y - 0.001 || y_target > max_y + 0.001) {
+    	return;
+    }
 
     // we need to make sure that floor_x and floor_y are always < grid_size-1
     float grid_x = std::max(0.001F, std::min(this->current_grid_x_size - 1.001F, (x_target - this->x_start) / (this->x_size / (this->current_grid_x_size - 1))));
-    float grid_y = std::max(0.001F, std::min(this->current_grid_x_size - 1.001F, (y_target - this->y_start) / (this->y_size / (this->current_grid_y_size - 1))));
+    float grid_y = std::max(0.001F, std::min(this->current_grid_y_size - 1.001F, (y_target - this->y_start) / (this->y_size / (this->current_grid_y_size - 1))));
     int floor_x = floorf(grid_x);
     int floor_y = floorf(grid_y);
     float ratio_x = grid_x - floor_x;
@@ -757,24 +768,28 @@ void CartGridStrategy::doCompensation(float *target, bool inverse)
         target[Z_AXIS] += offset * scale;
     }
 
-#if 0
-    THEKERNEL->streams->printf("//DEBUG: TARGET: %f, %f, %f\n", target[0], target[1], target[2]);
-    THEKERNEL->streams->printf("//DEBUG: grid_x= %f\n", grid_x);
-    THEKERNEL->streams->printf("//DEBUG: grid_y= %f\n", grid_y);
-    THEKERNEL->streams->printf("//DEBUG: floor_x= %d\n", floor_x);
-    THEKERNEL->streams->printf("//DEBUG: floor_y= %d\n", floor_y);
-    THEKERNEL->streams->printf("//DEBUG: ratio_x= %f\n", ratio_x);
-    THEKERNEL->streams->printf("//DEBUG: ratio_y= %f\n", ratio_y);
-    THEKERNEL->streams->printf("//DEBUG: z1= %f\n", z1);
-    THEKERNEL->streams->printf("//DEBUG: z2= %f\n", z2);
-    THEKERNEL->streams->printf("//DEBUG: z3= %f\n", z3);
-    THEKERNEL->streams->printf("//DEBUG: z4= %f\n", z4);
-    THEKERNEL->streams->printf("//DEBUG: left= %f\n", left);
-    THEKERNEL->streams->printf("//DEBUG: right= %f\n", right);
-    THEKERNEL->streams->printf("//DEBUG: offset= %f\n", offset);
-    THEKERNEL->streams->printf("//DEBUG: scale= %f\n", scale);
-    THEKERNEL->streams->printf("//DEBUG: adjustment= %f\n", offset*scale);
-#endif
+//#if 0
+    if (debug) {
+    	THEKERNEL->streams->printf("//DEBUG: x_size: %f, y_size:%f\n", this->x_size, this->y_size);
+    	THEKERNEL->streams->printf("//DEBUG: x_start: %f, y_start:%f\n", this->x_start, this->y_start);
+        THEKERNEL->streams->printf("//DEBUG: TARGET: %f, %f, %f\n", target[0], target[1], target[2]);
+        THEKERNEL->streams->printf("//DEBUG: grid_x= %f\n", grid_x);
+        THEKERNEL->streams->printf("//DEBUG: grid_y= %f\n", grid_y);
+        THEKERNEL->streams->printf("//DEBUG: floor_x= %d\n", floor_x);
+        THEKERNEL->streams->printf("//DEBUG: floor_y= %d\n", floor_y);
+        THEKERNEL->streams->printf("//DEBUG: ratio_x= %f\n", ratio_x);
+        THEKERNEL->streams->printf("//DEBUG: ratio_y= %f\n", ratio_y);
+        THEKERNEL->streams->printf("//DEBUG: z1= %f\n", z1);
+        THEKERNEL->streams->printf("//DEBUG: z2= %f\n", z2);
+        THEKERNEL->streams->printf("//DEBUG: z3= %f\n", z3);
+        THEKERNEL->streams->printf("//DEBUG: z4= %f\n", z4);
+        THEKERNEL->streams->printf("//DEBUG: left= %f\n", left);
+        THEKERNEL->streams->printf("//DEBUG: right= %f\n", right);
+        THEKERNEL->streams->printf("//DEBUG: offset= %f\n", offset);
+        THEKERNEL->streams->printf("//DEBUG: scale= %f\n", scale);
+        THEKERNEL->streams->printf("//DEBUG: adjustment= %f\n", offset*scale);
+    }
+//#endif
 }
 
 
@@ -828,4 +843,5 @@ void CartGridStrategy::reset_bed_level()
             grid[x + (current_grid_x_size * y)] = NAN;
         }
     }
+    THEROBOT->set_max_delta(0.0);
 }

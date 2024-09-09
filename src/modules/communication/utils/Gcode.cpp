@@ -14,7 +14,7 @@
 
 // This is a gcode object. It represents a GCode string/command, and caches some important values about that command for the sake of performance.
 // It gets passed around in events, and attached to the queue ( that'll change )
-Gcode::Gcode(const string &command, StreamOutput *stream, bool strip)
+Gcode::Gcode(const string &command, StreamOutput *stream, bool strip, unsigned int line)
 {
     this->command= strdup(command.c_str());
     this->m= 0;
@@ -25,6 +25,7 @@ Gcode::Gcode(const string &command, StreamOutput *stream, bool strip)
     this->stream= stream;
     prepare_cached_values(strip);
     this->stripped= strip;
+    this->line = line;
 }
 
 Gcode::~Gcode()
@@ -78,6 +79,19 @@ bool Gcode::has_letter( char letter ) const
     return false;
 }
 
+//2024
+/*
+int Gcode::index_of_letter( char letter, int start ) const
+{
+    for (size_t i = start; i < strlen(this->command); ++i) {
+        if( command[i] == letter ) {
+            return i;
+        }
+    }
+    return -1;
+}
+*/
+
 // Retrieve the value for a given letter
 float Gcode::get_value( char letter, char **ptr ) const
 {
@@ -95,6 +109,20 @@ float Gcode::get_value( char letter, char **ptr ) const
     if(ptr != nullptr) *ptr= nullptr;
     return 0;
 }
+
+// 2024
+/*
+// Retrieve the value for a given letter
+float Gcode::get_value_at_index( int index ) const
+{
+    const char *cs = command + index + 1;
+    char *cn = NULL;
+	float r = strtof(cs, &cn);
+	if(cn > cs)
+		return r;
+
+    return 0;
+}*/
 
 int Gcode::get_int( char letter, char **ptr ) const
 {
@@ -172,6 +200,7 @@ std::map<char,int> Gcode::get_args_int() const
 void Gcode::prepare_cached_values(bool strip)
 {
     char *p= nullptr;
+
     if( this->has_letter('G') ) {
         this->has_g = true;
         this->g = this->get_int('G', &p);
@@ -188,6 +217,7 @@ void Gcode::prepare_cached_values(bool strip)
         this->has_m = false;
     }
 
+
     if(has_g || has_m) {
         // look for subcode and extract it
         if(p != nullptr && *p == '.') {
@@ -198,7 +228,7 @@ void Gcode::prepare_cached_values(bool strip)
         }
     }
 
-    if(!strip) return;
+    if(!strip || this->has_letter('T')) return;
 
     // remove the Gxxx or Mxxx from string
     if (p != nullptr) {

@@ -20,15 +20,21 @@
 #include "Config.h"
 #include "ConfigValue.h"
 #include "SDFAT.h"
+#include "md5.h"
 
 #include "modules/robot/Conveyor.h"
 #include "DirHandle.h"
+#include "ATCHandlerPublicAccess.h"
 #include "PublicDataRequest.h"
 #include "PublicData.h"
 #include "PlayerPublicAccess.h"
 #include "TemperatureControlPublicAccess.h"
 #include "TemperatureControlPool.h"
-#include "ExtruderPublicAccess.h"
+#include "StepTicker.h"
+#include "Block.h"
+#include "quicklz.h"
+
+#include <math.h>
 
 #include <cstddef>
 #include <cmath>
@@ -36,13 +42,30 @@
 
 #include "mbed.h"
 
+#define home_on_boot_checksum             CHECKSUM("home_on_boot")
 #define on_boot_gcode_checksum            CHECKSUM("on_boot_gcode")
 #define on_boot_gcode_enable_checksum     CHECKSUM("on_boot_gcode_enable")
 #define after_suspend_gcode_checksum      CHECKSUM("after_suspend_gcode")
 #define before_resume_gcode_checksum      CHECKSUM("before_resume_gcode")
 #define leave_heaters_on_suspend_checksum CHECKSUM("leave_heaters_on_suspend")
+#define laser_module_clustering_checksum 	  CHECKSUM("laser_module_clustering")
 
 extern SDFAT mounter;
+
+unsigned char xbuff[8200] __attribute__((section("AHBSRAM1"))); /* 2 for data length, 8192 for XModem + 3 head chars + 2 crc + nul */
+static unsigned char fbuff[4096] __attribute__((section("AHBSRAM1")));
+// used for XMODEM
+#define SOH  0x01
+#define STX  0x02
+#define EOT  0x04
+#define ACK  0x06
+#define NAK  0x15
+#define CAN  0x16 //0x18
+#define CTRLZ 0x1A
+
+#define MAXRETRANS 10
+#define TIMEOUT_MS 100
+
 
 Player::Player()
 {
@@ -51,8 +74,8 @@ Player::Player()
     this->booted = false;
     this->elapsed_secs = 0;
     this->reply_stream = nullptr;
-    this->suspended= false;
-    this->suspend_loops= 0;
+    this->inner_playing = false;
+    this->slope = 0.0;
 }
 
 void Player::on_module_loaded()
@@ -66,29 +89,33 @@ void Player::on_module_loaded()
     this->register_for_event(ON_HALT);
 
     this->on_boot_gcode = THEKERNEL->config->value(on_boot_gcode_checksum)->by_default("/sd/on_boot.gcode")->as_string();
-    this->on_boot_gcode_enable = THEKERNEL->config->value(on_boot_gcode_enable_checksum)->by_default(true)->as_bool();
+    this->on_boot_gcode_enable = THEKERNEL->config->value(on_boot_gcode_enable_checksum)->by_default(false)->as_bool();
+
+    this->home_on_boot = THEKERNEL->config->value(home_on_boot_checksum)->by_default(true)->as_bool();
 
     this->after_suspend_gcode = THEKERNEL->config->value(after_suspend_gcode_checksum)->by_default("")->as_string();
     this->before_resume_gcode = THEKERNEL->config->value(before_resume_gcode_checksum)->by_default("")->as_string();
     std::replace( this->after_suspend_gcode.begin(), this->after_suspend_gcode.end(), '_', ' '); // replace _ with space
     std::replace( this->before_resume_gcode.begin(), this->before_resume_gcode.end(), '_', ' '); // replace _ with space
     this->leave_heaters_on = THEKERNEL->config->value(leave_heaters_on_suspend_checksum)->by_default(false)->as_bool();
+
+    this->laser_clustering = THEKERNEL->config->value(laser_module_clustering_checksum)->by_default(false)->as_bool();
 }
 
 void Player::on_halt(void* argument)
 {
+    this->clear_buffered_queue();
+
     if(argument == nullptr && this->playing_file ) {
         abort_command("1", &(StreamOutput::NullStream));
 	}
 
-	if(argument == nullptr && this->suspended) {
+	if(argument == nullptr && (THEKERNEL->is_suspending() || THEKERNEL->is_waiting())) {
 		// clean up from suspend
-		this->suspended= false;
+		THEKERNEL->set_waiting(false);
+		THEKERNEL->set_suspending(false);
 		THEROBOT->pop_state();
-		this->saved_temperatures.clear();
-		this->was_playing_file= false;
-		this->suspend_loops= 0;
-		THEKERNEL->streams->printf("// Suspend cleared\n");
+		THEKERNEL->streams->printf("Suspend cleared\n");
 	}
 }
 
@@ -150,7 +177,10 @@ void Player::on_gcode_received(void *argument)
 
 
             this->played_cnt = 0;
+            this->played_lines = 0;
             this->elapsed_secs = 0;
+            this->playing_lines = 0;
+            this->goto_line = 0;
 
         } else if (gcode->m == 24) { // start print
             if (this->current_file_handler != NULL) {
@@ -218,7 +248,10 @@ void Player::on_gcode_received(void *argument)
             }
 
             this->played_cnt = 0;
+            this->played_lines = 0;
             this->elapsed_secs = 0;
+            this->playing_lines = 0;
+            this->goto_line = 0;
 
         } else if (gcode->m == 600) { // suspend print, Not entirely Marlin compliant, M600.1 will leave the heaters on
             this->suspend_command((gcode->subcode == 1)?"h":"", gcode->stream);
@@ -229,13 +262,10 @@ void Player::on_gcode_received(void *argument)
 
     }else if(gcode->has_g) {
         if(gcode->g == 28) { // homing cancels suspend
-            if(this->suspended) {
+            if (THEKERNEL->is_suspending()) {
                 // clean up
-                this->suspended= false;
+            	THEKERNEL->set_suspending(false);
                 THEROBOT->pop_state();
-                this->saved_temperatures.clear();
-                this->was_playing_file= false;
-                this->suspend_loops= 0;
             }
         }
     }
@@ -257,7 +287,7 @@ void Player::on_console_line_received( void *argument )
 
     string cmd = shift_parameter(possible_command);
 
-    //new_message.stream->printf("Received %s\r\n", possible_command.c_str());
+	// new_message.stream->printf("Play Received %s\r\n", possible_command.c_str());
 
     // Act depending on command
     if (cmd == "play"){
@@ -270,25 +300,66 @@ void Player::on_console_line_received( void *argument )
         this->suspend_command( possible_command, new_message.stream );
     }else if (cmd == "resume") {
         this->resume_command( possible_command, new_message.stream );
+    }else if (cmd == "goto") {
+    	this->goto_command( possible_command, new_message.stream );
+    }else if (cmd == "buffer") {
+    	this->buffer_command( possible_command, new_message.stream );
+    }else if (cmd == "upload") {
+    	this->upload_command( possible_command, new_message.stream );
+    }else if (cmd == "download") {
+        memset(md5_str, 0, sizeof(md5_str));
+    	if (possible_command.find("config.txt") != string::npos) {
+        	this->test_command( possible_command, new_message.stream );
+    	}
+    	this->download_command( possible_command, new_message.stream );
     }
+}
+
+// Buffer gcode to queue
+void Player::buffer_command( string parameters, StreamOutput *stream )
+{
+	this->buffered_queue.push(parameters);
+	stream->printf("Command buffered: %s\r\n", parameters.c_str());
 }
 
 // Play a gcode file by considering each line as if it was received on the serial console
 void Player::play_command( string parameters, StreamOutput *stream )
 {
+//    // current tool number and tool offset
+//    struct tool_status tool;
+//    bool tool_ok = PublicData::get_value( atc_handler_checksum, get_tool_status_checksum, &tool );
+//    if (tool_ok) {
+//    	tool_ok = tool.active_tool > 0;
+//    }
+//	// check if is tool -1 or tool 0
+//	if (!tool_ok) {
+//		THEKERNEL->call_event(ON_HALT, nullptr);
+//		THEKERNEL->set_halt_reason(MANUAL);
+//		THEKERNEL->streams->printf("ERROR: No tool or probe tool!\n");
+//		return;
+//	}
+
     // extract any options from the line and terminate the line there
     string options= extract_options(parameters);
     // Get filename which is the entire parameter line upto any options found or entire line
-    this->filename = absolute_from_relative(parameters);
+    this->filename = absolute_from_relative(shift_parameter(parameters));
+    this->last_filename = this->filename;
 
-    if(this->playing_file || this->suspended) {
+    if (this->playing_file || THEKERNEL->is_suspending() || THEKERNEL->is_waiting()) {
         stream->printf("Currently printing, abort print first\r\n");
         return;
     }
 
-    if(this->current_file_handler != NULL) { // must have been a paused print
+    if (this->current_file_handler != NULL) { // must have been a paused print
         fclose(this->current_file_handler);
     }
+
+//    this->temp_file_handler = fopen ("/sd/gcodes/temp.nc", "w");
+//    if (this->temp_file_handler == NULL) {
+//        stream->printf("File open error: /sd/gcodes/temp.nc\n");
+//        return;
+//    }
+
 
     this->current_file_handler = fopen( this->filename.c_str(), "r");
     if(this->current_file_handler == NULL) {
@@ -319,7 +390,60 @@ void Player::play_command( string parameters, StreamOutput *stream )
         stream->printf("  File size %ld\r\n", file_size);
     }
     this->played_cnt = 0;
+    this->played_lines = 0;
     this->elapsed_secs = 0;
+    this->playing_lines = 0;
+    this->goto_line = 0;
+
+    // force into absolute mode
+    THEROBOT->absolute_mode = true;
+    THEROBOT->e_absolute_mode = true;
+
+    // reset current position;
+    THEROBOT->reset_position_from_current_actuator_position();
+}
+
+// Goto a certain line when playing a file
+void Player::goto_command( string parameters, StreamOutput *stream )
+{
+    if (!THEKERNEL->is_suspending()) {
+        stream->printf("Can only jump when pausing!\r\n");
+        return;
+    }
+
+    if (this->current_file_handler == NULL) {
+    	stream->printf("Missing file handle!\r\n");
+    	return;
+    }
+
+    string line_str = shift_parameter(parameters);
+    if (!line_str.empty()) {
+        char *ptr = NULL;
+        this->goto_line = strtol(line_str.c_str(), &ptr, 10);
+        this->goto_line = this->goto_line < 1 ? 1 : this->goto_line;
+        stream->printf("Goto line %lu...\r\n", this->goto_line);
+        // goto line
+        char buf[130]; // lines upto 128 characters are allowed, anything longer is discarded
+
+        // goto file begin
+        fseek(this->current_file_handler, 0, SEEK_SET);
+        played_lines = 0;
+        played_cnt   = 0;
+
+        while (fgets(buf, sizeof(buf), this->current_file_handler) != NULL) {
+        	if (played_lines % 100 == 0) {
+                THEKERNEL->call_event(ON_IDLE);
+        	}
+        	int len = strlen(buf);
+            if (len == 0) continue; // empty line? should not be possible
+
+            played_lines += 1;
+            played_cnt += len;
+            if (played_lines >= this->goto_line) {
+            	break;
+            }
+        }
+    }
 }
 
 void Player::progress_command( string parameters, StreamOutput *stream )
@@ -372,78 +496,217 @@ void Player::abort_command( string parameters, StreamOutput *stream )
         stream->printf("Not currently playing\r\n");
         return;
     }
-    suspended= false;
-    playing_file = false;
-    played_cnt = 0;
-    file_size = 0;
+
+    this->playing_file = false;
+    this->played_cnt = 0;
+    this->played_lines = 0;
+    this->playing_lines = 0;
+    this->goto_line = 0;
+    this->file_size = 0;
+    this->clear_buffered_queue();
     this->filename = "";
     this->current_stream = NULL;
+
     fclose(current_file_handler);
     current_file_handler = NULL;
-    if(parameters.empty()) {
+
+    THEKERNEL->set_suspending(false);
+    THEKERNEL->set_waiting(true);
+
+    // wait for queue to empty
+    THEKERNEL->conveyor->wait_for_idle();
+
+    if(THEKERNEL->is_halted()) {
+        THEKERNEL->streams->printf("Aborted by halt\n");
+        THEKERNEL->set_waiting(false);
+        return;
+    }
+
+    THEKERNEL->set_waiting(false);
+
+    // turn off spindle
+    {
+		struct SerialMessage message;
+		message.message = "M5";
+		message.stream = THEKERNEL->streams;
+		message.line = 0;
+		THEKERNEL->call_event(ON_CONSOLE_LINE_RECEIVED, &message);
+    }
+
+    if (parameters.empty()) {
         // clear out the block queue, will wait until queue is empty
         // MUST be called in on_main_loop to make sure there are no blocked main loops waiting to put something on the queue
         THEKERNEL->conveyor->flush_queue();
 
         // now the position will think it is at the last received pos, so we need to do FK to get the actuator position and reset the current position
         THEROBOT->reset_position_from_current_actuator_position();
-        stream->printf("Aborted playing or paused file. Please turn any heaters off manually\r\n");
+        stream->printf("Aborted playing or paused file. \r\n");
     }
+}
+
+void Player::clear_buffered_queue(){
+	while (!this->buffered_queue.empty()) {
+		this->buffered_queue.pop();
+	}
 }
 
 void Player::on_main_loop(void *argument)
 {
-    if(suspended && suspend_loops > 0) {
-        // if we are suspended we need to allow main loop to cycle a few times then finish off the suspend processing
-        if(--suspend_loops == 0) {
-            suspend_part2();
-            return;
-        }
-    }
-
     if( !this->booted ) {
         this->booted = true;
-        if( this->on_boot_gcode_enable ) {
-            this->play_command(this->on_boot_gcode, THEKERNEL->serial);
-        } else {
-            //THEKERNEL->serial->printf("On boot gcode disabled! skipping...\n");
+        if (this->home_on_boot) {
+    		struct SerialMessage message;
+    		message.message = "$H";
+    		message.stream = THEKERNEL->streams;
+    		message.line = 0;
+    		THEKERNEL->call_event(ON_CONSOLE_LINE_RECEIVED, &message);
         }
+
+        if (this->on_boot_gcode_enable) {
+            this->play_command(this->on_boot_gcode, THEKERNEL->serial);
+        }
+
     }
 
-    if( this->playing_file ) {
-        if(THEKERNEL->is_halted()) {
+    if ( this->playing_file ) {
+        if(THEKERNEL->is_halted() || THEKERNEL->is_suspending() || THEKERNEL->is_waiting() || this->inner_playing) {
             return;
         }
 
-        char buf[130]; // lines upto 128 characters are allowed, anything longer is discarded
+        // check if there are bufferd command
+        while (!this->buffered_queue.empty()) {
+        	THEKERNEL->streams->printf("%s\r\n", this->buffered_queue.front().c_str());
+			struct SerialMessage message;
+			message.message = this->buffered_queue.front();
+			message.stream = THEKERNEL->streams;
+			message.line = 0;
+			this->buffered_queue.pop();
+
+			// waits for the queue to have enough room
+			THEKERNEL->call_event(ON_CONSOLE_LINE_RECEIVED, &message);
+            return;
+        }
+
+        char buf[130]; // lines up to 128 characters are allowed, anything longer is discarded
         bool discard = false;
 
-        while(fgets(buf, sizeof(buf), this->current_file_handler) != NULL) {
+        // 2024
+        /*
+        bool is_cluster = false;
+        int cluster_index = 0;
+        float x_value = 0.0, y_value = 0.0, sum_x_value = 0.0, sum_y_value = 0.0,
+        		s_value = 0.0, distance = 0.0, min_distance = 10000.0, min_value = 0.0,
+				sum_distance = 0.0, sum_value = 0.0;
+        string clustered_gcode = "";
+        float clustered_s_value[8];
+        float clustered_distance[8];
+        */
+
+        while (fgets(buf, sizeof(buf), this->current_file_handler) != NULL) {
+
             int len = strlen(buf);
-            if(len == 0) continue; // empty line? should not be possible
-            if(buf[len - 1] == '\n' || feof(this->current_file_handler)) {
+            if (len == 0) continue; // empty line? should not be possible
+            if (buf[len - 1] == '\n' || feof(this->current_file_handler)) {
                 if(discard) { // we are discarding a long line
                     discard = false;
                     continue;
                 }
-                if(len == 1) continue; // empty line
 
-                if(this->current_stream != nullptr) {
+                if (len == 1) continue; // empty line
+
+                /*
+            	// Add laser cluster support when in laser mode
+            	if (this->laser_clustering && THEKERNEL->get_laser_mode() && !THEROBOT->absolute_mode && played_lines > 100) {
+            		// G1 X0.5 Y 0.8 S1:0:0.5:0.75:0:0.2
+            		is_cluster = this->check_cluster(buf, &x_value, &y_value, &distance, &slope, &s_value);
+                    min_value = fmin(min_distance, distance);
+                    sum_value = sum_distance + distance;
+            		if (is_cluster && (min_value > 0 && sum_value * 1.0 / min_value < 8.1)) {
+                        min_distance = min_value;
+                        sum_distance = sum_value;
+                        sum_x_value += x_value;
+                        sum_y_value += y_value;
+                        cluster_index ++;
+                        clustered_s_value[cluster_index - 1] = s_value;
+                        clustered_distance[cluster_index - 1] = distance;
+                        played_lines += 1;
+                        played_cnt += len;
+						if (cluster_index >= 8 || (min_distance > 0 && sum_distance * 1.0 / min_distance > 7.9)) {
+	                        sprintf(md5_str, "G1 X%.3f Y%.3f S", sum_x_value, sum_y_value);
+	                        clustered_gcode = md5_str;
+	                        for (int i = 0; i < cluster_index; i ++) {
+	                            for (float j = min_distance; j < clustered_distance[i] + 0.01; j+= min_distance) {
+	                            	sprintf(md5_str, "%s%.2f", (i == 0 ? "" : ":"), clustered_s_value[i]);
+	                                clustered_gcode.append(md5_str);
+	                            }
+	                        }
+
+							struct SerialMessage message;
+							message.message = clustered_gcode;
+							message.stream = this->current_stream == nullptr ? &(StreamOutput::NullStream) : this->current_stream;
+							message.line = played_lines + 1;
+
+							// waits for the queue to have enough room
+							THEKERNEL->call_event(ON_CONSOLE_LINE_RECEIVED, &message);
+							// fputs(clustered_gcode.c_str(), this->temp_file_handler);
+							// fputs("\n", this->temp_file_handler);
+							// THEKERNEL->streams->printf("1-[Line: %d] %s\n", message.line, clustered_gcode.c_str());
+							return;
+						}
+						continue;
+            		} else {
+                		if (cluster_index > 0) {
+	                        sprintf(md5_str, "G1 X%.3f Y%.3f S", sum_x_value, sum_y_value);
+	                        clustered_gcode = md5_str;
+	                        for (int i = 0; i < cluster_index; i ++) {
+	                            for (float j = min_distance; j < clustered_distance[i] + 0.01; j+= min_distance) {
+	                            	sprintf(md5_str, "%s%.2f", (i == 0 ? "" : ":"), clustered_s_value[i]);
+	                                clustered_gcode.append(md5_str);
+	                            }
+	                        }
+	                        clustered_gcode.append("\n");
+
+    						struct SerialMessage message;
+    						message.message = clustered_gcode;
+    						message.stream = this->current_stream == nullptr ? &(StreamOutput::NullStream) : this->current_stream;
+    						message.line = played_lines + 1;
+
+    						// waits for the queue to have enough room
+    						THEKERNEL->call_event(ON_CONSOLE_LINE_RECEIVED, &message);
+    						// fputs(clustered_gcode.c_str(), this->temp_file_handler);
+    						// fputs("\n", this->temp_file_handler);
+    						// THEKERNEL->streams->printf("2-[Line: %d] %s\n", message.line, clustered_gcode.c_str());
+                		}
+                        sum_x_value = 0.0;
+                        sum_y_value = 0.0;
+                        sum_distance = 0.0;
+                        cluster_index = 0;
+                        min_distance = 10000.0;
+            		}
+            	}
+*/
+
+                if (this->current_stream != nullptr) {
                     this->current_stream->printf("%s", buf);
                 }
 
                 struct SerialMessage message;
                 message.message = buf;
                 message.stream = this->current_stream == nullptr ? &(StreamOutput::NullStream) : this->current_stream;
+                message.line = played_lines + 1;
 
                 // waits for the queue to have enough room
+                // this->current_stream->printf("Run: %s", buf);
                 THEKERNEL->call_event(ON_CONSOLE_LINE_RECEIVED, &message);
+                // fputs(buf, this->temp_file_handler);
+                // THEKERNEL->streams->printf("0-[Line: %d] %s\n", message.line, buf);
+                played_lines += 1;
                 played_cnt += len;
                 return; // we feed one line per main loop
 
             } else {
                 // discard long line
-                if(this->current_stream != nullptr) { this->current_stream->printf("Warning: Discarded long line\n"); }
+                if (this->current_stream != nullptr) { this->current_stream->printf("Warning: Discarded long line\n"); }
                 discard = true;
             }
         }
@@ -451,9 +714,14 @@ void Player::on_main_loop(void *argument)
         this->playing_file = false;
         this->filename = "";
         played_cnt = 0;
+        played_lines = 0;
+        playing_lines = 0;
+        goto_line = 0;
         file_size = 0;
+
         fclose(this->current_file_handler);
         current_file_handler = NULL;
+
         this->current_stream = NULL;
 
         if(this->reply_stream != NULL) {
@@ -464,6 +732,35 @@ void Player::on_main_loop(void *argument)
     }
 }
 
+/*
+bool Player::check_cluster(const char *gcode_str, float *x_value, float *y_value, float *distance, float *slope, float *s_value)
+{
+	float new_slope = 0.0;
+	bool is_cluster = false;
+	Gcode *gcode = new Gcode(gcode_str, &StreamOutput::NullStream);
+	if (!gcode->has_m && gcode->has_g && gcode->g == 1) {
+		*x_value = gcode->get_value('X');
+		*y_value = gcode->get_value('Y');
+		*s_value = gcode->get_value('S');
+		*distance = sqrtf((*x_value) * (*x_value) + (*y_value) * (*y_value));
+		if (*x_value == 0) {
+			new_slope = *y_value > 0 ? 1000 : -1000;
+		} else if (*y_value == 0) {
+			new_slope = *x_value > 0 ? 0.001 : -0.001;
+		} else {
+			new_slope = *y_value / *x_value;
+		}
+		if ((*distance) < 1.0 && fabs (new_slope - *slope) < 0.1) {
+			is_cluster = true;
+		}
+		*slope = new_slope;
+	}
+	delete gcode;
+
+	return is_cluster;
+}
+*/
+
 void Player::on_get_public_data(void *argument)
 {
     PublicDataRequest *pdr = static_cast<PublicDataRequest *>(argument);
@@ -472,13 +769,26 @@ void Player::on_get_public_data(void *argument)
 
     if(pdr->second_element_is(is_playing_checksum) || pdr->second_element_is(is_suspended_checksum)) {
         static bool bool_data;
-        bool_data = pdr->second_element_is(is_playing_checksum) ? this->playing_file : this->suspended;
+        bool_data = pdr->second_element_is(is_playing_checksum) ? this->playing_file : THEKERNEL->is_suspending();
         pdr->set_data_ptr(&bool_data);
         pdr->set_taken();
 
     } else if(pdr->second_element_is(get_progress_checksum)) {
         static struct pad_progress p;
         if(file_size > 0 && playing_file) {
+        	if (!this->inner_playing) {
+                const Block *block = StepTicker::getInstance()->get_current_block();
+                // Note to avoid a race condition where the block is being cleared we check the is_ready flag which gets cleared first,
+                // as this is an interrupt if that flag is not clear then it cannot be cleared while this is running and the block will still be valid (albeit it may have finished)
+                if (block != nullptr && block->is_ready && block->is_g123) {
+                	this->playing_lines = block->line;
+                	p.played_lines = this->playing_lines;
+                } else {
+                	p.played_lines = this->played_lines;
+                }
+        	} else {
+        		p.played_lines = this->played_lines;
+        	}
             p.elapsed_secs = this->elapsed_secs;
             float pcnt = (((float)file_size - (file_size - played_cnt)) * 100.0F) / file_size;
             p.percent_complete = roundf(pcnt);
@@ -486,6 +796,10 @@ void Player::on_get_public_data(void *argument)
             pdr->set_data_ptr(&p);
             pdr->set_taken();
         }
+    } else if (pdr->second_element_is(inner_playing_checksum)) {
+    	bool b = this->inner_playing;
+        pdr->set_data_ptr(&b);
+        pdr->set_taken();
     }
 }
 
@@ -498,6 +812,15 @@ void Player::on_set_public_data(void *argument)
     if(pdr->second_element_is(abort_play_checksum)) {
         abort_command("", &(StreamOutput::NullStream));
         pdr->set_taken();
+    } else if (pdr->second_element_is(inner_playing_checksum)) {
+    	bool b = *static_cast<bool *>(pdr->get_data_ptr());
+    	this->inner_playing = b;
+    	if (this->playing_file) pdr->set_taken();
+    } else if (pdr->second_element_is(restart_job_checksum)) {
+    	if (!this->last_filename.empty()) {
+    		THEKERNEL->streams->printf("Job restarted: %s.\r\n", this->last_filename.c_str());
+        	this->play_command(this->last_filename, &(StreamOutput::NullStream));
+    	}
     }
 }
 
@@ -516,46 +839,31 @@ User may jog or remove and insert filament at this point, extruding or retractin
 */
 void Player::suspend_command(string parameters, StreamOutput *stream )
 {
-    if(suspended) {
-        stream->printf("Already suspended\n");
+    if (THEKERNEL->is_suspending() || THEKERNEL->is_waiting()) {
+        stream->printf("Already suspended!\n");
         return;
     }
 
-    stream->printf("// Suspending print, waiting for queue to empty...\n");
-
-    // override the leave_heaters_on setting
-    this->override_leave_heaters_on= (parameters == "h");
-
-    suspended= true;
-    if( this->playing_file ) {
-        // pause an sd print
-        this->playing_file = false;
-        this->was_playing_file= true;
-    }else{
-        // send pause to upstream host, we send it on all ports as we don't know which it is on
-        THEKERNEL->streams->printf("// action:pause\r\n");
-        this->was_playing_file= false;
+    if(!this->playing_file) {
+        stream->printf("Can not suspend when not playing file!\n");
+        return;
     }
 
-    // we need to allow main loop to cycle a few times to clear any buffered commands in the serial streams etc
-    suspend_loops= 10;
-}
+    stream->printf("Suspending , waiting for queue to empty...\n");
 
-// this completes the suspend
-void Player::suspend_part2()
-{
-    //  need to use streams here as the original stream may have changed
-    THEKERNEL->streams->printf("// Waiting for queue to empty (Host must stop sending)...\n");
+    THEKERNEL->set_waiting(true);
+
     // wait for queue to empty
     THEKERNEL->conveyor->wait_for_idle();
 
     if(THEKERNEL->is_halted()) {
-        THEKERNEL->streams->printf("Suspend aborted by kill\n");
-        suspended= false;
+        THEKERNEL->streams->printf("Suspend aborted by halt\n");
+        THEKERNEL->set_waiting(false);
         return;
     }
 
-    THEKERNEL->streams->printf("// Saving current state...\n");
+    THEKERNEL->set_waiting(false);
+    THEKERNEL->set_suspending(true);
 
     // save current XYZ position in WCS
     Robot::wcs_t mpos= THEROBOT->get_axis_position();
@@ -564,45 +872,20 @@ void Player::suspend_part2()
     saved_position[1]= std::get<Y_AXIS>(wpos);
     saved_position[2]= std::get<Z_AXIS>(wpos);
 
-    // save current extruder state
-    PublicData::set_value( extruder_checksum, save_state_checksum, nullptr );
-
-    // save state use M120
+    // save current state
     THEROBOT->push_state();
-
-    // TODO retract by optional amount...
-
-    this->saved_temperatures.clear();
-    if(!this->leave_heaters_on && !this->override_leave_heaters_on) {
-        // save current temperatures, get a vector of all the controllers data
-        std::vector<struct pad_temperature> controllers;
-        bool ok = PublicData::get_value(temperature_control_checksum, poll_controls_checksum, &controllers);
-        if (ok) {
-            // query each heater and save the target temperature if on
-            for (auto &c : controllers) {
-                // TODO see if in exclude list
-                if(c.target_temperature > 0) {
-                    this->saved_temperatures[c.id]= c.target_temperature;
-                }
-            }
-        }
-
-        // turn off heaters that were on
-        for(auto& h : this->saved_temperatures) {
-            float t= 0;
-            PublicData::set_value( temperature_control_checksum, h.first, &t );
-        }
-    }
+    current_motion_mode = THEROBOT->get_current_motion_mode();
 
     // execute optional gcode if defined
     if(!after_suspend_gcode.empty()) {
         struct SerialMessage message;
         message.message = after_suspend_gcode;
         message.stream = &(StreamOutput::NullStream);
+        message.line = 0;
         THEKERNEL->call_event(ON_CONSOLE_LINE_RECEIVED, &message );
     }
 
-    THEKERNEL->streams->printf("// Print Suspended, enter resume to continue printing\n");
+    THEKERNEL->streams->printf("Suspended, resume to continue playing\n");
 }
 
 /**
@@ -614,110 +897,774 @@ resume the suspended print
 */
 void Player::resume_command(string parameters, StreamOutput *stream )
 {
-    if(!suspended) {
+    if(!THEKERNEL->is_suspending()) {
         stream->printf("Not suspended\n");
         return;
     }
 
-    stream->printf("// resuming print...\n");
-
-    // wait for them to reach temp
-    if(!this->saved_temperatures.empty()) {
-        // set heaters to saved temps
-        for(auto& h : this->saved_temperatures) {
-            float t= h.second;
-            PublicData::set_value( temperature_control_checksum, h.first, &t );
-        }
-        stream->printf("// Waiting for heaters...\n");
-        bool wait= true;
-        uint32_t tus= us_ticker_read(); // mbed call
-        while(wait) {
-            wait= false;
-
-            bool timeup= false;
-            if((us_ticker_read() - tus) >= 1000000) { // print every 1 second
-                timeup= true;
-                tus= us_ticker_read(); // mbed call
-            }
-
-            for(auto& h : this->saved_temperatures) {
-                struct pad_temperature temp;
-                if(PublicData::get_value( temperature_control_checksum, current_temperature_checksum, h.first, &temp )) {
-                    if(timeup)
-                        stream->printf("%s:%3.1f /%3.1f @%d ", temp.designator.c_str(), temp.current_temperature, ((temp.target_temperature == -1) ? 0.0 : temp.target_temperature), temp.pwm);
-                    wait= wait || (temp.current_temperature < h.second);
-                }
-            }
-            if(timeup) stream->printf("\n");
-
-            if(wait)
-                THEKERNEL->call_event(ON_IDLE, this);
-
-            if(THEKERNEL->is_halted()) {
-                // abort temp wait and rest of resume
-                THEKERNEL->streams->printf("Resume aborted by kill\n");
-                THEROBOT->pop_state();
-                this->saved_temperatures.clear();
-                suspended= false;
-                return;
-            }
-        }
-    }
-
-    // clean up
-    this->saved_temperatures.clear();
+    stream->printf("Resuming playing...\n");
 
     if(THEKERNEL->is_halted()) {
         THEKERNEL->streams->printf("Resume aborted by kill\n");
         THEROBOT->pop_state();
-        suspended= false;
+        THEKERNEL->set_suspending(false);
         return;
     }
 
     // execute optional gcode if defined
     if(!before_resume_gcode.empty()) {
-        stream->printf("// Executing before resume gcode...\n");
+        stream->printf("Executing before resume gcode...\n");
         struct SerialMessage message;
         message.message = before_resume_gcode;
         message.stream = &(StreamOutput::NullStream);
+        message.line = 0;
         THEKERNEL->call_event(ON_CONSOLE_LINE_RECEIVED, &message );
     }
 
-    // Restore position
-    stream->printf("// Restoring saved XYZ positions and state...\n");
-    THEROBOT->pop_state();
-    bool abs_mode= THEROBOT->absolute_mode; // what mode we were in
-    // force absolute mode for restoring position, then set to the saved relative/absolute mode
-    THEROBOT->absolute_mode= true;
-    {
-        // NOTE position was saved in WCS (for tool change which may change WCS expecially the Z)
+    if (this->goto_line == 0) {
+        // Restore position
+        stream->printf("Restoring saved XYZ positions and state...\n");
+
+        THEROBOT->absolute_mode = true;
+
         char buf[128];
-        snprintf(buf, sizeof(buf), "G0 X%f Y%f Z%f", saved_position[0], saved_position[1], saved_position[2]);
+        snprintf(buf, sizeof(buf), "G1 X%.3f Y%.3f Z%.3f F%.3f", saved_position[0], saved_position[1], saved_position[2], THEROBOT->from_millimeters(1000));
         struct SerialMessage message;
         message.message = buf;
         message.stream = &(StreamOutput::NullStream);
+        message.line = 0;
         THEKERNEL->call_event(ON_CONSOLE_LINE_RECEIVED, &message );
+
+    	if (current_motion_mode > 1) {
+            snprintf(buf, sizeof(buf), "G%d", current_motion_mode - 1);
+            message.message = buf;
+            message.line = 0;
+            THEKERNEL->call_event(ON_CONSOLE_LINE_RECEIVED, &message);
+    	}
     }
-    THEROBOT->absolute_mode= abs_mode;
 
-    // restore extruder state
-    PublicData::set_value( extruder_checksum, restore_state_checksum, nullptr );
+    THEROBOT->pop_state();
 
-   if(THEKERNEL->is_halted()) {
+    if(THEKERNEL->is_halted()) {
         THEKERNEL->streams->printf("Resume aborted by kill\n");
-        suspended= false;
+        THEKERNEL->set_suspending(false);
         return;
     }
 
-    stream->printf("// Resuming print\n");
+	THEKERNEL->set_suspending(false);
 
-    if(this->was_playing_file) {
-        this->playing_file = true;
-        this->was_playing_file= false;
-    }else{
-        // Send resume to host
-        THEKERNEL->streams->printf("// action:resume\r\n");
+	stream->printf("Playing file resumed\n");
+}
+
+unsigned int Player::crc16_ccitt(unsigned char *data, unsigned int len)
+{
+	static const unsigned short crc_table[] = {
+		0x0000, 0x1021, 0x2042, 0x3063, 0x4084, 0x50a5, 0x60c6, 0x70e7,
+		0x8108, 0x9129, 0xa14a, 0xb16b, 0xc18c, 0xd1ad, 0xe1ce, 0xf1ef,
+		0x1231, 0x0210, 0x3273, 0x2252, 0x52b5, 0x4294, 0x72f7, 0x62d6,
+		0x9339, 0x8318, 0xb37b, 0xa35a, 0xd3bd, 0xc39c, 0xf3ff, 0xe3de,
+		0x2462, 0x3443, 0x0420, 0x1401, 0x64e6, 0x74c7, 0x44a4, 0x5485,
+		0xa56a, 0xb54b, 0x8528, 0x9509, 0xe5ee, 0xf5cf, 0xc5ac, 0xd58d,
+		0x3653, 0x2672, 0x1611, 0x0630, 0x76d7, 0x66f6, 0x5695, 0x46b4,
+		0xb75b, 0xa77a, 0x9719, 0x8738, 0xf7df, 0xe7fe, 0xd79d, 0xc7bc,
+		0x48c4, 0x58e5, 0x6886, 0x78a7, 0x0840, 0x1861, 0x2802, 0x3823,
+		0xc9cc, 0xd9ed, 0xe98e, 0xf9af, 0x8948, 0x9969, 0xa90a, 0xb92b,
+		0x5af5, 0x4ad4, 0x7ab7, 0x6a96, 0x1a71, 0x0a50, 0x3a33, 0x2a12,
+		0xdbfd, 0xcbdc, 0xfbbf, 0xeb9e, 0x9b79, 0x8b58, 0xbb3b, 0xab1a,
+		0x6ca6, 0x7c87, 0x4ce4, 0x5cc5, 0x2c22, 0x3c03, 0x0c60, 0x1c41,
+		0xedae, 0xfd8f, 0xcdec, 0xddcd, 0xad2a, 0xbd0b, 0x8d68, 0x9d49,
+		0x7e97, 0x6eb6, 0x5ed5, 0x4ef4, 0x3e13, 0x2e32, 0x1e51, 0x0e70,
+		0xff9f, 0xefbe, 0xdfdd, 0xcffc, 0xbf1b, 0xaf3a, 0x9f59, 0x8f78,
+		0x9188, 0x81a9, 0xb1ca, 0xa1eb, 0xd10c, 0xc12d, 0xf14e, 0xe16f,
+		0x1080, 0x00a1, 0x30c2, 0x20e3, 0x5004, 0x4025, 0x7046, 0x6067,
+		0x83b9, 0x9398, 0xa3fb, 0xb3da, 0xc33d, 0xd31c, 0xe37f, 0xf35e,
+		0x02b1, 0x1290, 0x22f3, 0x32d2, 0x4235, 0x5214, 0x6277, 0x7256,
+		0xb5ea, 0xa5cb, 0x95a8, 0x8589, 0xf56e, 0xe54f, 0xd52c, 0xc50d,
+		0x34e2, 0x24c3, 0x14a0, 0x0481, 0x7466, 0x6447, 0x5424, 0x4405,
+		0xa7db, 0xb7fa, 0x8799, 0x97b8, 0xe75f, 0xf77e, 0xc71d, 0xd73c,
+		0x26d3, 0x36f2, 0x0691, 0x16b0, 0x6657, 0x7676, 0x4615, 0x5634,
+		0xd94c, 0xc96d, 0xf90e, 0xe92f, 0x99c8, 0x89e9, 0xb98a, 0xa9ab,
+		0x5844, 0x4865, 0x7806, 0x6827, 0x18c0, 0x08e1, 0x3882, 0x28a3,
+		0xcb7d, 0xdb5c, 0xeb3f, 0xfb1e, 0x8bf9, 0x9bd8, 0xabbb, 0xbb9a,
+		0x4a75, 0x5a54, 0x6a37, 0x7a16, 0x0af1, 0x1ad0, 0x2ab3, 0x3a92,
+		0xfd2e, 0xed0f, 0xdd6c, 0xcd4d, 0xbdaa, 0xad8b, 0x9de8, 0x8dc9,
+		0x7c26, 0x6c07, 0x5c64, 0x4c45, 0x3ca2, 0x2c83, 0x1ce0, 0x0cc1,
+		0xef1f, 0xff3e, 0xcf5d, 0xdf7c, 0xaf9b, 0xbfba, 0x8fd9, 0x9ff8,
+		0x6e17, 0x7e36, 0x4e55, 0x5e74, 0x2e93, 0x3eb2, 0x0ed1, 0x1ef0,
+	};
+
+	unsigned char tmp;
+	unsigned short crc = 0;
+
+	for (unsigned int i = 0; i < len; i ++) {
+        tmp = ((crc >> 8) ^ data[i]) & 0xff;
+        crc = ((crc << 8) ^ crc_table[tmp]) & 0xffff;
+	}
+
+	return crc & 0xffff;
+}
+
+int Player::check_crc(int crc, unsigned char *data, unsigned int len)
+{
+    if (crc) {
+        unsigned short crc = crc16_ccitt(data, len);
+        unsigned short tcrc = (data[len] << 8) + data[len+1];
+        if (crc == tcrc)
+            return 1;
+    }
+    else {
+        unsigned char cks = 0;
+        for (unsigned int i = 0; i < len; ++i) {
+            cks += data[i];
+        }
+        if (cks == data[len])
+        return 1;
     }
 
-   suspended= false;
+    return 0;
 }
+
+int Player::inbyte(StreamOutput *stream, unsigned int timeout_ms)
+{
+	uint32_t tick_us = us_ticker_read();
+    while (us_ticker_read() - tick_us < timeout_ms * 1000) {
+        if (stream->ready())
+            return stream->_getc();
+        safe_delay_us(100);
+    }
+    return -1;
+}
+
+int Player::inbytes(StreamOutput *stream, char **buf, int size, unsigned int timeout_ms)
+{
+	uint32_t tick_us = us_ticker_read();
+    while (us_ticker_read() - tick_us < timeout_ms * 1000) {
+        if (stream->ready())
+            return stream->gets(buf, size);
+        safe_delay_us(100);
+    }
+    return -1;
+}
+
+void Player::flush_input(StreamOutput *stream)
+{
+    while (inbyte(stream, TIMEOUT_MS) >= 0)
+        continue;
+}
+
+void Player::cancel_transfer(StreamOutput *stream)
+{
+	stream->_putc(CAN);
+	stream->_putc(CAN);
+	stream->_putc(CAN);
+	flush_input(stream);
+}
+
+void Player::set_serial_rx_irq(bool enable)
+{
+	// disable serial rx irq
+    bool enable_irq = enable;
+    PublicData::set_value( atc_handler_checksum, set_serial_rx_irq_checksum, &enable_irq );
+}
+int Player::decompress(string sfilename, string dfilename, uint32_t sfilesize, StreamOutput* stream)
+{
+	FILE *f_in = NULL, *f_out = NULL;
+	uint16_t  u16Sum = 0;
+	uint8_t u8ReadBuffer_hdr[BLOCK_HEADER_SIZE] = { 0 };
+	uint32_t u32DcmprsSize = 0, u32BlockSize = 0, u32BlockNum = 0, u32TotalDcmprsSize = 0, i = 0,j = 0,k=0;
+	qlz_state_decompress s_stDecompressState;
+	char error_msg[64];
+	memset(error_msg, 0, sizeof(error_msg));
+	sprintf(error_msg, "Nothing!");
+	char info_msg[64];
+	memset(info_msg, 0, sizeof(info_msg));
+	sprintf(info_msg, "Nothing!");
+
+	f_in= fopen(sfilename.c_str(), "rb");
+	f_out= fopen(dfilename.c_str(), "w+");
+	if (f_in == NULL || f_out == NULL)
+	{
+		sprintf(error_msg, "Error: failed to create file [%s]!\r\n", filename.substr(0, 30).c_str());
+		goto _exit;
+	}
+	for(i = 0; i < sfilesize-2; i+= BLOCK_HEADER_SIZE + u32BlockSize)
+	{
+
+		fread(u8ReadBuffer_hdr, sizeof(char), BLOCK_HEADER_SIZE, f_in);
+		u32BlockSize = u8ReadBuffer_hdr[0] * (1 << 24) + u8ReadBuffer_hdr[1] * (1 << 16) + u8ReadBuffer_hdr[2] * (1 << 8) + u8ReadBuffer_hdr[3];
+		if(!u32BlockSize)
+		{
+			goto _exit;
+		}
+		fread(xbuff, sizeof(char), u32BlockSize, f_in);
+		u32DcmprsSize = qlz_decompress((const char *)xbuff, fbuff, &s_stDecompressState);
+		if(!u32DcmprsSize)
+		{
+			goto _exit;
+		}
+		for(j = 0; j < u32DcmprsSize; j++)
+		{
+			u16Sum += fbuff[j];
+		}
+		// Set the file write system buffer 4096 Byte
+		setvbuf(f_out, (char*)&xbuff[4096], _IOFBF, 4096);
+		fwrite(fbuff, sizeof(char),u32DcmprsSize, f_out);
+		u32TotalDcmprsSize += u32DcmprsSize;
+		u32BlockNum += 1;
+		if(++k>10)
+		{
+			k=0;
+			THEKERNEL->call_event(ON_IDLE);
+			sprintf(info_msg, "#Info: decompart = %u\r\n", u32BlockNum);
+			stream->printf(info_msg);
+		}
+	}
+	fread(fbuff, sizeof(char), 2, f_in);
+	if(u16Sum != ((fbuff[0] <<8) + fbuff[1]))
+	{
+		goto _exit;
+	}
+
+	if (f_in != NULL)
+		fclose(f_in);
+	if (f_out!= NULL)
+		fclose(f_out);
+	sprintf(info_msg, "#Info: decompart = %u\r\n", u32BlockNum);
+	stream->printf(info_msg);
+	return 1;
+_exit:
+	if (f_in != NULL)
+		fclose(f_in );
+	if (f_out != NULL)
+		fclose(f_out);
+	stream->printf(error_msg);
+	return 0;
+}
+/*
+int Player::compressfile(string sfilename, string dfilename, StreamOutput* stream)
+{
+	FILE *f_in = NULL, *f_out = NULL;
+	uint16_t  u16Sum = 0;	
+	uint8_t sumdata[2];
+	uint8_t buffer_hdr[BLOCK_HEADER_SIZE] = { 0 };
+	uint32_t file_size = 0;	
+	uint32_t u32cmprsSize = 0, u32BlockSize = 0, u32TotalCmprsSize = 0, i = 0,k=0;
+	qlz_state_compress s_stCompressState;
+	char info_msg[64];
+//	memset(info_msg, 0, sizeof(info_msg));
+//	sprintf(info_msg, "Nothing!");
+
+	f_in= fopen(sfilename.c_str(), "rb");
+	f_out= fopen(dfilename.c_str(), "w+");
+	if (f_in == NULL || f_out == NULL)
+	{
+		sprintf(info_msg, "Error: failed to create file [%s]!\r\n", filename.substr(0, 30).c_str());
+		goto _exit;
+	}
+	file_size = ftell(f_in);
+	if (file_size == 0)
+	{
+		sprintf(info_msg, "Error: [qlz] File size = 0\n");
+		goto _exit;
+	}
+	while(feof(f_in))
+	{
+		u32BlockSize = fread(xbuff, sizeof(char), COMPRESS_BUFFER_SIZE, f_in);
+		for(i=0; i< u32BlockSize; i++ )
+			u16Sum += xbuff[i];
+		/* The destination buffer must be at least size + 400 bytes large because incompressible data may increase in size. */
+/*		u32cmprsSize = qlz_compress((const char *)xbuff, (char *)fbuff, u32BlockSize, &s_stCompressState);
+		if(!u32cmprsSize)
+		{
+			goto _exit;
+		}
+		buffer_hdr[3] = u32cmprsSize % (1 << 8);
+		buffer_hdr[2] = (u32cmprsSize % (1 << 16)) / (1 << 8);
+		buffer_hdr[1] = (u32cmprsSize % (1 << 24)) / (1 << 16);
+		buffer_hdr[0] = u32cmprsSize / (1 << 24); 
+ 
+		fwrite(buffer_hdr, 1,BLOCK_HEADER_SIZE, f_out);
+		// Set the file write system buffer 4096 Byte
+		setvbuf(f_out, (char*)&xbuff[4096], _IOFBF, 4096);
+		fwrite(fbuff, sizeof(char),u32cmprsSize, f_out);
+		u32TotalCmprsSize += u32cmprsSize;
+		if(++k>100)
+		{
+			k=0;
+			THEKERNEL->call_event(ON_IDLE);
+			sprintf(info_msg, "Info: ComSize = %u, Filesize = %u\r\n", u32TotalCmprsSize, file_size);
+			stream->printf(info_msg);
+		}
+	}
+	
+	sumdata[0] = u16Sum >> 8;
+	sumdata[1] = u16Sum &0x00FF; 
+	fwrite(sumdata, 1, 2, f_out);
+	if(u16Sum != ((fbuff[0] <<8) + fbuff[1]))
+	{
+		goto _exit;
+	}
+
+	if (f_in)
+		fclose(f_in);
+	if (f_out)
+		fclose(f_out);
+	sprintf(info_msg, "Info: ComSize = %u, Filesize = %u\r\n", u32TotalCmprsSize, file_size);
+	stream->printf(info_msg);
+	return 1;
+_exit:
+	if (f_in)
+		fclose(f_in);
+	if (f_out)
+		fclose(f_out);
+	stream->printf(info_msg);
+	return 0;
+}
+*/	
+void Player::upload_command( string parameters, StreamOutput *stream )
+{
+    unsigned char *p;
+    char *recv_buff;
+    int bufsz, crc = 0, is_stx = 0;
+    unsigned char trychar = 'C';
+    unsigned char packetno = 1;
+    int c, len = 0;
+    int retry = 0;
+    int retrans = MAXRETRANS;
+    int timeouts = MAXRETRANS;
+    int recv_count = 0;
+    bool md5_received = false;
+    uint32_t u32filesize = 0;
+
+    // open file
+	char error_msg[64];
+	memset(error_msg, 0, sizeof(error_msg));
+	sprintf(error_msg, "Nothing!");
+    string filename = absolute_from_relative(shift_parameter(parameters));
+    string md5_filename = change_to_md5_path(filename);
+    string lzfilename = change_to_lz_path(filename);
+    check_and_make_path(md5_filename);
+    check_and_make_path(lzfilename);
+
+	// diasble serial rx irq in case of serial stream, and internal process in case of wifi
+    if (stream->type() == 0) {
+    	set_serial_rx_irq(false);
+    }
+    THEKERNEL->set_uploading(true);
+
+    if (!THECONVEYOR->is_idle()) {
+        stream->_putc(EOT);
+        if (stream->type() == 0) {
+        	set_serial_rx_irq(true);
+        }
+        THEKERNEL->set_uploading(false);
+        return;
+    }
+	
+	//if file is lzCompress file,then need to put .lz dir
+	unsigned int start_pos = filename.find(".lz");
+	FILE *fd;
+	if (start_pos != string::npos) {
+		start_pos = lzfilename.rfind(".lz");
+		lzfilename=lzfilename.substr(0, start_pos);
+    	fd = fopen(lzfilename.c_str(), "wb");
+    }
+    else {
+    	fd = fopen(filename.c_str(), "wb");
+    }
+		
+    FILE *fd_md5 = NULL;
+    //if file is lzCompress file,then need to Decompress
+	start_pos = md5_filename.find(".lz");
+	if (start_pos != string::npos) {
+		md5_filename=md5_filename.substr(0, start_pos);
+	}
+    if (filename.find("firmware.bin") == string::npos) {
+    	fd_md5 = fopen(md5_filename.c_str(), "wb");
+    }
+
+    if (fd == NULL || (filename.find("firmware.bin") == string::npos && fd_md5 == NULL)) {
+        stream->_putc(EOT);
+    	sprintf(error_msg, "Error: failed to open file [%s]!\r\n", fd == NULL ? filename.substr(0, 30).c_str() : md5_filename.substr(0, 30).c_str() );
+    	goto upload_error;
+    }
+	
+	// stop TIMER0 and TIMER1 for save time
+	NVIC_DisableIRQ(TIMER0_IRQn);
+	NVIC_DisableIRQ(TIMER1_IRQn);
+    for (;;) {
+        for (retry = 0; retry < MAXRETRANS; ++retry) {  // approx 3 seconds allowed to make connection
+            if (trychar)
+            	stream->_putc(trychar);
+            if ((c = inbyte(stream, TIMEOUT_MS)) >= 0) {
+            	retry = 0;
+            	switch (c) {
+                case SOH:
+                    bufsz = 128;
+                    is_stx = 0;
+                    goto start_recv;
+                case STX:
+                    bufsz = 8192;
+                    is_stx = 1;
+                    goto start_recv;
+                case EOT:
+                    stream->_putc(ACK);
+                    flush_input(stream);
+                    goto upload_success; /* normal end */
+                case CAN:
+                    if ((c = inbyte(stream, TIMEOUT_MS)) == CAN) {
+                        stream->_putc(ACK);
+                        flush_input(stream);
+                    	sprintf(error_msg, "Info: Upload canceled by remote!\r\n");
+                        goto upload_error;
+                    }
+                    goto upload_error;
+                    break;
+                default:
+                    break;
+                }
+            }
+			else
+			{
+				safe_delay_ms(10);
+			}
+        }
+
+        if (trychar == 'C') {
+            trychar = NAK;
+            continue;
+        }
+        cancel_transfer(stream);
+		sprintf(error_msg, "Error: upload sync error! get char [%d], retry [%d]!\r\n", c, retry);
+        goto upload_error;
+
+    start_recv:
+        if (trychar == 'C')
+            crc = 1;
+        trychar = 0;
+        p = xbuff;
+        *p++ = c;
+
+        recv_count = 1 + bufsz + (crc ? 1 : 0) + 3 + is_stx;
+
+        timeouts = MAXRETRANS;
+
+        while (recv_count > 0) {
+        	c = inbytes(stream, &recv_buff, recv_count, TIMEOUT_MS);
+        	if (c < 0) {
+        		safe_delay_ms(10);
+        		timeouts --;
+        		if (timeouts < 0) {
+            		goto reject;
+        		}
+        	} else {
+        		timeouts = MAXRETRANS;
+            	for (int i = 0; i < c; i ++) {
+            		*p++ = recv_buff[i];
+            	}
+            	recv_count -= c;
+        	}
+        }
+
+        len = is_stx ? (xbuff[3] << 8 | xbuff[4]) : xbuff[3];
+        if (!md5_received && xbuff[1] == 0 && xbuff[1] == (unsigned char)(~xbuff[2])
+        		&& check_crc(crc, &xbuff[3], bufsz + 1 + is_stx) && len == 32) {
+        	// received md5
+        	if (NULL != fd_md5) {
+    			fwrite(&xbuff[4 + is_stx], sizeof(char), 32, fd_md5);
+        	}
+            THEKERNEL->call_event(ON_IDLE);
+            stream->_putc(ACK);
+            md5_received = true;
+            continue;
+        } else if (xbuff[1] == (unsigned char)(~xbuff[2]) &&
+        		xbuff[1] == packetno && check_crc(crc, &xbuff[3], bufsz + 1 + is_stx)) {
+
+            // Set the file write system buffer 4096 Byte
+        	setvbuf(fd, (char*)fbuff, _IOFBF, 4096);
+			fwrite(&xbuff[4 + is_stx], sizeof(char), len, fd);
+			u32filesize += len;
+			++ packetno;
+			retrans = MAXRETRANS + 1;
+			THEKERNEL->call_event(ON_IDLE);
+            stream->_putc(ACK);
+            continue;
+        }
+    reject:
+		stream->_putc(NAK);
+		if (-- retrans <= 0) {
+            cancel_transfer(stream);
+        	sprintf(error_msg, "Error: too many retry error!\r\n");
+            goto upload_error; /* too many retry error */
+		}
+    }
+upload_error:
+	// renable TIME0 and TIME1
+	NVIC_EnableIRQ(TIMER0_IRQn);     // Enable interrupt handler
+	NVIC_EnableIRQ(TIMER1_IRQn);     // Enable interrupt handler
+
+	if (fd != NULL) {
+		fclose(fd);
+		fd = NULL;
+		remove(filename.c_str());
+	}
+	if (fd_md5 != NULL) {
+		fclose(fd_md5);
+		fd_md5 = NULL;
+		remove(md5_filename.c_str());
+	}
+	flush_input(stream);
+    if (stream->type() == 0) {
+    	set_serial_rx_irq(true);
+    }
+    THEKERNEL->set_uploading(false);
+	stream->printf(error_msg);
+	return;
+upload_success:
+
+	if (fd != NULL) {
+		fclose(fd);
+		fd = NULL;
+	}
+	if (fd_md5 != NULL) {
+		fclose(fd_md5);
+		fd_md5 = NULL;
+	}
+	flush_input(stream);
+
+    THEKERNEL->set_uploading(false);
+	//if file is lzCompress file,then need to Decompress
+	start_pos = filename.find(".lz");
+	string srcfilename=lzfilename;
+	string desfilename= filename;
+	if (start_pos != string::npos) {
+		desfilename=filename.substr(0, start_pos);
+		if(!decompress(srcfilename,desfilename,u32filesize,stream))
+			goto upload_error;
+    }
+
+	// renable TIME0 and TIME1
+	NVIC_EnableIRQ(TIMER0_IRQn);     // Enable interrupt handler
+	NVIC_EnableIRQ(TIMER1_IRQn);     // Enable interrupt handler
+    if (stream->type() == 0) {
+    	set_serial_rx_irq(true);
+    }
+	stream->printf("Info: upload success: %s.\r\n", desfilename.c_str());
+}
+
+
+void Player::test_command( string parameters, StreamOutput* stream ) {
+    string filename = absolute_from_relative(shift_parameter(parameters));
+	FILE *fd = fopen(filename.c_str(), "rb");
+	if (NULL != fd) {
+        MD5 md5;
+        uint8_t md5_buf[64];
+        do {
+            size_t n = fread(md5_buf, 1, sizeof(md5_buf), fd);
+            if (n > 0) md5.update(md5_buf, n);
+            THEKERNEL->call_event(ON_IDLE);
+        } while (!feof(fd));
+        strcpy(md5_str, md5.finalize().hexdigest().c_str());
+        fclose(fd);
+        fd = NULL;
+	}
+}
+
+void Player::download_command( string parameters, StreamOutput *stream )
+{
+	int bufsz = 8192;
+    int crc = 0, is_stx = 1;
+    unsigned char packetno = 0;
+    int i, c = 0;
+    int retry = 0;
+    bool resend = true;
+
+    // open file
+	char error_msg[64];
+	unsigned char md5_sent = 0;
+	memset(error_msg, 0, sizeof(error_msg));
+    string filename = absolute_from_relative(shift_parameter(parameters));
+    string md5_filename = change_to_md5_path(filename);
+    string lz_filename = change_to_lz_path(filename);
+
+	// diasble irq
+    if (stream->type() == 0) {
+    	bufsz = 128;
+    	is_stx = 0;
+    	set_serial_rx_irq(false);
+    }
+    THEKERNEL->set_uploading(true);
+
+    if (!THECONVEYOR->is_idle()) {
+        cancel_transfer(stream);
+        if (stream->type() == 0) {
+        	set_serial_rx_irq(true);
+        }
+        THEKERNEL->set_uploading(false);
+        return;
+    }
+
+    char md5[64];
+    memset(md5, 0, sizeof(md5));
+
+    FILE *fd = fopen(md5_filename.c_str(), "rb");
+    if (fd != NULL) {
+        fread(md5, sizeof(char), 64, fd);
+        fclose(fd);
+        fd = NULL;
+    } else {
+    	strcpy(md5, this->md5_str);
+    }
+	
+	fd = fopen(lz_filename.c_str(), "rb");		//first try to open /.lz/filename
+	if (NULL == fd) {	
+	    fd = fopen(filename.c_str(), "rb");
+	    if (NULL == fd) {
+		    cancel_transfer(stream);
+			sprintf(error_msg, "Error: failed to open file [%s]!\r\n", filename.substr(0, 30).c_str());
+			goto download_error;
+	    }
+	}
+    
+
+    for(;;) {
+		for (retry = 0; retry < MAXRETRANS; ++retry) {
+			if ((c = inbyte(stream, TIMEOUT_MS)) >= 0) {
+				retry = 0;
+				switch (c) {
+				case 'C':
+					crc = 1;
+					goto start_trans;
+				case NAK:
+					crc = 0;
+					goto start_trans;
+				case CAN:
+					if ((c = inbyte(stream, TIMEOUT_MS)) == CAN) {
+						stream->_putc(ACK);
+						flush_input(stream);
+				    	sprintf(error_msg, "Info: canceled by remote!\r\n");
+				        goto download_error;
+					}
+					break;
+				default:
+					break;
+				}
+			}
+			else
+			{
+				safe_delay_ms(10);
+			}
+		}
+        cancel_transfer(stream);
+		sprintf(error_msg, "Error: download sync error! get char [%02X], retry [%d]!\r\n", c, retry);
+        goto download_error;
+
+		for(;;) {
+		start_trans:
+			if (packetno == 0 && md5_sent == 0) {
+				c = strlen(md5);
+				memcpy(&xbuff[4 + is_stx], md5, c);
+				md5_sent = 1;
+			} else {
+				c = fread(&xbuff[4 + is_stx], sizeof(char), bufsz, fd);
+				if (c <= 0) {
+					for (retry = 0; retry < MAXRETRANS; ++retry) {
+						stream->_putc(EOT);
+						if ((c = inbyte(stream, TIMEOUT_MS)) == ACK) break;
+					}
+					flush_input(stream);
+					if (c == ACK) {
+						goto download_success;
+					} else {
+						sprintf(error_msg, "Error: get finish ACK error!\r\n");
+				        goto download_error;
+					}
+				}
+			}
+			xbuff[0] = is_stx ? STX : SOH;
+			xbuff[1] = packetno;
+			xbuff[2] = ~packetno;
+			xbuff[3] = is_stx ? c >> 8 : c;
+			if (is_stx) {
+				xbuff[4] = c & 0xff;
+			}
+			if (c < bufsz) {
+				memset(&xbuff[4 + is_stx + c], CTRLZ, bufsz - c);
+			}
+
+			if (crc) {
+				unsigned short ccrc = crc16_ccitt(&xbuff[3], bufsz + 1 + is_stx);
+				xbuff[bufsz + 4 + is_stx] = (ccrc >> 8) & 0xFF;
+				xbuff[bufsz + 5 + is_stx] = ccrc & 0xFF;
+			} else {
+				unsigned char ccks = 0;
+				for (i = 3; i < bufsz + 1 + is_stx; ++i) {
+					ccks += xbuff[i];
+				}
+				xbuff[bufsz + 4 + is_stx] = ccks;
+			}
+
+			resend = true;
+			for (retry = 0; retry < MAXRETRANS; ++retry) {
+				if (resend) {
+					stream->puts((char *)xbuff, bufsz + 5 + is_stx + (crc ? 1:0));
+					resend = false;
+				}
+				if ((c = inbyte(stream, TIMEOUT_MS)) >= 0 ) {
+					retry = 0;
+					switch (c) {
+					case ACK:
+						++packetno;
+						goto start_trans;
+					case CAN:
+						if ((c = inbyte(stream, TIMEOUT_MS)) == CAN) {
+							stream->_putc(ACK);
+							flush_input(stream);
+					    	sprintf(error_msg, "Info: canceled by remote!\r\n");
+					        goto download_error;
+						}
+						break;
+					case NAK:
+						resend = true;
+					default:
+						break;
+					}
+				}
+				else
+				{
+					safe_delay_ms(500);
+				}
+
+			}
+
+	        cancel_transfer(stream);
+			sprintf(error_msg, "Error: transmit error, char: [%d], retry: [%d]!\r\n", c, retry);
+	        goto download_error;
+		}
+	}
+download_error:
+	if (fd != NULL) {
+		fclose(fd);
+		fd = NULL;
+	}
+	flush_input(stream);
+    if (stream->type() == 0) {
+    	set_serial_rx_irq(true);
+    }
+    THEKERNEL->set_uploading(false);
+	stream->printf(error_msg);
+	return;
+download_success:
+	if (fd != NULL) {
+		fclose(fd);
+		fd = NULL;
+	}
+	flush_input(stream);
+    if (stream->type() == 0) {
+    	set_serial_rx_irq(true);
+    }
+    THEKERNEL->set_uploading(false);
+	stream->printf("Info: download success: %s.\r\n", filename.c_str());
+	return;
+}
+

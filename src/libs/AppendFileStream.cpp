@@ -1,7 +1,7 @@
 #include "AppendFileStream.h"
 #include <stdio.h>
 
-int AppendFileStream::puts(const char *str)
+int AppendFileStream::puts(const char *str, int size)
 {
     FILE *fd= fopen(this->fn, "a");
     if(fd == NULL) return 0;

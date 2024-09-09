@@ -36,6 +36,7 @@ double Block::fp_scale= 0;
 Block::Block()
 {
     tick_info= nullptr;
+    line = 0;
     clear();
 }
 
@@ -68,7 +69,21 @@ void Block::clear()
     is_ticking          = false;
     is_g123             = false;
     locked              = false;
-    s_value             = 0.0F;
+
+	s_value             = 0.0F;
+    // 2024
+    /*
+	move_axis           = 0;
+    s_values[0]         = 0.0F;
+    s_values[1]         = 0.0F;
+    s_values[2]         = 0.0F;
+    s_values[3]         = 0.0F;
+    s_values[4]         = 0.0F;
+    s_values[5]         = 0.0F;
+    s_values[6]         = 0.0F;
+    s_values[7]         = 0.0F;
+    s_count 			= 1;
+    */
 
     total_move_ticks= 0;
     if(tick_info == nullptr) {

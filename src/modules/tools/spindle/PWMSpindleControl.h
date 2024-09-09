@@ -10,6 +10,7 @@
 
 #include "SpindleControl.h"
 #include <stdint.h>
+#include "Pin.h"
 
 namespace mbed {
     class PwmOut;
@@ -22,7 +23,10 @@ class PWMSpindleControl: public SpindleControl {
         PWMSpindleControl();
         virtual ~PWMSpindleControl() {};
         void on_module_loaded();
-    
+        void on_get_public_data(void* argument);
+        void on_set_public_data(void *argument);
+        void on_idle(void* argument);
+
     private:
         
         void on_pin_rise();
@@ -44,18 +48,33 @@ class PWMSpindleControl: public SpindleControl {
         uint32_t last_irq;
 
         // Values from config
-        float pulses_per_rev;
+        volatile float pulses_per_rev;
         float control_P_term;
         float control_I_term;
         float control_D_term;
         float smoothing_decay;
         float max_pwm;
+        int  delay_s;
+        int  stall_s;
+        int  stall_count_rpm;
+        int  stall_alarm_rpm;
+        uint32_t stall_timer;
+        float acc_ratio;
+        Pin alarm_pin;
 
         // These fields are updated by the interrupt
         uint32_t last_edge; // Timestamp of last edge
         volatile uint32_t last_time; // Time delay between last two edges
         volatile uint32_t irq_count;
         
+        uint32_t last_rev_time;
+        volatile uint32_t rev_time;
+        volatile uint32_t rev_count;
+        uint32_t update_count;
+
+
+        float factor;
+
         void turn_on(void);
         void turn_off(void);
         void set_speed(int);
@@ -64,6 +83,9 @@ class PWMSpindleControl: public SpindleControl {
         void set_i_term(float);
         void set_d_term(float);
         void report_settings(void);
+        bool get_alarm(void);
+        bool get_stall(void);
+        void set_factor(float);
 };
 
 #endif
