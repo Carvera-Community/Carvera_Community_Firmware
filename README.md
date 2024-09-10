@@ -31,7 +31,7 @@ Follow this guide... http://smoothieware.org/compiling-smoothie
 In short... From a shell, switch into the root Smoothie project directory and run:
 ```bash
 make clean
-make all
+make all AXIS=5 PAXIS=3 CNC=1 
 ```
 To upload you can either use the carvera controller upload feature under settings or Alternatively copy the file LPC1768/main.bin to the sdcard calling it firmware.bin and reset.
 
