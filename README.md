@@ -10,7 +10,7 @@ Documentation can be found here :
 - https://wiki.makera.com/en/supported-codes
 - https://smoothieware.github.io/Webif-pack/documentation/web/html/index.html
 
-**NOTE** it is not necessary to build Smoothie yourself unless you want to. prebuilt binaries are available here: Releases Page
+**NOTE:** it is not necessary to build Smoothie yourself unless you want to. prebuilt binaries are available here: [Releases Page](https://github.com/MakeraInc/CarveraFirmware/releases)
 # Quick Start
 These are the quick steps to get Smoothie dependencies installed on your computer:
 - Pull down a clone of the Smoothie github project to your local machine.
@@ -25,18 +25,19 @@ These are the quick steps to get Smoothie dependencies installed on your compute
   - OS X: mac_installl
   - Linux: linux_installl
 - You can then run the BuildShell script which will be created during the install to properly configure the PATH environment variable to point to the required version of GCC for ARM which was just installed on your machine. You may want to edit this script to further customize your development environment.
-# Building Smoothie
-Follow this guide... http://smoothieware.org/compiling-smoothie
-
-In short... From a shell, switch into the root Smoothie project directory and run:
+# Building Firmware
+Open the BuildShell.cmd and run:
 ```bash
 make clean
 make all AXIS=5 PAXIS=3 CNC=1 
 ```
-To upload you can either use the carvera controller upload feature under settings or Alternatively copy the file LPC1768/main.bin to the sdcard calling it firmware.bin and reset.
+this will create a file in LPC1768/main.bin
+rename it to firmware.bin or another name with firmware in it and either upload it using the carvera controller or copy the file to the sdcard and reset your machine.
 
 # Filing issues (for bugs ONLY)
 Please follow this guide https://github.com/Smoothieware/Smoothieware/blob/edge/ISSUE_TEMPLATE.md
+# for more information on compiling smoothieware Follow this guide...    
+https://smoothieware.github.io/Webif-pack/documentation/web/html/compiling-smoothie.html
 # Contributing
 Please take a look at :
 
