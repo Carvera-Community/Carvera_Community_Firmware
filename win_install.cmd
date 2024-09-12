@@ -41,10 +41,10 @@ rem Initialize install log files.
 echo Logging install results to %LOGFILE%
 echo %DATE% %TIME%  Starting %0 %*>%LOGFILE%
 
-echo Downloading GNU Tools for ARM Embedded Processors...
-echo %DATE% %TIME%  Executing build\win32\curl -kL0 %GCC4ARM_URL%>>%LOGFILE%
-build\win32\curl -kL0 %GCC4ARM_URL% >%GCC4ARM_TAR%
-if errorlevel 1 goto ExitOnError
+
+
+
+
 
 echo Validating md5 signature of GNU Tools for ARM Embedded Processors...
 echo %GCC4ARM_MD5% *%GCC4ARM_FILENAME%>%GCC4ARM_MD5_FILENAME%
