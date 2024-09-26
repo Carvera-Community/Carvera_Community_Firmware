@@ -1073,18 +1073,12 @@ int Player::decompress(string sfilename, string dfilename, uint32_t sfilesize, S
 	uint8_t u8ReadBuffer_hdr[BLOCK_HEADER_SIZE] = { 0 };
 	uint32_t u32DcmprsSize = 0, u32BlockSize = 0, u32BlockNum = 0, u32TotalDcmprsSize = 0, i = 0,j = 0,k=0;
 	qlz_state_decompress s_stDecompressState;
-	char error_msg[64];
-	memset(error_msg, 0, sizeof(error_msg));
-	sprintf(error_msg, "Nothing!");
-	char info_msg[64];
-	memset(info_msg, 0, sizeof(info_msg));
-	sprintf(info_msg, "Nothing!");
-
 	f_in= fopen(sfilename.c_str(), "rb");
 	f_out= fopen(dfilename.c_str(), "w+");
 	if (f_in == NULL || f_out == NULL)
 	{
-		sprintf(error_msg, "Error: failed to create file [%s]!\r\n", filename.substr(0, 30).c_str());
+		memset(fbuff, 0, sizeof(fbuff));
+		sprintf((char*)fbuff, "Error: failed to create file [%s]!\r\n", filename.substr(0, 30).c_str());
 		goto _exit;
 	}
 	for(i = 0; i < sfilesize-2; i+= BLOCK_HEADER_SIZE + u32BlockSize)
@@ -1115,8 +1109,9 @@ int Player::decompress(string sfilename, string dfilename, uint32_t sfilesize, S
 		{
 			k=0;
 			THEKERNEL->call_event(ON_IDLE);
-			sprintf(info_msg, "#Info: decompart = %u\r\n", u32BlockNum);
-			stream->printf(info_msg);
+			memset(fbuff, 0, sizeof(fbuff));
+			sprintf((char*)fbuff, "#Info: decompart = %u\r\n", u32BlockNum);
+			stream->printf((char*)fbuff);
 		}
 	}
 	fread(fbuff, sizeof(char), 2, f_in);
@@ -1129,15 +1124,16 @@ int Player::decompress(string sfilename, string dfilename, uint32_t sfilesize, S
 		fclose(f_in);
 	if (f_out!= NULL)
 		fclose(f_out);
-	sprintf(info_msg, "#Info: decompart = %u\r\n", u32BlockNum);
-	stream->printf(info_msg);
+	memset(fbuff, 0, sizeof(fbuff));
+	sprintf((char*)fbuff, "#Info: decompart = %u\r\n", u32BlockNum);
+	stream->printf((char*)fbuff);
 	return 1;
 _exit:
 	if (f_in != NULL)
 		fclose(f_in );
 	if (f_out != NULL)
 		fclose(f_out);
-	stream->printf(error_msg);
+	stream->printf((char*)fbuff);
 	return 0;
 }
 /*
