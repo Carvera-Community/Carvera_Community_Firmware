@@ -1,6 +1,20 @@
 Notice: 
 To let the Carvera work perfectly, please make sure both your controller software and firmware are up to date. For firmware, download the new firmware first, then use the 'update' function to upgrade the firmware, and reset the machine after the update is complete.
 
+[0.9.8]
+1. Optimizing: Improve file transfer speed
+2. Optimizing:  wifi Library file upgrade
+3. Optimizing: Optimize the file system operation module to improve file read and write speed
+4. Optimizing: File transfer adopts compressed file format
+5. Optimizing:Improve the stability and reliability of the connection between the machine and the controller
+6. Bug fixing:False alarm of soft limit when the machine is powered on
+7. Bug fixing:False alarm of hard limit during machine operation
+8. Bug fixing: Fix BUG where G0G90/G0G91/G1G90/G1G91 code does not execute
+9. Bug fixing: Fixed the bug where the spindle speed occasionally displayed as 0 during the machining process
+10. Optimizing:Add the function of "If the probe or tool setter has been triggered before tool calibration, an alarm window will pop up"
+11. Optimizing:Add Main Button long press function selection in the configuration page。
+12. Optimizing:Modify the automatic dust collection function to be disabled by default, and you can choose whether to enable automatic dust collection on the "Configure and Run" page
+
 [0.9.7]
 Bug Fixing: The laser clustering setting function has been withdrawn due to its potential to cause random crashes. (We will reintroduce this feature once we have resolved the issue and conducted a full test.)
 
