@@ -708,6 +708,11 @@ void Player::on_main_loop(void *argument)
                 // THEKERNEL->streams->printf("0-[Line: %d] %s\n", message.line, buf);
                 played_lines += 1;
                 played_cnt += len;
+                //M335 disables line by line, M336 Enables. Pauses after every valid gcode line
+                if (THEKERNEL->get_line_by_line_exec_mode() && len > 2 && buf[0] != ';' && buf[0] != '('){
+                    this->suspend_command("", THEKERNEL->streams);
+                }
+
                 return; // we feed one line per main loop
 
             } else {
