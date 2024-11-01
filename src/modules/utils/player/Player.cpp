@@ -260,7 +260,7 @@ void Player::on_gcode_received(void *argument)
             this->goto_line = 0;
 
         } else if (gcode->m == 600) { // suspend print, Not entirely Marlin compliant, M600.1 will leave the heaters on
-            this->suspend_command((gcode->subcode == 1)?"h":"", gcode->stream);
+            this->suspend_command((gcode->subcode == 1)?"h":"", gcode->stream, (gcode->subcode == 5)?true:false);
 
         } else if (gcode->m == 601) { // resume print
             this->resume_command("", gcode->stream);
@@ -848,14 +848,14 @@ Suspend a print in progress
 User may jog or remove and insert filament at this point, extruding or retracting as needed
 
 */
-void Player::suspend_command(string parameters, StreamOutput *stream )
+void Player::suspend_command(string parameters, StreamOutput *stream, bool pause_outside_play_mode )
 {
     if (THEKERNEL->is_suspending() || THEKERNEL->is_waiting()) {
         stream->printf("Already suspended!\n");
         return;
     }
 
-    if(!this->playing_file) {
+    if(!this->playing_file && !pause_outside_play_mode) {
         stream->printf("Can not suspend when not playing file!\n");
         return;
     }

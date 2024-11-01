@@ -36,7 +36,7 @@ class Player : public Module {
         void play_command( string parameters, StreamOutput* stream );
         void progress_command( string parameters, StreamOutput* stream );
         void abort_command( string parameters, StreamOutput* stream );
-        void suspend_command( string parameters, StreamOutput* stream );
+        void suspend_command( string parameters, StreamOutput* stream , bool pause_outside_play_mode = false);
         void resume_command( string parameters, StreamOutput* stream );
         void goto_command( string parameters, StreamOutput* stream );
         void buffer_command( string parameters, StreamOutput* stream );
