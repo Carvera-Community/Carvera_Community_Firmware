@@ -827,13 +827,82 @@ void ATCHandler::on_gcode_received(void *argument)
 				loose_tool();
 			}
 		} else if (gcode->m == 491) {
-			// do calibrate
-            THEROBOT->push_state();
-            THEROBOT->get_axis_position(last_pos, 3);
-            set_inner_playing(true);
-            this->clear_script_queue();
-            atc_status = CALI;
-    	    this->fill_cali_scripts(active_tool == 0, true);
+			if (gcode->subcode == 1) {
+				char buff[100];
+				float tolerance = 0.1;
+				if (gcode->has_letter('H')) {
+		    		tolerance = gcode->get_value('H');
+					if (tolerance < 0.02) {
+						THEKERNEL->streams->printf("ERROR: Tool Break Check - tolerance set too small\n");
+						THEKERNEL->call_event(ON_HALT, nullptr);
+        				THEKERNEL->set_halt_reason(CALIBRATE_FAIL);
+						return;
+					}
+
+				}
+				//store current TLO
+				float tlo = THEKERNEL->eeprom_data->TLO;
+
+				// do calibrate to find new TLO
+				THEROBOT->push_state();
+				THEROBOT->get_axis_position(last_pos, 3);
+				set_inner_playing(true);
+				this->clear_script_queue();
+				
+				atc_status = CALI;
+				this->fill_cali_scripts(active_tool == 0, true);
+
+				THECONVEYOR->wait_for_idle();
+				// lift z to safe position with fast speed
+				snprintf(buff, sizeof(buff), "G53 G0 Z%.3f", THEROBOT->from_millimeters(this->safe_z_mm));
+				this->script_queue.push(buff);
+				snprintf(buff, sizeof(buff), "M491.2 H%.3f , P%.3f", tolerance, tlo);
+				this->script_queue.push(buff);
+				
+				
+
+
+			}else if (gcode->subcode == 2){
+				float tlo = 0;
+				float tolerance = 0.1;
+				if (gcode->has_letter('H')) {
+		    		tolerance = gcode->get_value('H');
+					if (tolerance < 0.02) {
+						THEKERNEL->streams->printf("ERROR: Tool Break Check - tolerance set too small\n");
+						THEKERNEL->call_event(ON_HALT, nullptr);
+        				THEKERNEL->set_halt_reason(CALIBRATE_FAIL);
+						return;
+					}
+
+				}
+				if (gcode->has_letter('P')) {
+		    		tlo = gcode->get_value('P');
+					if (tlo == 0) {
+						THEKERNEL->streams->printf("No previous TLO included, aborting\n");
+						return;
+					}
+
+				}
+				float new_tlo = THEKERNEL->eeprom_data->TLO;
+				THEKERNEL->streams->printf("Old: %.3f , new: %.3f\n",tlo,new_tlo);
+				//test for breakage
+				if (fabs(tlo - new_tlo) > tolerance) {
+					THEKERNEL->streams->printf("ERROR: Tool Break Check - check tool for breakage\n");
+					THEKERNEL->call_event(ON_HALT, nullptr);
+					THEKERNEL->set_halt_reason(CALIBRATE_FAIL);
+					return;
+				}
+
+			} else {
+				// do calibrate
+				THEROBOT->push_state();
+				THEROBOT->get_axis_position(last_pos, 3);
+				set_inner_playing(true);
+				this->clear_script_queue();
+				atc_status = CALI;
+				this->fill_cali_scripts(active_tool == 0, true);
+
+			}
 		} else if (gcode->m == 492) {
 			if (gcode->subcode == 0 || gcode->subcode == 1) {
 				// check true
