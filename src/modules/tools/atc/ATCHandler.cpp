@@ -865,6 +865,7 @@ void ATCHandler::on_gcode_received(void *argument)
 			}else if (gcode->subcode == 2){
 				float tlo = 0;
 				float tolerance = 0.1;
+				THECONVEYOR->wait_for_idle();
 				if (gcode->has_letter('H')) {
 		    		tolerance = gcode->get_value('H');
 					if (tolerance < 0.02) {
