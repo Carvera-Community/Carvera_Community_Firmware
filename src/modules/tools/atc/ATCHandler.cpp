@@ -730,7 +730,14 @@ void ATCHandler::set_tool_offset()
         	tool_offset = cur_tool_mz - ref_tool_mz;
         	const float offset[3] = {0.0, 0.0, tool_offset};
         	THEROBOT->saveToolOffset(offset, cur_tool_mz);
-        }
+		} else{
+			THEKERNEL->eeprom_data->REFMZ = -10;
+		    THEKERNEL->write_eeprom_data();
+			THEKERNEL->call_event(ON_HALT, nullptr);
+			THEKERNEL->set_halt_reason(MANUAL);
+			THEKERNEL->streams->printf("ERROR: warning, unexpected reference tool length found, reset machine then recalibrate tool\n");
+			return;
+		}
     }
 
 }
