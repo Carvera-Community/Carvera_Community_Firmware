@@ -1,0 +1,7 @@
+M491.1 tests the current stored TLO against a new TLO measurement and halts the machine if the values are more that a tolerance value H off. H defaults to 0.1mm
+
+This function will not test if a tool is broken in the ATC, only if it has broken after the initial calibration that happens when you switch to the tool. 
+
+The TEST_M491.1ToolBreak.cnc file shows minimal usage and tests for a potential error where the user did not supply an M5 before running M491.1.
+
+After the pause the user should manually simulate a broken tool by running M490.1 to loosen the collet, replacing the tool with a shorter one, and running M490.2 to tighten the collet. After that point, hit continue and the machine will test TLO and halt due to a mismatch.
