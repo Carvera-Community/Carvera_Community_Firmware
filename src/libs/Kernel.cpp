@@ -75,6 +75,7 @@ Kernel::Kernel()
     laser_mode = false;
     vacuum_mode = false;
     optional_stop_mode = false;
+    line_by_line_exec_mode = false;
     sleeping = false;
     waiting = false;
     suspending = false;
