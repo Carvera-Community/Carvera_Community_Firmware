@@ -755,7 +755,7 @@ void ATCHandler::set_tlo_by_offset(float z_axis_offset){
 	pos = THEROBOT->mcs2wcs(mpos);
 	cur_tool_mz = cur_tool_mz + THEROBOT->from_millimeters(std::get<Z_AXIS>(pos)) - z_axis_offset;
 
-	if (ref_tool_mz < 0) {
+	if (ref_tool_mz < 1) {
 		tool_offset = cur_tool_mz - ref_tool_mz;
 		const float offset[3] = {0.0, 0.0, tool_offset};
 		THEROBOT->saveToolOffset(offset, cur_tool_mz);
@@ -763,6 +763,9 @@ void ATCHandler::set_tlo_by_offset(float z_axis_offset){
 		THEKERNEL->eeprom_data->REFMZ = -10;
 		THEKERNEL->write_eeprom_data();
 		THEKERNEL->call_event(ON_HALT, nullptr);
+		tool_offset = cur_tool_mz - ref_tool_mz;
+		const float offset[3] = {0.0, 0.0, tool_offset};
+		THEROBOT->saveToolOffset(offset, cur_tool_mz);
 		THEKERNEL->set_halt_reason(MANUAL);
 		THEKERNEL->streams->printf("ERROR: warning, unexpected reference tool length found, reset machine then recalibrate tool\n");
 		return;
@@ -992,7 +995,7 @@ void ATCHandler::on_gcode_received(void *argument)
 				
 				if (gcode->has_letter('Z')) {
 					cur_tool_mz = gcode->get_value('Z');
-					if (ref_tool_mz < 0) {
+					if (ref_tool_mz < 1) {
 						tool_offset = cur_tool_mz;// + ref_tool_mz;
 						const float offset[3] = {0.0, 0.0, tool_offset};
 						THEROBOT->saveToolOffset(offset, cur_tool_mz);
@@ -1000,6 +1003,9 @@ void ATCHandler::on_gcode_received(void *argument)
 						THEKERNEL->eeprom_data->REFMZ = -10;
 						THEKERNEL->write_eeprom_data();
 						THEKERNEL->call_event(ON_HALT, nullptr);
+						tool_offset = cur_tool_mz - ref_tool_mz;
+						const float offset[3] = {0.0, 0.0, tool_offset};
+						THEROBOT->saveToolOffset(offset, cur_tool_mz);
 						THEKERNEL->set_halt_reason(MANUAL);
 						THEKERNEL->streams->printf("ERROR: warning, unexpected reference tool length found, reset machine then recalibrate tool\n");
 						return;
