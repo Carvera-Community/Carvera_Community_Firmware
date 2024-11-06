@@ -75,6 +75,7 @@ Kernel::Kernel()
     uploading = false;
     laser_mode = false;
     vacuum_mode = false;
+    optional_stop_mode = false;
     sleeping = false;
     waiting = false;
     tool_waiting = false;
