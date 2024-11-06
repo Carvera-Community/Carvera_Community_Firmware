@@ -144,7 +144,13 @@ void Player::on_gcode_received(void *argument)
     Gcode *gcode = static_cast<Gcode *>(argument);
     string args = get_arguments(gcode->get_command());
     if (gcode->has_m) {
-        if (gcode->m == 21) { // Dummy code; makes Octoprint happy -- supposed to initialize SD card
+        if (gcode->m == 1) { //optiional stop
+            if (THEKERNEL->get_optional_stop_mode()){
+            this->suspend_command((gcode->subcode == 1)?"h":"", gcode->stream);
+            }
+
+        }      
+        else if (gcode->m == 21) { // Dummy code; makes Octoprint happy -- supposed to initialize SD card
             mounter.remount();
             gcode->stream->printf("SD card ok\r\n");
 

@@ -134,6 +134,9 @@ class Kernel {
         void set_vacuum_mode(bool f) { vacuum_mode = f; }
         bool get_vacuum_mode() const { return vacuum_mode; }
 
+        void set_optional_stop_mode(bool f) { optional_stop_mode = f; }
+        bool get_optional_stop_mode() const { return optional_stop_mode; }
+
         void set_sleeping(bool f) { sleeping = f; }
         bool is_sleeping() const { return sleeping; }
 
@@ -200,6 +203,7 @@ class Kernel {
             volatile bool uploading:1;
             bool laser_mode:1;
             bool vacuum_mode:1;
+            bool optional_stop_mode:1;
             bool sleeping:1;
             bool suspending: 1;
             bool waiting: 1;

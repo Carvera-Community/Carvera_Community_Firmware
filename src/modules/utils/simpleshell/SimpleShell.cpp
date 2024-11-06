@@ -239,6 +239,15 @@ void SimpleShell::on_gcode_received(void *argument)
         	}
 			// turn off vacuum mode
 			gcode->stream->printf("turning vacuum mode off\r\n");
+
+		} else if (gcode->m == 333) { // turn off optional stop mode
+			THEKERNEL->set_optional_stop_mode(false);
+			// turn off optional stop mode
+			gcode->stream->printf("turning optional stop mode off\r\n");
+		} else if (gcode->m == 334) { // turn off optional stop mode
+			THEKERNEL->set_optional_stop_mode(true);
+			// turn on optional stop mode
+			gcode->stream->printf("turning optional stop mode on\r\n");
 		}
     }
 }
