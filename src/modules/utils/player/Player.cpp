@@ -124,6 +124,114 @@ void Player::on_second_tick(void *)
     if(this->playing_file) this->elapsed_secs++;
 }
 
+void Player::select_file(string argument)
+{
+
+    this->filename = argument;
+
+    this->filename.erase(std::remove(argument.begin(), argument.end(), '"'), argument.end());
+
+    if ((this->filename.rfind("/", 0) == 0)){ //remove starting /
+        this->filename.erase(0,1);
+    }
+    if ((this->filename.rfind("sd/gcodes/", 0) == 0)){
+        this->filename = "/" + this->filename;
+
+    }else if ((this->filename.rfind("gcodes/", 0) == 0)){
+        this->filename = "/sd/" + this->filename;
+    }else {
+        this->filename = "/sd/gcodes/" + this->filename;
+    }
+    if (this->filename.rfind(".cnc") != this->filename.length() - 4) {
+        this->filename += ".cnc";
+    }
+    this->current_stream = nullptr;
+
+    if(this->current_file_handler != NULL) {
+        this->playing_file = false;
+        fclose(this->current_file_handler);
+    }
+    this->current_file_handler = fopen( this->filename.c_str(), "r");
+
+    if(this->current_file_handler == NULL) {
+        THEKERNEL->streams->printf("file.open failed: %s\r\n", this->filename.c_str());
+        return;
+
+    } else {
+        // get size of file
+        int result = fseek(this->current_file_handler, 0, SEEK_END);
+        if (0 != result) {
+            this->file_size = 0;
+        } else {
+            this->file_size = ftell(this->current_file_handler);
+            fseek(this->current_file_handler, 0, SEEK_SET);
+        }
+        THEKERNEL->streams->printf("File opened:%s Size:%ld\r\n", this->filename.c_str(), this->file_size);
+        THEKERNEL->streams->printf("File selected\r\n");
+    }
+    this->played_cnt = 0;
+    this->played_lines = 0;
+    this->elapsed_secs = 0;
+    this->playing_lines = 0;
+    this->goto_line = 0;
+}
+
+void Player::goto_line_number(unsigned long line_number)
+{
+    this->goto_line = line_number;
+    this->goto_line = this->goto_line < 1 ? 1 : this->goto_line;
+    THEKERNEL->streams->printf("Goto line %lu...\r\n", this->goto_line);
+    // goto line
+    char buf[130]; // lines upto 128 characters are allowed, anything longer is discarded
+
+    // goto file begin
+    fseek(this->current_file_handler, 0, SEEK_SET);
+    played_lines = 0;
+    played_cnt   = 0;
+
+    while (fgets(buf, sizeof(buf), this->current_file_handler) != NULL) {
+        if (played_lines % 100 == 0) {
+            THEKERNEL->call_event(ON_IDLE);
+        }
+        int len = strlen(buf);
+        if (len == 0) continue; // empty line? should not be possible
+
+        played_lines += 1;
+        played_cnt += len;
+        if (played_lines >= this->goto_line) {
+            break;
+        }
+    }
+}
+
+void Player::end_of_file()
+{
+    if (this->macro_file_queue.empty()) {
+        // Exit or handle the empty queue case
+        return;
+    }
+    std::tuple<std::string, unsigned long> queueItem = this->macro_file_queue.front();
+    this->macro_file_queue.pop();
+
+    THEKERNEL->streams->printf("return filepath:  %s return line: %ld \r\n", std::get<0>(queueItem).c_str(),  std::get<1>(queueItem));
+    //this->suspend_command((gcode->subcode == 1)?"h":"", gcode->stream);
+
+
+    this->select_file(std::get<0>(queueItem));
+    this->goto_line_number(std::get<1>(queueItem));
+    this->play_opened_file();
+}
+
+void Player::play_opened_file()
+{
+    if (this->current_file_handler != NULL) {
+        this->playing_file = true;
+        // this would be a problem if the stream goes away before the file has finished,
+        // so we attach it to the kernel stream, however network connections from pronterface
+        // do not connect to the kernel streams so won't see this FIXME
+        this->reply_stream = THEKERNEL->streams;
+    }
+}
 // extract any options found on line, terminates args at the space before the first option (-v)
 // eg this is a file.gcode -v
 //    will return -v and set args to this is a file.gcode
@@ -155,52 +263,17 @@ void Player::on_gcode_received(void *argument)
             gcode->stream->printf("SD card ok\r\n");
 
         } else if (gcode->m == 23) { // select file
-            this->filename = "/sd/" + args; // filename is whatever is in args
-            this->current_stream = nullptr;
-
-            if(this->current_file_handler != NULL) {
-                this->playing_file = false;
-                fclose(this->current_file_handler);
-            }
-            this->current_file_handler = fopen( this->filename.c_str(), "r");
-
-            if(this->current_file_handler == NULL) {
-                gcode->stream->printf("file.open failed: %s\r\n", this->filename.c_str());
-                return;
-
-            } else {
-                // get size of file
-                int result = fseek(this->current_file_handler, 0, SEEK_END);
-                if (0 != result) {
-                    this->file_size = 0;
-                } else {
-                    this->file_size = ftell(this->current_file_handler);
-                    fseek(this->current_file_handler, 0, SEEK_SET);
-                }
-                gcode->stream->printf("File opened:%s Size:%ld\r\n", this->filename.c_str(), this->file_size);
-                gcode->stream->printf("File selected\r\n");
-            }
-
-
-            this->played_cnt = 0;
-            this->played_lines = 0;
-            this->elapsed_secs = 0;
-            this->playing_lines = 0;
-            this->goto_line = 0;
-
+            this->clear_macro_file_queue();
+            this->select_file(args);
         } else if (gcode->m == 24) { // start print
-            if (this->current_file_handler != NULL) {
-                this->playing_file = true;
-                // this would be a problem if the stream goes away before the file has finished,
-                // so we attach it to the kernel stream, however network connections from pronterface
-                // do not connect to the kernel streams so won't see this FIXME
-                this->reply_stream = THEKERNEL->streams;
-            }
+            this->play_opened_file();
 
         } else if (gcode->m == 25) { // pause print
             this->playing_file = false;
 
         } else if (gcode->m == 26) { // Reset print. Slightly different than M26 in Marlin and the rest
+            //empty macro queue
+            this->clear_macro_file_queue();
             if(this->current_file_handler != NULL) {
                 string currentfn = this->filename.c_str();
                 unsigned long old_size = this->file_size;
@@ -227,37 +300,106 @@ void Player::on_gcode_received(void *argument)
         } else if (gcode->m == 27) { // report print progress, in format used by Marlin
             progress_command("-b", gcode->stream);
 
+        //} else if (gcode->m == 30) { // end file implementation for M30 returning from macros. M99 is the proper formatting.
+        //    this->end_of_file();
         } else if (gcode->m == 32) { // select file and start print
-            // Get filename
-            this->filename = "/sd/" + args; // filename is whatever is in args including spaces
-            this->current_stream = nullptr;
+            
+            
+            //empty macro queue
+            this->clear_macro_file_queue();
 
-            if(this->current_file_handler != NULL) {
-                this->playing_file = false;
-                fclose(this->current_file_handler);
+            this->select_file(args);
+
+            this->play_opened_file();           
+
+        } else if (gcode->m == 97) {
+            if (gcode->has_letter('P')) {
+                this->goto_line_number(gcode->get_value('P'));
+                return;
+            }else{
+                    //error: no filepath found
+                    THEKERNEL->streams->printf("M97 Command missing P parameter for line to goto, aborting \n");
+                    THEKERNEL->call_event(ON_HALT, nullptr);
+                    THEKERNEL->set_halt_reason(MANUAL);
+                    return;
             }
+        } else if (gcode->m == 98) { // run macro
+            string new_filepath;
+            //int current_gcode_line = 14; //gcode->stream;
+            int num_repeats = 1;
+            
+            if (gcode->has_letter('P')) {
+                
 
-            this->current_file_handler = fopen( this->filename.c_str(), "r");
-            if(this->current_file_handler == NULL) {
-                gcode->stream->printf("file.open failed: %s\r\n", this->filename.c_str());
-            } else {
-                this->playing_file = true;
+                int filenumber_int = static_cast<int>(gcode->get_value('P'));
 
-                // get size of file
-                int result = fseek(this->current_file_handler, 0, SEEK_END);
-                if (0 != result) {
-                        file_size = 0;
-                } else {
-                        file_size = ftell(this->current_file_handler);
-                        fseek(this->current_file_handler, 0, SEEK_SET);
+                if (filenumber_int){
+                    
+
+                    // Manually convert the integer part to a string
+                    while (filenumber_int > 0) {
+                        new_filepath = char((filenumber_int % 10) + '0') + new_filepath;
+                        filenumber_int /= 10;
+                    }
+                    new_filepath = "/sd/gcodes/macros/" + new_filepath + ".cnc";
+                }else{
+                    //error:
+                    THEKERNEL->streams->printf("invalid number in M98 command \n");
+                    THEKERNEL->call_event(ON_HALT, nullptr);
+                    THEKERNEL->set_halt_reason(MANUAL);
+                    return;
+                }
+            }
+            if (gcode->has_letter('L')) {
+                num_repeats = floor(gcode->get_value('L'));
+                if (num_repeats <1){
+                    //error:
+                    THEKERNEL->streams->printf("M98 command has an invalid value, which will lead to errors \n");
+                    THEKERNEL->call_event(ON_HALT, nullptr);
+                    THEKERNEL->set_halt_reason(MANUAL);
+                    return;
                 }
             }
 
-            this->played_cnt = 0;
-            this->played_lines = 0;
-            this->elapsed_secs = 0;
-            this->playing_lines = 0;
-            this->goto_line = 0;
+            if (gcode->subcode == 1){
+                std::string input = gcode->get_command();
+                size_t first_quote = input.find('\"');
+                size_t last_quote = input.rfind('\"');
+
+                if (first_quote != std::string::npos && last_quote != std::string::npos && first_quote != last_quote) {
+                    new_filepath = input.substr(first_quote + 1, last_quote - first_quote - 1);
+                    
+                    if (!(new_filepath.rfind("/sd/gcodes/", 0) == 0)){
+                        new_filepath = "/sd/gcodes/" + new_filepath;
+                    }
+                }else{
+                    //error: no filepath found
+                    THEKERNEL->streams->printf("no filepath found in M98.1 command \n");
+                    THEKERNEL->call_event(ON_HALT, nullptr);
+                    THEKERNEL->set_halt_reason(MANUAL);
+                    return;
+                }
+            }
+
+            //TODO: test new_filepath length to make sure it is valid
+            std::tuple<std::string, unsigned long> queueItem (this->filename,(played_lines + 2));
+            //set up return queue
+            this->macro_file_queue.push(queueItem);
+
+            //set up repeats
+            if (num_repeats > 1){
+                for (int i = 1; i < num_repeats; i++){
+                    std::tuple<std::string, unsigned long> queueItem_repeat (new_filepath,0);
+                    this->macro_file_queue.push(queueItem_repeat);
+                }
+            }
+            
+            //open file and play
+            this->select_file(new_filepath);
+            this->play_opened_file();
+
+        } else if (gcode->m == 99) { // return from macro to main program
+            this->end_of_file();
 
         } else if (gcode->m == 600) { // suspend print, Not entirely Marlin compliant, M600.1 will leave the heaters on
             this->suspend_command((gcode->subcode == 1)?"h":"", gcode->stream, (gcode->subcode == 5)?true:false);
@@ -366,6 +508,8 @@ void Player::play_command( string parameters, StreamOutput *stream )
 //        return;
 //    }
 
+    //empty macro queue
+    this->clear_macro_file_queue();
 
     this->current_file_handler = fopen( this->filename.c_str(), "r");
     if(this->current_file_handler == NULL) {
@@ -426,29 +570,8 @@ void Player::goto_command( string parameters, StreamOutput *stream )
     if (!line_str.empty()) {
         char *ptr = NULL;
         this->goto_line = strtol(line_str.c_str(), &ptr, 10);
-        this->goto_line = this->goto_line < 1 ? 1 : this->goto_line;
-        stream->printf("Goto line %lu...\r\n", this->goto_line);
-        // goto line
-        char buf[130]; // lines upto 128 characters are allowed, anything longer is discarded
-
-        // goto file begin
-        fseek(this->current_file_handler, 0, SEEK_SET);
-        played_lines = 0;
-        played_cnt   = 0;
-
-        while (fgets(buf, sizeof(buf), this->current_file_handler) != NULL) {
-        	if (played_lines % 100 == 0) {
-                THEKERNEL->call_event(ON_IDLE);
-        	}
-        	int len = strlen(buf);
-            if (len == 0) continue; // empty line? should not be possible
-
-            played_lines += 1;
-            played_cnt += len;
-            if (played_lines >= this->goto_line) {
-            	break;
-            }
-        }
+        this->goto_line_number(this->goto_line);
+        
     }
 }
 
@@ -553,6 +676,12 @@ void Player::abort_command( string parameters, StreamOutput *stream )
 void Player::clear_buffered_queue(){
 	while (!this->buffered_queue.empty()) {
 		this->buffered_queue.pop();
+	}
+}
+
+void Player::clear_macro_file_queue(){
+	while (!this->macro_file_queue.empty()) {
+		this->macro_file_queue.pop();
 	}
 }
 
