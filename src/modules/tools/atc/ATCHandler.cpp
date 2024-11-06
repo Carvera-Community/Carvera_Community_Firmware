@@ -920,6 +920,7 @@ void ATCHandler::set_tool_offset()
     std::tie(px, py, pz, ps) = THEROBOT->get_last_probe_position();
     if (ps == 1) {
         cur_tool_mz = pz;
+        if (ref_tool_mz < 1) {
         	tool_offset = cur_tool_mz - ref_tool_mz;
         	const float offset[3] = {0.0, 0.0, tool_offset};
         	THEROBOT->saveToolOffset(offset, cur_tool_mz);
