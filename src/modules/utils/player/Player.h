@@ -27,6 +27,10 @@ class Player : public Module {
         void on_console_line_received( void* argument );
         void on_main_loop( void* argument );
         void on_second_tick(void* argument);
+        void select_file(string argument);
+        void goto_line_number(unsigned long line_number);
+        void play_opened_file();
+        void end_of_file();
         void on_get_public_data(void* argument);
         void on_set_public_data(void* argument);
         void on_gcode_received(void *argument);
@@ -42,7 +46,9 @@ class Player : public Module {
         void buffer_command( string parameters, StreamOutput* stream );
         void upload_command( string parameters, StreamOutput* stream );
         void download_command( string parameters, StreamOutput* stream );
+        
         void test_command(string parameters, StreamOutput* stream );
+        
         string extract_options(string& args);
 
         void set_serial_rx_irq(bool enable);
@@ -70,6 +76,10 @@ class Player : public Module {
 
         std::queue<string> buffered_queue;
         void clear_buffered_queue();
+
+        using macro_file_queue_item= std::tuple<std::string, unsigned long>; // allows running macros. This forms a stact filepath, line number, to return to when the internal file is complete
+        std::queue<macro_file_queue_item> macro_file_queue;
+        void clear_macro_file_queue();
 
         FILE* current_file_handler;
         // FILE* temp_file_handler;
