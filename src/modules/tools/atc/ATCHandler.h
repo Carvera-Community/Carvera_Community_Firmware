@@ -78,6 +78,10 @@ private:
     void fill_cali_scripts(bool is_probe, bool clear_z);
 
     //
+    void fill_manual_drop_scripts(int old_tool);
+    void fill_manual_pickup_scripts(int new_tool, bool clear_z, bool auto_calibrate, float custom_TLO);
+
+    //
     void fill_margin_scripts(float x_pos, float y_pos, float x_pos_max, float y_pos_max);
     void fill_zprobe_scripts(float x_pos, float y_pos, float x_offset, float y_offset);
     void fill_zprobe_abs_scripts();
@@ -172,6 +176,7 @@ private:
 
     int active_tool;
     int tool_number;
+    int max_manual_tool_number;
     int goto_position;
     float position_x;
     float position_y;

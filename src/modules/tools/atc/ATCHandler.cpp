@@ -101,6 +101,7 @@ ATCHandler::ATCHandler()
     probe_laser_last = 9999;
     playing_file = false;
     tool_number = 6;
+	max_manual_tool_number = 99;
     g28_triggered = false;
     goto_position = -1;
     position_x = 8888;
@@ -110,6 +111,101 @@ ATCHandler::ATCHandler()
 void ATCHandler::clear_script_queue(){
 	while (!this->script_queue.empty()) {
 		this->script_queue.pop();
+	}
+}
+
+void ATCHandler::fill_manual_drop_scripts(int old_tool) {
+	char buff[100];
+	struct atc_tool *current_tool = &atc_tools[old_tool];
+	// set atc status
+	this->script_queue.push("M497.1");
+	//make extra sure the spindle is off
+	snprintf(buff, sizeof(buff), "M5");
+	this->script_queue.push(buff);
+	// lift z to safe position with fast speed
+	snprintf(buff, sizeof(buff), "G90 G53 G0 Z%.3f", THEROBOT->from_millimeters(this->clearance_z));
+	this->script_queue.push(buff);
+	//move to clearance
+	snprintf(buff, sizeof(buff), "G90 G53 G0 X%.3f Y%.3f", THEROBOT->from_millimeters(probe_mx_mm), THEROBOT->from_millimeters(probe_my_mm));
+	this->script_queue.push(buff);
+
+	//print status
+	snprintf(buff, sizeof(buff), ";Ready to drop tool %d. Prepare to catch tool, resume will loosen collet\n", old_tool);
+	this->script_queue.push(buff);
+	//pause program to allow inputs
+	snprintf(buff, sizeof(buff), "M600.5");
+	this->script_queue.push(buff);
+	//Drop Tool After Resume
+	snprintf(buff, sizeof(buff), "M490.2");
+	this->script_queue.push(buff);
+	// set new tool to -1
+	this->script_queue.push("M493.2 T-1");
+	//print status
+	snprintf(buff, sizeof(buff), ";collet should now be empty and machine paused.\nremove hands from machine");
+	this->script_queue.push(buff);
+	snprintf(buff, sizeof(buff), ";program will resume on play\n");
+	this->script_queue.push(buff);
+	//pause program
+	snprintf(buff, sizeof(buff), "M600.5");
+	this->script_queue.push(buff);
+}
+
+void ATCHandler::fill_manual_pickup_scripts(int new_tool, bool clear_z, bool auto_calibrate = false, float custom_TLO = NAN) {
+	char buff[100];
+	struct atc_tool *current_tool = &atc_tools[new_tool];
+	// set atc status
+	this->script_queue.push("M497.2");
+	// lift z to safe position with fast speed
+	snprintf(buff, sizeof(buff), "G90 G53 G0 Z%.3f", THEROBOT->from_millimeters(this->clearance_z));
+	this->script_queue.push(buff);
+	//move to clearance
+	snprintf(buff, sizeof(buff), "G90 G53 G0 X%.3f Y%.3f", THEROBOT->from_millimeters(probe_mx_mm), THEROBOT->from_millimeters(probe_my_mm));
+	this->script_queue.push(buff);
+	
+	// loose tool
+	this->script_queue.push("M490.2");
+	//print status
+	snprintf(buff, sizeof(buff), ";Ready to install tool %d. Resume will tighten the collet\n", new_tool);
+	this->script_queue.push(buff);
+	//pause
+	snprintf(buff, sizeof(buff), "M600.5");
+	this->script_queue.push(buff);
+	// clamp tool
+	this->script_queue.push("M490.1");
+	// set new tool
+	snprintf(buff, sizeof(buff), "M493.2 T%d", new_tool);
+	this->script_queue.push(buff);
+
+	if (auto_calibrate){
+		//print status
+		snprintf(buff, sizeof(buff), ";Tool is now installed.nRemove hands from the machine\nResume will auto calibrate the tool and continue program\n");
+		this->script_queue.push(buff);
+		//pause
+		snprintf(buff, sizeof(buff), "M600.5");
+		this->script_queue.push(buff);
+		this->fill_cali_scripts(new_tool == 0,false);
+	}else if (!isnan(custom_TLO)) {
+		//print status
+		snprintf(buff, sizeof(buff), ";Tool is now installed and TLO set as %.3f. Resume will continue program\n" , custom_TLO );
+		this->script_queue.push(buff);
+		//set tool length offset
+		snprintf(buff, sizeof(buff), "M493.3 Z%.3f",custom_TLO);
+		this->script_queue.push(buff);
+		//pause
+		snprintf(buff, sizeof(buff), "M600.5");
+		this->script_queue.push(buff);
+	} else {
+		//print status
+		snprintf(buff, sizeof(buff), ";Tool installed but TLO not set. Manually set TLO, see M493.3 H#");
+		this->script_queue.push(buff);
+		snprintf(buff, sizeof(buff), ";Leave machine at a safe Z height when done\n");
+		this->script_queue.push(buff);
+		snprintf(buff, sizeof(buff), ";Resume will continue program\n");
+		this->script_queue.push(buff);
+		
+		//pause
+		snprintf(buff, sizeof(buff), "M600.5");
+		this->script_queue.push(buff);
 	}
 }
 
@@ -806,52 +902,65 @@ void ATCHandler::on_gcode_received(void *argument)
     	    }
 
             int new_tool = gcode->get_value('T');
-            if (new_tool > this->tool_number) {
-		        THEKERNEL->call_event(ON_HALT, nullptr);
+
+			if (new_tool > this->max_manual_tool_number){
+				THEKERNEL->call_event(ON_HALT, nullptr);
 		        THEKERNEL->set_halt_reason(ATC_TOOL_INVALID);
             	gcode->stream->printf("ALARM: Invalid tool: T%d\r\n", new_tool);
-            } else {
-            	if (new_tool != active_tool) {
-            		if (new_tool > -1 && THEKERNEL->get_laser_mode()) {
-            			THEKERNEL->streams->printf("ALARM: Can not do ATC in laser mode!\n");
-            			return;
-            		}
-                    // push old state
-                    THEROBOT->push_state();
-                    THEROBOT->get_axis_position(last_pos, 3);
-                    set_inner_playing(true);
-                    this->clear_script_queue();
-                	if (this->active_tool < 0) {
-                		gcode->stream->printf("Start picking new tool: T%d\r\n", new_tool);
-                		// just pick up tool
-                		atc_status = PICK;
-                		this->fill_pick_scripts(new_tool, true);
-                		this->fill_cali_scripts(new_tool == 0, false);
-                	} else if (new_tool < 0) {
-                		gcode->stream->printf("Start dropping current tool: T%d\r\n", this->active_tool);
-                		// just drop tool
-                		atc_status = DROP;
-                		this->fill_drop_scripts(active_tool);
-                		if (THEKERNEL->get_laser_mode()) {
-                			this->fill_cali_scripts(false, false);
-                		}
-                	} else {
-                		gcode->stream->printf("Start atc, old tool: T%d, new tool: T%d\r\n", this->active_tool, new_tool);
-                		// full atc progress
-                		atc_status = FULL;
-                	    this->fill_drop_scripts(active_tool);
-                	    this->fill_pick_scripts(new_tool, false);
-                	    this->fill_cali_scripts(new_tool == 0, false);
-                	}
-            	} else if (new_tool == -1  && THEKERNEL->get_laser_mode()) {
-            		// calibrate
-                    THEROBOT->push_state();
+			} else if (new_tool != active_tool) {
+				if (new_tool > -1 && THEKERNEL->get_laser_mode()) {
+					THEKERNEL->streams->printf("ALARM: Can not do ATC in laser mode!\n");
+					return;
+				}
+				
+				// push old state
+				bool auto_calibrate = true;
+				float custom_TLO = NAN;
+				THEROBOT->push_state();
+				THEROBOT->get_axis_position(last_pos, 3);
+				set_inner_playing(true);
+				this->clear_script_queue();
+
+				if (gcode->has_letter('H')){
+					custom_TLO = gcode->get_value('H');
+					auto_calibrate = false;
+				}
+				if (gcode->has_letter('C')){
+					auto_calibrate = gcode->get_value('C');
+				}
+
+				//drop current tool
+				if (this->active_tool > -1 && this->active_tool < this->tool_number){ //drop atc tool
+					THEKERNEL->streams->printf("Start dropping current tool: T%d\r\n", this->active_tool);
+					// just drop tool
+					atc_status = DROP;
+					this->fill_drop_scripts(active_tool);
+				} else if(this->active_tool > this->tool_number){ //drop manual tool
+					THEKERNEL->streams->printf("Start dropping current tool: T%d\r\n", this->active_tool);
+					// just drop tool
+					atc_status = DROP;
+					this->fill_manual_drop_scripts(active_tool);
+				}
+
+				//pick up new tool
+				
+				if (new_tool > this->tool_number){ //manual tool
+					THEKERNEL->streams->printf("Start picking new tool: T%d\r\n", new_tool);
+					atc_status = PICK;
+					this->fill_manual_pickup_scripts(new_tool,true,auto_calibrate,custom_TLO);
+				} else if(new_tool >= 0){ //standard ATC
+					THEKERNEL->streams->printf("Start picking new tool: T%d\r\n", new_tool);
+					atc_status = PICK;
+					this->fill_pick_scripts(new_tool, true);
+					this->fill_cali_scripts(new_tool == 0, false);
+				} else if(new_tool == -1 && (THEKERNEL->get_laser_mode())) {
+					THEROBOT->push_state();
                     THEROBOT->get_axis_position(last_pos, 3);
                     set_inner_playing(true);
                     this->clear_script_queue();
             		atc_status = CALI;
             		this->fill_cali_scripts(false, true);
-            	}
+				}
             }
 		} else if (gcode->m == 490)  {
 			if (gcode->subcode == 0) {
