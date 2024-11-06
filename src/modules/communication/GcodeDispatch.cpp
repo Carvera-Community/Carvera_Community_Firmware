@@ -307,6 +307,22 @@ try_again:
 							return;
 						}
 
+						case 118: // M118 is a special non compliant Gcode as it allows arbitrary text on the line following the command
+						{    // concatenate the command again and send to the MDI
+							if (gcode->subcode == 1){
+								if (gcode->has_letter('P')) {
+									THEKERNEL->streams->printf("result = %.3f \n", gcode->get_value('P'));
+									delete gcode;
+									return;
+								}
+							}
+							
+							string str= single_command.substr(4) + possible_command;
+							delete gcode;
+							THEKERNEL->streams->printf("%s \r\n", str.c_str());
+							return;
+						}
+
 						case 1000: // M1000 is a special command that will pass thru the raw lowercased command to the simpleshell (for hosts that do not allow such things)
 						{
 							// reconstruct entire command line again
