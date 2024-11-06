@@ -936,6 +936,31 @@ void ATCHandler::set_tool_offset()
 
 }
 
+void ATCHandler::set_tlo_by_offset(float z_axis_offset){
+	// new TLO = Current TLO - (current WCS - z_axis_offset)
+	float mpos[3];
+	Robot::wcs_t pos;
+	THEROBOT->get_current_machine_position(mpos);
+	// current_position/mpos includes the compensation transform so we need to get the inverse to get actual position
+	if(THEROBOT->compensationTransform) THEROBOT->compensationTransform(mpos, true, false); // get inverse compensation transform
+	pos = THEROBOT->mcs2wcs(mpos);
+	cur_tool_mz = cur_tool_mz + THEROBOT->from_millimeters(std::get<Z_AXIS>(pos)) - z_axis_offset;
+
+	if (ref_tool_mz < 0) {
+		tool_offset = cur_tool_mz - ref_tool_mz;
+		const float offset[3] = {0.0, 0.0, tool_offset};
+		THEROBOT->saveToolOffset(offset, cur_tool_mz);
+	}else{
+		THEKERNEL->eeprom_data->REFMZ = -10;
+		THEKERNEL->write_eeprom_data();
+		THEKERNEL->call_event(ON_HALT, nullptr);
+		THEKERNEL->set_halt_reason(MANUAL);
+		THEKERNEL->streams->printf("ERROR: warning, unexpected reference tool length found, reset machine then recalibrate tool\n");
+		return;
+	}
+
+}
+
 void ATCHandler::on_gcode_received(void *argument)
 {
     Gcode *gcode = static_cast<Gcode*>(argument);
@@ -1274,6 +1299,33 @@ void ATCHandler::on_gcode_received(void *argument)
 					THEKERNEL->streams->printf("ERROR: No tool was set!\n");
 
 				}
+			} else if (gcode->subcode == 3) { //set current tool offset
+				
+				
+				if (gcode->has_letter('Z')) {
+					cur_tool_mz = gcode->get_value('Z');
+					if (ref_tool_mz < 0) {
+						tool_offset = cur_tool_mz;// + ref_tool_mz;
+						const float offset[3] = {0.0, 0.0, tool_offset};
+						THEROBOT->saveToolOffset(offset, cur_tool_mz);
+					}else{
+						THEKERNEL->eeprom_data->REFMZ = -10;
+						THEKERNEL->write_eeprom_data();
+						THEKERNEL->call_event(ON_HALT, nullptr);
+						THEKERNEL->set_halt_reason(MANUAL);
+						THEKERNEL->streams->printf("ERROR: warning, unexpected reference tool length found, reset machine then recalibrate tool\n");
+						return;
+					}
+				}
+				if (gcode->has_letter('H')) { //set tlo from current position. H is offset above Z0
+					this->set_tlo_by_offset(gcode->get_value('H'));
+					
+				}
+
+
+				THEKERNEL->streams->printf("current tool offset [%.3f] , reference tool offset [%.3f]\n",cur_tool_mz,ref_tool_mz);
+			} else if (gcode->subcode == 4) { //report current TLO
+				THEKERNEL->streams->printf("current tool offset [%.3f] , reference tool offset [%.3f]\n",cur_tool_mz,ref_tool_mz);
 			}
 		} else if (gcode->m == 494) {
 			if(THEKERNEL->factory_set->FuncSetting & (1<<2))	//ATC 
