@@ -129,7 +129,7 @@ void WifiProvider::receive_wifi_data() {
 	            query_flag = true;
 	            continue;
 	        }
-			if (WifiData[i] == '*') {
+			if (WifiData[i] == '&') {
 				diagnose_flag = true;
 				continue;
 			}
