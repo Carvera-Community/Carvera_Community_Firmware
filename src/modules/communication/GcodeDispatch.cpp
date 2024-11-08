@@ -80,7 +80,7 @@ try_again:
         return;
     }
 
-    if ( first_char == 'G' || first_char == 'M' || first_char == 'T' || first_char == 'S' || first_char == 'N' ) {
+    if ( first_char == 'G' || first_char == 'M' || first_char == 'T' || first_char == 'S' || first_char == 'N' || first_char == '#') {
 
         //Get linenumber
         if ( first_char == 'N' ) {
@@ -161,6 +161,10 @@ try_again:
 				// Prepare gcode for dispatch
 				// new_message.stream->printf("GCode1: %s!\n", single_command.c_str());
 				Gcode *gcode = new Gcode(single_command, new_message.stream, false, new_message.line);
+
+				if ( first_char == '#'){
+					gcode->set_variable_value();
+				}
 
 				if(THEKERNEL->is_halted()) {
 					// we ignore all commands until M999, unless it is in the exceptions list (like M105 get temp)
