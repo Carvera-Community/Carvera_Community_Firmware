@@ -12,6 +12,15 @@
 #include <stdlib.h>
 #include <algorithm>
 
+
+//required for system variables
+#include <cctype>
+#include "libs/Kernel.h"
+#include "Robot.h"
+#include "PublicData.h"
+#include "SpindlePublicAccess.h"
+#include "StepperMotor.h"
+
 // This is a gcode object. It represents a GCode string/command, and caches some important values about that command for the sake of performance.
 // It gets passed around in events, and attached to the queue ( that'll change )
 Gcode::Gcode(const string &command, StreamOutput *stream, bool strip, unsigned int line)
@@ -92,6 +101,447 @@ int Gcode::index_of_letter( char letter, int start ) const
 }
 */
 
+float Gcode::set_variable_value() const {
+    // Expecting a number after the `#` from 1-20, like #12
+    const char* expr = this->get_command();
+    if (*expr == '#') {
+        char* endptr;
+        float value = 0;
+        int var_num = strtol(expr + 1, &endptr, 10); 
+
+        while (isspace(*endptr)) endptr++; // Skip whitespace
+
+        // Check if the next character is '=' indicating an assignment
+        if (*endptr == '=') {
+            endptr++; // Move past '='
+            while (isspace(*endptr)) endptr++; // Skip whitespace
+
+            value = evaluate_expression(endptr, &endptr);
+            // Check if the expression evaluated to NAN
+            if ((value != value)) {
+                this->stream->printf("Error in expression evaluation, cannot set variable %d\n", var_num);
+                return NAN; // Stop execution and do not set the variable
+            }
+        } else {
+            // If it's not an assignment, get the variable value
+            char* temp_expr = const_cast<char*>(expr);
+            value = this->get_variable_value(expr, &temp_expr);
+
+            // Check if the retrieved value is valid
+            if (value == value) {
+                this->stream->printf("Variable %d = %.4f \n", var_num, value);
+            } else {
+                // If the variable is not set, return early
+                return NAN;
+            }
+            return NAN; // End the function since we only want to get the value, not set it
+        }
+
+        // Proceed to set the variable if it's valid
+        if (var_num >= 101 && var_num <= 120) {
+            THEKERNEL->local_vars[var_num - 101] = value; // Set local variable
+            this->stream->printf("Variable %d set %.4f \n", var_num, value);
+            return value;
+        } else if (var_num >= 501 && var_num <= 520) {
+            THEKERNEL->eeprom_data->perm_vars[var_num - 501] = value; // Set permanent variable
+            THEKERNEL->write_eeprom_data(); // Save to EEPROM
+            this->stream->printf("Variable %d set %.4f \n", var_num, value);
+            return value;
+        } else {
+            // If the variable number is out of the expected range, print an error
+            this->stream->printf("Variable not found \n");
+            return NAN; // Variable not found
+        }
+    }
+
+    // If the input doesn't start with '#', print an error message
+    this->stream->printf("Variable not found \n");
+    return 0; // Default return value
+}
+
+
+//get the value of a particular variable stored in EEPROM
+float Gcode::get_variable_value(const char* expr, char** endptr) const{
+    // Expecting a number after the `#` from 1-20, like #12
+    if (*expr == '#') {
+        int var_num = strtol(expr + 1, endptr, 10);         
+        if (var_num >= 101 && var_num <= 120) {
+            if (THEKERNEL->local_vars[var_num -101] > -100000)
+            {
+                return THEKERNEL->local_vars[var_num -101];
+            }
+            this->stream->printf("Variable %d not set \n", var_num);
+            THEKERNEL->call_event(ON_HALT, nullptr);
+            THEKERNEL->set_halt_reason(MANUAL);
+            return NAN;
+        
+        } else if(var_num >= 501 && var_num <= 520)
+        {
+            if (THEKERNEL->eeprom_data->perm_vars[var_num - 501] > -100000)
+            {
+                return THEKERNEL->eeprom_data->perm_vars[var_num - 501]; // return permanent variables
+            }
+            this->stream->printf("Variable %d not set \n", var_num);
+            THEKERNEL->call_event(ON_HALT, nullptr);
+            THEKERNEL->set_halt_reason(MANUAL);
+            return NAN;
+        }else //system variables
+        {
+            float mpos[3];
+            bool ok;
+            wcs_t pos;
+            switch (var_num){
+                case 2000: //stored tool length offset
+                    return THEKERNEL->eeprom_data->TLO;
+                    break;
+                case 3026: //tool in spindle
+                    return THEKERNEL->eeprom_data->TOOL;
+                    break;
+                case 3027: //current spindle RPM
+                    struct spindle_status ss;
+                    ok = PublicData::get_value(pwm_spindle_control_checksum, get_spindle_status_checksum, &ss);
+                    if (ok) {
+                        return ss.current_rpm;
+                        break;
+                    }
+                    return 0;
+                    break;
+                case 3033: //Op Stop Enabled
+                    return THEKERNEL->get_optional_stop_mode();
+                    break;
+                case 5021: //current machine X position
+                    THEROBOT->get_current_machine_position(mpos);
+                    // current_position/mpos includes the compensation transform so we need to get the inverse to get actual position
+                    if(THEROBOT->compensationTransform) THEROBOT->compensationTransform(mpos, true, false); // get inverse compensation transform
+                    return mpos[X_AXIS];
+                    break;
+                case 5022: //current machine Y position
+                    THEROBOT->get_current_machine_position(mpos);
+                    // current_position/mpos includes the compensation transform so we need to get the inverse to get actual position
+                    if(THEROBOT->compensationTransform) THEROBOT->compensationTransform(mpos, true, false); // get inverse compensation transform
+                    return mpos[Y_AXIS];
+                    break;
+                case 5023: //current machine Z position
+                    THEROBOT->get_current_machine_position(mpos);
+                    // current_position/mpos includes the compensation transform so we need to get the inverse to get actual position
+                    if(THEROBOT->compensationTransform) THEROBOT->compensationTransform(mpos, true, false); // get inverse compensation transform
+                    return mpos[Z_AXIS];
+                    break;
+
+                #if MAX_ROBOT_ACTUATORS > 3
+                case 5024: //current machine A position
+                    return THEROBOT->actuators[A_AXIS]->get_current_position();
+                    break;
+                #endif
+                case 5041: //current WCS X position
+                     THEROBOT->get_current_machine_position(mpos);
+                    // current_position/mpos includes the compensation transform so we need to get the inverse to get actual position
+                    if(THEROBOT->compensationTransform) THEROBOT->compensationTransform(mpos, true, false); // get inverse compensation transform
+                    pos= THEROBOT->mcs2wcs(mpos);
+                    return THEROBOT->from_millimeters(std::get<X_AXIS>(pos));
+                    return 0;
+                    break;
+                case 5042: //current WCS Y position
+                     THEROBOT->get_current_machine_position(mpos);
+                    // current_position/mpos includes the compensation transform so we need to get the inverse to get actual position
+                    if(THEROBOT->compensationTransform) THEROBOT->compensationTransform(mpos, true, false); // get inverse compensation transform
+                    pos= THEROBOT->mcs2wcs(mpos);
+                    return THEROBOT->from_millimeters(std::get<Y_AXIS>(pos));
+                    return 0;
+                    break;
+                case 5043: //current WCS A position
+                     THEROBOT->get_current_machine_position(mpos);
+                    // current_position/mpos includes the compensation transform so we need to get the inverse to get actual position
+                    if(THEROBOT->compensationTransform) THEROBOT->compensationTransform(mpos, true, false); // get inverse compensation transform
+                    pos= THEROBOT->mcs2wcs(mpos);
+                    return THEROBOT->from_millimeters(std::get<Z_AXIS>(pos));
+                    return 0;
+                    break;
+                #if MAX_ROBOT_ACTUATORS > 3
+                case 5044: //current machine A position
+                    return THEROBOT->actuators[A_AXIS]->get_current_position();
+                    break;
+                #endif
+
+                default:
+                    this->stream->printf("Variable %d not found \n", var_num);
+                    THEKERNEL->call_event(ON_HALT, nullptr);
+                    THEKERNEL->set_halt_reason(MANUAL);
+                    return NAN;
+                    break;
+            }
+        }
+    }
+    return 0;
+}
+
+float Gcode::parse_expression(const char*& expr) const {
+    if (*expr == ']') {
+        this->stream->printf("Mismatched closing bracket ']' without opening '['\n");
+        THEKERNEL->call_event(ON_HALT, nullptr);
+        THEKERNEL->set_halt_reason(MANUAL);
+        return NAN;
+    }
+
+    float result = parse_term(expr);
+
+    while (isspace(*expr)) expr++; // Skip leading whitespace
+
+    // Handle addition and subtraction
+    while (*expr == '+' || *expr == '-') {
+        char op = *expr;
+        expr++; // Skip operator
+        float next_term = parse_term(expr);
+        if (op == '+') {
+            result += next_term;
+        } else {
+            result -= next_term;
+        }
+        while (isspace(*expr)) expr++; // Skip whitespace after term
+    }
+
+    const float equal_tolerance = 1e-6;
+    // Handle EQ,NE,GE,LE,GT,LT operator with lower precedence
+    if (strncmp(expr, "EQ", 2) == 0) {
+        expr += 2; // Skip "EQ"
+        while (isspace(*expr)) expr++;
+        float comparison_value = parse_expression(expr);
+        // Perform a fuzzy equality check with tolerance of 1e-6
+        result = (fabs(result - comparison_value) < equal_tolerance) ? 1.0f : 0.0f;
+    } else if(strncmp(expr, "NE", 2) == 0) {
+        expr += 2; // Skip "NE"
+        while (isspace(*expr)) expr++; 
+        float comparison_value = parse_expression(expr);
+        result = (fabs(result - comparison_value) < equal_tolerance) ? 0.0f : 1.0f;
+    } else if(strncmp(expr, "GT", 2) == 0) {
+        expr += 2; // Skip "GT"
+        while (isspace(*expr)) expr++;
+        float comparison_value = parse_expression(expr);
+        result = (result > comparison_value) ? 1.0f : 0.0f;
+    } else if(strncmp(expr, "GE", 2) == 0) {
+        expr += 2; // Skip "GE"
+        while (isspace(*expr)) expr++;
+        float comparison_value = parse_expression(expr);        
+        result = (result >= comparison_value) ? 1.0f : 0.0f;
+    } else if(strncmp(expr, "LT", 2) == 0) {
+        expr += 2; // Skip "LT"
+        while (isspace(*expr)) expr++;
+        float comparison_value = parse_expression(expr);
+        result = (result < comparison_value) ? 1.0f : 0.0f;
+    } else if(strncmp(expr, "LE", 2) == 0) {
+        expr += 2; // Skip "LE"
+        while (isspace(*expr)) expr++;
+        float comparison_value = parse_expression(expr);
+        result = (result <= comparison_value) ? 1.0f : 0.0f;
+    }
+
+    // Handle boolean operators with the lowest precedence
+    if (strncmp(expr, "AND", 3) == 0) {
+        expr += 3; // Skip "AND"
+        while (isspace(*expr)) expr++; // Skip whitespace after "AND"
+        float and_value = parse_expression(expr);
+        // Evaluate AND: both values must be non-zero to return 1
+        result = (result != 0 && and_value != 0) ? 1.0f : 0.0f;
+    } else if (strncmp(expr, "OR", 2) == 0) {
+        expr += 2; // Skip "OR"
+        while (isspace(*expr)) expr++; // Skip whitespace after "OR"
+        float or_value = parse_expression(expr);
+        result = (result != 0 || or_value != 0) ? 1.0f : 0.0f;
+    } else if (strncmp(expr, "XOR", 3) == 0) {
+        expr += 3; // Skip "XOR"
+        while (isspace(*expr)) expr++; // Skip whitespace after "XOR"
+        float xor_value = parse_expression(expr);
+        // Evaluate XOR: exactly one value must be non-zero to return 1
+        result = ((result != 0) != (xor_value != 0)) ? 1.0f : 0.0f;
+    } else if (strncmp(expr, "NOR", 3) == 0) {
+        expr += 3; // Skip "NOR"
+        while (isspace(*expr)) expr++; // Skip whitespace after "NOR"
+        float nor_value = parse_expression(expr);
+        // Evaluate NOR: both values must be zero to return 1
+        result = (result == 0 && nor_value == 0) ? 1.0f : 0.0f;
+    }
+
+    return result;
+}
+
+float Gcode::parse_term(const char*& expr) const {
+    float result = parse_factor(expr);
+
+    while (isspace(*expr)) expr++; // Skip leading whitespace
+
+    while (*expr == '*' || *expr == '/' || strncmp(expr, "MOD", 3) == 0) {
+        if (*expr == '*' || *expr == '/') {
+            char op = *expr;
+            expr++; // Skip operator
+            float next_factor = parse_factor(expr);
+            if (op == '*') {
+                result *= next_factor;
+            } else {
+                if (next_factor != 0) {
+                    result /= next_factor;
+                } else {
+                    this->stream->printf("Division by zero\n");
+                    THEKERNEL->call_event(ON_HALT, nullptr);
+                    THEKERNEL->set_halt_reason(MANUAL);
+                    return NAN;
+                }
+            }
+        } else if (strncmp(expr, "MOD", 3) == 0) { // Check for "MOD"
+            expr += 3; // Skip "MOD"
+            while (isspace(*expr)) expr++; // Skip whitespace after MOD
+            float next_factor = parse_factor(expr);
+            if (next_factor != 0) {
+                result = fmod(result, next_factor);
+            } else {
+                this->stream->printf("Modulo by zero\n");
+                THEKERNEL->call_event(ON_HALT, nullptr);
+                THEKERNEL->set_halt_reason(MANUAL);
+                return NAN;
+            }
+        }
+
+        while (isspace(*expr)) expr++; // Skip whitespace between terms
+    }
+
+    return result;
+}
+
+float Gcode::parse_factor(const char*& expr) const {
+    while (isspace(*expr)) expr++; // Skip whitespace
+
+    float result = NAN;
+
+    // Handle functions with arguments in brackets
+    if (strncmp(expr, "SIN", 3) == 0 || strncmp(expr, "COS", 3) == 0 || strncmp(expr, "TAN", 3) == 0 ||
+        strncmp(expr, "ASIN", 4) == 0 || strncmp(expr, "ACOS", 4) == 0 || strncmp(expr, "ATAN", 4) == 0 ||
+        strncmp(expr, "SQRT", 4) == 0 || strncmp(expr, "ABS", 3) == 0 || strncmp(expr, "ROUND", 5) == 0 ||
+        strncmp(expr, "FIX", 3) == 0 || strncmp(expr, "FUP", 3) == 0 || strncmp(expr, "LN", 2) == 0 ||
+        strncmp(expr, "EXP", 3) == 0) 
+    {
+        const char* func_name = expr;
+        // Adjust expr pointer based on function name length
+        if (strncmp(func_name, "ASIN", 4) == 0 || strncmp(func_name, "ACOS", 4) == 0 || 
+            strncmp(func_name, "ATAN", 4) == 0 || strncmp(func_name, "SQRT", 4) == 0) {
+            expr += 4;
+        } else if (strncmp(func_name, "ROUND", 5) == 0) {
+            expr += 5;
+        } else if (strncmp(func_name, "LN", 2) == 0) {
+            expr += 2;
+        } else {
+            expr += 3; // For 3-character functions
+        }
+
+        if (*expr == '[') {
+            expr++; // Skip '['
+            float arg = parse_expression(expr); // Parse the expression inside the brackets
+            if (*expr == ']') {
+                expr++; // Skip ']'
+                const float DEG_TO_RAD = 3.141592653589793238463 / 180.0;
+                if (strncmp(func_name, "SIN", 3) == 0) {
+                    result = sin(arg * DEG_TO_RAD);
+                } else if (strncmp(func_name, "COS", 3) == 0) {
+                    result = cos(arg * DEG_TO_RAD);
+                } else if (strncmp(func_name, "ASIN", 3) == 0) {
+                    result = asin(arg)/DEG_TO_RAD;
+                } else if (strncmp(func_name, "ACOS", 3) == 0) {
+                    result = acos(arg)/ DEG_TO_RAD;
+                } else if (strncmp(func_name, "TAN", 3) == 0) {
+                    if (fmod(arg - 90, 180) == 0) { // Handle undefined tangent values
+                        result = NAN;
+                    } else {
+                        result = tan(arg * DEG_TO_RAD);
+                    }
+                } else if (strncmp(func_name, "ATAN", 3) == 0) {
+                    result = atan(arg)/DEG_TO_RAD;
+                } else if (strncmp(func_name, "SQRT", 4) == 0) {
+                    result = sqrt(arg);
+                } else if (strncmp(func_name, "ABS", 3) == 0) {
+                    result = fabs(arg);
+                } else if (strncmp(func_name, "ROUND", 5) == 0) {
+                    result = round(arg);
+                } else if (strncmp(func_name, "FIX", 3) == 0) {
+                    result = floor(arg);
+                } else if (strncmp(func_name, "FUP", 3) == 0) {
+                    result = ceil(arg);
+                } else if (strncmp(func_name, "LN", 2) == 0) {
+                    result = log(arg);
+                } else if (strncmp(func_name, "EXP", 3) == 0) {
+                    result = exp(arg);
+                }
+            } else {
+                this->stream->printf("Mismatched brackets in function argument\n");
+                THEKERNEL->call_event(ON_HALT, nullptr);
+                THEKERNEL->set_halt_reason(MANUAL);
+                return NAN;
+            }
+        } else {
+            this->stream->printf("Expected '[' after function name\n");
+            THEKERNEL->call_event(ON_HALT, nullptr);
+            THEKERNEL->set_halt_reason(MANUAL);
+            return NAN;
+        }
+    } else if (*expr == '[') {
+        expr++; // Skip '['
+        result = parse_expression(expr); // Parse the expression inside the brackets
+        if (*expr == ']') {
+            expr++; // Skip ']'
+        } else {
+            this->stream->printf("Mismatched brackets in expression\n");
+            THEKERNEL->call_event(ON_HALT, nullptr);
+            THEKERNEL->set_halt_reason(MANUAL);
+            return NAN;
+        }
+    } else if (*expr == '#') {
+        result = this->get_variable_value(expr, const_cast<char**>(&expr));
+    } else {
+        char* end;
+        result = strtof(expr, &end);
+        if (end == expr) {
+            this->stream->printf("Invalid number in expression, %c\n", *expr);
+            THEKERNEL->call_event(ON_HALT, nullptr);
+            THEKERNEL->set_halt_reason(MANUAL);
+            return NAN;
+        }
+        expr = end;
+    }
+
+    // Handle exponentiation (e.g., 2^3)
+    while (*expr == '^') {
+        expr++;
+        float exponent = parse_factor(expr);
+        result = pow(result, exponent);
+    }
+
+    return result;
+}
+
+float Gcode::evaluate_expression(const char* expr, char** endptr) const {
+    while (isspace(*expr)) expr++; // Skip leading whitespace
+
+    // Check for unexpected closing bracket at the beginning
+    if (*expr == ']') {
+        this->stream->printf("Mismatched closing bracket ']' without opening '['\n");
+        THEKERNEL->call_event(ON_HALT, nullptr);
+        THEKERNEL->set_halt_reason(MANUAL);
+        return NAN;
+    }
+
+    float result = parse_expression(expr);
+
+    // Ensure any remaining unmatched brackets are caught
+    if (*expr == ']') {
+        this->stream->printf("Mismatched closing bracket at end of expression\n");
+        THEKERNEL->call_event(ON_HALT, nullptr);
+        THEKERNEL->set_halt_reason(MANUAL);
+        return NAN;
+    }
+
+    if (endptr) {
+        *endptr = const_cast<char*>(expr); // Set endptr to the current position
+    }
+    return result;
+}
+
 // Retrieve the value for a given letter
 float Gcode::get_value( char letter, char **ptr ) const
 {
@@ -100,13 +550,16 @@ float Gcode::get_value( char letter, char **ptr ) const
     for (; *cs; cs++) {
         if( letter == *cs ) {
             cs++;
-            float r = strtof(cs, &cn);
-            if(ptr != nullptr) *ptr= cn;
+            float result = this->evaluate_expression(cs, &cn);
+            if(ptr != nullptr) *ptr = cn;
+            
+            // If a valid expression was found, return the result
             if (cn > cs)
-                return r;
+                return result;
         }
     }
-    if(ptr != nullptr) *ptr= nullptr;
+    // If no valid number or expression is found, return 0
+    if (ptr != nullptr) *ptr = nullptr;
     return 0;
 }
 
