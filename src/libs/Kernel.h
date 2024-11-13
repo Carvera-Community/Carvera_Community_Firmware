@@ -193,6 +193,8 @@ class Kernel {
         uint8_t atc_state;
         EEPROM_data *eeprom_data;
         float local_vars[20];
+        float probe_outputs[5];
+        float probe_tip_diameter = 1.6;
 
     private:
         // When a module asks to be called for a specific event ( a hook ), this is where that request is remembered

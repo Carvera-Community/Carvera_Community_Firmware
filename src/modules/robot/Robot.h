@@ -83,6 +83,8 @@ class Robot : public Module {
         wcs_t wcs2mcs(const wcs_t &pos) const;
         wcs_t wcs2mcs(const float *pos) const { return wcs2mcs(wcs_t(pos[X_AXIS], pos[Y_AXIS], pos[Z_AXIS])); }
 
+        void set_current_wcs_by_mpos(float x, float y, float z);
+
         struct {
             bool inch_mode:1;                                 // true for inch mode, false for millimeter mode ( default )
             bool absolute_mode:1;                             // true for absolute mode ( default ), false for relative mode
