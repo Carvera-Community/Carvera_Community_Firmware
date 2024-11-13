@@ -503,7 +503,7 @@ void Robot::set_current_wcs_by_mpos(float x =NAN, float y = NAN, float z = NAN)
     if(isnan(y)){
         y = std::get<Y_AXIS>(wcs_offsets[current_wcs]);
     }
-    if(isnan(y)){
+    if(isnan(z)){
         z = std::get<Z_AXIS>(wcs_offsets[current_wcs]);
     }
     THEROBOT->wcs_offsets[current_wcs] = Robot::wcs_t(x, y, z);
