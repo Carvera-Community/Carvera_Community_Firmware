@@ -437,7 +437,7 @@ void ZProbe::on_gcode_received(void *argument)
 }
 
 // special way to probe in the X or Y or Z direction using planned moves, should work with any kinematics
-void ZProbe::probe_XYZ(Gcode *gcode)
+bool ZProbe::probe_XYZ(Gcode *gcode)
 {
     float x= 0, y= 0, z= 0;
     if(gcode->has_letter('X')) {
@@ -454,7 +454,7 @@ void ZProbe::probe_XYZ(Gcode *gcode)
 
     if(x == 0 && y == 0 && z == 0) {
         gcode->stream->printf("error:at least one of X Y or Z must be specified, and be > or < 0\n");
-        return;
+        return false;
     }
 
     // get probe feedrate in mm/min and convert to mm/sec if specified
@@ -467,7 +467,7 @@ void ZProbe::probe_XYZ(Gcode *gcode)
         gcode->stream->printf("Error:ZProbe triggered before move, aborting command.\n");
         THEKERNEL->call_event(ON_HALT, nullptr);
         THEKERNEL->set_halt_reason(PROBE_FAIL);
-        return;
+        return false;
     }
 
     // enable the probe checking in the timer
@@ -485,7 +485,7 @@ void ZProbe::probe_XYZ(Gcode *gcode)
         THEKERNEL->set_halt_reason(PROBE_FAIL);
         probing = false;
         THEKERNEL->set_zprobing(false);
-        return;
+        return false;
     }
     THEKERNEL->set_zprobing(false);
 
@@ -511,7 +511,12 @@ void ZProbe::probe_XYZ(Gcode *gcode)
         gcode->stream->printf("ALARM: Probe fail\n");
         THEKERNEL->call_event(ON_HALT, nullptr);
         THEKERNEL->set_halt_reason(PROBE_FAIL);
+        return false; //probe was not activated but failed due to subcodes
     }
+    if(probeok == 0){
+        return false; // probe was not activated but did not fail
+    }
+    return true; //probe was activated
 }
 
 // just probe / calibrate Z using calibrate pin
