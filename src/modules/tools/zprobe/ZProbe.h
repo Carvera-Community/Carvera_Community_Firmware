@@ -47,7 +47,7 @@ public:
 
 private:
     void config_load();
-    void probe_XYZ(Gcode *gc);
+    bool probe_XYZ(Gcode *gcode);
     void calibrate_Z(Gcode *gc);
     uint32_t read_probe(uint32_t dummy);
     uint32_t read_calibrate(uint32_t dummy);
