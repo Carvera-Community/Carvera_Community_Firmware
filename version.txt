@@ -1,6 +1,22 @@
 Notice: 
 To let the Carvera work perfectly, please make sure both your controller software and firmware are up to date. For firmware, download the new firmware first, then use the 'update' function to upgrade the firmware, and reset the machine after the update is complete.
 
+[1.0.1c1.0.1beta]
+Note: this is beta software and should be used for testing purposes only until an official release is made. Unexpected bugs may arise.
+1:Bug fixing: clarify ATC tool detection messages https://github.com/Carvera-Community/Carvera_Community_Firmware/issues/12
+2.Bug fixing: add error detection to TLO routine https://github.com/Carvera-Community/Carvera_Community_Firmware/issues/10
+3.Breaking Change: Diagnostic menu used * to communicate with the machine, breaking multiplication. As a result, the diagnostic menu will not work with the stock
+controller. Use the community controller for the most up to date features. 
+4.Feature:LinuxCNC/Faunic style math and variables. https://github.com/Carvera-Community/Carvera_Community_Firmware/pull/42
+5.Feature: M491.1 H{} tool break test https://github.com/Carvera-Community/Carvera_Community_Firmware/issues/9
+6.Feature: M118 Print to MDI https://github.com/Carvera-Community/Carvera_Community_Firmware/issues/14
+7.Feature: Optional Stop Implementation https://github.com/Carvera-Community/Carvera_Community_Firmware/issues/15
+8.Feature: line by line execution mode https://github.com/Carvera-Community/Carvera_Community_Firmware/issues/16
+9.Helper Function: Pause Machine when not playing. (used with manual tool change implementation) https://github.com/Carvera-Community/Carvera_Community_Firmware/issues/17
+10.Feature: M493.3 H{} Z{} set tool length offset by value/current machine position with offset https://github.com/Carvera-Community/Carvera_Community_Firmware/issues/18
+11.Feature: Manual tool changes for T7-99 https://github.com/Carvera-Community/Carvera_Community_Firmware/issues/19
+12.Feature: 3 axis probing commands M460-465 https://github.com/Carvera-Community/Carvera_Community_Firmware/pull/43
+
 [1.0.1]
 Bug fixing:The issue of the machine not responding to Controller commands or main buttons after the motor alarm
 
