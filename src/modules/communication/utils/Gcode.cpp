@@ -142,6 +142,19 @@ float Gcode::set_variable_value() const {
             THEKERNEL->local_vars[var_num - 101] = value; // Set local variable
             this->stream->printf("Variable %d set %.4f \n", var_num, value);
             return value;
+        }else if(var_num == 150)
+        {  
+            if (value > 0 && value < 10){
+                THEKERNEL->probe_tip_diameter = value;
+                this->stream->printf("Probe tip diameter set %.4f \n", value);
+                this->stream->printf("This value is temporary \n it will neeed to be saved to the config file with \n");
+                this->stream->printf("config-set sd zprobe.probe_tip_diameter # \n");
+                return value;
+            }
+            else{
+                this->stream->printf("Probe tip input out of range, aborting \n", var_num);
+                return NAN;
+            }
         } else if (var_num >= 501 && var_num <= 520) {
             THEKERNEL->eeprom_data->perm_vars[var_num - 501] = value; // Set permanent variable
             THEKERNEL->write_eeprom_data(); // Save to EEPROM
@@ -175,6 +188,20 @@ float Gcode::get_variable_value(const char* expr, char** endptr) const{
             THEKERNEL->set_halt_reason(MANUAL);
             return NAN;
         
+        } else if(var_num == 150)
+        {
+            return THEKERNEL->probe_tip_diameter;
+        } else if(var_num >= 151 && var_num <= 155)
+        {
+            if (THEKERNEL->probe_outputs[var_num - 151] > -100000)
+            {
+                return THEKERNEL->probe_outputs[var_num - 151];
+            }
+            this->stream->printf("Variable %d not set \n", var_num);
+            THEKERNEL->call_event(ON_HALT, nullptr);
+            THEKERNEL->set_halt_reason(MANUAL);
+            return NAN;
+
         } else if(var_num >= 501 && var_num <= 520)
         {
             if (THEKERNEL->eeprom_data->perm_vars[var_num - 501] > -100000)
