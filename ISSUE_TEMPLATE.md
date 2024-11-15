@@ -1,11 +1,15 @@
 ## How to file an issue
 
-If you encounter an issue with SmoothieWare, you are welcome to
-[submit an issue](https://github.com/Smoothieware/Smoothieware/issues)
+If you encounter an issue Carvera Community Firmware, you are welcome to
+[submit an issue](https://github.com/Carvera-Community/Carvera_Community_Firmware/issues)
 
-**YOU MUST** provide the complete output from the version command or M115, the config and the output from M503, otherwise the issue will be summarily closed.
+Since this firmware is a modification to the carvera core firmware, please do not pester Makera with bug reports while using it. 
 
-**Please note** while other projects will use github issues as a general discussion forum, we try to restrict the issues to **actual** issues only. If you want to discuss new features, ask questions, or anything else that is not an issue, please go to the Smoothie forums, mailing lists, IRC, social media etc.
+**YOU MUST** provide a solid summary of the issue you are facing, and any supporting screenshots/pictures. Often an image of the MDI/error screen will go a long way to sorting out a problem. If you can provide steps to replicate the issue including any offending gcodes that cause it, that will also help. 
+
+If you have a feature request, feel free to use the issue tracker to bring it to our attention, or message one of us. 
+We try to keep to the LinuxCNC/Faunic style standard as much as possible, so if you can link to any documentation in that sphere it would be helpful.
+
 
 **DO NOT ASK QUESTIONS HERE** they will not be answered and the issue will be summarily closed.
 
@@ -14,15 +18,13 @@ following section *completely*. Thank you! :)
 
 ### What should I do before submitting an issue?
 
-1. **this is not the right issue tracker if you are running a
-   forked version of Smoothieware**. Seek help for such unofficial versions from
-   the people maintaining them instead.
+1. make sure you are running the community firmware and controller and check through the change notes to see if it has already been addressed. 
 
-2. Please make sure to **test out the current edge version** of Smoothieware to see
-   whether the problem you are encountering still exists, and **test with a clean config**.
+2. Please make sure to **test out the current edge version** of the firmware and controller to see
+   whether the problem you are encountering still exists.
 
 3. The problem still exists? Then please look through the
-   [existing tickets](https://github.com/Smoothieware/Smoothieware/issues?state=open)
+   [existing tickets](https://github.com/Carvera-Community/Carvera_Community_Firmware/issues?q=is%3Aopen+is%3Aissue)
    to check if there already exists a report of the issue you are encountering.
 
    **Very important:** Please make absolutely sure that if you find a bug that looks like
@@ -55,27 +57,14 @@ only provided here as some additional information for you), **even if only addin
 
 #### What happened instead?
 
-#### Branch & Commit or Version of Smoothieware
+#### Branch & Commit or Version of The firmware and controller
 
-    [Can be found with the version command. (@version in pronterface)]
+    [Can be found with the version command. (@version in the controller MDI)]
 
-#### Hardware model you are using (Make, and version)
+#### Operating System
 
-    [eg Smoothieboard 5X V1b, Azteeg X5 Mini V2, ... etc]
+#### Any MDI output or screenshots that help explain the issue
 
-#### Host and Operating System running the Host
-
-    [eg Pronterface, Octoprint, linux x64]
-
-#### Link to and console logs
-
-    [On gist.github.com or pastebin.com. Always include and never truncate.]
-    
-#### Link to running config and M503 results
-
-    [On gist.github.com or pastebin.com. Always include and never truncate.]
-
-I have read the [Wiki](http://smoothieware.org) and Especially the [Trouble Shooting section](http://smoothieware.org/troubleshooting)... 
 
 Copy-paste this template **completely**. Do not skip any lines!
 
