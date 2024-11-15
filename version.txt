@@ -3,6 +3,7 @@ To let the Carvera work perfectly, please make sure both your controller softwar
 
 [community_1.0.0_beta1]
 Note: this is beta software and should be used for testing purposes only until an official release is made. Unexpected bugs may arise.
+This is a community supported version firmware. Should you run into any issues, direct them here and not toward makera.
 1:Bug fixing: clarify ATC tool detection messages https://github.com/Carvera-Community/Carvera_Community_Firmware/issues/12
 2.Bug fixing: add error detection to TLO routine https://github.com/Carvera-Community/Carvera_Community_Firmware/issues/10
 3.Breaking Change: Diagnostic menu used * to communicate with the machine, breaking multiplication. As a result, the diagnostic menu will not work with the stock
