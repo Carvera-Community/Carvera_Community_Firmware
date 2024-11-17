@@ -18,7 +18,7 @@ following section *completely*. Thank you! :)
 
 ### What should I do before submitting an issue?
 
-1. make sure you are running the community firmware and controller and check through the change notes to see if it has already been addressed. 
+1. Make sure you are running the latest released community firmware and controller and check through the change notes to see if your issue has already been addressed. 
 
 2. Please make sure to **test out the current edge version** of the firmware and controller to see
    whether the problem you are encountering still exists.
@@ -66,7 +66,7 @@ only provided here as some additional information for you), **even if only addin
 #### Any MDI output or screenshots that help explain the issue
 
 
-Copy-paste this template **completely**. Do not skip any lines!
+Please fill out this template **completely**. Do not skip any lines!
 
 It might happen that you are asked to provide a more thorough crash log which you can find out how to do [here](http://smoothieware.org/mri-debugging
 )
