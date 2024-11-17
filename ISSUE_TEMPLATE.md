@@ -1,6 +1,6 @@
 ## How to file an issue
 
-If you encounter an issue Carvera Community Firmware, you are welcome to
+If you encounter an issue using the Carvera Community Firmware, you are welcome to
 [submit an issue](https://github.com/Carvera-Community/Carvera_Community_Firmware/issues)
 
 Since this firmware is a modification to the carvera core firmware, please do not pester Makera with bug reports while using it. 
