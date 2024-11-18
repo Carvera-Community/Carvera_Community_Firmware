@@ -25,6 +25,7 @@ public:
 private:
     typedef enum {
         NONE,
+        CHANGE,
         FULL, 				// M6T?
         DROP, 				// M6T-1
         PICK, 				// M6T?
@@ -47,11 +48,21 @@ private:
 		LOOSED,		// status after loose
     } CLAMP_STATUS;
 
+	typedef enum {
+    	BP_SLEEP,	// do nothing
+		BP_ALARM,	
+		BP_ERROR,	
+		BP_COMPLETE,//job complete
+		BP_TOOL, 	//change tools
+    } BEEP_STATUS;
+    
     ATC_STATUS atc_status;
+    
 
     uint32_t read_endstop(uint32_t dummy);
     uint32_t read_detector(uint32_t dummy);
     uint32_t countdown_probe_laser(uint32_t dummy);
+    uint32_t beep_beep(uint32_t dummy);
 
     void switch_probe_laser(bool state);
 
@@ -73,6 +84,7 @@ private:
     void set_tool_offset();
 
     //
+    void fill_change_scripts(int new_tool, bool clear_z);
     void fill_drop_scripts(int old_tool);
     void fill_pick_scripts(int new_tool, bool clear_z);
     void fill_cali_scripts(bool is_probe, bool clear_z);
@@ -87,7 +99,11 @@ private:
 
     void clear_script_queue();
 
-    void rapid_move(bool mc, float x, float y, float z);
+    void rapid_move(bool mc, float x, float y, float z, float a, float b);
+    void beep_complete();
+    void beep_alarm();
+    void beep_tool_change(int tool);
+    void beep_error();
 
     std::queue<string> script_queue;
 
@@ -97,6 +113,8 @@ private:
 
     bool playing_file;
     bool g28_triggered;
+    
+    bool blaserManual;
 
     uint16_t probe_laser_last;
 
@@ -167,14 +185,19 @@ private:
     vector<struct atc_tool> atc_tools;
 
     int active_tool;
+    int target_tool;
     int tool_number;
     int goto_position;
     float position_x;
     float position_y;
+    float position_a;
+    float position_b;
 
     float ref_tool_mz;
     float cur_tool_mz;
     float tool_offset;
+    int beep_state;
+    int beep_count;
 
 };
 
