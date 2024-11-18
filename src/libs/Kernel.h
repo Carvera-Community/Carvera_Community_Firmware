@@ -98,6 +98,7 @@ typedef struct {
 	float reserve;
 	int TOOL;
 	float G54AB[2];
+    float perm_vars[20];
 } EEPROM_data;
 
 typedef struct {
@@ -126,6 +127,8 @@ class Kernel {
 
         bool kernel_has_event(_EVENT_ENUM id_event, Module *module);
         void unregister_for_event(_EVENT_ENUM id_event, Module *module);
+
+        float get_user_var(int var_num);
 
         bool is_using_leds() const { return use_leds; }
         bool is_halted() const { return halted; }
@@ -224,6 +227,7 @@ class Kernel {
         uint16_t probe_addr;
         bool checkled;
         bool spindleon;
+        float local_vars[20];
 
     private:
         // When a module asks to be called for a specific event ( a hook ), this is where that request is remembered
