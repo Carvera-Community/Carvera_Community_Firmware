@@ -1,0 +1,43 @@
+# Prerequisites
+*.d
+
+# Compiled Object files
+*.slo
+*.lo
+*.o
+*.obj
+
+# Precompiled Headers
+*.gch
+*.pch
+
+# Compiled Dynamic libraries
+*.so
+*.dylib
+*.dll
+
+# Fortran module files
+*.mod
+*.smod
+
+# Compiled Static libraries
+*.lai
+*.la
+*.a
+*.lib
+
+# Executables
+*.exe
+*.out
+*.app
+
+
+/gcc-arm-none-eabi
+/LPC1768
+/mbed/drop
+/mbed/src/Debug
+/mbed/src/Release
+gcc-arm-none-eabi-4_8-2014q1-20140314-win32.zip
+BuildShell.cmd
+win_install.log
+
