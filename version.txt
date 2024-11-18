@@ -1,6 +1,9 @@
 Notice: 
 To let the Carvera work perfectly, please make sure both your controller software and firmware are up to date. For firmware, download the new firmware first, then use the 'update' function to upgrade the firmware, and reset the machine after the update is complete.
 
+[1.0.1c1.0.1beta2]
+1. rebase to makera fimware version 0.9.9, adds carvera air support
+
 [1.0.1c1.0.1beta]
 Note: this is beta software and should be used for testing purposes only until an official release is made. Unexpected bugs may arise.
 This is a community supported version firmware. Should you run into any issues, direct them here and not toward makera.
