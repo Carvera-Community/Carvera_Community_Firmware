@@ -551,13 +551,18 @@ bool CartGridStrategy::scan_bed(Gcode *gc)
 
     float x_step = _x_size / n;
     float y_step = _y_size / m;
+    float max_z = z_reference;
+    float min_z = z_reference;
     for (int c = 0; c < m; ++c) {
         std::string scanline;
         float y = _y_start + y_step * c;
         for (int r = 0; r < n; ++r) {
             float x = _x_start + x_step * r;
             if(!zprobe->doProbeAt(mm, x - X_PROBE_OFFSET_FROM_EXTRUDER, y - Y_PROBE_OFFSET_FROM_EXTRUDER)) return false;
-            float z = (gc->has_letter('H') ? gc->get_value('H') : zprobe->getProbeHeight()) - mm - z_reference;
+            float z = (gc->has_letter('H') ? gc->get_value('H') : zprobe->getProbeHeight()) - mm;
+            max_z = (z > max_z ) ? z : max_z;
+            min_z = (z < min_z ) ? z : min_z;	
+            z = z - z_reference;
             char buf[16];
             size_t n= snprintf(buf, sizeof(buf), "%1.3f ", z);
             scanline.append(buf, n);
@@ -565,7 +570,9 @@ bool CartGridStrategy::scan_bed(Gcode *gc)
         }
         gc->stream->printf("%s\n", scanline.c_str());
     }
-    gc->stream->printf("Maximum delta: %1.3f\n", max_delta);
+    gc->stream->printf("Max deviation from zero: %1.3f\n", max_delta);
+    max_delta = fabs(max_z - min_z);
+    gc->stream->printf("Max deviation between highest and lowest: %1.3f\n", max_delta);
     return true;
 }
 
@@ -660,6 +667,8 @@ bool CartGridStrategy::doProbe(Gcode *gc)
 
     // keep track of worst case delta
     float max_delta= fabs(z_reference);
+    float max_z = z_reference;
+    float min_z = z_reference;
 
     // probe all the points of the grid
     for (int yCount = 0; yCount < this->current_grid_y_size; yCount++) {
@@ -682,7 +691,10 @@ bool CartGridStrategy::doProbe(Gcode *gc)
                 return false;
             }
 
-            float measured_z = (gc->has_letter('H') ? gc->get_value('H') : zprobe->getProbeHeight()) - mm - z_reference; // this is the delta z from bed at 0,0
+            float measured_z = (gc->has_letter('H') ? gc->get_value('H') : zprobe->getProbeHeight()) - mm; // this is the delta z from bed at 0,0
+            max_z = (measured_z > max_z ) ? measured_z : max_z;
+            min_z = (measured_z < min_z ) ? measured_z : min_z;	
+            measured_z = measured_z - z_reference;
             gc->stream->printf("DEBUG: X%1.3f, Y%1.3f, Z%1.3f\n", xProbe, yProbe, measured_z);
             grid[xCount + (this->current_grid_x_size * yCount)] = measured_z;
             if(fabs(measured_z) > max_delta) max_delta= fabs(measured_z);
@@ -691,7 +703,9 @@ bool CartGridStrategy::doProbe(Gcode *gc)
 
     print_bed_level(gc->stream);
 
-    gc->stream->printf("Maximum delta: %1.3f\n", max_delta);
+    gc->stream->printf("Max deviation from zero: %1.3f\n", max_delta);
+    max_delta = fabs(max_z - min_z);
+    gc->stream->printf("Max deviation between highest and lowest: %1.3f\n", max_delta);
 
     if (do_manual_attach) {
         // Move to the attachment point defined for removal of probe
