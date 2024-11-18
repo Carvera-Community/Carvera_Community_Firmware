@@ -28,6 +28,7 @@ public:
     static void print_mem(StreamOutput *stream) { mem_command("", stream); }
     static void version_command(string parameters, StreamOutput *stream );
     static void ftype_command( string parameters, StreamOutput *stream );
+    static void model_command( string parameters, StreamOutput *stream );
 
 private:
 
@@ -77,6 +78,14 @@ private:
     static void config_restore_command(string parameters, StreamOutput *stream );
 
     static void config_default_command(string parameters, StreamOutput *stream );
+    
+    static void test_5th_command( string parameters, StreamOutput *stream );
+    
+    static void test_4th_command( string parameters, StreamOutput *stream );
+    
+    static void test_led_command( string parameters, StreamOutput *stream );
+    
+    static void fset_command( string parameters, StreamOutput *stream );
 
     typedef void (*PFUNC)(string parameters, StreamOutput *stream);
     typedef struct {
