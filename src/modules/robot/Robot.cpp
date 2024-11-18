@@ -129,8 +129,8 @@ Robot::Robot()
     seconds_per_minute = 60.0F;
     this->compensationTransform = nullptr;
     this->get_e_scale_fnc= nullptr;
-    this->wcs_offsets.fill(wcs_t(0.0F, 0.0F, 0.0F));
-    this->g92_offset = wcs_t(0.0F, 0.0F, 0.0F);
+    this->wcs_offsets.fill(wcs_t(0.0F, 0.0F, 0.0F, 0.0F, 0.0F));
+    this->g92_offset = wcs_t(0.0F, 0.0F, 0.0F, 0.0F, 0.0F);
     this->next_command_is_MCS = false;
     this->disable_segmentation= false;
     this->disable_arm_solution= false;
@@ -153,7 +153,9 @@ void Robot::on_module_loaded()
 	float x = THEKERNEL->eeprom_data->G54[0];
 	float y = THEKERNEL->eeprom_data->G54[1];
 	float z = THEKERNEL->eeprom_data->G54[2];
-    wcs_offsets[0] = wcs_t(x, y, z);
+	float a = THEKERNEL->eeprom_data->G54AB[0];
+	float b = THEKERNEL->eeprom_data->G54AB[1];
+    wcs_offsets[0] = wcs_t(x, y, z, a, b);
 }
 
 #define ACTUATOR_CHECKSUMS(X) {     \
@@ -199,8 +201,8 @@ void Robot::load_config()
         this->arm_solution = new CartesianSolution(THEKERNEL->config);
     }
 
-    this->feed_rate           = THEKERNEL->config->value(default_feed_rate_checksum   )->by_default(  100.0F)->as_number();
-    this->seek_rate           = THEKERNEL->config->value(default_seek_rate_checksum   )->by_default(  100.0F)->as_number();
+    this->feed_rate           = THEKERNEL->config->value(default_feed_rate_checksum   )->by_default( 1000.0F)->as_number();
+    this->seek_rate           = THEKERNEL->config->value(default_seek_rate_checksum   )->by_default( 3000.0F)->as_number();
     this->mm_per_line_segment = THEKERNEL->config->value(mm_per_line_segment_checksum )->by_default(    5.0F)->as_number();
     this->delta_segments_per_second = THEKERNEL->config->value(delta_segments_per_second_checksum )->by_default(0.0f   )->as_number();
     this->mm_per_arc_segment  = THEKERNEL->config->value(mm_per_arc_segment_checksum  )->by_default(    0.0f)->as_number();
@@ -221,12 +223,17 @@ void Robot::load_config()
         // optional setting for a fixed G92 offset
         std::vector<float> t= parse_number_list(g92.c_str());
         if(t.size() == 3) {
-            g92_offset = wcs_t(t[0], t[1], t[2]);
+            g92_offset = wcs_t(t[0], t[1], t[2], 0, 0);
+        }
+        else if(t.size() == 4) {
+        	g92_offset = wcs_t(t[0], t[1], t[2], t[3], 0);
+        }else if(t.size() == 5) {
+        	g92_offset = wcs_t(t[0], t[1], t[2], t[3], t[4]);
         }
     }
 
     // default s value for laser
-    this->s_value = THEKERNEL->config->value(laser_module_default_power_checksum)->by_default(0.8F)->as_number()
+    this->s_value = THEKERNEL->config->value(laser_module_default_power_checksum)->by_default(1.0F)->as_number()
     					* THEKERNEL->config->value(laser_module_maximum_s_value_checksum)->by_default(1.0f)->as_number();
 
     // 2024
@@ -285,7 +292,7 @@ void Robot::load_config()
         }
 
         actuators[a]->change_steps_per_mm(THEKERNEL->config->value(motor_checksums[a][3])->by_default(a == 2 ? 2560.0F : 80.0F)->as_number());
-        actuators[a]->set_max_rate(THEKERNEL->config->value(motor_checksums[a][4])->by_default(30000.0F)->as_number()/60.0F); // it is in mm/min and converted to mm/sec
+        actuators[a]->set_max_rate(THEKERNEL->config->value(motor_checksums[a][4])->by_default(3000.0F)->as_number()/60.0F); // it is in mm/min and converted to mm/sec
         actuators[a]->set_acceleration(THEKERNEL->config->value(motor_checksums[a][5])->by_default(NAN)->as_number()); // mm/secs²
     }
 
@@ -369,7 +376,7 @@ void Robot::pop_state()
 std::vector<Robot::wcs_t> Robot::get_wcs_state() const
 {
     std::vector<wcs_t> v;
-    v.push_back(wcs_t(current_wcs, MAX_WCS, 0));
+    v.push_back(wcs_t(current_wcs, MAX_WCS, 0, 0, 0));
     for(auto& i : wcs_offsets) {
         v.push_back(i);
     }
@@ -466,7 +473,9 @@ Robot::wcs_t Robot::mcs2wcs(const Robot::wcs_t& pos) const
     return std::make_tuple(
         std::get<X_AXIS>(pos) - std::get<X_AXIS>(wcs_offsets[current_wcs]) + std::get<X_AXIS>(g92_offset) - std::get<X_AXIS>(tool_offset),
         std::get<Y_AXIS>(pos) - std::get<Y_AXIS>(wcs_offsets[current_wcs]) + std::get<Y_AXIS>(g92_offset) - std::get<Y_AXIS>(tool_offset),
-        std::get<Z_AXIS>(pos) - std::get<Z_AXIS>(wcs_offsets[current_wcs]) + std::get<Z_AXIS>(g92_offset) - std::get<Z_AXIS>(tool_offset)
+        std::get<Z_AXIS>(pos) - std::get<Z_AXIS>(wcs_offsets[current_wcs]) + std::get<Z_AXIS>(g92_offset) - std::get<Z_AXIS>(tool_offset),
+        std::get<A_AXIS>(pos) - std::get<A_AXIS>(wcs_offsets[current_wcs]) + std::get<A_AXIS>(g92_offset) - std::get<A_AXIS>(tool_offset),
+        std::get<B_AXIS>(pos) - std::get<B_AXIS>(wcs_offsets[current_wcs]) + std::get<B_AXIS>(g92_offset) - std::get<B_AXIS>(tool_offset)
     );
 }
 
@@ -476,7 +485,9 @@ Robot::wcs_t Robot::wcs2mcs(const Robot::wcs_t& pos) const
     return std::make_tuple(
         std::get<X_AXIS>(pos) + std::get<X_AXIS>(wcs_offsets[current_wcs]) - std::get<X_AXIS>(g92_offset) + std::get<X_AXIS>(tool_offset),
         std::get<Y_AXIS>(pos) + std::get<Y_AXIS>(wcs_offsets[current_wcs]) - std::get<Y_AXIS>(g92_offset) + std::get<Y_AXIS>(tool_offset),
-        std::get<Z_AXIS>(pos) + std::get<Z_AXIS>(wcs_offsets[current_wcs]) - std::get<Z_AXIS>(g92_offset) + std::get<Z_AXIS>(tool_offset)
+        std::get<Z_AXIS>(pos) + std::get<Z_AXIS>(wcs_offsets[current_wcs]) - std::get<Z_AXIS>(g92_offset) + std::get<Z_AXIS>(tool_offset),
+        std::get<A_AXIS>(pos) + std::get<A_AXIS>(wcs_offsets[current_wcs]) - std::get<A_AXIS>(g92_offset) + std::get<A_AXIS>(tool_offset),
+        std::get<B_AXIS>(pos) + std::get<B_AXIS>(wcs_offsets[current_wcs]) - std::get<B_AXIS>(g92_offset) + std::get<B_AXIS>(tool_offset)
     );
 }
 
@@ -544,8 +555,8 @@ void Robot::on_gcode_received(void *argument)
                     if(n == 0) n = current_wcs; // set current coordinate system
                     else --n;
                     if(n < MAX_WCS) {
-                        float x, y, z;
-                        std::tie(x, y, z) = wcs_offsets[n];
+                        float x, y, z, a, b;
+                        std::tie(x, y, z, a, b) = wcs_offsets[n];
                         // notify atc module to change ref tool mcs if Z wcs offset is chaned
                         if (gcode->has_letter('Z')) {
                         	PublicData::set_value(atc_handler_checksum, set_ref_tool_mz_checksum, nullptr);
@@ -563,14 +574,25 @@ void Robot::on_gcode_received(void *argument)
                             if(gcode->has_letter('Y')){
                                 y -= to_millimeters(gcode->get_value('Y')) - std::get<Y_AXIS>(pos);
                             }
+                            
                             if(gcode->has_letter('Z')) {
                                 z -= to_millimeters(gcode->get_value('Z')) - std::get<Z_AXIS>(pos);
+                            }
+                            
+                            if(gcode->has_letter('A')) {
+                                a -= to_millimeters(gcode->get_value('A')) - std::get<A_AXIS>(pos);
+                            }
+                            
+                            if(gcode->has_letter('B')) {
+                                b -= to_millimeters(gcode->get_value('B')) - std::get<B_AXIS>(pos);
                             }
 
                         } else {
                             if(gcode->has_letter('X')) x = to_millimeters(gcode->get_value('X'));
                             if(gcode->has_letter('Y')) y = to_millimeters(gcode->get_value('Y'));
                             if(gcode->has_letter('Z')) z = to_millimeters(gcode->get_value('Z'));
+                            if(gcode->has_letter('A')) a = to_millimeters(gcode->get_value('A'));
+                            if(gcode->has_letter('B')) b = to_millimeters(gcode->get_value('B'));
                             /*
                             if(absolute_mode) {
                                 // the value is the offset from machine zero
@@ -583,13 +605,15 @@ void Robot::on_gcode_received(void *argument)
                                 if(gcode->has_letter('Z')) z += to_millimeters(gcode->get_value('Z'));
                             }*/
                         }
-                        wcs_offsets[n] = wcs_t(x, y, z);
-
+                        wcs_offsets[n] = wcs_t(x, y, z, a, b);
+                        
                 		// save wcs data to eeprom
                         if (n == 0) {
                     	    THEKERNEL->eeprom_data->G54[0] = x;
                     	    THEKERNEL->eeprom_data->G54[1] = y;
                     	    THEKERNEL->eeprom_data->G54[2] = z;
+                    	    THEKERNEL->eeprom_data->G54AB[0] = a;
+                    	    THEKERNEL->eeprom_data->G54AB[1] = b;
                     	    THEKERNEL->write_eeprom_data();
                         }
                     }
@@ -617,7 +641,7 @@ void Robot::on_gcode_received(void *argument)
             case 92: {
                 if(gcode->subcode == 1 || gcode->subcode == 2 || gcode->get_num_args() == 0) {
                     // reset G92 offsets to 0
-                    g92_offset = wcs_t(0, 0, 0);
+                    g92_offset = wcs_t(0, 0, 0, 0, 0);
 
                 } else if (gcode->subcode == 4) {
                     // G92.4 is a smoothie special it sets manual homing for X,Y,Z
@@ -633,23 +657,34 @@ void Robot::on_gcode_received(void *argument)
                     		if (fabs(ma) > 360) {
                     			THEROBOT->reset_axis_position(fmodf(ma, 360.0), A_AXIS);
                     		}
-                    	} else if(gcode->has_letter('R')){
+                    	} else if(gcode->has_letter('R')){                    		 
+                    		float x, y, z, a, b;
+                        	std::tie(x, y, z, a, b) = wcs_offsets[current_wcs];    
                     		// first shrink A value
                     		float ma = actuators[A_AXIS]->get_current_position();
                     		ma = fmodf(ma, 360.0);
                     		THEROBOT->reset_axis_position(ma, A_AXIS);
-                    		// second 
-                    		float mb = gcode->get_value('A');
-                    		mb = fmodf(mb, 360.0);
+                    		
+                    		// second cal the target actuators[A_AXIS]
+                    		float mb = gcode->get_value('A') + a;
+                    		float mc = fmodf(mb, 360.0);
                     		
                     		float delta[A_AXIS+1];
                     		for (size_t j = 0; j <= A_AXIS; ++j) delta[j]= 0;
-                    		delta[A_AXIS]= mb - ma; // we go the max
+                    		delta[A_AXIS]= mc - ma; // we go the max
                     		THEROBOT->delta_move(delta, this->seek_rate, A_AXIS+1);
                     		// wait for A moving
         					THECONVEYOR->wait_for_idle();
                     		// third
-                    		THEROBOT->reset_axis_position(gcode->get_value('A'), A_AXIS);                    		
+                    		THEROBOT->reset_axis_position(gcode->get_value('A')+a, A_AXIS);  
+                    		if (current_wcs == 0) {
+                    	    THEKERNEL->eeprom_data->G54[0] = x;
+                    	    THEKERNEL->eeprom_data->G54[1] = y;
+                    	    THEKERNEL->eeprom_data->G54[2] = z;
+                    	    THEKERNEL->eeprom_data->G54AB[0] = a;
+                    	    THEKERNEL->eeprom_data->G54AB[1] = b;
+                    	    THEKERNEL->write_eeprom_data();
+                        }
                     		
                     	} else {
                         	THEROBOT->reset_axis_position(gcode->get_value('A'), A_AXIS);
@@ -658,19 +693,21 @@ void Robot::on_gcode_received(void *argument)
 
                 } else if (gcode->subcode == 3) {
                     // initialize G92 to the specified values, only used for saving it with M500
-                    float x= 0, y= 0, z= 0;
+                    float x= 0, y= 0, z= 0, a= 0, b= 0;
                     if(gcode->has_letter('X')) x= gcode->get_value('X');
                     if(gcode->has_letter('Y')) y= gcode->get_value('Y');
                     if(gcode->has_letter('Z')) z= gcode->get_value('Z');
-                    g92_offset = wcs_t(x, y, z);
+                    if(gcode->has_letter('A')) a= gcode->get_value('A');
+                    if(gcode->has_letter('B')) b= gcode->get_value('B');
+                    g92_offset = wcs_t(x, y, z, a, b);
 
                 } else if (gcode->subcode == 5) {
                     // set laser mode offset
                 	setLaserOffset();
                 } else {
                     // standard setting of the g92 offsets, making current WCS position whatever the coordinate arguments are
-                    float x, y, z;
-                    std::tie(x, y, z) = g92_offset;
+                    float x, y, z, a, b;
+                    std::tie(x, y, z, a, b) = g92_offset;
                     // get current position in WCS
                     wcs_t pos= mcs2wcs(machine_position);
 
@@ -684,9 +721,15 @@ void Robot::on_gcode_received(void *argument)
                     if(gcode->has_letter('Z')) {
                         z += to_millimeters(gcode->get_value('Z')) - std::get<Z_AXIS>(pos);
                     }
-                    g92_offset = wcs_t(x, y, z);
+                    if(gcode->has_letter('A')) {
+                        a += to_millimeters(gcode->get_value('A')) - std::get<A_AXIS>(pos);
+                    }
+                    if(gcode->has_letter('B')) {
+                        b += to_millimeters(gcode->get_value('B')) - std::get<B_AXIS>(pos);
+                    }
+                    g92_offset = wcs_t(x, y, z, a, b);
                 }
-
+/*
                 #if MAX_ROBOT_ACTUATORS > 3
                 if(gcode->subcode == 0 && (gcode->has_letter('E') || gcode->get_num_args() == 0)){
                     // reset the E position, legacy for 3d Printers to be reprap compatible
@@ -710,7 +753,7 @@ void Robot::on_gcode_received(void *argument)
                     }
                 }
                 #endif
-
+*/
                 return;
             }
         }
@@ -982,10 +1025,10 @@ void Robot::on_gcode_received(void *argument)
                     gcode->stream->printf("%s\n", wcs2gcode(current_wcs).c_str());
                     int n = 1;
                     for(auto &i : wcs_offsets) {
-                        if(i != wcs_t(0, 0, 0)) {
-                            float x, y, z;
-                            std::tie(x, y, z) = i;
-                            gcode->stream->printf("G10 L2 P%d X%f Y%f Z%f ; %s\n", n, x, y, z, wcs2gcode(n-1).c_str());
+                        if(i != wcs_t(0, 0, 0, 0, 0)) {
+                            float x, y, z, a, b;
+                            std::tie(x, y, z, a, b) = i;
+                            gcode->stream->printf("G10 L2 P%d X%f Y%f Z%f A%f B%f ; %s\n", n, x, y, z, a, b, wcs2gcode(n-1).c_str());
                         }
                         ++n;
                     }
@@ -993,10 +1036,10 @@ void Robot::on_gcode_received(void *argument)
                 if(save_g92) {
                     // linuxcnc saves G92, so we do too if configured, default is to not save to maintain backward compatibility
                     // also it needs to be used to set Z0 on rotary deltas as M206/306 can't be used, so saving it is necessary in that case
-                    if(g92_offset != wcs_t(0, 0, 0)) {
-                        float x, y, z;
-                        std::tie(x, y, z) = g92_offset;
-                        gcode->stream->printf("G92.3 X%f Y%f Z%f\n", x, y, z); // sets G92 to the specified values
+                    if(g92_offset != wcs_t(0, 0, 0, 0, 0)) {
+                        float x, y, z, a, b;
+                        std::tie(x, y, z, a, b) = g92_offset;
+                        gcode->stream->printf("G92.3 X%f Y%f Z%f A%f B%f\n", x, y, z, a, b); // sets G92 to the specified values
                     }
                 }
             }
@@ -1062,8 +1105,8 @@ int Robot::get_active_extruder() const
 void Robot::process_move(Gcode *gcode, enum MOTION_MODE_T motion_mode)
 {
     // we have a G0/G1/G2/G3 so extract parameters and apply offsets to get machine coordinate target
-    // get XYZ and one E (which goes to the selected extruder)
-    float param[4]{NAN, NAN, NAN, NAN};
+    // get XYZ and one E (which goes to the selected extruder)/A and B
+    float param[5]{NAN, NAN, NAN, NAN, NAN};
 
     // process primary axis
     for(int i= X_AXIS; i <= Z_AXIS; ++i) {
@@ -1116,6 +1159,7 @@ void Robot::process_move(Gcode *gcode, enum MOTION_MODE_T motion_mode)
     float delta_e= NAN;
 
     #if MAX_ROBOT_ACTUATORS > 3
+/*
     // process extruder parameters, for active extruder only (only one active extruder at a time)
     int selected_extruder= 0;
     if(gcode->has_letter('E')) {
@@ -1146,6 +1190,37 @@ void Robot::process_move(Gcode *gcode, enum MOTION_MODE_T motion_mode)
             }
         }
     }
+*/
+	for (int i = A_AXIS; i < n_motors; ++i) {
+        char letter = 'A' + i - A_AXIS;
+        if( gcode->has_letter(letter) ) {
+            param[i] = this->to_millimeters(gcode->get_value(letter));
+        }
+    }
+    if(!next_command_is_MCS) {
+        if (this->absolute_mode) {
+            // apply wcs offsets and g92 offset and tool offset
+            if(!isnan(param[A_AXIS])) {
+                target[A_AXIS]= ROUND_NEAR_HALF(param[A_AXIS] + std::get<A_AXIS>(wcs_offsets[current_wcs]) - std::get<A_AXIS>(g92_offset) + std::get<A_AXIS>(tool_offset));
+            }
+                	                	
+            if(!isnan(param[B_AXIS])) {
+                target[B_AXIS]= ROUND_NEAR_HALF(param[B_AXIS] + std::get<B_AXIS>(wcs_offsets[current_wcs]) - std::get<B_AXIS>(g92_offset) + std::get<B_AXIS>(tool_offset));
+
+            }
+        } else {
+            // they are deltas from the machine_position if specified
+            for(int i= A_AXIS; i <= B_AXIS; ++i) {
+                if(!isnan(param[i])) target[i] = ROUND_NEAR_HALF(param[i] + machine_position[i]);
+            }
+        }
+    }else{
+        // already in machine coordinates, we do not add wcs or tool offset for that
+        for(int i= A_AXIS; i <= B_AXIS; ++i) {
+            if(!isnan(param[i])) target[i] = ROUND_NEAR_HALF(param[i]);
+        }
+    }
+    
     #endif
 
     if( gcode->has_letter('F') ) {
@@ -1382,8 +1457,8 @@ bool Robot::append_milestone(const float target[], float rate_mm_s, unsigned int
                     }
 
                     THEKERNEL->streams->printf("Soft Endstop %c was exceeded - reset or $X or M999 required\n", i+'X');
-                    THEKERNEL->call_event(ON_HALT, nullptr);
                     THEKERNEL->set_halt_reason(SOFT_LIMIT);
+                    THEKERNEL->call_event(ON_HALT, nullptr);
                     return false;
 
                 //} else if(soft_endstop_truncate) {
@@ -1516,7 +1591,7 @@ bool Robot::append_milestone(const float target[], float rate_mm_s, unsigned int
 		    // THEKERNEL->streams->printf("d: %f, rate: %f, distance: %f, aux_move: %d, acc: %f, isecs: %f, line: %d\n", d, actuator_rate, distance, auxilliary_move, acceleration, isecs, line);
 		    float a_perimeter = PI * 2 + 30;
 			// A Axis moved, calculate real A Axis speed based on Y and Z wcs
-	        wcs_t curr_mpos = wcs_t(target[X_AXIS], target[Y_AXIS], target[Z_AXIS]);
+	        wcs_t curr_mpos = wcs_t(target[X_AXIS], target[Y_AXIS], target[Z_AXIS], 0, 0);
 	        wcs_t curr_wpos = this->mcs2wcs(curr_mpos);
 			float abs_y_wcs = fabsf(std::get<Y_AXIS>(curr_wpos));
 			float abs_z_wcs = fabsf(std::get<Z_AXIS>(curr_wpos));
@@ -1915,14 +1990,14 @@ void Robot::select_plane(uint8_t axis_0, uint8_t axis_1, uint8_t axis_2)
 
 void Robot::clearToolOffset()
 {
-    this->tool_offset= wcs_t(0,0,0);
+    this->tool_offset= wcs_t(0,0,0,0,0);
 
     THEKERNEL->eeprom_data->TLO = 0;
 
 }
 
 void Robot::loadToolOffset(const float offset[N_PRIMARY_AXIS]) {
-	this->tool_offset = wcs_t(offset[0], offset[1], offset[2]);
+	this->tool_offset = wcs_t(offset[0], offset[1], offset[2], 0, 0);
     // update laser offset
     setLaserOffset();
 }
@@ -1938,14 +2013,14 @@ void Robot::saveToolOffset(const float offset[N_PRIMARY_AXIS], const float cur_t
 void Robot::setLaserOffset()
 {
 	if (THEKERNEL->get_laser_mode()) {
-		g92_offset = wcs_t(laser_module_offset_x, laser_module_offset_y, laser_module_offset_z);
+		g92_offset = wcs_t(laser_module_offset_x, laser_module_offset_y, laser_module_offset_z, 0, 0);
 		THEKERNEL->streams->printf("Laser offset set to: %1.3f, %1.3f, %1.3f\n", laser_module_offset_x, laser_module_offset_y, laser_module_offset_z);
 		// g92_offset = wcs_t(laser_module_offset_x, laser_module_offset_y, laser_module_offset_z + std::get<Z_AXIS>(tool_offset));
 	}
 }
 
 void Robot::clearLaserOffset() {
-	this->g92_offset = wcs_t(0.0F, 0.0F, 0.0F);
+	this->g92_offset = wcs_t(0.0F, 0.0F, 0.0F, 0.0F, 0.0F);
 }
 
 
