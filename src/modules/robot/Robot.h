@@ -18,6 +18,7 @@ using std::string;
 #include "libs/Module.h"
 #include "ActuatorCoordinates.h"
 #include "nuts_bolts.h"
+#include <fastmath.h>
 
 class Gcode;
 class BaseSolution;
@@ -82,6 +83,8 @@ class Robot : public Module {
         wcs_t mcs2wcs(const float *pos) const { return mcs2wcs(wcs_t(pos[X_AXIS], pos[Y_AXIS], pos[Z_AXIS], pos[A_AXIS], pos[B_AXIS])); }
         wcs_t wcs2mcs(const wcs_t &pos) const;
         wcs_t wcs2mcs(const float *pos) const { return wcs2mcs(wcs_t(pos[X_AXIS], pos[Y_AXIS], pos[Z_AXIS], pos[A_AXIS], pos[B_AXIS])); }
+
+        void set_current_wcs_by_mpos(float x = NAN, float y = NAN, float z = NAN, float a = NAN, float b = NAN);
 
         struct {
             bool inch_mode:1;                                 // true for inch mode, false for millimeter mode ( default )

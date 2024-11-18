@@ -506,6 +506,35 @@ void Robot::check_max_actuator_speeds()
     }
 }
 
+void Robot::set_current_wcs_by_mpos(float x, float y, float z, float a, float b)
+{
+    if(isnan(x)){
+        x = std::get<X_AXIS>(wcs_offsets[current_wcs]);
+    }
+    if(isnan(y)){
+        y = std::get<Y_AXIS>(wcs_offsets[current_wcs]);
+    }
+    if(isnan(z)){
+        z = std::get<Z_AXIS>(wcs_offsets[current_wcs]);
+    }
+    if(isnan(a)){
+        a = std::get<A_AXIS>(wcs_offsets[current_wcs]);
+    }
+    if(isnan(b)){
+        b = std::get<B_AXIS>(wcs_offsets[current_wcs]);
+    }
+    THEROBOT->wcs_offsets[current_wcs] = Robot::wcs_t(x, y, z , a , b);
+    // save wcs data to eeprom if current wcs = G54
+    if (current_wcs == 0) {
+        THEKERNEL->eeprom_data->G54[0] = x;
+        THEKERNEL->eeprom_data->G54[1] = y;
+        THEKERNEL->eeprom_data->G54[2] = z;
+        THEKERNEL->eeprom_data->G54AB[0] = a;
+        THEKERNEL->eeprom_data->G54AB[1] = b;
+        THEKERNEL->write_eeprom_data();
+    }
+}
+
 //A GCode has been received
 //See if the current Gcode line has some orders for us
 void Robot::on_gcode_received(void *argument)
