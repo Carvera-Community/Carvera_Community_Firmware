@@ -41,6 +41,7 @@ class PWMSpindleControl: public SpindleControl {
         // Current values, updated at runtime
         float current_rpm;
         float target_rpm;
+        float last_rpm;
         float current_I_value;
         float prev_error;
         float current_pwm_value;
@@ -71,6 +72,7 @@ class PWMSpindleControl: public SpindleControl {
         volatile uint32_t rev_time;
         volatile uint32_t rev_count;
         uint32_t update_count;
+        uint32_t target_change_count;
 
 
         float factor;
