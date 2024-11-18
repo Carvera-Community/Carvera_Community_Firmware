@@ -1640,6 +1640,7 @@ bool Robot::append_line(Gcode *gcode, const float target[], float rate_mm_s, flo
     if(rate_mm_s <= 0.0F) {
         gcode->is_error= true;
         gcode->txt_after_ok= (rate_mm_s == 0 ? "Undefined feed rate" : "feed rate < 0");
+        THEKERNEL->streams->printf(rate_mm_s == 0 ? "Undefined feed rate" : "feed rate < 0");
         return false;
     }
 
