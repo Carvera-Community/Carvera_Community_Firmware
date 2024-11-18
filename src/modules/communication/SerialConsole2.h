@@ -34,7 +34,8 @@ class SerialConsole2 : public Module {
 
         float wp_voltage;
         float min_voltage;
-        float max_voltage;
+        float max_voltage;        
+        bool firstrun;
 
         bool has_char(char letter);
 
