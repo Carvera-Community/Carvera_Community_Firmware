@@ -333,8 +333,8 @@ void Player::play_command( string parameters, StreamOutput *stream )
 //    }
 //	// check if is tool -1 or tool 0
 //	if (!tool_ok) {
-//		THEKERNEL->call_event(ON_HALT, nullptr);
 //		THEKERNEL->set_halt_reason(MANUAL);
+//		THEKERNEL->call_event(ON_HALT, nullptr);
 //		THEKERNEL->streams->printf("ERROR: No tool or probe tool!\n");
 //		return;
 //	}
@@ -729,6 +729,9 @@ void Player::on_main_loop(void *argument)
             this->reply_stream->printf("Done printing file\r\n");
             this->reply_stream = NULL;
         }
+        
+        bool bbb = true;
+        PublicData::set_value( atc_handler_checksum, set_job_complete_checksum, &bbb );
     }
 }
 
@@ -1136,87 +1139,7 @@ _exit:
 	stream->printf((char*)fbuff);
 	return 0;
 }
-/*
-int Player::compressfile(string sfilename, string dfilename, StreamOutput* stream)
-{
-	FILE *f_in = NULL, *f_out = NULL;
-	uint16_t  u16Sum = 0;	
-	uint8_t sumdata[2];
-	uint8_t buffer_hdr[BLOCK_HEADER_SIZE] = { 0 };
-	uint32_t file_size = 0;	
-	uint32_t u32cmprsSize = 0, u32BlockSize = 0, u32TotalCmprsSize = 0, i = 0,k=0;
-	qlz_state_compress s_stCompressState;
-	char info_msg[64];
-//	memset(info_msg, 0, sizeof(info_msg));
-//	sprintf(info_msg, "Nothing!");
 
-	f_in= fopen(sfilename.c_str(), "rb");
-	f_out= fopen(dfilename.c_str(), "w+");
-	if (f_in == NULL || f_out == NULL)
-	{
-		sprintf(info_msg, "Error: failed to create file [%s]!\r\n", filename.substr(0, 30).c_str());
-		goto _exit;
-	}
-	file_size = ftell(f_in);
-	if (file_size == 0)
-	{
-		sprintf(info_msg, "Error: [qlz] File size = 0\n");
-		goto _exit;
-	}
-	while(feof(f_in))
-	{
-		u32BlockSize = fread(xbuff, sizeof(char), COMPRESS_BUFFER_SIZE, f_in);
-		for(i=0; i< u32BlockSize; i++ )
-			u16Sum += xbuff[i];
-		/* The destination buffer must be at least size + 400 bytes large because incompressible data may increase in size. */
-/*		u32cmprsSize = qlz_compress((const char *)xbuff, (char *)fbuff, u32BlockSize, &s_stCompressState);
-		if(!u32cmprsSize)
-		{
-			goto _exit;
-		}
-		buffer_hdr[3] = u32cmprsSize % (1 << 8);
-		buffer_hdr[2] = (u32cmprsSize % (1 << 16)) / (1 << 8);
-		buffer_hdr[1] = (u32cmprsSize % (1 << 24)) / (1 << 16);
-		buffer_hdr[0] = u32cmprsSize / (1 << 24); 
- 
-		fwrite(buffer_hdr, 1,BLOCK_HEADER_SIZE, f_out);
-		// Set the file write system buffer 4096 Byte
-		setvbuf(f_out, (char*)&xbuff[4096], _IOFBF, 4096);
-		fwrite(fbuff, sizeof(char),u32cmprsSize, f_out);
-		u32TotalCmprsSize += u32cmprsSize;
-		if(++k>100)
-		{
-			k=0;
-			THEKERNEL->call_event(ON_IDLE);
-			sprintf(info_msg, "Info: ComSize = %u, Filesize = %u\r\n", u32TotalCmprsSize, file_size);
-			stream->printf(info_msg);
-		}
-	}
-	
-	sumdata[0] = u16Sum >> 8;
-	sumdata[1] = u16Sum &0x00FF; 
-	fwrite(sumdata, 1, 2, f_out);
-	if(u16Sum != ((fbuff[0] <<8) + fbuff[1]))
-	{
-		goto _exit;
-	}
-
-	if (f_in)
-		fclose(f_in);
-	if (f_out)
-		fclose(f_out);
-	sprintf(info_msg, "Info: ComSize = %u, Filesize = %u\r\n", u32TotalCmprsSize, file_size);
-	stream->printf(info_msg);
-	return 1;
-_exit:
-	if (f_in)
-		fclose(f_in);
-	if (f_out)
-		fclose(f_out);
-	stream->printf(info_msg);
-	return 0;
-}
-*/	
 void Player::upload_command( string parameters, StreamOutput *stream )
 {
     unsigned char *p;
