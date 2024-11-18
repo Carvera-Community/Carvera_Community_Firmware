@@ -16,6 +16,7 @@
 #include "libs/SerialMessage.h"
 #include "libs/StreamOutput.h"
 #include "libs/StreamOutputPool.h"
+#include "libs/gpio.h"
 #include "Conveyor.h"
 #include "DirHandle.h"
 #include "mri.h"
@@ -74,7 +75,7 @@ extern "C" uint32_t  _sbrk(int size);
 // support upload file type definition
 #define FILETYPE	"lz"		//compressed by quicklz
 // version definition
-#define VERSION "0.9.8"
+#define VERSION "1.0.1"
 
 // command lookup table
 const SimpleShell::ptentry_t SimpleShell::commands_table[] = {
@@ -113,6 +114,11 @@ const SimpleShell::ptentry_t SimpleShell::commands_table[] = {
     {"md5sum",   SimpleShell::md5sum_command},
 	{"time",   SimpleShell::time_command},
     {"test",     SimpleShell::test_command},
+    {"model",  SimpleShell::model_command},
+    {"check_5th",  SimpleShell::test_5th_command},
+    {"check_4th",  SimpleShell::test_4th_command},
+    {"check_led",  SimpleShell::test_led_command},
+    {"fset",  SimpleShell::fset_command},
 
     // unknown command
     {NULL, NULL}
@@ -210,35 +216,42 @@ void SimpleShell::on_gcode_received(void *argument)
             if(!args.empty() && !THEKERNEL->is_grbl_mode())
                 rm_command("/sd/" + args, gcode->stream);
         } else if (gcode->m == 331) { // change to vacuum mode
-			THEKERNEL->set_vacuum_mode(true);
-		    // get spindle state
-		    struct spindle_status ss;
-		    bool ok = PublicData::get_value(pwm_spindle_control_checksum, get_spindle_status_checksum, &ss);
-		    if (ok) {
-		    	if (ss.state) {
-	        		// open vacuum
-	        		bool b = true;
-	                PublicData::set_value( switch_checksum, vacuum_checksum, state_checksum, &b );
-
-		    	}
-        	}
-		    // turn on vacuum mode
-			gcode->stream->printf("turning vacuum mode on\r\n");
+        	if(CARVERA == THEKERNEL->factory_set->MachineModel)
+        	{
+				THEKERNEL->set_vacuum_mode(true);
+			    // get spindle state
+			    struct spindle_status ss;
+			    bool ok = PublicData::get_value(pwm_spindle_control_checksum, get_spindle_status_checksum, &ss);
+			    if (ok) {
+			    	if (ss.state) {
+		        		// open vacuum
+		        		bool b = true;
+		                PublicData::set_value( switch_checksum, vacuum_checksum, state_checksum, &b );
+	
+			    	}
+	        	}
+			    // turn on vacuum mode
+				gcode->stream->printf("turning vacuum mode on\r\n");
+			}
 		} else if (gcode->m == 332) { // change to CNC mode
-			THEKERNEL->set_vacuum_mode(false);
-		    // get spindle state
-		    struct spindle_status ss;
-		    bool ok = PublicData::get_value(pwm_spindle_control_checksum, get_spindle_status_checksum, &ss);
-		    if (ok) {
-		    	if (ss.state) {
-	        		// close vacuum
-	        		bool b = false;
-	                PublicData::set_value( switch_checksum, vacuum_checksum, state_checksum, &b );
-
-		    	}
-        	}
-			// turn off vacuum mode
-			gcode->stream->printf("turning vacuum mode off\r\n");
+			
+        	if(CARVERA == THEKERNEL->factory_set->MachineModel)
+        	{
+				THEKERNEL->set_vacuum_mode(false);
+			    // get spindle state
+			    struct spindle_status ss;
+			    bool ok = PublicData::get_value(pwm_spindle_control_checksum, get_spindle_status_checksum, &ss);
+			    if (ok) {
+			    	if (ss.state) {
+		        		// close vacuum
+		        		bool b = false;
+		                PublicData::set_value( switch_checksum, vacuum_checksum, state_checksum, &b );
+	
+			    	}
+	        	}
+				// turn off vacuum mode
+				gcode->stream->printf("turning vacuum mode off\r\n");
+			}
 		}
     }
 }
@@ -694,8 +707,14 @@ void SimpleShell::cat_command( string parameters, StreamOutput *stream )
 // echo commands
 void SimpleShell::echo_command( string parameters, StreamOutput *stream )
 {
-    //send to all streams
-    THEKERNEL->streams->printf("echo: %s\r\n", parameters.c_str());
+	if (!parameters.empty() ) {
+	    //send to all streams
+	    THEKERNEL->streams->printf("echo: %s\r\n", parameters.c_str());
+	}
+	else
+	{
+		THEKERNEL->streams->printf("\r\n");
+	}
 }
 
 // loads the specified config-override file
@@ -994,7 +1013,14 @@ void SimpleShell::diagnose_command( string parameters, StreamOutput *stream)
 
     // get switchs state
     struct pad_switch pad;
-    ok = PublicData::get_value(switch_checksum, get_checksum("vacuum"), 0, &pad);
+    if(CARVERA == THEKERNEL->factory_set->MachineModel)
+    {
+    	ok = PublicData::get_value(switch_checksum, get_checksum("vacuum"), 0, &pad);
+    }
+    else if(CARVERA_AIR == THEKERNEL->factory_set->MachineModel)
+    {
+    	ok = PublicData::get_value(switch_checksum, get_checksum("powerfan"), 0, &pad);
+    }
     if (ok) {
         n = snprintf(buf, sizeof(buf), "|V:%d,%d", (int)pad.state, (int)pad.value);
         if(n > sizeof(buf)) n = sizeof(buf);
@@ -1048,14 +1074,17 @@ void SimpleShell::diagnose_command( string parameters, StreamOutput *stream)
         if(n > sizeof(buf)) n = sizeof(buf);
         str.append(buf, n);
     }
-
+	
     // get atc endstop and tool senser states
-    ok = PublicData::get_value(atc_handler_checksum, get_atc_pin_status_checksum, 0, &data[8]);
-    if (ok) {
-        n = snprintf(buf, sizeof(buf), "|A:%d,%d", data[8], data[9]);
-        if(n > sizeof(buf)) n = sizeof(buf);
-        str.append(buf, n);
-    }
+    if(THEKERNEL->factory_set->FuncSetting & (1<<2))	//ATC 
+    {
+	    ok = PublicData::get_value(atc_handler_checksum, get_atc_pin_status_checksum, 0, &data[8]);
+	    if (ok) {
+	        n = snprintf(buf, sizeof(buf), "|A:%d,%d", data[8], data[9]);
+	        if(n > sizeof(buf)) n = sizeof(buf);
+	        str.append(buf, n);
+	    }
+	}
 
     // get e-stop states
     ok = PublicData::get_value(main_button_checksum, get_e_stop_state_checksum, 0, &data[10]);
@@ -1113,6 +1142,274 @@ void SimpleShell::power_command(string parameters, StreamOutput *stream)
 void SimpleShell::ftype_command( string parameters, StreamOutput *stream )
 {
 	stream->printf("ftype = %s\n", FILETYPE);
+}
+// print out build model
+void SimpleShell::model_command( string parameters, StreamOutput *stream )
+{		    	
+	switch (THEKERNEL->factory_set->MachineModel)
+	{
+		case CARVERA:			
+			stream->printf("model = %s, %d, %d, %d\n", "C1", THEKERNEL->factory_set->MachineModel, THEKERNEL->factory_set->FuncSetting, THEKERNEL->probe_addr);
+			break;
+		case CARVERA_AIR:			
+			stream->printf("model = %s, %d, %d, %d\n", "CA1", THEKERNEL->factory_set->MachineModel, THEKERNEL->factory_set->FuncSetting, THEKERNEL->probe_addr);
+			break;
+		default:			
+			stream->printf("model = %s, %d, %d, %d\n", "C1", THEKERNEL->factory_set->MachineModel, THEKERNEL->factory_set->FuncSetting, THEKERNEL->probe_addr);
+			break;
+	}
+}
+
+// test 4th for factory
+void SimpleShell::test_4th_command( string parameters, StreamOutput *stream )
+{	
+	bool btriggered = false;
+	bool bAlwaystrigger = true;
+	
+	GPIO stepin = GPIO(P1_21);
+	GPIO dirpin = GPIO(P1_23);
+	GPIO enpin = GPIO(P1_30);
+	GPIO alarmin = GPIO(P1_9);
+	stepin.output();
+	dirpin.output();
+	enpin.output();
+	alarmin.input();
+	
+	switch (THEKERNEL->factory_set->MachineModel)
+	{
+		case CARVERA_AIR:			
+			
+			stream->printf("check_4th beginning......\n");
+			dirpin = 1;
+			enpin = 0;
+			
+			for(unsigned int i=0;i<380;i++)
+			{
+				for(unsigned int j=0; j<889; j++)
+				{
+					stepin = 1;
+					safe_delay_us(2);
+					stepin = 0;
+					safe_delay_us(2);
+					if(alarmin.get())
+					{
+						btriggered = true;
+						break;
+					}
+					else
+					{
+						bAlwaystrigger = false;
+					}
+				}
+				if(btriggered)
+					break;
+			}
+			
+			if(btriggered)
+			{
+				dirpin = 0;
+				
+				for(unsigned int i=0;i<380;i++)
+				{
+					for(unsigned int j=0; j<889; j++)
+					{
+						stepin = 1;
+						safe_delay_us(2);
+						stepin = 0;
+						safe_delay_us(2);
+						if(alarmin.get())
+						{
+							btriggered = true;
+						}
+						else
+						{
+							bAlwaystrigger = false;
+						}
+					}
+				}
+			}
+			
+			enpin = 1;
+			
+			if( false == btriggered)
+			{
+				stream->printf("0: the 4th's Endstop hasn't been triggered yet.\n");
+			}
+			if( true == bAlwaystrigger)
+			{
+				stream->printf("1: the 4th's Endstop be always triggered.\n");
+			}
+						
+			stream->printf("check_4th end.\n");
+			
+			if( (false == btriggered) || (true == bAlwaystrigger))
+			{
+	            THEKERNEL->set_halt_reason(HOME_FAIL);
+	            THEKERNEL->call_event(ON_HALT, nullptr);
+	            THEROBOT->disable_segmentation= false;
+	        }
+			break;
+		default:			
+			
+			break;
+	}
+}
+
+// test 5th for factory
+void SimpleShell::test_5th_command( string parameters, StreamOutput *stream )
+{	
+	bool btriggered = false;
+	bool bAlwaystrigger = true;
+	
+	GPIO stepin = GPIO(P1_18);
+	GPIO dirpin = GPIO(P1_20);
+	GPIO enpin = GPIO(P3_26);
+	GPIO alarmin = GPIO(P1_16);
+	stepin.output();
+	dirpin.output();
+	enpin.output();
+	alarmin.input();
+	switch (THEKERNEL->factory_set->MachineModel)
+	{
+		case CARVERA_AIR:			
+			
+			stream->printf("check_5th beginning......\n");
+			dirpin = 1;
+			enpin = 0;
+			
+			for(unsigned int i=0;i<380;i++)
+			{
+				for(unsigned int j=0; j<889; j++)
+				{
+					stepin = 1;
+					safe_delay_us(2);
+					stepin = 0;
+					safe_delay_us(2);
+					if(alarmin.get())
+					{
+						btriggered = true;
+						break;
+					}
+					else
+					{
+						bAlwaystrigger = false;
+					}
+				}
+				if(btriggered)
+					break;
+			}
+			
+			if(btriggered)
+			{
+				dirpin = 0;
+				
+				for(unsigned int i=0;i<380;i++)
+				{
+					for(unsigned int j=0; j<889; j++)
+					{
+						stepin = 1;
+						safe_delay_us(2);
+						stepin = 0;
+						safe_delay_us(2);
+						if(alarmin.get())
+						{
+							btriggered = true;
+						}
+						else
+						{
+							bAlwaystrigger = false;
+						}
+					}
+				}
+			}
+			
+			enpin = 1;
+			
+			if( false == btriggered)
+			{
+				stream->printf("0: the 5th's Endstop hasn't been triggered yet.\n");
+			}
+			if( true == bAlwaystrigger)
+			{
+				stream->printf("1: the 5th's Endstop be always triggered.\n");
+			}
+						
+			stream->printf("check_5th end.\n");
+			
+			if( (false == btriggered) || (true == bAlwaystrigger))
+			{
+	            THEKERNEL->set_halt_reason(HOME_FAIL);
+	            THEKERNEL->call_event(ON_HALT, nullptr);
+	            THEROBOT->disable_segmentation= false;
+	        }
+			break;
+		default:			
+			
+			break;
+	}
+}
+
+// test led for factory
+void SimpleShell::test_led_command( string parameters, StreamOutput *stream )
+{
+    string what = shift_parameter( parameters );
+
+    if (what == "off") 
+    {
+    	THEKERNEL->checkled = false;
+    }
+    else
+    {
+    	THEKERNEL->checkled = true;
+    }
+}
+// set factory settings
+void SimpleShell::fset_command( string parameters, StreamOutput *stream)
+{
+	uint8_t channel;
+	char buff[32];
+	memset(buff, 0, sizeof(buff));
+    if (!parameters.empty() ) {
+    	string s = shift_parameter( parameters );
+    	if (s == "model") {
+    		if (!parameters.empty()) {
+    			if (parameters.length() > 3) {
+    	    		stream->printf("model length should no more than 3\n");
+    	    	} else {
+    	    		if (parameters == "C1")
+        			{
+    					THEKERNEL->factory_set->MachineModel = 1;
+    					THEKERNEL->factory_set->FuncSetting |= 0x04;
+	            		THEKERNEL->write_Factory_data();
+    	    			stream->printf("fset model ok!\n");
+        			}
+        			else if (parameters == "CA1")
+    				{
+    					THEKERNEL->factory_set->MachineModel = 2;
+	            		THEKERNEL->write_Factory_data();
+    	    			stream->printf("fset model ok!\n");
+        			}
+        			else
+        			{
+        				stream->printf("Unable to recognize parameter model. \n");
+        			}
+    	    	}
+    		}
+    	} else if (s == "func") {
+    		if (!parameters.empty()) {
+    			uint8_t func = strtol(parameters.c_str(), NULL, 10);
+    	    	if (func > 15) {
+    	    		stream->printf("function between 0 to 15\n");
+    	    	} else {
+    	            THEKERNEL->factory_set->FuncSetting = func;
+    	            THEKERNEL->write_Factory_data();
+    	    		stream->printf("fset func ok!\n");
+    	    	}
+    		}
+    	} else {
+    		stream->printf("ERROR: Invalid fset Command!\n");
+    	}
+    }
 }
 // print out build version
 void SimpleShell::version_command( string parameters, StreamOutput *stream )
@@ -1190,10 +1487,12 @@ void SimpleShell::grblDP_command( string parameters, StreamOutput *stream)
 
     int n= std::get<1>(v[0]);
     for (int i = 1; i <= n; ++i) {
-        stream->printf("[%s:%1.4f,%1.4f,%1.4f]\n", wcs2gcode(i-1).c_str(),
+        stream->printf("[%s:%1.4f,%1.4f,%1.4f,%1.4f,%1.4f]\n", wcs2gcode(i-1).c_str(),
             THEROBOT->from_millimeters(std::get<0>(v[i])),
             THEROBOT->from_millimeters(std::get<1>(v[i])),
-            THEROBOT->from_millimeters(std::get<2>(v[i])));
+            THEROBOT->from_millimeters(std::get<2>(v[i])),
+            THEROBOT->from_millimeters(std::get<3>(v[i])),
+            THEROBOT->from_millimeters(std::get<4>(v[i])));
     }
 
     float *rd;
@@ -1205,10 +1504,12 @@ void SimpleShell::grblDP_command( string parameters, StreamOutput *stream)
 
     stream->printf("[G30:%1.4f,%1.4f,%1.4f]\n", 0.0, 0.0, 0.0); // not supported
 
-    stream->printf("[G92:%1.4f,%1.4f,%1.4f]\n",
+    stream->printf("[G92:%1.4f,%1.4f,%1.4f,%1.4f,%1.4f]\n",
         THEROBOT->from_millimeters(std::get<0>(v[n+1])),
         THEROBOT->from_millimeters(std::get<1>(v[n+1])),
-        THEROBOT->from_millimeters(std::get<2>(v[n+1])));
+        THEROBOT->from_millimeters(std::get<2>(v[n+1])),
+        THEROBOT->from_millimeters(std::get<3>(v[n+1])),
+        THEROBOT->from_millimeters(std::get<4>(v[n+1])));
 
     if(verbose) {
         stream->printf("[Tool Offset:%1.4f,%1.4f,%1.4f]\n",
