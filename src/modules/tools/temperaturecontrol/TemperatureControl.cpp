@@ -128,9 +128,19 @@ void TemperatureControl::on_main_loop(void *argument)
 	if(THEKERNEL->is_halted()) return;
     if (this->temp_violated) {
         this->temp_violated = false;
-        THEKERNEL->streams->printf("ERROR: Spindle overheated, max - %f°C, current - %f°C !\n", max_temp, get_temperature());
-        THEKERNEL->call_event(ON_HALT, nullptr);
-        THEKERNEL->set_halt_reason(SPINDLE_OVERHEATED);
+        
+        if(this->name_checksum == spindle_temperature_checksum )
+        {
+	        THEKERNEL->streams->printf("ERROR: Spindle overheated, max - %f°C, current - %f°C !\n", max_temp, get_temperature());
+	        THEKERNEL->set_halt_reason(SPINDLE_OVERHEATED);
+	        THEKERNEL->call_event(ON_HALT, nullptr);
+	    }
+	    else if(this->name_checksum == power_temperature_checksum )
+        {
+	        THEKERNEL->streams->printf("ERROR: Power cabinet overheated, max - %f°C, current - %f°C !\n", max_temp, get_temperature());
+	        THEKERNEL->set_halt_reason(POWER_OVERHEATED);
+	        THEKERNEL->call_event(ON_HALT, nullptr);
+	    }
     }
 }
 
@@ -547,9 +557,18 @@ void TemperatureControl::on_second_tick(void *argument)
 	    if(THEKERNEL->is_halted()) return;
 	    float temperature = sensor->get_temperature();
 		if (isinf(temperature) || temperature < min_temp || temperature > max_temp) {
-	        THEKERNEL->streams->printf("ERROR: Spindle overheated, max - %1.1f, current - %1.1f\n", max_temp, temperature);
-	        THEKERNEL->call_event(ON_HALT, nullptr);
-	        THEKERNEL->set_halt_reason(SPINDLE_OVERHEATED);
+			if(this->name_checksum == spindle_temperature_checksum )
+	        {
+		        THEKERNEL->streams->printf("ERROR: Spindle overheated, max - %1.1f, current - %1.1f\n", max_temp, temperature);
+		        THEKERNEL->set_halt_reason(SPINDLE_OVERHEATED);
+		        THEKERNEL->call_event(ON_HALT, nullptr);
+		    }
+		    else if(this->name_checksum == power_temperature_checksum )
+        	{
+		        THEKERNEL->streams->printf("ERROR: Power cabinet overheated, max - %1.1f, current - %1.1f\n", max_temp, temperature);
+		        THEKERNEL->set_halt_reason(POWER_OVERHEATED);
+		        THEKERNEL->call_event(ON_HALT, nullptr);
+		    }
 		}
 	} else {
 	    // If waiting for a temperature to be reach, display it to keep host programs up to date on the progress
