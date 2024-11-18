@@ -20,6 +20,8 @@
 
 // 9 WCS offsets
 #define MAX_WCS 9UL
+#define CARVERA		1
+#define CARVERA_AIR	2
 //Module manager
 class Config;
 class Module;
@@ -44,7 +46,8 @@ enum STATE {
 	ALARM   = 4,
 	SLEEP   = 5,
 	SUSPEND = 6,
-	WAIT    = 7
+	WAIT    = 7,
+	TOOL    = 8
 };
 
 enum HALT_REASON {
@@ -62,6 +65,7 @@ enum HALT_REASON {
 	COVER_OPEN				= 11,
 	PROBE_INVALID			= 12,
 	E_STOP					= 13,
+	POWER_OVERHEATED		= 14,
 	// Need to reset when triggered
 	HARD_LIMIT				= 21,
 	MOTOR_ERROR_X			= 22,
@@ -93,7 +97,15 @@ typedef struct {
 	float TOOLMZ;
 	float reserve;
 	int TOOL;
+	float G54AB[2];
 } EEPROM_data;
+
+typedef struct {
+	char  MachineModel;
+	char  FuncSetting;
+	char  reserve1;
+	char  reserve2;
+} FACTORY_SET;
 
 class Kernel {
     public:
@@ -102,6 +114,7 @@ class Kernel {
         ~Kernel() {
             delete this->i2c;
             delete this->eeprom_data;
+            delete this->factory_set;
         }
 
         static Kernel* instance; // the Singleton instance of Kernel usable anywhere
@@ -142,12 +155,18 @@ class Kernel {
 
         void set_waiting(bool f) { waiting = f; }
         bool is_waiting() const { return waiting; }
+        
+        void set_tool_waiting(bool f) { tool_waiting = f; }
+        bool is_tool_waiting() const { return tool_waiting; }
 
         void set_aborted(bool f) { aborted = f; }
         bool is_aborted() const { return aborted; }
 
         void set_zprobing(bool f) { zprobing = f; }
         bool is_zprobing() const { return zprobing; }
+        
+        void set_probeLaser(bool f) { probeLaserOn = f; }
+        bool is_probeLaserOn() const { return probeLaserOn; }
 
         void set_halt_reason(uint8_t reason) { halt_reason = reason; }
         uint8_t get_halt_reason() const { return halt_reason; }
@@ -158,6 +177,15 @@ class Kernel {
         void read_eeprom_data();
         void write_eeprom_data();
         void erase_eeprom_data();
+        
+        void read_Factory_data();
+        void write_Factory_data();
+        void erase_Factory_data();
+        void read_Factroy_SD();
+        bool Check_Factory_Data(unsigned char *data, unsigned int len);
+        bool Factroy_readLine(std::string& line, int lineno, FILE *fp);
+        bool process_line(const std::string &buffer, uint16_t *check_sum, unsigned char *value);
+        unsigned int crc16_ccitt(unsigned char *data, unsigned int len);
 
         std::string get_query_string();
 
@@ -184,6 +212,13 @@ class Kernel {
         uint8_t halt_reason;
         uint8_t atc_state;
         EEPROM_data *eeprom_data;
+        FACTORY_SET *factory_set;
+        
+        uint32_t Laser_period_us;        
+        uint32_t Spindle_period_us;
+        uint16_t probe_addr;
+        bool checkled;
+        bool spindleon;
 
     private:
         // When a module asks to be called for a specific event ( a hook ), this is where that request is remembered
@@ -203,8 +238,10 @@ class Kernel {
             bool sleeping:1;
             bool suspending: 1;
             bool waiting: 1;
+            bool tool_waiting: 1;
             bool aborted: 1;
             bool zprobing:1;
+            bool probeLaserOn:1;
         };
         int iic_page_write(unsigned char u8PageNum, unsigned char u8len, unsigned char *pu8Array);
 
