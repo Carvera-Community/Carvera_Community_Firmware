@@ -101,8 +101,13 @@ void PWMSpindleControl::on_module_loaded()
     }
 
     max_pwm = THEKERNEL->config->value(spindle_checksum, spindle_max_pwm_checksum)->by_default(1.0f)->as_number();
+    if(CARVERA_AIR == THEKERNEL->factory_set->MachineModel)
+    {
+    	max_pwm = 0.9;
+    }
     
     int period = THEKERNEL->config->value(spindle_checksum, spindle_pwm_period_checksum)->by_default(1000)->as_int();
+    THEKERNEL->Spindle_period_us = period;
     pwm_pin->period_us(period);
     pwm_pin->write(output_inverted ? 1 : 0);
 
@@ -156,16 +161,28 @@ uint32_t PWMSpindleControl::on_update_speed(uint32_t dummy)
 	        current_rpm = smoothing_decay * new_rpm + (1.0f - smoothing_decay) * current_rpm;
 	    }
 	}
-
+	if(CARVERA_AIR == THEKERNEL->factory_set->MachineModel)
+    {
+		if( fabs(target_rpm - last_rpm) > 500 )
+		{
+			target_change_count = 0;
+			last_rpm = target_rpm;
+		}
+	}
     if (spindle_on) {
     	if (update_count > UPDATE_FREQ / 5) {
     		update_count = 0;
             float error = target_rpm * (factor / 100) - current_rpm;
-//            current_I_value += control_I_term * error * 1.0f / UPDATE_FREQ;
-//            current_I_value = confine(current_I_value, -1.0f, 1.0f);
             float acc_pwm = control_P_term * error;
-//            acc_pwm += current_I_value;
-//            acc_pwm += control_D_term * UPDATE_FREQ * (error - prev_error);
+            
+            if(CARVERA_AIR == THEKERNEL->factory_set->MachineModel)
+            {
+            	if(target_change_count>UPDATE_FREQ*5)	//when speed changed time < 7s,we didn't use D_ter,to rapid speed up/down
+	            {
+	            	acc_pwm += control_D_term * (error - prev_error);
+	            	target_change_count = UPDATE_FREQ*5;
+            	}
+            }
             float new_pwm = current_pwm_value + acc_pwm;
             new_pwm = confine(new_pwm, 0.0f, max_pwm);
 
@@ -173,22 +190,10 @@ uint32_t PWMSpindleControl::on_update_speed(uint32_t dummy)
             current_pwm_value = new_pwm;
     	}
     	update_count ++;
-
-    	/*
-		float error = target_rpm * (factor / 100) - current_rpm;
-		current_I_value += control_I_term * error * 1.0f / UPDATE_FREQ;
-		current_I_value = confine(current_I_value, -1.0f, 1.0f);
-
-        float new_pwm = 0.1f;
-        new_pwm += control_P_term * error;
-        new_pwm += current_I_value;
-        new_pwm += control_D_term * UPDATE_FREQ * (error - prev_error);
-        new_pwm = confine(new_pwm, 0.0f, 1.0f);
-        prev_error = error;
-
-        current_pwm_value = new_pwm;
-
-        */
+    	if(CARVERA_AIR == THEKERNEL->factory_set->MachineModel)
+        {
+			target_change_count ++;
+		}
 
 		if (current_pwm_value > max_pwm) {
 			current_pwm_value = max_pwm;
@@ -208,6 +213,7 @@ uint32_t PWMSpindleControl::on_update_speed(uint32_t dummy)
 
 void PWMSpindleControl::turn_on() {
     spindle_on = true;
+    THEKERNEL->spindleon = true;
     if (delay_s > 0) {
         char buf[80];
         size_t n = snprintf(buf, sizeof(buf), "G4P%d", delay_s);
@@ -220,6 +226,7 @@ void PWMSpindleControl::turn_on() {
 
 void PWMSpindleControl::turn_off() {
     spindle_on = false;
+    THEKERNEL->spindleon = false;
     if (delay_s > 0) {
         char buf[80];
         size_t n = snprintf(buf, sizeof(buf), "G4P%d", delay_s);
@@ -329,16 +336,16 @@ void PWMSpindleControl::on_idle(void *argument)
 	// check spindle alarm
     if (this->get_alarm()) {
 		THEKERNEL->streams->printf("ALARM: Spindle alarm triggered -  power off/on required\n");
-		THEKERNEL->call_event(ON_HALT, nullptr);
 		THEKERNEL->set_halt_reason(SPINDLE_ALARM);
+		THEKERNEL->call_event(ON_HALT, nullptr);
 		return;
     }
     // check spindle stall
     /*
     if (this->get_stall()) {
 		THEKERNEL->streams->printf("ALARM: Spindle stall triggered -  reset required\n");
-		THEKERNEL->call_event(ON_HALT, nullptr);
 		THEKERNEL->set_halt_reason(SPINDLE_STALL);
+		THEKERNEL->call_event(ON_HALT, nullptr);
     }*/
 
 }
