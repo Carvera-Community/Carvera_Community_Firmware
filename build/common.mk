@@ -135,6 +135,8 @@ OBJECTS += $(OUTDIR)/mbed_custom.o
 
 OBJECTS += $(OUTDIR)/configdefault.o
 
+OBJECTS += $(OUTDIR)/config2default.o
+
 # List of the header dependency files, one per object file.
 DEPFILES = $(patsubst %.o,%.d,$(OBJECTS))
 
@@ -319,5 +321,8 @@ $(OUTDIR)/%.o : %.s makefile
 
 $(OUTDIR)/configdefault.o : config.default
 	$(Q) $(OBJCOPY) -I binary -O elf32-littlearm -B arm --readonly-text --rename-section .data=.rodata.configdefault $< $@
+
+$(OUTDIR)/config2default.o : config2.default
+	$(Q) $(OBJCOPY) -I binary -O elf32-littlearm -B arm --readonly-text --rename-section .data=.rodata.config2default $< $@
 
 #########################################################################
