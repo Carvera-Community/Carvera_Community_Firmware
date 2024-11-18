@@ -36,6 +36,7 @@ using std::string;
 // The command dispatcher will then ask other modules if they can do something with it
 SerialConsole2::SerialConsole2() {
     this->wp_voltage = 0.0;
+    this->firstrun = true;
 }
 
 // Called when the module has just been loaded
@@ -70,6 +71,12 @@ void SerialConsole2::on_serial_char_received() {
 
 // Actual event calling must happen in the main loop because if it happens in the interrupt we will loose data
 void SerialConsole2::on_main_loop(void * argument) {
+	if( this->firstrun )
+	{
+		this->_putc('Q');
+        this->firstrun = false;
+	}
+	
     if ( this->has_char('\n') ) {
         string received;
         received.reserve(20);
@@ -106,8 +113,8 @@ void SerialConsole2::on_main_loop(void * argument) {
             	   }
         	   } else if (received[0] == 'A' && received.length() > 2) {
         		   // get wireless probe address
-        		   uint16_t probe_addr = ((uint16_t)received[2] << 8) | received[1];
-        		   THEKERNEL->streams->printf("WP power: [%1.2fv], addr: [%0d]\n", this->wp_voltage, probe_addr);
+        		   THEKERNEL->probe_addr = ((uint16_t)received[2] << 8) | received[1];
+        		   THEKERNEL->streams->printf("WP power: [%1.2fv], addr: [%0d]\n", this->wp_voltage, THEKERNEL->probe_addr);
         	   } else if (received[0] == 'P' && received.length() > 1) {
         		   THEKERNEL->streams->printf("WP PAIR %s!\n", received[1] ? "SUCCESS" : "TIMEOUT");
         	   }
