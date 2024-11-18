@@ -52,6 +52,7 @@ private:
     uint32_t read_probe(uint32_t dummy);
     uint32_t read_calibrate(uint32_t dummy);
     void on_get_public_data(void* argument);
+    uint32_t probe_doubleHit(uint32_t dummy);
 
     float slow_feedrate;
     float fast_feedrate;
@@ -72,6 +73,10 @@ private:
     volatile bool calibrating;
     volatile bool probe_detected;
     volatile bool calibrate_detected;
+    bool bfirstHitDetected  = false;
+    bool bNoHited  = false;
+    bool bDoubleHited  = false;
+    uint32_t probe_hit_time = 0;
 
     struct {
         bool is_delta:1;
