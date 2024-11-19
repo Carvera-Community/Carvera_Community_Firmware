@@ -75,7 +75,7 @@ void SerialConsole::on_serial_char_received() {
 			query_flag = true;
 			continue;
 		}
-		if (received == '&') {
+		if (received == '*') {
 			diagnose_flag = true;
 			continue;
 		}
