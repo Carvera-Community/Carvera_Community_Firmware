@@ -1142,14 +1142,14 @@ void ATCHandler::on_gcode_received(void *argument)
 					if (!laser_detect()) {
 				        THEKERNEL->set_halt_reason(ATC_NO_TOOL);
 				        THEKERNEL->call_event(ON_HALT, nullptr);
-				        THEKERNEL->streams->printf("ERROR: Tool confliction occured, please check tool rack!\n");
+				        THEKERNEL->streams->printf("ERROR: Unexpected tool absence detected, please check tool rack!\n");
 					}
 				} else if (gcode->subcode == 2) {
 					// check false
 					if (laser_detect()) {
 				        THEKERNEL->set_halt_reason(ATC_HAS_TOOL);
 				        THEKERNEL->call_event(ON_HALT, nullptr);
-				        THEKERNEL->streams->printf("ERROR: Tool confliction occured, please check tool rack!\n");
+				        THEKERNEL->streams->printf("ERROR: Unexpected tool presence detected, please check tool rack!\n");
 					}
 				} else if (gcode->subcode == 3) {
 					// check if the probe was triggered
