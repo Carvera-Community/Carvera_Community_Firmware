@@ -1715,7 +1715,7 @@ bool Robot::append_line(Gcode *gcode, const float target[], float rate_mm_s, flo
     if(rate_mm_s <= 0.0F) {
         gcode->is_error= true;
         gcode->txt_after_ok= (rate_mm_s == 0 ? "Undefined feed rate\n" : "feed rate < 0\n");
-        THEKERNEL->streams->printf(rate_mm_s == 0 ? "Undefined feed rate\n" : "feed rate < 0\n");
+        THEKERNEL->streams->printf(rate_mm_s == 0 ? "Alarm:Undefined feed rate\n" : "Alarm:feed rate < 0\n");
         return false;
     }
 
@@ -1809,6 +1809,7 @@ bool Robot::append_arc(Gcode * gcode, const float target[], const float offset[]
     if(rate_mm_s <= 0.0F) {
         gcode->is_error= true;
         gcode->txt_after_ok= (rate_mm_s == 0 ? "Undefined feed rate" : "feed rate < 0");
+        THEKERNEL->streams->printf(rate_mm_s == 0 ? "Alarm:Undefined feed rate\n" : "Alarm:feed rate < 0\n");
         return false;
     }
 
