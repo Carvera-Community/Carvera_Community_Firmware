@@ -86,8 +86,6 @@ class Robot : public Module {
 
         void set_current_wcs_by_mpos(float x = NAN, float y = NAN, float z = NAN, float a = NAN, float b = NAN);
 
-        void set_current_wcs_by_mpos(float x, float y, float z);
-
         struct {
             bool inch_mode:1;                                 // true for inch mode, false for millimeter mode ( default )
             bool absolute_mode:1;                             // true for absolute mode ( default ), false for relative mode
