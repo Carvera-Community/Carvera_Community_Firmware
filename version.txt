@@ -1,7 +1,10 @@
 Notice: 
 To let the Carvera work perfectly, please make sure both your controller software and firmware are up to date. For firmware, download the new firmware first, then use the 'update' function to upgrade the firmware, and reset the machine after the update is complete.
 
-[community_1.0.0_beta1]
+[1.0.1c1.0.1beta2]
+1. rebase to makera fimware version 0.9.9, adds carvera air support
+
+[1.0.1c1.0.1beta]
 Note: this is beta software and should be used for testing purposes only until an official release is made. Unexpected bugs may arise.
 This is a community supported version firmware. Should you run into any issues, direct them here and not toward makera.
 1:Bug fixing: clarify ATC tool detection messages https://github.com/Carvera-Community/Carvera_Community_Firmware/issues/12
@@ -18,7 +21,15 @@ controller. Use the community controller for the most up to date features.
 11.Feature: Manual tool changes for T7-99 https://github.com/Carvera-Community/Carvera_Community_Firmware/issues/19
 12.Feature: 3 axis probing commands M460-465 https://github.com/Carvera-Community/Carvera_Community_Firmware/pull/43
 
+[1.0.1]
+Bug fixing:The issue of the machine not responding to Controller commands or main buttons after the motor alarm
 
+[1.0.0]
+1. Optimizing: Add data feedback on tabletop exploration ： 'Max deviation between high and low'
+2. Optimizing: Add motor alarm detection during machine home operation
+
+[0.9.9]
+Firmware compatible with Carvera and Carvera Air
 
 [0.9.8]
 1. Optimizing: Improve file transfer speed

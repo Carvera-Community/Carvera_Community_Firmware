@@ -19,6 +19,7 @@
 #include "TemperatureControlPublicAccess.h"
 #include "LaserPublicAccess.h"
 #include "PlayerPublicAccess.h"
+#include "ATCHandlerPublicAccess.h"
 
 using namespace std;
 
@@ -57,6 +58,7 @@ MainButton::MainButton()
     this->sleep_countdown_us = us_ticker_read();
     this->light_countdown_us = us_ticker_read();
     this->power_fan_countdown_us = us_ticker_read();
+    this->old_state = IDLE;
 }
 
 void MainButton::on_module_loaded()
@@ -66,16 +68,31 @@ void MainButton::on_module_loaded()
         delete this;
         return;
     }
-
-    this->main_button.from_string( THEKERNEL->config->value( main_button_pin_checksum )->by_default("1.16^")->as_string())->as_input();
+	
     this->main_button_LED_R.from_string( THEKERNEL->config->value( main_button_LED_R_pin_checksum )->by_default("1.10")->as_string())->as_output();
     this->main_button_LED_G.from_string( THEKERNEL->config->value( main_button_LED_G_pin_checksum )->by_default("1.15")->as_string())->as_output();
     this->main_button_LED_B.from_string( THEKERNEL->config->value( main_button_LED_B_pin_checksum )->by_default("1.14")->as_string())->as_output();
+    
+    if(CARVERA == THEKERNEL->factory_set->MachineModel)
+    {
+	    this->main_button.from_string( THEKERNEL->config->value( main_button_pin_checksum )->by_default("1.16^")->as_string())->as_input();
+	}
+	else if(CARVERA_AIR == THEKERNEL->factory_set->MachineModel)
+    {
+    	this->main_button.from_string( THEKERNEL->config->value( main_button_pin_checksum )->by_default("2.13!^")->as_string())->as_input();
+    }
     this->poll_frequency = THEKERNEL->config->value( main_button_poll_frequency_checksum )->by_default(20)->as_number();
     this->long_press_time_ms = THEKERNEL->config->value( main_long_press_time_ms_checksum )->by_default(3000)->as_number();
     this->long_press_enable = THEKERNEL->config->value( main_button_long_press_checksum )->by_default(false)->as_string();
-
-    this->e_stop.from_string( THEKERNEL->config->value( e_stop_pin_checksum )->by_default("0.26^")->as_string())->as_input();
+	
+	if(CARVERA == THEKERNEL->factory_set->MachineModel)
+    {
+    	this->e_stop.from_string( THEKERNEL->config->value( e_stop_pin_checksum )->by_default("0.26^")->as_string())->as_input();
+    }
+	else if(CARVERA_AIR == THEKERNEL->factory_set->MachineModel)
+    {
+    	this->e_stop.from_string( THEKERNEL->config->value( e_stop_pin_checksum )->by_default("0.20^")->as_string())->as_input();
+    }
     this->PS12.from_string( THEKERNEL->config->value( ps12_pin_checksum )->by_default("0.22")->as_string())->as_output();
     this->PS24.from_string( THEKERNEL->config->value( ps24_pin_checksum )->by_default("0.10")->as_string())->as_output();
     this->power_fan_delay_s = THEKERNEL->config->value( power_fan_delay_s_checksum )->by_default(30)->as_int();
@@ -99,10 +116,18 @@ void MainButton::on_module_loaded()
     // turn on power
     this->switch_power_12(1);
     this->switch_power_24(1);
-
-    this->main_button_LED_R.set(0);
-    this->main_button_LED_G.set(0);
-    this->main_button_LED_B.set(0);
+	
+	if(CARVERA == THEKERNEL->factory_set->MachineModel)
+    {
+	    this->main_button_LED_R.set(0);
+	    this->main_button_LED_G.set(0);
+	    this->main_button_LED_B.set(0);
+	}
+	else if(CARVERA_AIR == THEKERNEL->factory_set->MachineModel)
+    {
+    	this->set_led_colors(0, 0, 0);
+    	THEKERNEL->slow_ticker->attach( 4, this, &MainButton::led_tick );
+    }
 
     THEKERNEL->slow_ticker->attach( this->poll_frequency, this, &MainButton::button_tick );
 }
@@ -121,8 +146,8 @@ void MainButton::on_second_tick(void *)
 {
     // check if sd card is ok
 	if (!this->sd_ok && !THEKERNEL->is_halted()) {
-        THEKERNEL->call_event(ON_HALT, nullptr);
         THEKERNEL->set_halt_reason(SD_ERROR);
+        THEKERNEL->call_event(ON_HALT, nullptr);
 	}
 
 	bool vacuum_on = false;
@@ -153,8 +178,8 @@ void MainButton::on_idle(void *argument)
     	// get current status
     	uint8_t state = THEKERNEL->get_state();
     	if (e_stop_pressed && state != ALARM) {
-    	    THEKERNEL->call_event(ON_HALT, nullptr);
     	    THEKERNEL->set_halt_reason(E_STOP);
+    	    THEKERNEL->call_event(ON_HALT, nullptr);
     	}
 		if (this->stop_on_cover_open && !THEKERNEL->is_halted()) {
             void *return_value;
@@ -177,7 +202,10 @@ void MainButton::on_idle(void *argument)
     		// reset sleep timer
     		if (us_ticker_read() - this->power_fan_countdown_us > (uint32_t)this->power_fan_delay_s * 1000000) {
 				// turn off 12v
-    			this->switch_power_12(0);
+				if(CARVERA == THEKERNEL->factory_set->MachineModel)
+			    {
+	    			this->switch_power_12(0);
+	    		}
     		}
 		} else {
 			this->switch_power_12(1);
@@ -221,8 +249,8 @@ void MainButton::on_idle(void *argument)
     			case RUN:
     			case HOME:
     				// Halt
-    		        THEKERNEL->call_event(ON_HALT, nullptr);
     		        THEKERNEL->set_halt_reason(MANUAL);
+    		        THEKERNEL->call_event(ON_HALT, nullptr);
     				break;
     			case HOLD:
     				// resume
@@ -234,6 +262,10 @@ void MainButton::on_idle(void *argument)
     			case SLEEP:
     				// reset
     				system_reset(false);
+    				break;
+    			case TOOL:
+    				// Finish tool change waiting for Carvera Air
+    				THEKERNEL->set_tool_waiting(false);
     				break;
     		}
     	} else if (button_state == BUTTON_LONG_PRESSED ) {
@@ -262,8 +294,8 @@ void MainButton::on_idle(void *argument)
     			case RUN:
     			case HOME:
     				// halt
-    		        THEKERNEL->call_event(ON_HALT, nullptr);
     		        THEKERNEL->set_halt_reason(MANUAL);
+    		        THEKERNEL->call_event(ON_HALT, nullptr);
     				break;
     			case HOLD:
     				// resume
@@ -287,54 +319,83 @@ void MainButton::on_idle(void *argument)
     		}
     	} else {
     		// update led status
-    		switch (state) {
-    			case IDLE:
-    			    this->main_button_LED_R.set(0);
-    			    this->main_button_LED_G.set(0);
-    			    this->main_button_LED_B.set(1);
-    				break;
-    			case RUN:
-    			    this->main_button_LED_R.set(0);
-    			    this->main_button_LED_G.set(1);
-    			    this->main_button_LED_B.set(0);
-    				break;
-    			case HOME:
-    			    this->main_button_LED_R.set(1);
-    			    this->main_button_LED_G.set(1);
-    			    this->main_button_LED_B.set(0);
-    				break;
-    			case HOLD:
-    				this->hold_toggle ++;
-    			    this->main_button_LED_R.set(0);
-    			    this->main_button_LED_G.set(this->hold_toggle % 4  < 2 ? 1 : 0);
-    			    this->main_button_LED_B.set(0);
-    				break;
-    			case ALARM:
-    			    this->main_button_LED_R.set(1);
-    			    this->main_button_LED_G.set(0);
-    			    this->main_button_LED_B.set(0);
-    			    break;
-    			case SLEEP:
-    			    this->main_button_LED_R.set(1);
-    			    this->main_button_LED_G.set(1);
-    			    this->main_button_LED_B.set(1);
-    				break;
-    			case SUSPEND:
-    				this->hold_toggle ++;
-    			    this->main_button_LED_R.set(0);
-    			    this->main_button_LED_G.set(0);
-    			    this->main_button_LED_B.set(this->hold_toggle % 4  < 2 ? 1 : 0);
-    				break;
-    			case WAIT:
-    				this->hold_toggle ++;
-    			    this->main_button_LED_R.set(this->hold_toggle % 4  < 2 ? 1 : 0);
-    			    this->main_button_LED_G.set(this->hold_toggle % 4  < 2 ? 1 : 0);
-    			    this->main_button_LED_B.set(0);
-    				break;
-    		}
+		    if(CARVERA == THEKERNEL->factory_set->MachineModel)
+		    {
+	    		switch (state) {
+	    			case IDLE:
+	    			    this->main_button_LED_R.set(0);
+	    			    this->main_button_LED_G.set(0);
+	    			    this->main_button_LED_B.set(1);
+	    				break;
+	    			case RUN:
+	    			    this->main_button_LED_R.set(0);
+	    			    this->main_button_LED_G.set(1);
+	    			    this->main_button_LED_B.set(0);
+	    				break;
+	    			case HOME:
+	    			    this->main_button_LED_R.set(1);
+	    			    this->main_button_LED_G.set(1);
+	    			    this->main_button_LED_B.set(0);
+	    				break;
+	    			case HOLD:
+	    				this->hold_toggle ++;
+	    			    this->main_button_LED_R.set(0);
+	    			    this->main_button_LED_G.set(this->hold_toggle % 4  < 2 ? 1 : 0);
+	    			    this->main_button_LED_B.set(0);
+	    				break;
+	    			case ALARM:
+	    			    this->main_button_LED_R.set(1);
+	    			    this->main_button_LED_G.set(0);
+	    			    this->main_button_LED_B.set(0);
+	    			    break;
+	    			case SLEEP:
+	    			    this->main_button_LED_R.set(1);
+	    			    this->main_button_LED_G.set(1);
+	    			    this->main_button_LED_B.set(1);
+	    				break;
+	    			case SUSPEND:
+	    				this->hold_toggle ++;
+	    			    this->main_button_LED_R.set(0);
+	    			    this->main_button_LED_G.set(0);
+	    			    this->main_button_LED_B.set(this->hold_toggle % 4  < 2 ? 1 : 0);
+	    				break;
+	    			case WAIT:
+	    				this->hold_toggle ++;
+	    			    this->main_button_LED_R.set(this->hold_toggle % 4  < 2 ? 1 : 0);
+	    			    this->main_button_LED_G.set(this->hold_toggle % 4  < 2 ? 1 : 0);
+	    			    this->main_button_LED_B.set(0);
+	    				break;
+	    		}
+
+	    	}
+/*			else if(CARVERA_AIR == THEKERNEL->factory_set->MachineModel)
+		    {
+		    	if (state != old_state) 
+		    	{
+	    			old_state = state;
+	        		switch (state) {
+	        			case IDLE:
+	        				this->set_led_colors(0, 0, 100);
+	        				break;
+	        			case RUN:
+	        				this->set_led_colors(0, 100, 0);
+	        				break;
+	        			case HOME:
+	        				this->set_led_colors(100, 20, 0);
+	        				break;
+	        			case ALARM:
+	        				this->set_led_colors(100, 0, 0);
+	        			    break;
+	        			case SLEEP:
+	        				this->set_led_colors(100, 100, 100);
+	        				break;
+	        		}
+	        	}
+
+		    }*/
     		if (cover_open_stop) {
-		        THEKERNEL->call_event(ON_HALT, nullptr);
 		        THEKERNEL->set_halt_reason(COVER_OPEN);
+		        THEKERNEL->call_event(ON_HALT, nullptr);
     		}
     	}
     	button_state = NONE;
@@ -401,4 +462,837 @@ void MainButton::on_set_public_data(void* argument)
     	}
     }
 }
+uint32_t MainButton::led_tick(uint32_t dummy)
+{
+	uint8_t state = THEKERNEL->get_state();
+	switch (state) {
+		case HOLD:
+			this->hold_toggle ++;
+			this->set_led_colors(0, this->hold_toggle % 4  < 2 ? 104 : 0, 0);
+			break;
+		case SUSPEND:
+			this->hold_toggle ++;
+			this->set_led_colors(0, 0, this->hold_toggle % 4 < 2 ? 104 : 0);
+			break;
+		case WAIT:
+			this->hold_toggle ++;
+			this->set_led_colors(this->hold_toggle % 4  < 2 ? 104 : 0, this->hold_toggle % 4 <2 ? 24 : 0, 0);
+			break;
+		case TOOL:
+			this->hold_toggle ++;
+			struct tool_status tool;
+    		PublicData::get_value( atc_handler_checksum, get_tool_status_checksum, &tool );
+    		switch(tool.target_tool)
+    		{
+    			case 1:
+    				if(this->hold_toggle % 5 == 0)
+						this->set_led_num(0,104,104,0,0,0,1);
+					if(this->hold_toggle % 5 == 1)
+						this->set_led_colors(0, 0, 0);
+					if(this->hold_toggle % 5 == 2)
+						this->set_led_colors(0, 0, 0);
+					if(this->hold_toggle % 5 == 3)
+						this->set_led_colors(0, 0, 0);
+					if(this->hold_toggle % 5 == 4)
+						this->set_led_colors(0, 0, 0);
+    				break;
+    			case 2:
+    				if(this->hold_toggle % 5 == 0)
+						this->set_led_num(0,104,104,0,0,0,2);
+					if(this->hold_toggle % 5 == 1)
+						this->set_led_colors(0, 0, 0);
+					if(this->hold_toggle % 5 == 2)
+						this->set_led_colors(0, 0, 0);
+					if(this->hold_toggle % 5 == 3)
+						this->set_led_colors(0, 0, 0);
+					if(this->hold_toggle % 5 == 4)
+						this->set_led_colors(0, 0, 0);
+    				break;
+    			case 3:
+    				if(this->hold_toggle % 5 == 0)
+						this->set_led_num(0,104,104,0,0,0,3);
+					if(this->hold_toggle % 5 == 1)
+						this->set_led_colors(0, 0, 0);
+					if(this->hold_toggle % 5 == 2)
+						this->set_led_colors(0, 0, 0);
+					if(this->hold_toggle % 5 == 3)
+						this->set_led_colors(0, 0, 0);
+					if(this->hold_toggle % 5 == 4)
+						this->set_led_colors(0, 0, 0);
+    				break;
+    			case 4:
+    				if(this->hold_toggle % 5 == 0)
+						this->set_led_num(0,104,104,0,0,0,3);
+					if(this->hold_toggle % 5 == 1)
+						this->set_led_colors(0, 0, 0);
+					if(this->hold_toggle % 5 == 2)
+						this->set_led_num(0,104,104,0,0,0,1);
+					if(this->hold_toggle % 5 == 3)
+						this->set_led_colors(0, 0, 0);
+					if(this->hold_toggle % 5 == 4)
+						this->set_led_colors(0, 0, 0);
+    				break;
+    			case 5:
+    				if(this->hold_toggle % 5 == 0)
+						this->set_led_num(0,104,104,0,0,0,3);
+					if(this->hold_toggle % 5 == 1)
+						this->set_led_colors(0, 0, 0);
+					if(this->hold_toggle % 5 == 2)
+						this->set_led_num(0,104,104,0,0,0,2);
+					if(this->hold_toggle % 5 == 3)
+						this->set_led_colors(0, 0, 0);
+					if(this->hold_toggle % 5 == 4)
+						this->set_led_colors(0, 0, 0);
+    				break;
+    			case 6:
+    				if(this->hold_toggle % 5 == 0)
+						this->set_led_num(0,104,104,0,0,0,3);
+					if(this->hold_toggle % 5 == 1)
+						this->set_led_colors(0, 0, 0);
+					if(this->hold_toggle % 5 == 2)
+						this->set_led_num(0,104,104,0,0,0,3);
+					if(this->hold_toggle % 5 == 3)
+						this->set_led_colors(0, 0, 0);
+					if(this->hold_toggle % 5 == 4)
+						this->set_led_colors(0, 0, 0);
+    				break;
+    			default:
+    				if(this->hold_toggle % 5 == 0)
+						this->set_led_colors(0, 104, 104);
+					if(this->hold_toggle % 5 == 1)
+						this->set_led_colors(0, 0, 0);
+					if(this->hold_toggle % 5 == 2)
+						this->set_led_colors(0, 104, 104);
+					if(this->hold_toggle % 5 == 3)
+						this->set_led_colors(0, 0, 0);
+					if(this->hold_toggle % 5 == 4)
+						this->set_led_colors(0, 0, 0);
+    				break;
+    			
+    		}
+			
+			break;
+	}
+	
+	if (state != old_state) 
+	{
+		old_state = state;
+		switch (state) {
+			case IDLE:
+				this->set_led_colors(0, 0, 104);
+				break;
+			case RUN:
+				this->set_led_colors(0, 104, 0);
+				break;
+			case HOME:
+				this->set_led_colors(104, 24, 0);
+				break;
+			case ALARM:
+				this->set_led_colors(104, 0, 0);
+			    break;
+			case SLEEP:
+				this->set_led_colors(104, 104, 104);
+				break;
+		}
+	}
+	else if((RUN == state) && (true == THEKERNEL->checkled) )
+	{
+		this->hold_toggle ++;
+		if(this->hold_toggle % 4 == 0)
+		{
+			this->set_led_colors(104, 0 , 0);
+		}
+	}
+	return 0;
+}
+void MainButton::set_led_color(unsigned char R1, unsigned char G1, unsigned char B1,unsigned char R2, unsigned char G2, unsigned char B2,unsigned char R3, unsigned char G3, unsigned char B3,unsigned char R4, unsigned char G4, unsigned char B4,unsigned char R5, unsigned char G5, unsigned char B5)
+{
+	unsigned char temp, j;
+	
+	//first segment
+	temp = R1;
+	for (j = 0; j < 8; j++) {
+		if (temp & (0x80 >> j)) //发送1
+		{
+			LPC_GPIO1->FIOSET = 1 << 15; //0x00008000;
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			LPC_GPIO1->FIOCLR = 1 << 15;
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+		}
+		else                //发送0
+		{
+			LPC_GPIO1->FIOSET = 1 << 15;
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();
+			LPC_GPIO1->FIOCLR = 1 << 15;
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+		}
+	}
+	temp = G1;
+	for (j = 0; j < 8; j++) {
+		if (temp & (0x80 >> j)) //发送1
+		{
+			LPC_GPIO1->FIOSET = 1 << 15; //0x00008000;
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			LPC_GPIO1->FIOCLR = 1 << 15;
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+		}
+		else                //发送0
+		{
+			LPC_GPIO1->FIOSET = 1 << 15;
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();
+			LPC_GPIO1->FIOCLR = 1 << 15;
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+		}
+	}
+	temp = B1;
+	for (j = 0; j < 8; j++) {
+		if (temp & (0x80 >> j)) //发送1
+		{
+			LPC_GPIO1->FIOSET = 1 << 15; //0x00008000;
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			LPC_GPIO1->FIOCLR = 1 << 15;
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+		}
+		else                //发送0
+		{
+			LPC_GPIO1->FIOSET = 1 << 15;
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();
+			LPC_GPIO1->FIOCLR = 1 << 15;
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+		}
+	}
+	//second segment
+	temp = R2;
+	for (j = 0; j < 8; j++) {
+		if (temp & (0x80 >> j)) //发送1
+		{
+			LPC_GPIO1->FIOSET = 1 << 15; //0x00008000;
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			LPC_GPIO1->FIOCLR = 1 << 15;
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+		}
+		else                //发送0
+		{
+			LPC_GPIO1->FIOSET = 1 << 15;
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();
+			LPC_GPIO1->FIOCLR = 1 << 15;
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+		}
+	}
+	temp = G2;
+	for (j = 0; j < 8; j++) {
+		if (temp & (0x80 >> j)) //发送1
+		{
+			LPC_GPIO1->FIOSET = 1 << 15; //0x00008000;
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			LPC_GPIO1->FIOCLR = 1 << 15;
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+		}
+		else                //发送0
+		{
+			LPC_GPIO1->FIOSET = 1 << 15;
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();
+			LPC_GPIO1->FIOCLR = 1 << 15;
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+		}
+	}
+	temp = B2;
+	for (j = 0; j < 8; j++) {
+		if (temp & (0x80 >> j)) //发送1
+		{
+			LPC_GPIO1->FIOSET = 1 << 15; //0x00008000;
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			LPC_GPIO1->FIOCLR = 1 << 15;
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+		}
+		else                //发送0
+		{
+			LPC_GPIO1->FIOSET = 1 << 15;
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();
+			LPC_GPIO1->FIOCLR = 1 << 15;
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+		}
+	}
+	//third segment
+	temp = R3;
+	for (j = 0; j < 8; j++) {
+		if (temp & (0x80 >> j)) //发送1
+		{
+			LPC_GPIO1->FIOSET = 1 << 15; //0x00008000;
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			LPC_GPIO1->FIOCLR = 1 << 15;
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+		}
+		else                //发送0
+		{
+			LPC_GPIO1->FIOSET = 1 << 15;
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();
+			LPC_GPIO1->FIOCLR = 1 << 15;
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+		}
+	}
+	temp = G3;
+	for (j = 0; j < 8; j++) {
+		if (temp & (0x80 >> j)) //发送1
+		{
+			LPC_GPIO1->FIOSET = 1 << 15; //0x00008000;
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			LPC_GPIO1->FIOCLR = 1 << 15;
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+		}
+		else                //发送0
+		{
+			LPC_GPIO1->FIOSET = 1 << 15;
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();
+			LPC_GPIO1->FIOCLR = 1 << 15;
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+		}
+	}
+	temp = B3;
+	for (j = 0; j < 8; j++) {
+		if (temp & (0x80 >> j)) //发送1
+		{
+			LPC_GPIO1->FIOSET = 1 << 15; //0x00008000;
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			LPC_GPIO1->FIOCLR = 1 << 15;
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+		}
+		else                //发送0
+		{
+			LPC_GPIO1->FIOSET = 1 << 15;
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();
+			LPC_GPIO1->FIOCLR = 1 << 15;
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+		}
+	}
+	//forth segment
+	temp = R4;
+	for (j = 0; j < 8; j++) {
+		if (temp & (0x80 >> j)) //发送1
+		{
+			LPC_GPIO1->FIOSET = 1 << 15; //0x00008000;
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			LPC_GPIO1->FIOCLR = 1 << 15;
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+		}
+		else                //发送0
+		{
+			LPC_GPIO1->FIOSET = 1 << 15;
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();
+			LPC_GPIO1->FIOCLR = 1 << 15;
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+		}
+	}
+	temp = G4;
+	for (j = 0; j < 8; j++) {
+		if (temp & (0x80 >> j)) //发送1
+		{
+			LPC_GPIO1->FIOSET = 1 << 15; //0x00008000;
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			LPC_GPIO1->FIOCLR = 1 << 15;
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+		}
+		else                //发送0
+		{
+			LPC_GPIO1->FIOSET = 1 << 15;
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();
+			LPC_GPIO1->FIOCLR = 1 << 15;
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+		}
+	}
+	temp = B4;
+	for (j = 0; j < 8; j++) {
+		if (temp & (0x80 >> j)) //发送1
+		{
+			LPC_GPIO1->FIOSET = 1 << 15; //0x00008000;
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			LPC_GPIO1->FIOCLR = 1 << 15;
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+		}
+		else                //发送0
+		{
+			LPC_GPIO1->FIOSET = 1 << 15;
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();
+			LPC_GPIO1->FIOCLR = 1 << 15;
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+		}
+	}
+	
+	//fifth segment
+	temp = R5;
+	for (j = 0; j < 8; j++) {
+		if (temp & (0x80 >> j)) //发送1
+		{
+			LPC_GPIO1->FIOSET = 1 << 15; //0x00008000;
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			LPC_GPIO1->FIOCLR = 1 << 15;
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+		}
+		else                //发送0
+		{
+			LPC_GPIO1->FIOSET = 1 << 15;
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();
+			LPC_GPIO1->FIOCLR = 1 << 15;
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+		}
+	}
+	temp = G5;
+	for (j = 0; j < 8; j++) {
+		if (temp & (0x80 >> j)) //发送1
+		{
+			LPC_GPIO1->FIOSET = 1 << 15; //0x00008000;
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			LPC_GPIO1->FIOCLR = 1 << 15;
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+		}
+		else                //发送0
+		{
+			LPC_GPIO1->FIOSET = 1 << 15;
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();
+			LPC_GPIO1->FIOCLR = 1 << 15;
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+		}
+	}
+	temp = B5;
+	for (j = 0; j < 8; j++) {
+		if (temp & (0x80 >> j)) //发送1
+		{
+			LPC_GPIO1->FIOSET = 1 << 15; //0x00008000;
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			LPC_GPIO1->FIOCLR = 1 << 15;
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+		}
+		else                //发送0
+		{
+			LPC_GPIO1->FIOSET = 1 << 15;
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();
+			LPC_GPIO1->FIOCLR = 1 << 15;
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+		}
+	}
+}
 
+/*
+void MainButton::set_led_color(unsigned char R, unsigned char G, unsigned char B)
+{
+	unsigned char i, j, temp[3];
+	temp[0] = R;
+	temp[1] = G;
+	temp[2] = B;
+	for (i = 0; i < 3; i++) {
+		for (j = 0; j < 8; j++) {
+			if (temp[i] & (0x80 >> j)) //发送1
+			{
+				LPC_GPIO1->FIOSET = 1 << 15; //0x00008000;
+				__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+				__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+				__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+				__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+				__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+				__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+				__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+				__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+				__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+				__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+				LPC_GPIO1->FIOCLR = 1 << 15;
+				__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			}
+			else                //发送0
+			{
+				LPC_GPIO1->FIOSET = 1 << 15;
+				__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+				__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+				__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+				LPC_GPIO1->FIOCLR = 1 << 15;
+				__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+				__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+				__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+				__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+				__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+				__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+				__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+				__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+				__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
+			}
+		}
+	}
+}
+*/
+
+void MainButton::set_led_colors(unsigned char R, unsigned char G, unsigned char B)
+{
+    //__disable_irq();
+    // stop TIMER0 and TIMER1 for save time
+	NVIC_DisableIRQ(TIMER0_IRQn);
+	NVIC_DisableIRQ(TIMER1_IRQn);
+	set_led_color(R, G, B, R, G, B, R, G, B, R, G, B, R, G, B);
+//	set_led_color(R, G, B);
+//	set_led_color(R, G, B);
+//	set_led_color(R, G, B);
+//	set_led_color(R, G, B);
+    //__enable_irq();
+    NVIC_EnableIRQ(TIMER0_IRQn);     // Enable interrupt handler
+	NVIC_EnableIRQ(TIMER1_IRQn);     // Enable interrupt handler
+}
+
+void MainButton::set_led_num(unsigned char ColorFR, unsigned char ColorFG, unsigned char ColorFB, unsigned char ColorBR, unsigned char ColorBG, unsigned char ColorBB, unsigned char num)
+{
+    __disable_irq();
+    switch(num)
+    {
+    	case 1:
+    		set_led_color(ColorFR, ColorFG, ColorFB, ColorBR, ColorBG, ColorBB, ColorBR, ColorBG, ColorBB, ColorBR, ColorBG, ColorBB, ColorBR, ColorBG, ColorBB);
+    		//set_led_color(ColorBR, ColorBG, ColorBB);
+    		//set_led_color(ColorBR, ColorBG, ColorBB);
+    		//set_led_color(ColorBR, ColorBG, ColorBB);
+    		//set_led_color(ColorBR, ColorBG, ColorBB);
+    		break;	
+    	case 2:
+    		set_led_color(ColorFR, ColorFG, ColorFB, ColorBR, ColorBG, ColorBB, ColorFR, ColorFG, ColorFB, ColorBR, ColorBG, ColorBB, ColorBR, ColorBG, ColorBB);
+    		//set_led_color(ColorBR, ColorBG, ColorBB);
+    		//set_led_color(ColorFR, ColorFG, ColorFB);
+    		//set_led_color(ColorBR, ColorBG, ColorBB);
+    		//set_led_color(ColorBR, ColorBG, ColorBB);
+    		break;	
+    	case 3:
+    		set_led_color(ColorFR, ColorFG, ColorFB, ColorBR, ColorBG, ColorBB, ColorFR, ColorFG, ColorFB, ColorBR, ColorBG, ColorBB, ColorFR, ColorFG, ColorFB);
+    		//set_led_color(ColorBR, ColorBG, ColorBB);
+    		//set_led_color(ColorFR, ColorFG, ColorFB);
+    		//set_led_color(ColorBR, ColorBG, ColorBB);
+    		//set_led_color(ColorFR, ColorFG, ColorFB);
+    		break;	
+    	default:
+    		break;
+    }
+    __enable_irq();
+}

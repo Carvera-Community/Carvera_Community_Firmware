@@ -9,6 +9,7 @@
 
 #include "libs/Module.h"
 #include "libs/Kernel.h"
+#include "libs/gpio.h"
 #include "ATCHandler.h"
 #include "SlowTicker.h"
 #include "Tool.h"
@@ -103,15 +104,39 @@ ATCHandler::ATCHandler()
     tool_number = 6;
 	max_manual_tool_number = 99;
     g28_triggered = false;
+    blaserManual = false;
     goto_position = -1;
     position_x = 8888;
     position_y = 8888;
+    position_a = 88888888;
+    position_b = 88888888;
 }
 
 void ATCHandler::clear_script_queue(){
 	while (!this->script_queue.empty()) {
 		this->script_queue.pop();
 	}
+}
+
+void ATCHandler::fill_change_scripts(int new_tool, bool clear_z) {
+	char buff[100];
+
+	// move to tool change position
+	snprintf(buff, sizeof(buff), "G53 G0 Z%.3f", THEROBOT->from_millimeters(this->clearance_z));
+	this->script_queue.push(buff);
+
+    // move x and y to active tool position
+	snprintf(buff, sizeof(buff), "G53 G0 X%.3f Y%.3f", THEROBOT->from_millimeters(anchor1_x + toolrack_offset_x + 132), THEROBOT->from_millimeters(anchor1_y + toolrack_offset_y));
+	this->script_queue.push(buff);
+
+	this->script_queue.push("M497.2");
+
+	// Enter tool changing waiting status
+	this->script_queue.push("M490.1");
+
+	// set new tool
+	snprintf(buff, sizeof(buff), "M493.2 T%d", new_tool);
+	this->script_queue.push(buff);
 }
 
 void ATCHandler::fill_manual_drop_scripts(int old_tool) {
@@ -281,20 +306,43 @@ void ATCHandler::fill_pick_scripts(int new_tool, bool clear_z) {
 
 void ATCHandler::fill_cali_scripts(bool is_probe, bool clear_z) {
 	char buff[100];
+	
+	if(is_probe){
+	// open probe laser
+		this->script_queue.push("M494.1");
+	}
 	// set atc status
 	this->script_queue.push("M497.3");
-	// clamp tool if in laser mode
-	if (THEKERNEL->get_laser_mode()) {
-		this->script_queue.push("M490.1");
+	
+	if(CARVERA == THEKERNEL->factory_set->MachineModel)
+	{
+		// clamp tool if in laser mode
+		if (THEKERNEL->get_laser_mode()) {
+			this->script_queue.push("M490.1");
+		}
 	}
 	// lift z to safe position with fast speed
 	snprintf(buff, sizeof(buff), "G53 G0 Z%.3f", THEROBOT->from_millimeters(clear_z ? this->clearance_z : this->safe_z_mm));
 	this->script_queue.push(buff);
 	// move x and y to calibrate position
-	snprintf(buff, sizeof(buff), "G53 G0 X%.3f Y%.3f", THEROBOT->from_millimeters(probe_mx_mm), THEROBOT->from_millimeters(probe_my_mm));
+    if(THEKERNEL->factory_set->FuncSetting & (1<<2))	//ATC 
+    {
+		snprintf(buff, sizeof(buff), "G53 G0 X%.3f Y%.3f", THEROBOT->from_millimeters(probe_mx_mm), THEROBOT->from_millimeters(probe_my_mm));
+	}
+	else	//Manual Tool Change
+	{
+		snprintf(buff, sizeof(buff), "G53 G0 X%.3f Y%.3f", THEROBOT->from_millimeters(anchor1_x + 280), THEROBOT->from_millimeters(anchor1_y + 196));
+	}
 	this->script_queue.push(buff);
 	// do calibrate with fast speed
-	snprintf(buff, sizeof(buff), "G38.6 Z%.3f F%.3f", probe_mz_mm, probe_fast_rate);
+    if(THEKERNEL->factory_set->FuncSetting & (1<<2))	//ATC 
+    {
+		snprintf(buff, sizeof(buff), "G38.6 Z%.3f F%.3f", probe_mz_mm, probe_fast_rate);
+	}
+	else	//Manual Tool Change
+	{
+		snprintf(buff, sizeof(buff), "G38.6 Z%.3f F%.3f", toolrack_z, probe_fast_rate);
+	}
 	this->script_queue.push(buff);
 	// lift a bit
 	snprintf(buff, sizeof(buff), "G91 G0 Z%.3f", THEROBOT->from_millimeters(probe_retract_mm));
@@ -312,6 +360,11 @@ void ATCHandler::fill_cali_scripts(bool is_probe, bool clear_z) {
 	if (is_probe) {
 		this->script_queue.push("M492.3");
 	}
+	
+	if(is_probe){
+		// close probe laser	
+	    this->script_queue.push("M494.2");
+	}
 }
 
 void ATCHandler::fill_margin_scripts(float x_pos, float y_pos, float x_pos_max, float y_pos_max) {
@@ -320,9 +373,9 @@ void ATCHandler::fill_margin_scripts(float x_pos, float y_pos, float x_pos_max, 
 	// set atc status
 	this->script_queue.push("M497.4");
 
-	// open probe laser
-	this->script_queue.push("M494.1");
-
+    // open probe laser
+	this->script_queue.push("M494.0");
+	
 	// lift z to safe position with fast speed
 	snprintf(buff, sizeof(buff), "G53 G0 Z%.3f", THEROBOT->from_millimeters(this->clearance_z));
 	this->script_queue.push(buff);
@@ -347,8 +400,8 @@ void ATCHandler::fill_margin_scripts(float x_pos, float y_pos, float x_pos_max, 
 	snprintf(buff, sizeof(buff), "G90 G1 X%.3f Y%.3f F%.3f", THEROBOT->from_millimeters(x_pos), THEROBOT->from_millimeters(y_pos), THEROBOT->from_millimeters(this->margin_rate));
 	this->script_queue.push(buff);
 
-	// close probe laser
-	this->script_queue.push("M494.2");
+	// close probe laser	
+    //this->script_queue.push("M494.2");
 
 }
 
@@ -370,6 +423,9 @@ void ATCHandler::fill_zprobe_scripts(float x_pos, float y_pos, float x_offset, f
 
 	// set atc status
 	this->script_queue.push("M497.5");
+	
+    // open wired probe laser
+    this->script_queue.push("M494.1");
 
 	// lift z to safe position with fast speed
 	snprintf(buff, sizeof(buff), "G53 G0 Z%.3f", THEROBOT->from_millimeters(this->clearance_z));
@@ -380,7 +436,14 @@ void ATCHandler::fill_zprobe_scripts(float x_pos, float y_pos, float x_offset, f
 	this->script_queue.push(buff);
 
 	// do probe with fast speed
-	snprintf(buff, sizeof(buff), "G38.2 Z%.3f F%.3f", probe_mz_mm, probe_fast_rate);
+	if(THEKERNEL->factory_set->FuncSetting & (1<<2))	//ATC 
+    {
+		snprintf(buff, sizeof(buff), "G38.2 Z%.3f F%.3f", probe_mz_mm, probe_fast_rate);
+	}
+	else	//Manual Tool Change
+	{
+		snprintf(buff, sizeof(buff), "G38.2 Z%.3f F%.3f", toolrack_z, probe_fast_rate);
+	}
 	this->script_queue.push(buff);
 
 	// lift a bit
@@ -398,24 +461,52 @@ void ATCHandler::fill_zprobe_scripts(float x_pos, float y_pos, float x_offset, f
 	// retract z a bit
 	snprintf(buff, sizeof(buff), "G91 G0 Z%.3f", THEROBOT->from_millimeters(probe_retract_mm));
 	this->script_queue.push(buff);
+	
+    // close wired probe laser
+    this->script_queue.push("M494.2");
 }
 
 void ATCHandler::fill_zprobe_abs_scripts() {
 	char buff[100];
 
 	// set atc status
-	this->script_queue.push("M497.5");
+	this->script_queue.push("M497.5");	
+	
+    // open wired probe laser
+    this->script_queue.push("M494.1");
 
 	// lift z to safe position with fast speed
 	snprintf(buff, sizeof(buff), "G53 G0 Z%.3f", THEROBOT->from_millimeters(clearance_z));
 	this->script_queue.push(buff);
 
 	// goto z probe position
-	snprintf(buff, sizeof(buff), "G53 G0 X%.3f Y%.3f", THEROBOT->from_millimeters(anchor1_x + rotation_offset_x - 3), THEROBOT->from_millimeters(anchor1_y + rotation_offset_y));
+	if(CARVERA == THEKERNEL->factory_set->MachineModel)
+    {
+		snprintf(buff, sizeof(buff), "G53 G0 X%.3f Y%.3f", THEROBOT->from_millimeters(anchor1_x + rotation_offset_x - 3), THEROBOT->from_millimeters(anchor1_y + rotation_offset_y));
+	}
+	else
+	{
+		//snprintf(buff, sizeof(buff), "G53 G0 X%.3f Y%.3f", THEROBOT->from_millimeters(anchor1_x + rotation_offset_x - 7), THEROBOT->from_millimeters(anchor1_y + rotation_offset_y));
+		// move y to clearance
+		snprintf(buff, sizeof(buff), "G53 G0 Y%.3f", THEROBOT->from_millimeters(this->clearance_y));
+		this->script_queue.push(buff);
+		
+		snprintf(buff, sizeof(buff), "G53 G0 X%.3f", THEROBOT->from_millimeters(anchor1_x + rotation_offset_x - 7) );
+		this->script_queue.push(buff);
+		
+		snprintf(buff, sizeof(buff), "G53 G0 Y%.3f", THEROBOT->from_millimeters(anchor1_y + rotation_offset_y));
+	}
 	this->script_queue.push(buff);
 
-	// do probe with fast speed
-	snprintf(buff, sizeof(buff), "G38.2 Z%.3f F%.3f", probe_mz_mm, probe_fast_rate);
+	// do probe with fast speed	
+	if(THEKERNEL->factory_set->FuncSetting & (1<<2))	//ATC 
+    {
+		snprintf(buff, sizeof(buff), "G38.2 Z%.3f F%.3f", probe_mz_mm, probe_fast_rate);
+	}
+	else	//Manual Tool Change
+	{
+		snprintf(buff, sizeof(buff), "G38.2 Z%.3f F%.3f", toolrack_z, probe_fast_rate);
+	}
 	this->script_queue.push(buff);
 
 	// lift a bit
@@ -432,7 +523,10 @@ void ATCHandler::fill_zprobe_abs_scripts() {
 
 	// retract z a bit
 	snprintf(buff, sizeof(buff), "G91 G0 Z%.3f", THEROBOT->from_millimeters(probe_retract_mm));
-	this->script_queue.push(buff);
+	this->script_queue.push(buff);	
+	
+    // close wired probe laser
+    this->script_queue.push("M494.2");
 }
 
 void ATCHandler::fill_xyzprobe_scripts(float tool_dia, float probe_height) {
@@ -441,8 +535,18 @@ void ATCHandler::fill_xyzprobe_scripts(float tool_dia, float probe_height) {
 	// set atc status
 	this->script_queue.push("M497.5");
 
+	// open wired probe laser
+	this->script_queue.push("M494.1");
+
 	// do z probe with slow speed
-	snprintf(buff, sizeof(buff), "G38.2 Z%.3f F%.3f", probe_mz_mm, probe_slow_rate);
+	if(THEKERNEL->factory_set->FuncSetting & (1<<2))	//ATC 
+    {
+		snprintf(buff, sizeof(buff), "G38.2 Z%.3f F%.3f", probe_mz_mm, probe_slow_rate);
+	}
+	else	//Manual Tool Change
+	{
+		snprintf(buff, sizeof(buff), "G38.2 Z%.3f F%.3f", toolrack_z, probe_slow_rate);
+	}
 	this->script_queue.push(buff);
 
 	// set Z origin
@@ -484,6 +588,9 @@ void ATCHandler::fill_xyzprobe_scripts(float tool_dia, float probe_height) {
 	// move to XY zero
 	snprintf(buff, sizeof(buff), "G91 G0 X%.3f Y%0.3f", THEROBOT->from_millimeters(-5 - tool_dia / 2), THEROBOT->from_millimeters(-5 - tool_dia / 2));
 	this->script_queue.push(buff);
+	
+	// close wired probe laser
+	this->script_queue.push("M494.2");
 
 }
 
@@ -495,7 +602,10 @@ void ATCHandler::fill_autolevel_scripts(float x_pos, float y_pos,
 
 	// set atc status
 	this->script_queue.push("M497.6");
-
+	
+	// open wired probe laser
+    this->script_queue.push("M494.0");
+	
 	// goto x and y path origin
 	snprintf(buff, sizeof(buff), "G90 G0 X%.3f Y%.3f", THEROBOT->from_millimeters(x_pos), THEROBOT->from_millimeters(y_pos));
 	this->script_queue.push(buff);
@@ -503,6 +613,9 @@ void ATCHandler::fill_autolevel_scripts(float x_pos, float y_pos,
 	// do auto leveling
 	snprintf(buff, sizeof(buff), "G32R1X0Y0A%.3fB%.3fI%dJ%dH%.3f", x_size, y_size, x_grids, y_grids, height);
 	this->script_queue.push(buff);
+	
+	// close wired probe laser
+    //this->script_queue.push("M494.2");
 }
 
 void ATCHandler::on_module_loaded()
@@ -520,26 +633,42 @@ void ATCHandler::on_module_loaded()
     THEKERNEL->slow_ticker->attach(1000, this, &ATCHandler::read_detector);
 
     THEKERNEL->slow_ticker->attach(1, this, &ATCHandler::countdown_probe_laser);
+    
+    if(CARVERA_AIR == THEKERNEL->factory_set->MachineModel)
+	{
+    	THEKERNEL->slow_ticker->attach(10, this, &ATCHandler::beep_beep);
+    }
 
     // load data from eeprom
     this->active_tool = THEKERNEL->eeprom_data->TOOL;
     this->ref_tool_mz = THEKERNEL->eeprom_data->REFMZ;
     this->cur_tool_mz = THEKERNEL->eeprom_data->TOOLMZ;
     this->tool_offset = THEKERNEL->eeprom_data->TLO;
-
+	
+	this->target_tool = -1;
+	this->beep_state = BP_SLEEP;
+	this->beep_count = 0;
+	
 }
 
 void ATCHandler::on_config_reload(void *argument)
 {
 	char buff[10];
-
-	atc_home_info.pin.from_string( THEKERNEL->config->value(atc_checksum, endstop_pin_checksum)->by_default("1.0^" )->as_string())->as_input();
+	
+	if(CARVERA == THEKERNEL->factory_set->MachineModel)
+	{
+		atc_home_info.pin.from_string( THEKERNEL->config->value(atc_checksum, endstop_pin_checksum)->by_default("1.0^" )->as_string())->as_input();
+	}
+	else
+	{
+		atc_home_info.pin.from_string( THEKERNEL->config->value(atc_checksum, endstop_pin_checksum)->by_default("1.4^" )->as_string())->as_input();
+	}
 	atc_home_info.debounce_ms    = THEKERNEL->config->value(atc_checksum, debounce_ms_checksum)->by_default(1  )->as_number();
 	atc_home_info.max_travel    = THEKERNEL->config->value(atc_checksum, max_travel_mm_checksum)->by_default(8  )->as_number();
 	atc_home_info.retract    = THEKERNEL->config->value(atc_checksum, homing_retract_mm_checksum)->by_default(3  )->as_number();
 	atc_home_info.action_dist    = THEKERNEL->config->value(atc_checksum, action_mm_checksum)->by_default(1  )->as_number();
-	atc_home_info.homing_rate    = THEKERNEL->config->value(atc_checksum, homing_rate_mm_s_checksum)->by_default(1  )->as_number();
-	atc_home_info.action_rate    = THEKERNEL->config->value(atc_checksum, action_rate_mm_s_checksum)->by_default(1  )->as_number();
+	atc_home_info.homing_rate    = THEKERNEL->config->value(atc_checksum, homing_rate_mm_s_checksum)->by_default(0.4f )->as_number();
+	atc_home_info.action_rate    = THEKERNEL->config->value(atc_checksum, action_rate_mm_s_checksum)->by_default(0.25f)->as_number();
 
 	detector_info.detect_pin.from_string( THEKERNEL->config->value(atc_checksum, detector_checksum, detect_pin_checksum)->by_default("0.20^" )->as_string())->as_input();
 	detector_info.detect_rate = THEKERNEL->config->value(atc_checksum, detector_checksum, detect_rate_mm_s_checksum)->by_default(1  )->as_number();
@@ -561,10 +690,19 @@ void ATCHandler::on_config_reload(void *argument)
 	this->anchor1_y = THEKERNEL->config->value(coordinate_checksum, anchor1_y_checksum)->by_default(-234  )->as_number();
 	this->anchor2_offset_x = THEKERNEL->config->value(coordinate_checksum, anchor2_offset_x_checksum)->by_default(90  )->as_number();
 	this->anchor2_offset_y = THEKERNEL->config->value(coordinate_checksum, anchor2_offset_y_checksum)->by_default(45.65F  )->as_number();
-
-	this->toolrack_z = THEKERNEL->config->value(coordinate_checksum, toolrack_z_checksum)->by_default(-105  )->as_number();
-	this->toolrack_offset_x = THEKERNEL->config->value(coordinate_checksum, toolrack_offset_x_checksum)->by_default(356  )->as_number();
-	this->toolrack_offset_y = THEKERNEL->config->value(coordinate_checksum, toolrack_offset_y_checksum)->by_default(0  )->as_number();
+	
+	if(CARVERA == THEKERNEL->factory_set->MachineModel)
+	{
+		this->toolrack_z = THEKERNEL->config->value(coordinate_checksum, toolrack_z_checksum)->by_default(-105  )->as_number();
+		this->toolrack_offset_x = THEKERNEL->config->value(coordinate_checksum, toolrack_offset_x_checksum)->by_default(356  )->as_number();
+		this->toolrack_offset_y = THEKERNEL->config->value(coordinate_checksum, toolrack_offset_y_checksum)->by_default(0  )->as_number();
+	}
+	else if(CARVERA_AIR == THEKERNEL->factory_set->MachineModel)
+	{
+		this->toolrack_z = THEKERNEL->config->value(coordinate_checksum, toolrack_z_checksum)->by_default(-108  )->as_number();
+		this->toolrack_offset_x = THEKERNEL->config->value(coordinate_checksum, toolrack_offset_x_checksum)->by_default(126  )->as_number();
+		this->toolrack_offset_y = THEKERNEL->config->value(coordinate_checksum, toolrack_offset_y_checksum)->by_default(196  )->as_number();
+	}
 
 	atc_tools.clear();
 	for (int i = 0; i <=  6; i ++) {
@@ -580,24 +718,57 @@ void ATCHandler::on_config_reload(void *argument)
 	probe_mx_mm = this->anchor1_x + this->toolrack_offset_x;
 	probe_my_mm = this->anchor1_y + this->toolrack_offset_y + 180;
 	probe_mz_mm = this->toolrack_z - 40;
-
-	this->rotation_offset_x = THEKERNEL->config->value(coordinate_checksum, rotation_offset_x_checksum)->by_default(-8  )->as_number();
-	this->rotation_offset_y = THEKERNEL->config->value(coordinate_checksum, rotation_offset_y_checksum)->by_default(37.5F  )->as_number();
-	this->rotation_offset_z = THEKERNEL->config->value(coordinate_checksum, rotation_offset_z_checksum)->by_default(22.5F  )->as_number();
-
-	this->clearance_x = THEKERNEL->config->value(coordinate_checksum, clearance_x_checksum)->by_default(-75  )->as_number();
-	this->clearance_y = THEKERNEL->config->value(coordinate_checksum, clearance_y_checksum)->by_default(-3  )->as_number();
-	this->clearance_z = THEKERNEL->config->value(coordinate_checksum, clearance_z_checksum)->by_default(-3  )->as_number();
+	
+	if(CARVERA == THEKERNEL->factory_set->MachineModel)
+	{
+		this->rotation_offset_x = THEKERNEL->config->value(coordinate_checksum, rotation_offset_x_checksum)->by_default(-8  )->as_number();
+		this->rotation_offset_y = THEKERNEL->config->value(coordinate_checksum, rotation_offset_y_checksum)->by_default(37.5F  )->as_number();
+		this->rotation_offset_z = THEKERNEL->config->value(coordinate_checksum, rotation_offset_z_checksum)->by_default(22.5F  )->as_number();
+	
+		this->clearance_x = THEKERNEL->config->value(coordinate_checksum, clearance_x_checksum)->by_default(-75  )->as_number();
+		this->clearance_y = THEKERNEL->config->value(coordinate_checksum, clearance_y_checksum)->by_default(-3  )->as_number();
+		this->clearance_z = THEKERNEL->config->value(coordinate_checksum, clearance_z_checksum)->by_default(-3  )->as_number();
+	}
+	else if(CARVERA_AIR == THEKERNEL->factory_set->MachineModel)
+	{
+		this->rotation_offset_x = THEKERNEL->config->value(coordinate_checksum, rotation_offset_x_checksum)->by_default(30.0F)->as_number();
+		this->rotation_offset_y = THEKERNEL->config->value(coordinate_checksum, rotation_offset_y_checksum)->by_default(82.5F  )->as_number();
+		this->rotation_offset_z = THEKERNEL->config->value(coordinate_checksum, rotation_offset_z_checksum)->by_default(23.0F  )->as_number();
+	
+		this->clearance_x = THEKERNEL->config->value(coordinate_checksum, clearance_x_checksum)->by_default(-5  )->as_number();
+		this->clearance_y = THEKERNEL->config->value(coordinate_checksum, clearance_y_checksum)->by_default(-21  )->as_number();
+		this->clearance_z = THEKERNEL->config->value(coordinate_checksum, clearance_z_checksum)->by_default(-5  )->as_number();
+	}
 }
 
 void ATCHandler::on_halt(void* argument)
 {
+    uint8_t halt_reason;
     if (argument == nullptr ) {
         this->atc_status = NONE;
         this->clear_script_queue();
         this->set_inner_playing(false);
         THEKERNEL->set_atc_state(ATC_NONE);
-        this->atc_home_info.clamp_status = UNHOMED;
+        if(THEKERNEL->factory_set->FuncSetting & (1<<2))	//ATC 
+	    {
+	        this->atc_home_info.clamp_status = UNHOMED;
+		}
+		else	//Manual Tool Change
+		{
+			THEKERNEL->set_tool_waiting(false);
+		}
+		if(CARVERA_AIR == THEKERNEL->factory_set->MachineModel)
+	    {
+    		halt_reason = THEKERNEL->get_halt_reason();
+    		if (halt_reason <= 20) 
+    		{
+				this->beep_alarm();
+			}
+			else
+			{
+				this->beep_error();
+			}
+		}
 	}
 }
 
@@ -643,9 +814,31 @@ uint32_t ATCHandler::read_detector(uint32_t dummy)
 // Called every second in an ISR
 uint32_t ATCHandler::countdown_probe_laser(uint32_t dummy)
 {
-	if (this->probe_laser_last < 120) {
-		this->probe_laser_last ++;
-		PublicData::set_value(atc_handler_checksum, set_wp_laser_checksum, nullptr);
+	if(THEKERNEL->factory_set->FuncSetting & (1<<2))	//ATC 
+	{
+		if (this->probe_laser_last < 120) {
+			this->probe_laser_last ++;
+			PublicData::set_value(atc_handler_checksum, set_wp_laser_checksum, nullptr);
+		}
+	}
+	else 	//Manual Tool Change
+	{
+		if (THEKERNEL->is_probeLaserOn()) 
+		{
+			if (this->probe_laser_last > 0) 
+			{
+				this->probe_laser_last --;
+			}
+			if (this->probe_laser_last == 0 || this->active_tool) {
+	    		bool b = false;
+	            PublicData::set_value( switch_checksum, detector_switch_checksum, state_checksum, &b );
+	            THEKERNEL->set_probeLaser(false);
+			}
+		} 
+		else
+		{
+			this->probe_laser_last = 30;
+		}
 	}
     return 0;
 }
@@ -741,8 +934,8 @@ void ATCHandler::home_clamp()
 	atc_homing = false;
 
     if (!atc_home_info.triggered) {
-        THEKERNEL->call_event(ON_HALT, nullptr);
         THEKERNEL->set_halt_reason(ATC_HOME_FAIL);
+        THEKERNEL->call_event(ON_HALT, nullptr);
         THEKERNEL->streams->printf("ERROR: Homing atc failed - check the atc max travel settings\n");
         return;
     } else {
@@ -892,86 +1085,191 @@ void ATCHandler::on_gcode_received(void *argument)
     	    }
 
     	    if (PublicData::get_value(pwm_spindle_control_checksum, get_spindle_status_checksum, &ss)) {
-    	    	if (ss.state) {
+    	    	if (ss.state) 
+    	    	{
     	    		// Stop
-    	    		THEKERNEL->streams->printf("Error: can not do ATC while spindle is running.\n");
-			        THEKERNEL->set_halt_reason(ATC_HOME_FAIL);
+    	    		
+					if(THEKERNEL->factory_set->FuncSetting & (1<<2))	//ATC 
+					{
+	    	    		THEKERNEL->streams->printf("Error: can not do ATC while spindle is running.\n");
+				        THEKERNEL->set_halt_reason(ATC_HOME_FAIL);
+				    }
+				    else	//Manual Tool Change
+				    {
+				    	THEKERNEL->streams->printf("Error: can not change tool while spindle is running.\n");
+			        	THEKERNEL->set_halt_reason(CALIBRATE_FAIL);
+				    }
 			        THEKERNEL->call_event(ON_HALT, nullptr);
 			        return;
     	    	}
     	    }
 
             int new_tool = gcode->get_value('T');
-
-			if (new_tool > this->max_manual_tool_number){
-				THEKERNEL->call_event(ON_HALT, nullptr);
-		        THEKERNEL->set_halt_reason(ATC_TOOL_INVALID);
-            	gcode->stream->printf("ALARM: Invalid tool: T%d\r\n", new_tool);
-			} else if (new_tool != active_tool) {
-				if (new_tool > -1 && THEKERNEL->get_laser_mode()) {
-					THEKERNEL->streams->printf("ALARM: Can not do ATC in laser mode!\n");
-					return;
-				}
-				
-				// push old state
-				bool auto_calibrate = true;
-				float custom_TLO = NAN;
-				THEROBOT->push_state();
-				THEROBOT->get_axis_position(last_pos, 3);
-				set_inner_playing(true);
-				this->clear_script_queue();
-
-				if (gcode->has_letter('H')){
-					custom_TLO = gcode->get_value('H');
-					auto_calibrate = false;
-				}
-				if (gcode->has_letter('C')){
-					auto_calibrate = gcode->get_value('C');
-				}
-
-				//drop current tool
-				if (this->active_tool > -1 && this->active_tool < this->tool_number){ //drop atc tool
-					THEKERNEL->streams->printf("Start dropping current tool: T%d\r\n", this->active_tool);
-					// just drop tool
-					atc_status = DROP;
-					this->fill_drop_scripts(active_tool);
-				} else if(this->active_tool > this->tool_number){ //drop manual tool
-					THEKERNEL->streams->printf("Start dropping current tool: T%d\r\n", this->active_tool);
-					// just drop tool
-					atc_status = DROP;
-					this->fill_manual_drop_scripts(active_tool);
-				}
-
-				//pick up new tool
-				
-				if (new_tool > this->tool_number){ //manual tool
-					THEKERNEL->streams->printf("Start picking new tool: T%d\r\n", new_tool);
-					atc_status = PICK;
-					this->fill_manual_pickup_scripts(new_tool,true,auto_calibrate,custom_TLO);
-				} else if(new_tool >= 0){ //standard ATC
-					THEKERNEL->streams->printf("Start picking new tool: T%d\r\n", new_tool);
-					atc_status = PICK;
-					this->fill_pick_scripts(new_tool, true);
-					this->fill_cali_scripts(new_tool == 0, false);
-				} else if(new_tool == -1 && (THEKERNEL->get_laser_mode())) {
+            if(THEKERNEL->factory_set->FuncSetting & (1<<2))	//ATC 
+			{
+	            if (new_tool > this->max_manual_tool_number){
+					THEKERNEL->call_event(ON_HALT, nullptr);
+					THEKERNEL->set_halt_reason(ATC_TOOL_INVALID);
+					gcode->stream->printf("ALARM: Invalid tool: T%d\r\n", new_tool);
+				} else if (new_tool != active_tool) {
+					if (new_tool > -1 && THEKERNEL->get_laser_mode()) {
+						THEKERNEL->streams->printf("ALARM: Can not do ATC in laser mode!\n");
+						return;
+					}
+					
+					// push old state
+					bool auto_calibrate = true;
+					float custom_TLO = NAN;
 					THEROBOT->push_state();
-                    THEROBOT->get_axis_position(last_pos, 3);
-                    set_inner_playing(true);
-                    this->clear_script_queue();
-            		atc_status = CALI;
-            		this->fill_cali_scripts(false, true);
+					THEROBOT->get_axis_position(last_pos, 3);
+					set_inner_playing(true);
+					this->clear_script_queue();
+
+					if (gcode->has_letter('H')){
+						custom_TLO = gcode->get_value('H');
+						auto_calibrate = false;
+					}
+					if (gcode->has_letter('C')){
+						auto_calibrate = gcode->get_value('C');
+					}
+
+					//drop current tool
+					if (this->active_tool > -1 && this->active_tool < this->tool_number){ //drop atc tool
+						THEKERNEL->streams->printf("Start dropping current tool: T%d\r\n", this->active_tool);
+						// just drop tool
+						atc_status = DROP;
+						this->fill_drop_scripts(active_tool);
+					} else if(this->active_tool > this->tool_number){ //drop manual tool
+						THEKERNEL->streams->printf("Start dropping current tool: T%d\r\n", this->active_tool);
+						// just drop tool
+						atc_status = DROP;
+						this->fill_manual_drop_scripts(active_tool);
+					}
+
+					//pick up new tool
+					
+					if (new_tool > this->tool_number){ //manual tool
+						THEKERNEL->streams->printf("Start picking new tool: T%d\r\n", new_tool);
+						atc_status = PICK;
+						this->fill_manual_pickup_scripts(new_tool,true,auto_calibrate,custom_TLO);
+					} else if(new_tool >= 0){ //standard ATC
+						THEKERNEL->streams->printf("Start picking new tool: T%d\r\n", new_tool);
+						atc_status = PICK;
+						this->fill_pick_scripts(new_tool, true);
+						this->fill_cali_scripts(new_tool == 0, false);
+					} else if(new_tool == -1 && (THEKERNEL->get_laser_mode())) {
+						THEROBOT->push_state();
+						THEROBOT->get_axis_position(last_pos, 3);
+						set_inner_playing(true);
+						this->clear_script_queue();
+						atc_status = CALI;
+						this->fill_cali_scripts(false, true);
+					}
 				}
-            }
+	        }
+	        else	//Manual Tool Change for AIR
+	        {
+	        	if (new_tool != active_tool) 
+	        	{
+					// push old state
+					THEROBOT->push_state();
+					THEROBOT->get_axis_position(last_pos, 3);
+					set_inner_playing(true);
+					this->clear_script_queue();
+					gcode->stream->printf("Please change the tool to: T%d\r\n", new_tool);
+					// just pick up tool
+					atc_status = CHANGE;
+					this->target_tool = new_tool;
+					this->fill_change_scripts(new_tool, true);
+					this->fill_cali_scripts(new_tool == 0, true);
+				}
+	        }
 		} else if (gcode->m == 490)  {
-			if (gcode->subcode == 0) {
-				// home tool change
-				home_clamp();
-			} else if (gcode->subcode == 1) {
-				// clamp tool
-				clamp_tool();
-			} else if (gcode->subcode == 2) {
-				// loose tool
-				loose_tool();
+			if(THEKERNEL->factory_set->FuncSetting & (1<<2))	//ATC 
+			{	            
+				if (gcode->subcode == 0) 
+				{
+					// home tool change
+					home_clamp();
+				} 
+				else if (gcode->subcode == 1) 
+				{
+					// clamp tool
+					clamp_tool();
+				} 
+				else if (gcode->subcode == 2) 
+				{
+					// loose tool
+					loose_tool();
+				}
+			}
+			else	//Manual Tool Change
+			{
+				if (gcode->subcode == 0)
+				{
+					bool bgoback = false;
+					GPIO stepin = GPIO(P1_22);
+					GPIO dirpin = GPIO(P1_0);
+					GPIO enpin = GPIO(P1_10);
+					stepin.output();
+					dirpin.output();
+					enpin.output();
+					GPIO alarmin = GPIO(P1_4);
+					alarmin.input();
+						
+					gcode->stream->printf("check ATC motor beginning......\n");
+					dirpin = 1;
+					enpin = 0;
+					
+					for(unsigned int i=0;i<360;i++)
+					{
+						for(unsigned int j=0; j<889; j++)
+						{
+							stepin = 1;
+							safe_delay_us(5);
+							stepin = 0;
+							safe_delay_us(5);
+							if(alarmin.get())
+							{
+								bgoback = true;
+								break;
+							}
+						}
+						if(bgoback)
+							break;
+					}
+					
+					if(bgoback)
+					{
+						dirpin = 0;
+						
+						for(unsigned int i=0;i<90;i++)
+						{
+							for(unsigned int j=0; j<889; j++)
+							{
+								stepin = 1;
+								safe_delay_us(5);
+								stepin = 0;
+								safe_delay_us(5);
+							}
+						}
+					}
+					
+					enpin = 1;
+					
+					gcode->stream->printf("check ATC motor.\n");
+				}
+				else if (gcode->subcode == 1) 
+				{
+					// Enter tool change waiting status
+					THEKERNEL->set_tool_waiting(true);
+					this->beep_tool_change(this->target_tool);
+				} 
+				else if (gcode->subcode == 2) 
+				{
+					// Exit tool change waiting status
+					THEKERNEL->set_tool_waiting(false);
+				}
 			}
 		} else if (gcode->m == 491) {
 			if (gcode->subcode == 1) {
@@ -1057,27 +1355,42 @@ void ATCHandler::on_gcode_received(void *argument)
 
 			}
 		} else if (gcode->m == 492) {
-			if (gcode->subcode == 0 || gcode->subcode == 1) {
-				// check true
-				if (!laser_detect()) {
-			        THEKERNEL->call_event(ON_HALT, nullptr);
-			        THEKERNEL->set_halt_reason(ATC_NO_TOOL);
-			        THEKERNEL->streams->printf("ERROR: Unexpected tool absence detected, please check tool rack!\n");
+			if(THEKERNEL->factory_set->FuncSetting & (1<<2))	//ATC 
+			{
+				if (gcode->subcode == 0 || gcode->subcode == 1) {
+					// check true
+					if (!laser_detect()) {
+				        THEKERNEL->set_halt_reason(ATC_NO_TOOL);
+				        THEKERNEL->call_event(ON_HALT, nullptr);
+				        THEKERNEL->streams->printf("ERROR: Unexpected tool absence detected, please check tool rack!\n");
+					}
+				} else if (gcode->subcode == 2) {
+					// check false
+					if (laser_detect()) {
+				        THEKERNEL->set_halt_reason(ATC_HAS_TOOL);
+				        THEKERNEL->call_event(ON_HALT, nullptr);
+				        THEKERNEL->streams->printf("ERROR: Unexpected tool presence detected, please check tool rack!\n");
+					}
+				} else if (gcode->subcode == 3) {
+					// check if the probe was triggered
+					if (!probe_detect()) {
+				        THEKERNEL->set_halt_reason(PROBE_INVALID);
+				        THEKERNEL->call_event(ON_HALT, nullptr);
+				        THEKERNEL->streams->printf("ERROR: Wireless probe dead or not set, please charge or set first!\n");
+					}
 				}
-			} else if (gcode->subcode == 2) {
-				// check false
-				if (laser_detect()) {
-			        THEKERNEL->call_event(ON_HALT, nullptr);
-			        THEKERNEL->set_halt_reason(ATC_HAS_TOOL);
-			        THEKERNEL->streams->printf("ERROR: Unexpected tool presence detected, please check tool rack!\n");
+			}
+			else	//Manual Tool Change
+			{
+				if (gcode->subcode == 3) 
+				{
+					// check if the probe was triggered
+					if (!probe_detect()) {
+				        THEKERNEL->set_halt_reason(PROBE_INVALID);
+				        THEKERNEL->call_event(ON_HALT, nullptr);
+				        THEKERNEL->streams->printf("ERROR: Probe dead or not set, please charge or set first!\n");
 				}
-			} else if (gcode->subcode == 3) {
-				// check if the probe was triggered
-				if (!probe_detect()) {
-			        THEKERNEL->call_event(ON_HALT, nullptr);
-			        THEKERNEL->set_halt_reason(PROBE_INVALID);
-			        THEKERNEL->streams->printf("ERROR: Wireless probe dead or not set, please charge or set first!\n");
-				}
+			}
 			}
 		} else if (gcode->m == 493) {
 			if (gcode->subcode == 0 || gcode->subcode == 1) {
@@ -1094,8 +1407,8 @@ void ATCHandler::on_gcode_received(void *argument)
 		    		}
 
 				} else {
-					THEKERNEL->call_event(ON_HALT, nullptr);
 					THEKERNEL->set_halt_reason(ATC_NO_TOOL);
+					THEKERNEL->call_event(ON_HALT, nullptr);
 					THEKERNEL->streams->printf("ERROR: No tool was set!\n");
 
 				}
@@ -1131,13 +1444,36 @@ void ATCHandler::on_gcode_received(void *argument)
 				THEKERNEL->streams->printf("current tool offset [%.3f] , reference tool offset [%.3f]\n",cur_tool_mz,ref_tool_mz);
 			}
 		} else if (gcode->m == 494) {
-			// control probe laser
-			if (gcode->subcode == 0 || gcode->subcode == 1) {
-				// open probe laser
-				this->probe_laser_last = 0;
-			} else if (gcode->subcode == 2) {
-				// close probe laser
-				this->probe_laser_last = 9999;
+			if(THEKERNEL->factory_set->FuncSetting & (1<<2))	//ATC 
+			{
+				// control probe laser
+				if (gcode->subcode == 0 || gcode->subcode == 1) {
+					// open probe laser
+					this->probe_laser_last = 0;
+				} else if (gcode->subcode == 2) {
+					// close probe laser
+					this->probe_laser_last = 9999;
+				}
+			}
+			else	//Manual Tool Change
+			{
+				// control probe laser
+				if (gcode->subcode == 0 ){
+					blaserManual = true;
+					// open probe laser
+					bool b = true;
+	            	PublicData::set_value( switch_checksum, detector_switch_checksum, state_checksum, &b );
+				}
+				else if( gcode->subcode == 1) {
+					// open probe laser
+					bool b = true;
+	            	PublicData::set_value( switch_checksum, detector_switch_checksum, state_checksum, &b );
+				} else if (gcode->subcode == 2) {
+					// close probe laser
+					bool b = false;
+	            	PublicData::set_value( switch_checksum, detector_switch_checksum, state_checksum, &b );
+				}
+
 			}
 		} else if (gcode->m == 495) {
 			if (gcode->subcode == 3) {
@@ -1211,14 +1547,24 @@ void ATCHandler::on_gcode_received(void *argument)
 			        		gcode->stream->printf("Change to probe tool first!\r\n");
 			                // save current position
 			                THEROBOT->get_axis_position(last_pos, 3);
-			        		if (active_tool > 0) {
-			        			// drop current tool
-			            		int old_tool = active_tool;
-			            		// change to probe tool
-			            		this->fill_drop_scripts(old_tool);
-			        		}
-		            		this->fill_pick_scripts(0, active_tool <= 0);
-		            		this->fill_cali_scripts(true, false);
+									                
+							if(THEKERNEL->factory_set->FuncSetting & (1<<2))	//ATC 
+							{
+				        		if (active_tool > 0) {
+				        			// drop current tool
+				            		int old_tool = active_tool;
+				            		// change to probe tool
+				            		this->fill_drop_scripts(old_tool);
+				        		}
+			            		this->fill_pick_scripts(0, active_tool <= 0);
+			            		this->fill_cali_scripts(true, false);
+			            	}
+			            	else	//Manual Tool Change
+			            	{
+			            		this->target_tool = 0;
+			            		this->fill_change_scripts(0, true);
+			            		this->fill_cali_scripts(true, true);
+			            	}
 			            }
 			            if (margin) {
 			            	gcode->stream->printf("Auto scan margin\r\n");
@@ -1238,8 +1584,32 @@ void ATCHandler::on_gcode_received(void *argument)
 		            		this->fill_autolevel_scripts(x_path_pos, y_path_pos, x_level_size, y_level_size, x_level_grids, y_level_grids, z_level_height);
 			            }
 			            if (gcode->has_letter('P')) {
-			            	gcode->stream->printf("Goto path origin first\r\n");
-			            	this->fill_goto_origin_scripts(x_path_pos, y_path_pos);
+			            	gcode->stream->printf("goto x and y clearance first\r\n");
+			            	if(CARVERA_AIR == THEKERNEL->factory_set->MachineModel)
+    						{
+    							if (zprobe_abs) {
+    								char buff[100];
+    								// lift z to clearance position with fast speed
+									snprintf(buff, sizeof(buff), "G53 G0 Z%.3f", THEROBOT->from_millimeters(this->clearance_z));
+									this->script_queue.push(buff);
+
+    								// Avoid the position of the chuck
+									snprintf(buff, sizeof(buff), "G53 G90 G0 Y%.3f", THEROBOT->from_millimeters(this->clearance_y));
+									this->script_queue.push(buff);
+									
+									// goto x and y clearance
+									snprintf(buff, sizeof(buff), "G53 G90 G0 X%.3f", THEROBOT->from_millimeters(this->clearance_x));
+									this->script_queue.push(buff);
+			            		}
+			            		else
+			            		{
+			            			this->fill_goto_origin_scripts(x_path_pos, y_path_pos);
+			            		}
+			            	}
+			            	else
+			            	{
+			            		this->fill_goto_origin_scripts(x_path_pos, y_path_pos);
+			            	}
 			            }
 		    		} else {
 		    			if (gcode->has_letter('P')) {
@@ -1262,6 +1632,12 @@ void ATCHandler::on_gcode_received(void *argument)
 				position_x = gcode->get_value('X');
 				position_y = gcode->get_value('Y');
 			}
+			if (gcode->has_letter('A')) {
+				position_a = gcode->get_value('A');
+			}
+			if (gcode->has_letter('B')) {
+				position_a = gcode->get_value('B');
+			}
 
 		} else if (gcode->m == 497) {
 		    // wait for the queue to be empty
@@ -1281,11 +1657,30 @@ void ATCHandler::on_gcode_received(void *argument)
 		} else if ( gcode->m == 499 ) {
 			if (gcode->subcode == 0 || gcode->subcode == 1) {
 				THEKERNEL->streams->printf("tool:%d ref:%1.3f cur:%1.3f offset:%1.3f\n", active_tool, ref_tool_mz, cur_tool_mz, tool_offset);
-			} else if (gcode->subcode == 2) {
+			}
+			else if (gcode->subcode == 2) 
+			{
 				THEKERNEL->streams->printf("probe -- mx:%1.1f my:%1.1f mz:%1.1f\n", probe_mx_mm, probe_my_mm, probe_mz_mm);
 				for (int i = 0; i <=  tool_number; i ++) {
 					THEKERNEL->streams->printf("tool%d -- mx:%1.1f my:%1.1f mz:%1.1f\n", atc_tools[i].num, atc_tools[i].mx_mm, atc_tools[i].my_mm, atc_tools[i].mz_mm);
 				}
+			}
+			else if (gcode->subcode == 3) 
+			{
+				this->beep_complete();
+			} 
+			else if (gcode->subcode == 4) 
+			{
+				this->beep_alarm();
+			} 
+			else if (gcode->subcode == 5) 
+			{
+				int tool_to_change = 1;
+				if (gcode->has_letter('T')) {
+					tool_to_change = gcode->get_value('T');
+				}
+				this->beep_tool_change(tool_to_change);
+
 			}
 		}
     } else if (gcode->has_g && gcode->g == 28 && gcode->subcode == 0) {
@@ -1294,16 +1689,26 @@ void ATCHandler::on_gcode_received(void *argument)
 }
 
 void ATCHandler::on_main_loop(void *argument)
-{
+{	
     if (this->atc_status != NONE) {
         if (THEKERNEL->is_halted()) {
             THEKERNEL->streams->printf("Kernel is halted!....\r\n");
             return;
         }
-
-        if (THEKERNEL->is_suspending() || THEKERNEL->is_waiting()) {
-        	return;
-        }
+		
+		if(THEKERNEL->factory_set->FuncSetting & (1<<2))	//ATC 
+		{
+	        if (THEKERNEL->is_suspending() || THEKERNEL->is_waiting()) {
+	        	return;
+	        }
+	    }
+	    else	//Manual Tool Change
+	    {
+	    	if (THEKERNEL->is_suspending() || THEKERNEL->is_waiting() || THEKERNEL->is_tool_waiting()) 
+	    	{
+	        	return;
+	        }
+	    }
 
         void *return_value;
         bool ok = PublicData::get_value( player_checksum, is_playing_checksum, &return_value );
@@ -1338,13 +1743,20 @@ void ATCHandler::on_main_loop(void *argument)
 			THEKERNEL->call_event(ON_CONSOLE_LINE_RECEIVED, &message);
             return;
         }
+        if(blaserManual == true)
+        {
+        	blaserManual = false;
+        	// close probe laser
+			bool b = false;
+        	PublicData::set_value( switch_checksum, detector_switch_checksum, state_checksum, &b );        		
+        }
 
 		if (this->atc_status != AUTOMATION) {
 	        // return to z clearance position
-	        rapid_move(true, NAN, NAN, this->clearance_z);
+	        rapid_move(true, NAN, NAN, this->clearance_z, NAN, NAN);
 
 	        // return to saved x and y position
-	        rapid_move(true, last_pos[0], last_pos[1], NAN);
+	        rapid_move(true, last_pos[0], last_pos[1], NAN, NAN, NAN);
 		}
 
         this->atc_status = NONE;
@@ -1362,41 +1774,207 @@ void ATCHandler::on_main_loop(void *argument)
 		THEKERNEL->streams->printf("G28 means goto clearance position on CARVERA\n");
 		THEROBOT->push_state();
 		// goto z clearance
-		rapid_move(true, NAN, NAN, this->clearance_z);
+		rapid_move(true, NAN, NAN, this->clearance_z, NAN, NAN);
 		// goto x and y clearance
-		rapid_move(true, this->clearance_x, this->clearance_y, NAN);
+		rapid_move(true, this->clearance_x, this->clearance_y, NAN, NAN, NAN);
 		THECONVEYOR->wait_for_idle();
 		THEROBOT->pop_state();
 		g28_triggered = false;
     } else if (goto_position > -1) {
-        rapid_move(true, NAN, NAN, this->clearance_z);
+        rapid_move(true, NAN, NAN, this->clearance_z, NAN, NAN);
 		if (goto_position == 0 || goto_position == 1) {
 			// goto clearance
-	        rapid_move(true, this->clearance_x, this->clearance_y, NAN);
+	        rapid_move(true, this->clearance_x, this->clearance_y, NAN, NAN, NAN);
 		} else if (goto_position == 2) {
 			// goto work origin
 			// shrink A value first before move
+    		float ma = THEROBOT->actuators[A_AXIS]->get_current_position();
+    		if (fabs(ma) > 360) {
+    			THEROBOT->reset_axis_position(fmodf(ma, 360.0), A_AXIS);
+    		}    		
 			// shrink B value first before move
-			rapid_move(false, 0, 0, NAN);
+    		ma = THEROBOT->actuators[B_AXIS]->get_current_position();
+    		if (fabs(ma) > 360) {
+    			THEROBOT->reset_axis_position(fmodf(ma, 360.0), B_AXIS);
+    		}
+			rapid_move(false, 0, 0, NAN, 0, 0);
 		} else if (goto_position == 3) {
 			// goto anchor 1
-			rapid_move(true, this->anchor1_x, this->anchor1_y, NAN);
+			rapid_move(true, this->anchor1_x, this->anchor1_y, NAN, NAN, NAN);
 		} else if (goto_position == 4) {
 			// goto anchor 2
-			rapid_move(true, this->anchor1_x + this->anchor2_offset_x, this->anchor1_y + this->anchor2_offset_y, NAN);
+			rapid_move(true, this->anchor1_x + this->anchor2_offset_x, this->anchor1_y + this->anchor2_offset_y, NAN, NAN, NAN);
 		} else if (goto_position == 5) {
 			// goto designative work position
-			if (position_x < 8888 && position_y < 8888) {
-				rapid_move(false, position_x, position_y, NAN);
+			if (position_x < 8888 && position_y < 8888 && position_a < 88888888 && position_b < 88888888) {
+				// shrink A value first before move
+				float ma = THEROBOT->actuators[A_AXIS]->get_current_position();
+				if (fabs(ma) > 360) {
+					THEROBOT->reset_axis_position(fmodf(ma, 360.0), A_AXIS);
+				}    		
+				// shrink B value first before move
+				ma = THEROBOT->actuators[B_AXIS]->get_current_position();
+				if (fabs(ma) > 360) {
+					THEROBOT->reset_axis_position(fmodf(ma, 360.0), B_AXIS);
+				}    		
+				rapid_move(false, position_x, position_y, NAN, fmodf(position_a, 360.0), fmodf(position_b, 360.0));
+				// reset the A_AXIS position as target value
+				THEROBOT->reset_axis_position(position_a, A_AXIS);
+				// reset the B_AXIS position as target value
+				THEROBOT->reset_axis_position(position_b, B_AXIS);
+						}
+			else if (position_x < 8888 && position_y < 8888 && position_a < 88888888) {
+				// shrink A value first before move
+	    		float ma = THEROBOT->actuators[A_AXIS]->get_current_position();
+	    		if (fabs(ma) > 360) {
+	    			THEROBOT->reset_axis_position(fmodf(ma, 360.0), A_AXIS);
+	    		}    		
+				rapid_move(false, position_x, position_y, NAN, fmodf(position_a, 360.0), NAN);
+				// reset the A_AXIS position as target value
+				THEROBOT->reset_axis_position(position_a, A_AXIS);
+			}
+			else if (position_x < 8888 && position_y < 8888 && position_b < 88888888) {
+				// shrink B value first before move
+	    		float ma = THEROBOT->actuators[B_AXIS]->get_current_position();
+	    		if (fabs(ma) > 360) {
+	    			THEROBOT->reset_axis_position(fmodf(ma, 360.0), B_AXIS);
+	    		}    		
+				rapid_move(false, position_x, position_y, NAN, NAN, fmodf(position_b, 360.0));
+				// reset the B_AXIS position as target value
+				THEROBOT->reset_axis_position(position_b, B_AXIS);
+			}
+			else if(position_x < 8888 && position_y < 8888 )
+			{
+				rapid_move(false, position_x, position_y, NAN, NAN, NAN);
+			}
+			else if(position_a < 88888888 && position_b < 88888888 )
+			{
+				// shrink A value first before move
+	    		float ma = THEROBOT->actuators[A_AXIS]->get_current_position();
+	    		if (fabs(ma) > 360) {
+	    			THEROBOT->reset_axis_position(fmodf(ma, 360.0), A_AXIS);
+	    		}    		
+				// shrink B value first before move
+	    		ma = THEROBOT->actuators[B_AXIS]->get_current_position();
+	    		if (fabs(ma) > 360) {
+	    			THEROBOT->reset_axis_position(fmodf(ma, 360.0), B_AXIS);
+	    		}    		
+				rapid_move(false, NAN, NAN, NAN, fmodf(position_a, 360.0), fmodf(position_b, 360.0));
+				// reset the A_AXIS position as target value
+				THEROBOT->reset_axis_position(position_a, A_AXIS);
+				// reset the B_AXIS position as target value
+				THEROBOT->reset_axis_position(position_b, B_AXIS);
+			}
+			else if(position_a < 88888888)
+			{
+				// shrink A value first before move
+	    		float ma = THEROBOT->actuators[A_AXIS]->get_current_position();
+	    		if (fabs(ma) > 360) {
+	    			THEROBOT->reset_axis_position(fmodf(ma, 360.0), A_AXIS);
+	    		}    		
+				rapid_move(false, NAN, NAN, NAN, fmodf(position_a, 360.0), NAN);
+				// reset the A_AXIS position as target value
+				THEROBOT->reset_axis_position(position_a, A_AXIS);
+			}
+			else if(position_b < 88888888)
+			{
+				// shrink B value first before move
+	    		float ma = THEROBOT->actuators[B_AXIS]->get_current_position();
+	    		if (fabs(ma) > 360) {
+	    			THEROBOT->reset_axis_position(fmodf(ma, 360.0), B_AXIS);
+	    		}    		
+				rapid_move(false, NAN, NAN, NAN, NAN, fmodf(position_b, 360.0));
+				// reset the B_AXIS position as target value
+				THEROBOT->reset_axis_position(position_b, B_AXIS);
 			}
 		} else if (goto_position == 6) {
 			// goto designative machine position
-			if (position_x < 8888 && position_y < 8888) {
-				rapid_move(true, position_x, position_y, NAN);
+			if (position_x < 8888 && position_y < 8888 && position_a < 88888888 && position_b < 88888888) {
+				// shrink A value first before move
+	    		float ma = THEROBOT->actuators[A_AXIS]->get_current_position();
+	    		if (fabs(ma) > 360) {
+	    			THEROBOT->reset_axis_position(fmodf(ma, 360.0), A_AXIS);
+	    		}    		
+				// shrink B value first before move
+	    		ma = THEROBOT->actuators[B_AXIS]->get_current_position();
+	    		if (fabs(ma) > 360) {
+	    			THEROBOT->reset_axis_position(fmodf(ma, 360.0), B_AXIS);
+	    		}    		
+				rapid_move(true, position_x, position_y, NAN, fmodf(position_a, 360.0), fmodf(position_b, 360.0));
+				// reset the A_AXIS position as target value
+				THEROBOT->reset_axis_position(position_a, A_AXIS);
+				// reset the B_AXIS position as target value
+				THEROBOT->reset_axis_position(position_b, B_AXIS);
+			}
+			else if (position_x < 8888 && position_y < 8888 && position_a < 88888888) {
+				// shrink A value first before move
+	    		float ma = THEROBOT->actuators[A_AXIS]->get_current_position();
+	    		if (fabs(ma) > 360) {
+	    			THEROBOT->reset_axis_position(fmodf(ma, 360.0), A_AXIS);
+	    		}    		
+				rapid_move(true, position_x, position_y, NAN, fmodf(position_a, 360.0), NAN);
+				// reset the A_AXIS position as target value
+				THEROBOT->reset_axis_position(position_a, A_AXIS);
+			}
+			else if (position_x < 8888 && position_y < 8888 && position_b < 88888888) {
+				// shrink B value first before move
+	    		float ma = THEROBOT->actuators[B_AXIS]->get_current_position();
+	    		if (fabs(ma) > 360) {
+	    			THEROBOT->reset_axis_position(fmodf(ma, 360.0), B_AXIS);
+	    		}    		
+				rapid_move(true, position_x, position_y, NAN, NAN, fmodf(position_b, 360.0));
+				// reset the B_AXIS position as target value
+				THEROBOT->reset_axis_position(position_b, B_AXIS);
+			}
+			else if(position_x < 8888 && position_y < 8888)
+			{
+				rapid_move(true, position_x, position_y, NAN, NAN, NAN);
+			}
+			else if(position_a < 88888888 && position_b < 88888888)
+			{
+				// shrink A value first before move
+	    		float ma = THEROBOT->actuators[A_AXIS]->get_current_position();
+	    		if (fabs(ma) > 360) {
+	    			THEROBOT->reset_axis_position(fmodf(ma, 360.0), A_AXIS);
+	    		}    		
+				// shrink B value first before move
+	    		ma = THEROBOT->actuators[B_AXIS]->get_current_position();
+	    		if (fabs(ma) > 360) {
+	    			THEROBOT->reset_axis_position(fmodf(ma, 360.0), B_AXIS);
+	    		}    		
+				rapid_move(true, NAN, NAN, NAN, fmodf(position_a, 360.0), fmodf(position_b, 360.0));
+				// reset the A_AXIS position as target value
+				THEROBOT->reset_axis_position(position_a, A_AXIS);
+				// reset the B_AXIS position as target value
+				THEROBOT->reset_axis_position(position_b, B_AXIS);
+			}
+			else if(position_a < 88888888)
+			{
+				// shrink A value first before move
+	    		float ma = THEROBOT->actuators[A_AXIS]->get_current_position();
+	    		if (fabs(ma) > 360) {
+	    			THEROBOT->reset_axis_position(fmodf(ma, 360.0), A_AXIS);
+	    		}    		
+				rapid_move(true, NAN, NAN, NAN, fmodf(position_a, 360.0), NAN);
+				// reset the A_AXIS position as target value
+				THEROBOT->reset_axis_position(position_a, A_AXIS);
+			}
+			else if(position_b < 88888888)
+			{
+				// shrink B value first before move
+	    		float ma = THEROBOT->actuators[B_AXIS]->get_current_position();
+	    		if (fabs(ma) > 360) {
+	    			THEROBOT->reset_axis_position(fmodf(ma, 360.0), B_AXIS);
+	    		}    		
+				rapid_move(true, NAN, NAN, NAN, NAN, fmodf(position_b, 360.0));
+				// reset the B_AXIS position as target value
+				THEROBOT->reset_axis_position(position_b, B_AXIS);
 			}
 		}
 		position_x = 8888;
 		position_y = 8888;
+		position_a = 88888888;
+		position_b = 88888888;
 		goto_position = -1;
     }
 }
@@ -1404,7 +1982,7 @@ void ATCHandler::on_main_loop(void *argument)
 // issue a coordinated move directly to robot, and return when done
 // Only move the coordinates that are passed in as not nan
 // NOTE must use G53 to force move in machine coordinates and ignore any WCS offsets
-void ATCHandler::rapid_move(bool mc, float x, float y, float z)
+void ATCHandler::rapid_move(bool mc, float x, float y, float z, float a, float b)
 {
     #define CMDLEN 128
     char *cmd= new char[CMDLEN]; // use heap here to reduce stack usage
@@ -1426,6 +2004,15 @@ void ATCHandler::rapid_move(bool mc, float x, float y, float z)
         size_t n= strlen(cmd);
         snprintf(&cmd[n], CMDLEN-n, " Z%1.3f", THEROBOT->from_millimeters(z));
     }
+    
+    if(!isnan(a)) {
+        size_t n= strlen(cmd);
+        snprintf(&cmd[n], CMDLEN-n, " A%1.3f", THEROBOT->from_millimeters(a));
+    }
+    if(!isnan(b)) {
+        size_t n= strlen(cmd);
+        snprintf(&cmd[n], CMDLEN-n, " B%1.3f", THEROBOT->from_millimeters(b));
+    }
 
     // send as a command line as may have multiple G codes in it
     struct SerialMessage message;
@@ -1439,6 +2026,7 @@ void ATCHandler::rapid_move(bool mc, float x, float y, float z)
 
 }
 
+
 void ATCHandler::on_get_public_data(void* argument)
 {
     PublicDataRequest* pdr = static_cast<PublicDataRequest*>(argument);
@@ -1449,6 +2037,7 @@ void ATCHandler::on_get_public_data(void* argument)
     	if (this->active_tool >= 0) {
             struct tool_status *t= static_cast<tool_status*>(pdr->get_data_ptr());
             t->active_tool = this->active_tool;
+            t->target_tool = this->target_tool;
             t->ref_tool_mz = this->ref_tool_mz;
             t->cur_tool_mz = this->cur_tool_mz;
             t->tool_offset = this->tool_offset;
@@ -1479,6 +2068,15 @@ void ATCHandler::on_set_public_data(void* argument)
         this->tool_offset = 0.0;
         pdr->set_taken();
     }
+	
+	if(CARVERA_AIR == THEKERNEL->factory_set->MachineModel)
+	{
+		if(pdr->second_element_is(set_job_complete_checksum)) 
+		{
+	        this->beep_complete();
+	        pdr->set_taken();
+	    }
+	}    
 }
 
 bool ATCHandler::get_inner_playing() const
@@ -1497,3 +2095,145 @@ void ATCHandler::set_inner_playing(bool inner_playing)
 {
 	this->playing_file = PublicData::set_value( player_checksum, inner_playing_checksum, &inner_playing );
 }
+
+
+// Called every 100ms in an ISR
+uint32_t ATCHandler::beep_beep(uint32_t dummy)
+{
+	bool b_false = false, b_true = true;
+	switch(beep_state)
+	{		
+		case BP_COMPLETE:	
+			if(this->beep_count == 0)		// beep 1
+			{
+    			PublicData::set_value(switch_checksum, beep_checksum, state_checksum, &b_true);
+			}
+			else if(this->beep_count == 3)
+			{
+    			PublicData::set_value(switch_checksum, beep_checksum, state_checksum, &b_false);
+			}
+			else if(this->beep_count == 5)	// beep 2
+			{
+    			PublicData::set_value(switch_checksum, beep_checksum, state_checksum, &b_true);
+			}
+			else if(this->beep_count == 8)
+			{
+    			PublicData::set_value(switch_checksum, beep_checksum, state_checksum, &b_false);
+			}
+			else if(this->beep_count > 8)
+			{
+				this->beep_count = 8;
+				this->beep_state = BP_SLEEP;
+			}			
+			break;
+		case BP_ALARM:	
+			if(this->beep_count == 0)		// beep 1
+			{
+    			PublicData::set_value(switch_checksum, beep_checksum, state_checksum, &b_true);
+			}
+			else if(this->beep_count == 5)
+			{
+    			PublicData::set_value(switch_checksum, beep_checksum, state_checksum, &b_false);
+			}
+			else if(this->beep_count == 15)	// beep 2
+			{
+    			PublicData::set_value(switch_checksum, beep_checksum, state_checksum, &b_true);
+			}
+			else if(this->beep_count == 20)
+			{
+    			PublicData::set_value(switch_checksum, beep_checksum, state_checksum, &b_false);
+			}
+			else if(this->beep_count > 20)
+			{
+				this->beep_count = 20;
+				this->beep_state = BP_SLEEP;
+			}			
+			break;
+		case BP_ERROR:	
+			if(this->beep_count == 0)		// beep 1
+			{
+    			PublicData::set_value(switch_checksum, beep_checksum, state_checksum, &b_true);
+			}
+			else if(this->beep_count == 5)
+			{
+    			PublicData::set_value(switch_checksum, beep_checksum, state_checksum, &b_false);
+			}
+			else if(this->beep_count == 15)	// beep 2
+			{
+    			PublicData::set_value(switch_checksum, beep_checksum, state_checksum, &b_true);
+			}
+			else if(this->beep_count == 20)
+			{
+    			PublicData::set_value(switch_checksum, beep_checksum, state_checksum, &b_false);
+			}
+			else if(this->beep_count == 30)	// beep 3
+			{
+    			PublicData::set_value(switch_checksum, beep_checksum, state_checksum, &b_true);
+			}
+			else if(this->beep_count == 35)
+			{
+    			PublicData::set_value(switch_checksum, beep_checksum, state_checksum, &b_false);
+			}
+			else if(this->beep_count > 35)
+			{
+				this->beep_count = 35;
+				this->beep_state = BP_SLEEP;
+			}			
+			break;
+		case BP_TOOL:
+			if(this->beep_count == 0)		// beep 1
+			{
+    			PublicData::set_value(switch_checksum, beep_checksum, state_checksum, &b_true);
+			}
+			else if(this->beep_count == 3)
+			{
+    			PublicData::set_value(switch_checksum, beep_checksum, state_checksum, &b_false);
+			}
+			else if(this->beep_count == 5)	// beep 2
+			{
+    			PublicData::set_value(switch_checksum, beep_checksum, state_checksum, &b_true);
+			}
+			else if(this->beep_count == 8)
+			{
+    			PublicData::set_value(switch_checksum, beep_checksum, state_checksum, &b_false);
+			}
+			else if(this->beep_count == 10)	// beep 3
+			{
+    			PublicData::set_value(switch_checksum, beep_checksum, state_checksum, &b_true);
+			}
+			else if(this->beep_count == 13)
+			{
+    			PublicData::set_value(switch_checksum, beep_checksum, state_checksum, &b_false);
+			}
+			else if(this->beep_count > 15)
+			{
+				this->beep_count = 15;
+				this->beep_state = BP_SLEEP;
+			}			
+			break;
+	}	
+	
+	this->beep_count ++;	
+    return 0;
+}
+void ATCHandler::beep_complete() {
+	this->beep_state = BP_COMPLETE;
+	this->beep_count = 0;
+}
+
+void ATCHandler::beep_alarm() {
+	this->beep_state = BP_ALARM;
+	this->beep_count = 0;
+}
+
+void ATCHandler::beep_error() {
+	this->beep_state = BP_ERROR;
+	this->beep_count = 0;
+}
+
+void ATCHandler::beep_tool_change(int tool) {
+	this->beep_state = BP_TOOL;
+	this->beep_count = 0;
+}
+
+

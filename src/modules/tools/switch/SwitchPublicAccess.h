@@ -6,11 +6,13 @@
 #define state_checksum               CHECKSUM("state")
 #define state_value_checksum         CHECKSUM("state_value")
 #define spindlefan_checksum          CHECKSUM("spindlefan")
+#define powerfan_checksum			 CHECKSUM("powerfan")
 #define vacuum_checksum              CHECKSUM("vacuum")
 #define light_checksum               CHECKSUM("light")
 #define toolsensor_checksum          CHECKSUM("toolsensor")
 #define probecharger_checksum        CHECKSUM("probecharger")
 #define air_checksum               	 CHECKSUM("air")
+#define beep_checksum          	     CHECKSUM("beep")
 
 struct pad_switch {
     int name;

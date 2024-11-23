@@ -36,12 +36,15 @@ class TemperatureSwitch : public Module
     private:
         // get the highest temperature from the set of configured temperature controllers
         float get_highest_temperature();
+        // get the corresponding temperature
+        float get_temperature();
 
         float temperatureswitch_threshold_temp;
         float temperatureswitch_cooldown_power_init;
         float temperatureswitch_cooldown_power_step;
         float temperatureswitch_cooldown_power_laser;
         uint16_t temperatureswitch_cooldown_delay;
+        uint16_t module_checksum;
 
         // temperatureswitch.hotend.switch
         uint16_t temperatureswitch_switch_cs;

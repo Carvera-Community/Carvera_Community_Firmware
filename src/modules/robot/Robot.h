@@ -18,6 +18,7 @@ using std::string;
 #include "libs/Module.h"
 #include "ActuatorCoordinates.h"
 #include "nuts_bolts.h"
+#include <fastmath.h>
 
 class Gcode;
 class BaseSolution;
@@ -28,7 +29,7 @@ class StepperMotor;
 
 class Robot : public Module {
     public:
-        using wcs_t= std::tuple<float, float, float>;
+        using wcs_t= std::tuple<float, float, float, float, float>;
         Robot();
         void on_module_loaded();
         void on_gcode_received(void* argument);
@@ -54,7 +55,7 @@ class Robot : public Module {
         float from_millimeters( float value) const { return this->inch_mode ? value/25.4F : value;  }
         float get_axis_position(int axis) const { return(this->machine_position[axis]); }
         void get_axis_position(float position[], size_t n= 3) const { memcpy(position, this->machine_position, n*sizeof(float)); }
-        wcs_t get_axis_position() const { return wcs_t(machine_position[X_AXIS], machine_position[Y_AXIS], machine_position[Z_AXIS]); }
+        wcs_t get_axis_position() const { return wcs_t(machine_position[X_AXIS], machine_position[Y_AXIS], machine_position[Z_AXIS], machine_position[A_AXIS], machine_position[B_AXIS]); }
         void get_current_machine_position(float *pos) const;
         void print_position(uint8_t subcode, std::string& buf, bool ignore_extruders=false) const;
         uint8_t get_current_wcs() const { return current_wcs; }
@@ -79,9 +80,11 @@ class Robot : public Module {
 
         // Workspace coordinate systems
         wcs_t mcs2wcs(const wcs_t &pos) const;
-        wcs_t mcs2wcs(const float *pos) const { return mcs2wcs(wcs_t(pos[X_AXIS], pos[Y_AXIS], pos[Z_AXIS])); }
+        wcs_t mcs2wcs(const float *pos) const { return mcs2wcs(wcs_t(pos[X_AXIS], pos[Y_AXIS], pos[Z_AXIS], pos[A_AXIS], pos[B_AXIS])); }
         wcs_t wcs2mcs(const wcs_t &pos) const;
-        wcs_t wcs2mcs(const float *pos) const { return wcs2mcs(wcs_t(pos[X_AXIS], pos[Y_AXIS], pos[Z_AXIS])); }
+        wcs_t wcs2mcs(const float *pos) const { return wcs2mcs(wcs_t(pos[X_AXIS], pos[Y_AXIS], pos[Z_AXIS], pos[A_AXIS], pos[B_AXIS])); }
+
+        void set_current_wcs_by_mpos(float x = NAN, float y = NAN, float z = NAN, float a = NAN, float b = NAN);
 
         void set_current_wcs_by_mpos(float x, float y, float z);
 

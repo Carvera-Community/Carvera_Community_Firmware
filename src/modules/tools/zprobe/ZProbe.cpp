@@ -28,7 +28,6 @@
 #include "StepTicker.h"
 #include "utils.h"
 #include "us_ticker_api.h"
-
 // strategies we know about
 #include "DeltaCalibrationStrategy.h"
 #include "ThreePointStrategy.h"
@@ -54,6 +53,10 @@
 // from endstop section
 #define delta_homing_checksum    CHECKSUM("delta_homing")
 #define rdelta_homing_checksum    CHECKSUM("rdelta_homing")
+
+#define detector_switch_checksum    CHECKSUM("toolsensor")
+#define switch_checksum 			CHECKSUM("switch")
+#define state_checksum              CHECKSUM("state")
 
 #define X_AXIS 0
 #define Y_AXIS 1
@@ -84,6 +87,10 @@ void ZProbe::on_module_loaded()
     probing = false;
     THEKERNEL->slow_ticker->attach(1000, this, &ZProbe::read_probe);
     THEKERNEL->slow_ticker->attach(1000, this, &ZProbe::read_calibrate);
+	if(!(THEKERNEL->factory_set->FuncSetting & (1<<2)))	//Manual Tool change 
+	{
+    	THEKERNEL->slow_ticker->attach(100, this, &ZProbe::probe_doubleHit);
+    }
     this->probe_trigger_time = 0;
 }
 
@@ -214,6 +221,48 @@ uint32_t ZProbe::read_calibrate(uint32_t dummy)
             cali_debounce = 0;
         }
     }
+
+    return 0;
+}
+
+uint32_t ZProbe::probe_doubleHit(uint32_t dummy)
+{
+	if (this->pin.get()) 
+	{
+		if(!bfirstHitDetected)
+		{
+			bfirstHitDetected = true;
+			probe_hit_time = us_ticker_read();
+		}
+		else if( bNoHited && (us_ticker_read() - probe_hit_time < 500000) )
+		{
+			if(bDoubleHited == false)
+			{
+				THEKERNEL->set_probeLaser(true);
+				bool b = true;
+			    PublicData::set_value( switch_checksum, detector_switch_checksum, state_checksum, &b );		
+			    bDoubleHited = true;
+			}
+			else
+			{
+				THEKERNEL->set_probeLaser(false);
+				bool b = false;
+			    PublicData::set_value( switch_checksum, detector_switch_checksum, state_checksum, &b );		
+			    bDoubleHited = false;
+			}
+		}
+		bNoHited = false;
+	}
+	else
+	{
+		if(bfirstHitDetected)
+			bNoHited = true;
+		if(us_ticker_read() - probe_hit_time > 500000)
+		{
+			bfirstHitDetected = false;
+		}
+	}
+
 
     return 0;
 }
@@ -489,6 +538,7 @@ bool ZProbe::probe_XYZ(Gcode *gcode)
 
     if(this->pin.get() != invert_probe) {
         gcode->stream->printf("Error:ZProbe triggered before move, aborting command.\n");
+        THEKERNEL->set_halt_reason(PROBE_FAIL);
         THEKERNEL->call_event(ON_HALT, nullptr);
         THEKERNEL->set_halt_reason(PROBE_FAIL);
         return false;
@@ -505,8 +555,8 @@ bool ZProbe::probe_XYZ(Gcode *gcode)
     THEKERNEL->set_zprobing(true);
     if(!THEROBOT->delta_move(delta, rate, 3)) {
     	gcode->stream->printf("ERROR: Move too small,  %1.3f, %1.3f, %1.3f\n", x, y, z);
-        THEKERNEL->call_event(ON_HALT, nullptr);
         THEKERNEL->set_halt_reason(PROBE_FAIL);
+        THEKERNEL->call_event(ON_HALT, nullptr);
         probing = false;
         THEKERNEL->set_zprobing(false);
         return false;
@@ -533,6 +583,7 @@ bool ZProbe::probe_XYZ(Gcode *gcode)
     if(probeok == 0 && (gcode->subcode == 2 || gcode->subcode == 4)) {
         // issue error if probe was not triggered and subcode is 2 or 4
         gcode->stream->printf("ALARM: Probe fail\n");
+        THEKERNEL->set_halt_reason(PROBE_FAIL);
         THEKERNEL->call_event(ON_HALT, nullptr);
         THEKERNEL->set_halt_reason(PROBE_FAIL);
         return false; //probe was not activated but failed due to subcodes
@@ -579,8 +630,8 @@ void ZProbe::calibrate_Z(Gcode *gcode)
     THEKERNEL->set_zprobing(true);
     if(!THEROBOT->delta_move(delta, rate, 3)) {
         gcode->stream->printf("ERROR: Move too small,  %1.3f\n", z);
-        THEKERNEL->call_event(ON_HALT, nullptr);
         THEKERNEL->set_halt_reason(PROBE_FAIL);
+        THEKERNEL->call_event(ON_HALT, nullptr);
         calibrating = false;
         THEKERNEL->set_zprobing(false);
         return;
@@ -607,8 +658,8 @@ void ZProbe::calibrate_Z(Gcode *gcode)
     if (calibrateok == 0) {
         // issue error if probe was not triggered and subcode is 2 or 4
         gcode->stream->printf("ALARM: Calibrate fail!\n");
-        THEKERNEL->call_event(ON_HALT, nullptr);
         THEKERNEL->set_halt_reason(CALIBRATE_FAIL);
+        THEKERNEL->call_event(ON_HALT, nullptr);
     }
 
     if (probe_detected) {

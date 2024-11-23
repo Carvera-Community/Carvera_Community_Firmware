@@ -9,6 +9,7 @@ class MainButton : public Module {
         void on_module_loaded();
         void on_idle(void *argument);
         uint32_t button_tick(uint32_t dummy);
+        uint32_t led_tick(uint32_t dummy);
         void on_second_tick(void *);
         void on_get_public_data(void* argument);
         void on_set_public_data(void* argument);
@@ -33,6 +34,7 @@ class MainButton : public Module {
         uint32_t power_fan_countdown_us;
 
         uint8_t hold_toggle;
+        uint8_t led_light_cnt;
         uint8_t led_update_timer;
         uint32_t button_press_time;
         uint32_t long_press_time_ms;
@@ -58,6 +60,10 @@ class MainButton : public Module {
 
         void switch_power_12(int state);
         void switch_power_24(int state);
+        uint8_t old_state;
+        void set_led_color(unsigned char R1, unsigned char G1, unsigned char B1,unsigned char R2, unsigned char G2, unsigned char B2,unsigned char R3, unsigned char G3, unsigned char B3,unsigned char R4, unsigned char G4, unsigned char B4,unsigned char R5, unsigned char G5, unsigned char B5);
+        void set_led_colors(unsigned char R, unsigned char G, unsigned char B);
+        void set_led_num(unsigned char ColorFR, unsigned char ColorFG, unsigned char ColorFB, unsigned char ColorBR, unsigned char ColorBG, unsigned char ColorBB, unsigned char num);
 };
 
 #endif

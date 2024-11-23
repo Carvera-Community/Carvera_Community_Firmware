@@ -19,11 +19,27 @@ using namespace std;
 // Since the two symbols below are derived from the filename, we need to change them if the filename changes
 extern char _binary_config_default_start;
 extern char _binary_config_default_end;
+extern char _binary_config2_default_start;
+extern char _binary_config2_default_end;
 
 FirmConfigSource::FirmConfigSource(const char* name){
     this->name_checksum = get_checksum(name);
-    this->start= &_binary_config_default_start;
-    this->end= &_binary_config_default_end;
+	switch (THEKERNEL->factory_set->MachineModel)
+	{
+		case CARVERA:
+			this->start= &_binary_config_default_start;
+    		this->end= &_binary_config_default_end;
+			break;
+		case CARVERA_AIR:
+			this->start= &_binary_config2_default_start;
+    		this->end= &_binary_config2_default_end;
+			break;
+		default:
+			this->start= &_binary_config_default_start;
+    		this->end= &_binary_config_default_end;
+			break;
+	}
+    
 }
 
 FirmConfigSource::FirmConfigSource(const char* name, const char *start, const char *end){

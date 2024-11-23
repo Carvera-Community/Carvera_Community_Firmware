@@ -1,0 +1,494 @@
+# This is a place for the user to specify their own 'firm' defaults at compile time
+# One can also use this as the primary config system if an sdcard is unavailable
+# The format of this file is identical to that of a normal config file
+#
+# to have git ignore this file so you can keep your own defaults in here that are
+# preserved through updates run this command:
+# git update-index --assume-unchanged src/config.default
+#
+
+### Carvera_Air settings which are fixed ###
+new_status_format							true
+
+#sd_ok										false
+
+#dfu_enable									false
+#msd_disable								true			# Disable the MSD (USB SDCARD)
+
+#home_on_boot								true			# If do home when bootup
+
+# USB
+# usb_en_pin								1.19
+
+# Basic motion configuration
+#default_feed_rate							1000			# Default speed (mm/minute) for G1/G2/G3 moves
+#default_seek_rate							3000			# Default speed (mm/minute) for G0 moves
+#mm_per_arc_segment							0.0				# Fixed length for line segments that divide arcs, 0 to disable
+#mm_per_line_segment							5				# Cut lines into segments this size
+#mm_max_arc_error							0.002			# The maximum error for line segments that divide arcs 0 to disable
+															# note it is invalid for both the above be 0
+															# if both are used, will use largest segment length based on radius
+
+# Planner module configuration : Look-ahead and acceleration configuration
+#acceleration								150				# Acceleration in mm/second/second.
+#z_acceleration								500				# Acceleration for Z only moves in mm/s^2, 0 uses acceleration which is the default. DO NOT SET ON A DELTA
+junction_deviation							0.01			# 
+#z_junction_deviation						0.0				# For Z only moves, -1 uses junction_deviation, zero disables junction_deviation on z moves DO NOT SET ON A DELTA
+
+# Cartesian axis speed limits
+#x_axis_max_speed							4000			# Maximum speed in mm/min
+#y_axis_max_speed							4000			# Maximum speed in mm/min
+#z_axis_max_speed							3000			# Maximum speed in mm/min
+
+# Stepper module configuration
+# Pins are defined as  ports, and pin numbers, appending "!" to the number will invert a pin
+alpha_step_pin								1.28			# Pin for alpha stepper step signal
+alpha_dir_pin								1.29			# Pin for alpha stepper direction, add '!' to reverse direction
+alpha_en_pin								0.1				# Pin for alpha enable pin
+#alpha_max_rate								3000.0			# Maximum rate in mm/min
+alpha_steps_per_mm							640				# Steps per mm for alpha ( X ) stepper
+
+beta_step_pin								1.26			# Pin for beta stepper step signal
+beta_dir_pin								1.27!			# Pin for beta stepper direction, add '!' to reverse direction
+beta_en_pin									0.0				# Pin for beta enable
+#beta_max_rate								3000.0			# Maxmimum rate in mm/min
+beta_steps_per_mm							640				# Steps per mm for beta ( Y ) stepper
+
+gamma_step_pin								1.24			# Pin for gamma stepper step signal
+gamma_dir_pin								1.25			# Pin for gamma stepper direction, add '!' to reverse direction
+gamma_en_pin								3.25			# Pin for gamma enable
+#gamma_max_rate								2000.0			# Maximum rate in mm/min
+gamma_steps_per_mm							640				# Steps per mm for gamma ( Z ) stepper
+
+# A axis
+delta_step_pin								1.21			# Pin for delta stepper step signal
+delta_dir_pin								1.23!			# Pin for delta stepper direction
+delta_en_pin								1.30			# Pin for delta enable
+#delta_max_rate								10800.0			# mm/min transform from degree/min
+#delta_acceleration							360			    # degree/secÂ²
+#delta_steps_per_mm							26.666667		# may be steps per degree for example (26.67)
+delta_steps_per_mm							888.88888		# may be steps per degree for example (26.67)
+
+# B axis
+epsilon_step_pin							1.22			# Pin for delta stepper step signal
+epsilon_dir_pin								1.0				# Pin for delta stepper direction
+epsilon_en_pin								1.10			# Pin for delta enable
+#epsilon_max_rate							100.0			# mm/min
+#epsilon_acceleration						10.0			# mm/secÂ²
+epsilon_steps_per_mm						888.88888		# may be steps per degree for example (26.67)
+
+# WIFI
+# wifi.enable									true
+# wifi.interrupt_pin						2.11
+# wifi.tcp_port								2222
+# wifi.udp_send_port							3333
+# wifi.udp_recv_port							4444
+# wifi.tcp_timeout_s							10
+# wifi.machine_name							CARVERA_01001
+
+# ATC
+# atc.enable									true
+# atc.homing_endstop_pin						1.0^
+# atc.homing_debounce_ms						1
+atc.homing_max_travel_mm					8
+#atc.homing_retract_mm						1.5
+atc.homing_rate_mm_s						0.4
+#atc.action_mm								2.0
+atc.action_rate_mm_s						0.25
+
+# atc.detector.detect_pin					0.20^
+# atc.detector.detect_rate_mm_s				20				# Tool detect speed (mm / second)	
+# atc.detector.detect_travel_mm				5				# Tool detect back and forth distance (mm)
+
+# atc.safe_z_mm								-20.0
+# atc.safe_z_empty_mm 						-45.0			# Safety Z height when not clamping tool
+# atc.safe_z_offset_mm						15.0
+# atc.fast_z_rate_mm_m						1000				
+# atc.slow_z_rate_mm_m						200
+# atc.margin_rate_mm_m						1000
+
+#atc.probe.probe_height_mm					0.0
+
+# Laser module configuration
+# laser_module_enable						true			# Whether to activate the laser module at all
+# laser_module_pin							2.12			# 
+# laser_module_pwm_pin						2.4				# This pin will be PWMed to control the laser.
+
+#laser_module_ttl_pin						1.30			# This pin turns on when the laser turns on, and off when the laser turns off.
+# laser_module_test_power						0.01            # This is the maximum duty cycle that will be applied to the laser
+# laser_module_maximum_power					1.0				# This is the maximum duty cycle that will be applied to the laser
+# laser_module_minimum_power					0.0				# This is a value just below the minimum duty cycle that keeps the laser active without actually burning.
+#laser_module_default_power					1.0             # This is the default laser power that will be used for cuts if a power has not been specified.  
+															#The value is a scale between
+															# the maximum and minimum power levels specified above
+# laser_module_pwm_period						20				# This sets the pwm frequency as the period in microseconds
+# laser_module_offset_x						-37.3			# laser model x offset
+# laser_module_offset_y						4.8				# laser model y offset
+# laser_module_offset_z						-45.0			# laser model z offset
+
+## Switch modules
+switch.powerfan.enable 						true			# Enable this module
+switch.powerfan.input_on_command			M801			# Command that will turn this switch on
+switch.powerfan.input_off_command			M802			# Command that will turn this switch off
+switch.powerfan.output_pin					2.3			# Pin this module controls
+switch.powerfan.output_type					hwpwm			# Digital means this is just an on or off pin
+switch.powerfan.default_on_value			30				#
+
+switch.spindlefan.enable					true			# Enable this module
+switch.spindlefan.input_on_command			M811			# Command that will turn this switch on
+switch.spindlefan.input_off_command			M812			# Command that will turn this switch off
+switch.spindlefan.output_pin				2.1				# Pin this module controls
+switch.spindlefan.output_type				hwpwm			# Digital means this is just an on or off pin
+switch.spindlefan.default_on_value			50				#
+
+switch.light.enable							true			# Enable this module
+# switch.light.startup_state					true			# Startup light by default
+switch.light.output_pin						2.0				# Pin this module controls
+switch.light.input_on_command				M821			# Command that will turn this switch on
+switch.light.input_off_command				M822			# Command that will turn this switch off
+switch.light.ignore_on_halt					true			# ignore on halt
+
+switch.toolsensor.enable					true			# Enable this module
+switch.toolsensor.output_pin				0.11			# Pin this module controls
+switch.toolsensor.output_type				digital			# Digital means this is just an on or off pin
+switch.toolsensor.input_on_command			M831			# Command that will turn this switch on
+switch.toolsensor.input_off_command			M832			# Command that will turn this switch off
+
+switch.probecharger.enable					true			# Enable this module
+switch.probecharger.output_pin				0.23			# Pin this module controls
+switch.probecharger.output_type				digital			# Digital means this is just an on or off pin
+switch.probecharger.input_on_command		M841			# Command that will turn this switch on
+switch.probecharger.input_off_command		M842			# Command that will turn this switch off
+switch.probecharger.ignore_on_halt			true			# ignore on halt
+switch.probecharger.startup_state			true			# wireless probe startup state
+
+switch.beep.enable							true			# Enable this module
+switch.beep.output_pin						1.14			# Pin this module controls
+switch.beep.output_type						digital			# Digital means this is just an on or off pin
+switch.beep.input_on_command				M861			# Command that will turn this switch on
+switch.beep.input_off_command				M862			# Command that will turn this switch off
+switch.beep.ignore_on_halt					true			# ignore on halt
+switch.beep.startup_state					false			# beep probe startup state
+
+switch.extendout.enable						true			# Enable this module
+switch.extendout.output_pin					2.2				# Pin this module controls
+switch.extendout.output_type				swpwm			# Digital means this is just an on or off pin
+switch.extendout.input_on_command			M851			# Command that will turn this switch on
+switch.extendout.input_off_command			M852			# Command that will turn this switch off
+
+switch.extendin.enable						true			# Enable this module
+switch.extendin.input_pin					0.21			# Pin this module controls
+switch.extendin.input_pin_behavior			momentary		# Pin this module behavior
+
+#switch.air.enable							true			# Enable this module
+#switch.air.output_pin						0.11				# Pin this module controls
+#switch.air.output_type						digital			# Digital means this is just an on or off pin
+#switch.air.input_on_command					M7				# Command that will turn this switch on
+#switch.air.input_off_command				M9				# Command that will turn this switch off
+
+## Temperature control configuration
+# spindle temperature configuration
+temperature_control.spindle.enable			true			# Whether to activate this ( "hotend" ) module at all.
+temperature_control.spindle.thermistor_pin	1.31			# Pin for the thermistor to read
+temperature_control.spindle.heater_pin		nc				# Pin that controls the heater, set to nc if a readonly thermistor is being defined
+temperature_control.spindle.beta			3950			# Or set the beta value
+temperature_control.spindle.get_m_code		105				# M-code to set the temperature for this module
+temperature_control.spindle.designator		M				# designator
+
+temperature_control.power.enable			true			# Whether to activate this ( "hotend" ) module at all.
+temperature_control.power.thermistor_pin	0.26			# Pin for the thermistor to read
+temperature_control.power.heater_pin		nc				# Pin that controls the heater, set to nc if a readonly thermistor is being defined
+temperature_control.power.beta			    3950			# Or set the beta value
+temperature_control.power.get_m_code		106				# M-code to set the temperature for this module
+temperature_control.power.designator		M				# designator
+temperature_control.power.max_temp			60			# Alarm and halt machine when overheated
+## Temperatureswitch
+# Automatically toggle a switch at a specified temperature. Different ones of these may be defined to monitor different temperatures and switch different switches
+# Useful to turn on a fan or water pump to cool the hotend
+temperatureswitch.spindle.enable			true			#
+temperatureswitch.spindle.switch			spindlefan		# select which switch to use, matches the name of the defined switch
+
+temperatureswitch.power.enable			true			#
+temperatureswitch.power.switch			powerfan		# select which switch to use, matches the name of the defined switch
+temperatureswitch.power.threshold_temp 	     20.0	# Temperature to turn on or off spindle fan
+temperatureswitch.power.cooldown_power_init  20.0			# Cooldown fan start power percentage (50 - 100) 
+temperatureswitch.power.cooldown_power_step  2.5			# Cooldown fan start power increase step per degree
+temperatureswitch.power.cooldown_delay       180			# Stop cooldown after these seconds
+## Endstops
+# endstops_enable								true			# The endstop module is enabled by default and can be disabled here
+cover_endstop								1.8!^		      
+
+alpha_min_endstop							0.24^			# Pin to read min endstop, add a ! to invert if endstop is NO connected to ground
+alpha_max_endstop							0.24^			# Pin to read max endstop, uncomment this and comment the above if using max endstops
+alpha_homing_direction						home_to_max		# Or set to home_to_max and set alpha_max and uncomment the alpha_max_endstop
+alpha_min									0				# This gets loaded as the current position after homing when home_to_min is set
+alpha_max									0				# This gets loaded as the current position after homing when home_to_max is set
+alpha_max_travel							500				# Max travel in mm for alpha/X axis when homing
+alpha_fast_homing_rate_mm_s					15				# Alpha/X fast homing feedrate in mm/second
+alpha_slow_homing_rate_mm_s					3				# Alpha/X slow homing feedrate in mm/second
+alpha_limit_enable                          true            # Set to true to enable X min and max limit switches
+alpha_homing_retract_mm						1				# Distance to retract from the endstop after it is hit for alpha/X
+alpha_motor_alarm_pin						0.1^				# servo motor alarm for X axis
+
+beta_min_endstop							0.25^            # Pin to read min endstop, add a ! to invert if endstop is NO connected to ground
+beta_max_endstop							0.25^            # Pin to read max endstop, uncomment this and comment the above if using max endstops
+beta_homing_direction						home_to_max		# Or set to home_to_max and set alpha_max and uncomment the alpha_max_endstop
+beta_min									0				# This gets loaded as the current position after homing when home_to_min is set
+beta_max									0				# This gets loaded as the current position after homing when home_to_max is set
+beta_max_travel								380				# Max travel in mm for beta/Y axis when homing
+beta_fast_homing_rate_mm_s					15				# Beta/Y  fast homing feedrate in mm/second
+beta_slow_homing_rate_mm_s					3				# Beta/Y  slow homing feedrate in mm/second
+beta_limit_enable                           true            # Set to true to enable Y min and max limit switches
+beta_homing_retract_mm						1				# Distance to retract from the endstop after it is hit for beta/Y
+beta_motor_alarm_pin						0.0^				# servo motor alarm for Y axis
+
+gamma_min_endstop							1.1^			# Pin to read min endstop, add a ! to invert if endstop is NO connected to ground
+gamma_max_endstop							1.1^			# Pin to read max endstop, uncomment this and comment the above if using max endstops
+gamma_homing_direction						home_to_max		# Or set to home_to_max and set alpha_max and uncomment the alpha_max_endstop
+gamma_min									0				# This gets loaded as the current position after homing when home_to_min is set
+gamma_max									0				# This gets loaded as the current position after homing when home_to_max is set
+gamma_max_travel							150				# Max travel in mm for gamma/Z axis when homing
+gamma_fast_homing_rate_mm_s					10				# Gamma/Z fast homing feedrate in mm/second
+gamma_slow_homing_rate_mm_s					3				# Gamma/Z slow homing feedrate in mm/second
+gamma_limit_enable                          true            # Set to true to enable Z min and max limit switches
+gamma_homing_retract_mm						1				# Distance to retract from the endstop after it is hit for gamma/Z
+gamma_motor_alarm_pin						3.25^			# servo motor alarm for Z axis
+
+delta_min_endstop							1.9^			# Pin to read min endstop, add a ! to invert if endstop is NO connected to ground
+delta_max_endstop							1.9^			# Pin to read max endstop, uncomment this and comment the above if using max endstops
+delta_homing_direction						home_to_min		# Or set to home_to_max and set alpha_max and uncomment the alpha_max_endstop
+delta_min									-1				# This gets loaded as the current position after homing when home_to_min is set
+delta_max									0				# This gets loaded as the current position after homing when home_to_max is set
+delta_max_travel							380 			# Max travel in mm for delta/A axis when homing
+delta_fast_homing_rate_mm_s					50				# delta/A fast homing feedrate in mm/second
+delta_slow_homing_rate_mm_s					10				# delta/A slow homing feedrate in mm/second
+delta_limit_enable                          true            # Set to true to enable A min and max limit switches
+delta_homing_retract_mm						1				# Distance to retract from the endstop after it is hit for delta/A
+delta_motor_alarm_pin						nc				# servo motor alarm for Z axis
+
+
+
+# Optional order in which axis will home, default is they all home at the same time,
+# If this is set it will force each axis to home one at a time in the specified order
+#homing_order								XYZ				# X axis followed by Y then Z last
+#move_to_origin_after_home					false			# Move XY to 0,0 after homing
+#endstop_debounce_count						100				# Uncomment if you get noise on your endstops, default is 100
+#endstop_debounce_ms						5				# Uncomment if you get noise on your endstops, default is 1 millisecond debounce
+#home_z_first								true			# Uncomment and set to true to home the Z first, otherwise Z homes after XY
+
+## Z-probe
+#zprobe.enable								true			# Set to true to enable a zprobe
+zprobe.probe_pin							2.6v			# Pin probe is attached to, if NC remove the !
+# zprobe.slow_feedrate						1.5				# Mm/sec probe feed rate
+zprobe.debounce_ms							1				# Set if noisy
+# zprobe.fast_feedrate						5				# Move feedrate mm/sec
+# zprobe.return_feedrate						20				# Return feedrate mm/sec
+# zprobe.probe_height							2				# How much above bed to start probe
+# zprobe.max_z								100				# max z
+zprobe.calibrate_pin						0.5^			# calibrate_pin
+
+# Leveling strategy
+leveling-strategy.rectangular-grid.enable					true
+leveling-strategy.rectangular-grid.size						15
+leveling-strategy.rectangular-grid.x_size					50
+leveling-strategy.rectangular-grid.y_size					50
+leveling-strategy.rectangular-grid.human_readable			true
+leveling-strategy.rectangular-grid.only_by_two_corners		true
+
+
+## Network settings
+#network.enable								false			# Enable the ethernet network services
+#network.webserver.enable					true			# Enable the webserver
+#network.telnet.enable						true			# Enable the telnet server
+#network.ip_address							auto			# Use dhcp to get ip address
+# Uncomment the 3 below to manually setup ip address
+#network.ip_address							192.168.201.110	# The IP address
+#network.ip_mask								255.255.255.0	# The ip mask
+#network.ip_gateway							192.168.201.1	# The gateway address
+#network.mac_override						18-BB-26-85-E7-4A	# Override the mac address, only do this if you have a conflict
+#network.hostname							Makeraboard
+
+## System configuration
+# Serial communications configuration ( baud rate defaults to 9600 if undefined )
+# For communication over the UART port, *not* the USB/Serial port
+uart.baud_rate								115200			# Baud rate for the default hardware ( UART ) serial port
+
+second_usb_serial_enable					false			# This enables a second USB serial port
+#leds_disable								true			# Disable using leds after config loaded
+#play_led_disable							true			# Disable the play led
+
+# Main button
+#main_button_enable							true			# Set to true to enable main button
+main_button_pin								2.13!^			# Main button pin
+main_button_LED_R_pin						nc			# Main button red LED pin
+main_button_LED_G_pin						1.15			# Main button green LED pin
+main_button_LED_B_pin						nc			# Main button blue LED pin
+main_button_poll_frequency					20				# Main button pool frequency
+main_button_long_press_time					3000			# Long press time
+# Main Button Special Function when long pressed
+main_button_long_press_enable    			None  			#When the Main button long press,Enalbe the special function
+
+# Power control
+#ps12_pin									0.22				# 12V power pin
+#ps24_pin									0.10				# 24V power pin
+power_fan_delay_s							30				# power fan turn on/off delay
+#e_stop_pin									0.20^			# Emergency stop pin
+
+
+# 
+#currentcontrol_module_enable				false			# Control stepper motor current via the configuration file
+
+# Spindle configuration
+#spindle.enable								true			# set this to false to disable the spindle module
+#spindle.type								pwm				# sets the spindle module to PWM mode
+spindle.pwm_pin								2.5				# Big Mosfet Q7. Pin must be hardware PWM capable.
+spindle.pwm_period							10000			# default 1000, sets the PWM frequency
+spindle.feedback_pin						2.7				# Pin must be interrupt capable. 
+spindle.pulses_per_rev						2				#12				# default 1. Defines the number of pulses occur for each rotation 
+# spindle.default_rpm							10000			# default 10000. Defines a default RPM value in case no RPM value is provided.
+spindle.control_P							0.00001			# default 0.0001. P value for the PID controller              
+spindle.control_I							0.00005			# default 0.0001. I value for the PID controller
+spindle.control_D							0.00005			# default 0.0001. D value for the PID controller
+spindle.control_smoothing					0.1				# default 0.1. This value is low pass filter time constant in seconds.
+spindle.delay_s								3.0				# delay seconds before next motion after spindle turn on or off
+spindle.acc_ratio							1				#1.635			# acceleration ratio
+spindle.alarm_pin							0.19^			# spindle alarm trigger pin
+
+#spindle.stall_s								1.0				# how many seconds before report stall status
+#spindle.stall_count_rpm						8000			# don't calculate stall when lower than this RPM
+#spindle.stall_alarm_rpm						5000			# consider as stall alarm if lower than this RPM
+
+
+# Light
+# light.turn_off_min							0
+
+# Safety
+# stop_on_cover_open 							false
+
+# Power management
+# power.auto_sleep 							false
+# power.auto_sleep_min						30
+
+
+### Carvera settings which can be changed by user ###
+
+user_setting_start true				# Indicate user settings start
+
+## fixed Settings ##
+sd_ok false								# Indicate SD card is corrected read
+
+## Basic Settings ##
+# Vacuum
+switch.vacuum.default_on_value 80		# Default vacuum power when open (50 - 100)
+
+# Light
+switch.light.startup_state true			# Whether to turn on light by default
+light.turn_off_min 0.0					# Turn off the light when idle for these minutes (0 means never)
+
+# Safety
+stop_on_cover_open false 				# Stop when open the cover during machining
+
+# Power management
+power.auto_sleep false					# Allow machine to enter sleep mode automatically
+power.auto_sleep_min 5					# Enter sleep mode after these minutes (1 - 30)
+
+
+## Advanced Settings ##
+
+# Coordinates
+coordinate.anchor1_x -291.0 			# X Machine coordinates of anchor1
+coordinate.anchor1_y -203.0 			# Y Machine coordinates of anchor1
+
+coordinate.anchor2_offset_x 88.5		# Anchor2 X Offset relative to anchor1
+coordinate.anchor2_offset_y 45.0		# Anchor2 Y Offset relative to anchor1
+
+coordinate.toolrack_offset_x 126		# Tool 6 X Offset relative to anchor1
+coordinate.toolrack_offset_y 196		# Tool 6 Y Offset relative to anchor1
+coordinate.toolrack_z -108				# ATC Z axis machine coordinates
+
+coordinate.rotation_offset_x 41.5		# Rotation module X Offset relative to anchor1
+coordinate.rotation_offset_y 82.5		# Rotation module Y Offset relative to anchor1
+coordinate.rotation_offset_z 23.0		# Rotation module Z Offset relative to chuck center
+
+coordinate.anchor_width 15.0			# Width of two anchors
+coordinate.anchor_length 100.0			# Length of two anchors
+
+coordinate.worksize_x 300.0				# Width of work area
+coordinate.worksize_y 200.0				# Height of work area
+
+coordinate.clearance_x -5.0				# X Machine coordinates for clearance
+coordinate.clearance_y -21.0			# Y Machine coordinates for clearance
+coordinate.clearance_z -3.0				# Z Machine coordinates for clearance
+
+soft_endstop.enable	false				# enable soft limit or not
+soft_endstop.x_min	-302.0				# Soft Limit X Min Machine Coordinate
+soft_endstop.y_min	-212.0				# Soft Limit Y Min Machine Coordinate
+soft_endstop.z_min	-121.0				# Soft Limit Z Min Machine Coordinate
+
+
+# Motion
+default_feed_rate 1000					# Feed rate when F parameter is not set (mm/min)
+default_seek_rate 3000					# Feed rate for G0 rapid mode (mm/min)
+
+alpha_max_rate 3000.0					# Max feed rate for X axis (mm/min)
+beta_max_rate 3000.0					# Max feed rate for Y axis (mm/min)
+gamma_max_rate 2000.0					# Max feed rate for Z axis (mm/min)
+delta_max_rate 3000.0 					# Max rotation speed rate for A axis (degree/min)
+epsilon_max_rate 100.0					# Max feed rate for auto tool changer (mm/min)
+
+acceleration 150						# Acceleration for X/Y/Z axis (mm/second/second)
+delta_acceleration 360.0 				# Acceleration for rotation axis (degree/second/second)
+epsilon_acceleration 10.0				# Acceleration for auto tool changer (mm/second/second)
+
+# WIFI
+wifi.machine_name CARVERA_AIR_01001	    	# Machine name that is shown in the WiFi list
+
+# ATC Motion
+atc.homing_retract_mm 0.4 				# Retract distance after homing (mm)
+atc.action_mm 1.6					 	# Action distance when drop tool (mm)
+atc.detector.detect_rate_mm_s 20		# Tool detect speed (mm / second)	
+atc.detector.detect_travel_mm 5	        # Tool detect back and forth distance (mm)
+
+atc.safe_z_mm -20.0						# Safety Z height when clamping tool
+atc.safe_z_empty_mm -50.0				# Safety Z height when not clamping tool
+atc.safe_z_offset_mm 15.0				# Z offset when slowing down ATC speed
+atc.fast_z_rate_mm_m 1000				# Z axis fast speed When doing ATC			
+atc.slow_z_rate_mm_m 200				# Z axis slow speed when doing ATC
+atc.margin_rate_mm_m 1000.0 			# X and Y speed when scaning margin
+
+atc.probe.fast_rate_mm_m 500			# Z axis fast speed when doing calibrate
+atc.probe.slow_rate_mm_m 100			# Z axis slow speed when doing calibrate
+atc.probe.retract_mm 2					# Retract distance when hitting probe
+
+# Laser
+laser_module_test_power 0.01            # Laser power when doing test(0 - 1)
+laser_module_maximum_power 1.0			# Max laser power (0 - 1)
+laser_module_minimum_power 0.0			# Min laser power (0 - 1)
+laser_module_offset_x 0				# Laser module X offset relative to spindle
+laser_module_offset_y 0				# Laser module Y offset relative to spindle
+laser_module_offset_z -7.0 			# Laser module Z offset relative to spindle
+temperatureswitch.spindle.cooldown_power_laser  30.0		# cooldown power for laser module
+laser_module_clustering false				#
+
+# Z-probe
+zprobe.slow_feedrate 1.5				# Z probe slow speed (mm/s)
+zprobe.fast_feedrate 5					# Z probe fast speed (mm/s)
+zprobe.return_feedrate 20				# Z probe return speed (mm/s)
+zprobe.probe_height 2					# How much above bed to start probe
+zprobe.max_z 100						# Max action distance when doing z probe
+
+# Spindle
+spindle.default_rpm 10000				# Default RPM value in case no RPM is provided
+temperatureswitch.spindle.threshold_temp 35.0	# Temperature to turn on or off spindle fan
+temperatureswitch.spindle.cooldown_power_init  50.0			# Cooldown fan start power percentage (50 - 100) 
+temperatureswitch.spindle.cooldown_power_step  10.0			# Cooldown fan start power increase step per degree
+temperatureswitch.spindle.cooldown_delay       180			# Stop cooldown after these seconds
+temperature_control.spindle.max_temp		70				# Alarm and halt machine when overheated
+
+# wireless probe
+wp.min_voltage								3.6			# Wireless probe charge start voltage
+wp.max_voltage								4.1			# Wireless probe charge cut-off voltage
+
+
+# Other settings for future use
+

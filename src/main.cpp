@@ -97,6 +97,11 @@ void init() {
         leds[i]= 0;
     }
 
+
+    GPIO beep = GPIO(P1_14);
+    beep.output();
+    beep = 0;
+
     // open 12V
     // GPIO v12 = GPIO(P0_11);
     /*

@@ -43,17 +43,18 @@ void SpindleControl::on_gcode_received(void *argument)
         }
         else if (gcode->m == 3)
         {
+        	if(THEKERNEL->is_halted()) return; // if in halted state ignore any commands
         	if (!THEKERNEL->get_laser_mode()) {
                 // current tool number and tool offset
                 struct tool_status tool;
                 bool tool_ok = PublicData::get_value( atc_handler_checksum, get_tool_status_checksum, &tool );
                 if (tool_ok) {
-                	tool_ok = tool.active_tool > 0;
+                	tool_ok = (tool.active_tool > 0  && tool.active_tool < 256);
                 }
             	// check if is tool -1 or tool 0
             	if (!tool_ok) {
-        			THEKERNEL->call_event(ON_HALT, nullptr);
         			THEKERNEL->set_halt_reason(MANUAL);
+        			THEKERNEL->call_event(ON_HALT, nullptr);
         			THEKERNEL->streams->printf("ERROR: No tool or probe tool!\n");
         			return;
             	}

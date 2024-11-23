@@ -8,6 +8,7 @@
 #define get_tool_status_checksum    CHECKSUM("get_tool_status")
 #define set_ref_tool_mz_checksum	CHECKSUM("set_ref_tool_mz")
 #define get_atc_pin_status_checksum	CHECKSUM("get_atc_pin_status")
+#define set_job_complete_checksum	CHECKSUM("set_job_complete")
 
 #define set_serial_rx_irq_checksum	CHECKSUM("set_serial_rx_irq")
 
@@ -17,6 +18,7 @@
 
 struct tool_status {
 	int active_tool;
+	int target_tool;
 	float cur_tool_mz;
 	float ref_tool_mz;
 	float tool_offset;

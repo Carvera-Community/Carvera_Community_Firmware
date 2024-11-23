@@ -8,6 +8,7 @@
 
 #include "Gcode.h"
 #include "libs/StreamOutput.h"
+#include "libs/StreamOutputPool.h"
 #include "utils.h"
 #include <stdlib.h>
 #include <algorithm>
@@ -183,9 +184,9 @@ float Gcode::get_variable_value(const char* expr, char** endptr) const{
             {
                 return THEKERNEL->local_vars[var_num -101];
             }
-            this->stream->printf("Variable %d not set \n", var_num);
-            THEKERNEL->call_event(ON_HALT, nullptr);
             THEKERNEL->set_halt_reason(MANUAL);
+            THEKERNEL->call_event(ON_HALT, nullptr);
+            THEKERNEL->streams->printf("Variable %d not set \n", var_num);
             return NAN;
         
         } else if(var_num == 150)
@@ -197,9 +198,9 @@ float Gcode::get_variable_value(const char* expr, char** endptr) const{
             {
                 return THEKERNEL->probe_outputs[var_num - 151];
             }
-            this->stream->printf("Variable %d not set \n", var_num);
-            THEKERNEL->call_event(ON_HALT, nullptr);
             THEKERNEL->set_halt_reason(MANUAL);
+            THEKERNEL->call_event(ON_HALT, nullptr);
+            THEKERNEL->streams->printf("Variable %d not set \n", var_num);
             return NAN;
 
         } else if(var_num >= 501 && var_num <= 520)
@@ -208,15 +209,16 @@ float Gcode::get_variable_value(const char* expr, char** endptr) const{
             {
                 return THEKERNEL->eeprom_data->perm_vars[var_num - 501]; // return permanent variables
             }
-            this->stream->printf("Variable %d not set \n", var_num);
-            THEKERNEL->call_event(ON_HALT, nullptr);
+            
             THEKERNEL->set_halt_reason(MANUAL);
+            THEKERNEL->call_event(ON_HALT, nullptr);
+            THEKERNEL->streams->printf("Variable %d not set \n", var_num);
             return NAN;
         }else //system variables
         {
             float mpos[3];
             bool ok;
-            wcs_t pos;
+            Robot::wcs_t pos;
             switch (var_num){
                 case 2000: //stored tool length offset
                     return THEKERNEL->eeprom_data->TLO;
@@ -291,9 +293,9 @@ float Gcode::get_variable_value(const char* expr, char** endptr) const{
                 #endif
 
                 default:
-                    this->stream->printf("Variable %d not found \n", var_num);
-                    THEKERNEL->call_event(ON_HALT, nullptr);
                     THEKERNEL->set_halt_reason(MANUAL);
+                    THEKERNEL->call_event(ON_HALT, nullptr);
+                    THEKERNEL->streams->printf("Variable %d not found \n", var_num);
                     return NAN;
                     break;
             }
@@ -304,9 +306,9 @@ float Gcode::get_variable_value(const char* expr, char** endptr) const{
 
 float Gcode::parse_expression(const char*& expr) const {
     if (*expr == ']') {
-        this->stream->printf("Mismatched closing bracket ']' without opening '['\n");
-        THEKERNEL->call_event(ON_HALT, nullptr);
         THEKERNEL->set_halt_reason(MANUAL);
+        THEKERNEL->call_event(ON_HALT, nullptr);
+        THEKERNEL->streams->printf("Mismatched closing bracket ']' without opening '['\n");
         return NAN;
     }
 
@@ -329,33 +331,33 @@ float Gcode::parse_expression(const char*& expr) const {
 
     const float equal_tolerance = 1e-6;
     // Handle EQ,NE,GE,LE,GT,LT operator with lower precedence
-    if (strncmp(expr, "EQ", 2) == 0) {
+    if (strncmp(expr, "eq", 2) == 0) {
         expr += 2; // Skip "EQ"
         while (isspace(*expr)) expr++;
         float comparison_value = parse_expression(expr);
         // Perform a fuzzy equality check with tolerance of 1e-6
         result = (fabs(result - comparison_value) < equal_tolerance) ? 1.0f : 0.0f;
-    } else if(strncmp(expr, "NE", 2) == 0) {
+    } else if(strncmp(expr, "ne", 2) == 0) {
         expr += 2; // Skip "NE"
         while (isspace(*expr)) expr++; 
         float comparison_value = parse_expression(expr);
         result = (fabs(result - comparison_value) < equal_tolerance) ? 0.0f : 1.0f;
-    } else if(strncmp(expr, "GT", 2) == 0) {
+    } else if(strncmp(expr, "gt", 2) == 0) {
         expr += 2; // Skip "GT"
         while (isspace(*expr)) expr++;
         float comparison_value = parse_expression(expr);
         result = (result > comparison_value) ? 1.0f : 0.0f;
-    } else if(strncmp(expr, "GE", 2) == 0) {
+    } else if(strncmp(expr, "ge", 2) == 0) {
         expr += 2; // Skip "GE"
         while (isspace(*expr)) expr++;
         float comparison_value = parse_expression(expr);        
         result = (result >= comparison_value) ? 1.0f : 0.0f;
-    } else if(strncmp(expr, "LT", 2) == 0) {
+    } else if(strncmp(expr, "lt", 2) == 0) {
         expr += 2; // Skip "LT"
         while (isspace(*expr)) expr++;
         float comparison_value = parse_expression(expr);
         result = (result < comparison_value) ? 1.0f : 0.0f;
-    } else if(strncmp(expr, "LE", 2) == 0) {
+    } else if(strncmp(expr, "le", 2) == 0) {
         expr += 2; // Skip "LE"
         while (isspace(*expr)) expr++;
         float comparison_value = parse_expression(expr);
@@ -363,24 +365,24 @@ float Gcode::parse_expression(const char*& expr) const {
     }
 
     // Handle boolean operators with the lowest precedence
-    if (strncmp(expr, "AND", 3) == 0) {
+    if (strncmp(expr, "and", 3) == 0) {
         expr += 3; // Skip "AND"
         while (isspace(*expr)) expr++; // Skip whitespace after "AND"
         float and_value = parse_expression(expr);
         // Evaluate AND: both values must be non-zero to return 1
         result = (result != 0 && and_value != 0) ? 1.0f : 0.0f;
-    } else if (strncmp(expr, "OR", 2) == 0) {
+    } else if (strncmp(expr, "or", 2) == 0) {
         expr += 2; // Skip "OR"
         while (isspace(*expr)) expr++; // Skip whitespace after "OR"
         float or_value = parse_expression(expr);
         result = (result != 0 || or_value != 0) ? 1.0f : 0.0f;
-    } else if (strncmp(expr, "XOR", 3) == 0) {
+    } else if (strncmp(expr, "xor", 3) == 0) {
         expr += 3; // Skip "XOR"
         while (isspace(*expr)) expr++; // Skip whitespace after "XOR"
         float xor_value = parse_expression(expr);
         // Evaluate XOR: exactly one value must be non-zero to return 1
         result = ((result != 0) != (xor_value != 0)) ? 1.0f : 0.0f;
-    } else if (strncmp(expr, "NOR", 3) == 0) {
+    } else if (strncmp(expr, "nor", 3) == 0) {
         expr += 3; // Skip "NOR"
         while (isspace(*expr)) expr++; // Skip whitespace after "NOR"
         float nor_value = parse_expression(expr);
@@ -396,7 +398,7 @@ float Gcode::parse_term(const char*& expr) const {
 
     while (isspace(*expr)) expr++; // Skip leading whitespace
 
-    while (*expr == '*' || *expr == '/' || strncmp(expr, "MOD", 3) == 0) {
+    while (*expr == '*' || *expr == '/' || strncmp(expr, "mod", 3) == 0) {
         if (*expr == '*' || *expr == '/') {
             char op = *expr;
             expr++; // Skip operator
@@ -407,22 +409,22 @@ float Gcode::parse_term(const char*& expr) const {
                 if (next_factor != 0) {
                     result /= next_factor;
                 } else {
-                    this->stream->printf("Division by zero\n");
-                    THEKERNEL->call_event(ON_HALT, nullptr);
                     THEKERNEL->set_halt_reason(MANUAL);
+                    THEKERNEL->call_event(ON_HALT, nullptr);
+                    THEKERNEL->streams->printf("Division by zero\n");
                     return NAN;
                 }
             }
-        } else if (strncmp(expr, "MOD", 3) == 0) { // Check for "MOD"
+        } else if (strncmp(expr, "mod", 3) == 0) { // Check for "MOD"
             expr += 3; // Skip "MOD"
             while (isspace(*expr)) expr++; // Skip whitespace after MOD
             float next_factor = parse_factor(expr);
             if (next_factor != 0) {
                 result = fmod(result, next_factor);
             } else {
-                this->stream->printf("Modulo by zero\n");
-                THEKERNEL->call_event(ON_HALT, nullptr);
                 THEKERNEL->set_halt_reason(MANUAL);
+                THEKERNEL->call_event(ON_HALT, nullptr);
+                THEKERNEL->streams->printf("Modulo by zero\n");
                 return NAN;
             }
         }
@@ -439,20 +441,20 @@ float Gcode::parse_factor(const char*& expr) const {
     float result = NAN;
 
     // Handle functions with arguments in brackets
-    if (strncmp(expr, "SIN", 3) == 0 || strncmp(expr, "COS", 3) == 0 || strncmp(expr, "TAN", 3) == 0 ||
-        strncmp(expr, "ASIN", 4) == 0 || strncmp(expr, "ACOS", 4) == 0 || strncmp(expr, "ATAN", 4) == 0 ||
-        strncmp(expr, "SQRT", 4) == 0 || strncmp(expr, "ABS", 3) == 0 || strncmp(expr, "ROUND", 5) == 0 ||
-        strncmp(expr, "FIX", 3) == 0 || strncmp(expr, "FUP", 3) == 0 || strncmp(expr, "LN", 2) == 0 ||
-        strncmp(expr, "EXP", 3) == 0) 
+    if (strncmp(expr, "sin", 3) == 0 || strncmp(expr, "cos", 3) == 0 || strncmp(expr, "tan", 3) == 0 ||
+        strncmp(expr, "asin", 4) == 0 || strncmp(expr, "acos", 4) == 0 || strncmp(expr, "atan", 4) == 0 ||
+        strncmp(expr, "sqrt", 4) == 0 || strncmp(expr, "abs", 3) == 0 || strncmp(expr, "round", 5) == 0 ||
+        strncmp(expr, "fix", 3) == 0 || strncmp(expr, "fup", 3) == 0 || strncmp(expr, "ln", 2) == 0 ||
+        strncmp(expr, "exp", 3) == 0) 
     {
         const char* func_name = expr;
         // Adjust expr pointer based on function name length
-        if (strncmp(func_name, "ASIN", 4) == 0 || strncmp(func_name, "ACOS", 4) == 0 || 
-            strncmp(func_name, "ATAN", 4) == 0 || strncmp(func_name, "SQRT", 4) == 0) {
+        if (strncmp(func_name, "asin", 4) == 0 || strncmp(func_name, "acos", 4) == 0 || 
+            strncmp(func_name, "atan", 4) == 0 || strncmp(func_name, "sqrt", 4) == 0) {
             expr += 4;
-        } else if (strncmp(func_name, "ROUND", 5) == 0) {
+        } else if (strncmp(func_name, "round", 5) == 0) {
             expr += 5;
-        } else if (strncmp(func_name, "LN", 2) == 0) {
+        } else if (strncmp(func_name, "ln", 2) == 0) {
             expr += 2;
         } else {
             expr += 3; // For 3-character functions
@@ -464,47 +466,47 @@ float Gcode::parse_factor(const char*& expr) const {
             if (*expr == ']') {
                 expr++; // Skip ']'
                 const float DEG_TO_RAD = 3.141592653589793238463 / 180.0;
-                if (strncmp(func_name, "SIN", 3) == 0) {
+                if (strncmp(func_name, "sin", 3) == 0) {
                     result = sin(arg * DEG_TO_RAD);
-                } else if (strncmp(func_name, "COS", 3) == 0) {
+                } else if (strncmp(func_name, "cos", 3) == 0) {
                     result = cos(arg * DEG_TO_RAD);
-                } else if (strncmp(func_name, "ASIN", 3) == 0) {
+                } else if (strncmp(func_name, "asin", 3) == 0) {
                     result = asin(arg)/DEG_TO_RAD;
-                } else if (strncmp(func_name, "ACOS", 3) == 0) {
+                } else if (strncmp(func_name, "acos", 3) == 0) {
                     result = acos(arg)/ DEG_TO_RAD;
-                } else if (strncmp(func_name, "TAN", 3) == 0) {
+                } else if (strncmp(func_name, "tan", 3) == 0) {
                     if (fmod(arg - 90, 180) == 0) { // Handle undefined tangent values
                         result = NAN;
                     } else {
                         result = tan(arg * DEG_TO_RAD);
                     }
-                } else if (strncmp(func_name, "ATAN", 3) == 0) {
+                } else if (strncmp(func_name, "atan", 3) == 0) {
                     result = atan(arg)/DEG_TO_RAD;
-                } else if (strncmp(func_name, "SQRT", 4) == 0) {
+                } else if (strncmp(func_name, "sqrt", 4) == 0) {
                     result = sqrt(arg);
-                } else if (strncmp(func_name, "ABS", 3) == 0) {
+                } else if (strncmp(func_name, "abs", 3) == 0) {
                     result = fabs(arg);
-                } else if (strncmp(func_name, "ROUND", 5) == 0) {
+                } else if (strncmp(func_name, "round", 5) == 0) {
                     result = round(arg);
-                } else if (strncmp(func_name, "FIX", 3) == 0) {
+                } else if (strncmp(func_name, "fix", 3) == 0) {
                     result = floor(arg);
-                } else if (strncmp(func_name, "FUP", 3) == 0) {
+                } else if (strncmp(func_name, "fup", 3) == 0) {
                     result = ceil(arg);
-                } else if (strncmp(func_name, "LN", 2) == 0) {
+                } else if (strncmp(func_name, "ln", 2) == 0) {
                     result = log(arg);
-                } else if (strncmp(func_name, "EXP", 3) == 0) {
+                } else if (strncmp(func_name, "exp", 3) == 0) {
                     result = exp(arg);
                 }
             } else {
-                this->stream->printf("Mismatched brackets in function argument\n");
-                THEKERNEL->call_event(ON_HALT, nullptr);
                 THEKERNEL->set_halt_reason(MANUAL);
+                THEKERNEL->call_event(ON_HALT, nullptr);
+                THEKERNEL->streams->printf("Mismatched brackets in function argument\n");
                 return NAN;
             }
         } else {
-            this->stream->printf("Expected '[' after function name\n");
-            THEKERNEL->call_event(ON_HALT, nullptr);
             THEKERNEL->set_halt_reason(MANUAL);
+            THEKERNEL->call_event(ON_HALT, nullptr);
+            THEKERNEL->streams->printf("Expected '[' after function name\n");
             return NAN;
         }
     } else if (*expr == '[') {
@@ -513,9 +515,9 @@ float Gcode::parse_factor(const char*& expr) const {
         if (*expr == ']') {
             expr++; // Skip ']'
         } else {
-            this->stream->printf("Mismatched brackets in expression\n");
-            THEKERNEL->call_event(ON_HALT, nullptr);
             THEKERNEL->set_halt_reason(MANUAL);
+            THEKERNEL->call_event(ON_HALT, nullptr);
+            THEKERNEL->streams->printf("Mismatched brackets in expression\n");
             return NAN;
         }
     } else if (*expr == '#') {
@@ -524,9 +526,9 @@ float Gcode::parse_factor(const char*& expr) const {
         char* end;
         result = strtof(expr, &end);
         if (end == expr) {
-            this->stream->printf("Invalid number in expression, %c\n", *expr);
-            THEKERNEL->call_event(ON_HALT, nullptr);
             THEKERNEL->set_halt_reason(MANUAL);
+            THEKERNEL->call_event(ON_HALT, nullptr);
+            THEKERNEL->streams->printf("Invalid number in expression, %c\n", *expr);
             return NAN;
         }
         expr = end;
@@ -547,9 +549,9 @@ float Gcode::evaluate_expression(const char* expr, char** endptr) const {
 
     // Check for unexpected closing bracket at the beginning
     if (*expr == ']') {
-        this->stream->printf("Mismatched closing bracket ']' without opening '['\n");
-        THEKERNEL->call_event(ON_HALT, nullptr);
         THEKERNEL->set_halt_reason(MANUAL);
+        THEKERNEL->call_event(ON_HALT, nullptr);
+        THEKERNEL->streams->printf("Mismatched closing bracket ']' without opening '['\n");
         return NAN;
     }
 
@@ -557,9 +559,9 @@ float Gcode::evaluate_expression(const char* expr, char** endptr) const {
 
     // Ensure any remaining unmatched brackets are caught
     if (*expr == ']') {
-        this->stream->printf("Mismatched closing bracket at end of expression\n");
-        THEKERNEL->call_event(ON_HALT, nullptr);
         THEKERNEL->set_halt_reason(MANUAL);
+        THEKERNEL->call_event(ON_HALT, nullptr);
+        THEKERNEL->streams->printf("Mismatched closing bracket at end of expression\n");
         return NAN;
     }
 
