@@ -1134,7 +1134,7 @@ void ATCHandler::on_gcode_received(void *argument)
 					}
 
 					//drop current tool
-					if (this->active_tool > -1 && this->active_tool < this->tool_number){ //drop atc tool
+					if (this->active_tool > -1 && this->active_tool <= this->tool_number){ //drop atc tool
 						THEKERNEL->streams->printf("Start dropping current tool: T%d\r\n", this->active_tool);
 						// just drop tool
 						atc_status = DROP;
