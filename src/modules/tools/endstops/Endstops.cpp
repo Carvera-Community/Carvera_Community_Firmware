@@ -155,7 +155,76 @@ bool Endstops::load_old_config()
     };
 
     bool limit_enabled = false;
-    if(CARVERA == THEKERNEL->factory_set->MachineModel)
+    if(THEKERNEL->factory_set->FuncSetting & ((1<<0)|(1<<1)))
+    {
+		for (int i = X_AXIS; i <= B_AXIS; ++i) { // X_AXIS to B_AXIS
+	        homing_info_t hinfo;
+	
+	        // init homing struct
+	        hinfo.home_offset = 0;
+	        hinfo.homed = false;
+	        hinfo.axis =	i >Z_AXIS ? 'A'+i-3 : 'X'+i;
+	        hinfo.axis_index = i;
+	        hinfo.pin_info = nullptr;
+	
+	        // rates in mm/sec
+	        hinfo.fast_rate = THEKERNEL->config->value(checksums[i][FAST_RATE])->by_default(100)->as_number();
+	        hinfo.slow_rate = THEKERNEL->config->value(checksums[i][SLOW_RATE])->by_default(10)->as_number();
+	
+	        // retract in mm
+	        hinfo.retract = THEKERNEL->config->value(checksums[i][RETRACT])->by_default(5)->as_number();
+	
+	        // get homing direction and convert to boolean where true is home to min, and false is home to max
+	        hinfo.home_direction = THEKERNEL->config->value(checksums[i][DIRECTION])->by_default("home_to_min")->as_string() != "home_to_max";
+	
+	        // homing cartesian position
+	        hinfo.homing_position = hinfo.home_direction ? THEKERNEL->config->value(checksums[i][MIN])->by_default(0)->as_number() : THEKERNEL->config->value(checksums[i][MAX])->by_default(200)->as_number();
+	
+	        // used to set maximum movement on homing, set by alpha_max_travel if defined
+	        hinfo.max_travel = THEKERNEL->config->value(checksums[i][MAX_TRAVEL])->by_default(500)->as_number();
+	
+	        // motor alarm info
+	        if (THEKERNEL->config->value(checksums[i][ALARM_PIN])->by_default("nc" )->as_string() != "nc") {
+	        	motor_alarm_info_t *info = new motor_alarm_info_t;
+	        	info->pin.from_string(THEKERNEL->config->value(checksums[i][ALARM_PIN])->as_string())->as_input();
+	            info->debounce = 0;
+	            info->axis =	i >Z_AXIS ? 'A'+i-3 : 'X'+i;
+	            info->axis_index = i;
+	            motor_alarms.push_back(info);
+	        }
+	
+	        hinfo.motor_alarm_pin.from_string(THEKERNEL->config->value(checksums[i][ALARM_PIN])->by_default("nc" )->as_string())->as_input();
+	
+	        // pin definitions for endstop pins
+	        for (int j = MIN_PIN; j <= MAX_PIN; ++j) {
+	            endstop_info_t *info = new endstop_info_t;
+	            info->pin.from_string(THEKERNEL->config->value(checksums[i][j])->by_default("nc" )->as_string())->as_input();
+	            if (!info->pin.connected()){
+	                // no pin defined try next
+	                delete info;
+	                continue;
+	            }
+	
+	            // enter into endstop array
+	            endstops.push_back(info);
+	
+	            // add index to the homing struct if this is the one used for homing
+	            if((hinfo.home_direction && j == MIN_PIN) || (!hinfo.home_direction && j == MAX_PIN)) hinfo.pin_info= info;
+	
+	            // init struct
+	            info->debounce = 0;
+	            info->axis =	i >Z_AXIS ? 'A'+i-3 : 'X'+i;
+	            info->axis_index = i;
+	
+	            // limits enabled
+	            info->limit_enable = THEKERNEL->config->value(checksums[i][LIMIT])->by_default(false)->as_bool();
+	            limit_enabled |= info->limit_enable;
+	        }
+	
+	        homing_axis.push_back(hinfo);
+	    }
+	}
+	else
     {
 	    for (int i = X_AXIS; i <= Z_AXIS; ++i) { // X_AXIS to Z_AXIS
 	        homing_info_t hinfo;
@@ -224,75 +293,7 @@ bool Endstops::load_old_config()
 	        homing_axis.push_back(hinfo);
 	    }
 	}
-	else
-	{
-		for (int i = X_AXIS; i <= B_AXIS; ++i) { // X_AXIS to B_AXIS
-	        homing_info_t hinfo;
 	
-	        // init homing struct
-	        hinfo.home_offset = 0;
-	        hinfo.homed = false;
-	        hinfo.axis =	i >Z_AXIS ? 'A'+i-3 : 'X'+i;
-	        hinfo.axis_index = i;
-	        hinfo.pin_info = nullptr;
-	
-	        // rates in mm/sec
-	        hinfo.fast_rate = THEKERNEL->config->value(checksums[i][FAST_RATE])->by_default(100)->as_number();
-	        hinfo.slow_rate = THEKERNEL->config->value(checksums[i][SLOW_RATE])->by_default(10)->as_number();
-	
-	        // retract in mm
-	        hinfo.retract = THEKERNEL->config->value(checksums[i][RETRACT])->by_default(5)->as_number();
-	
-	        // get homing direction and convert to boolean where true is home to min, and false is home to max
-	        hinfo.home_direction = THEKERNEL->config->value(checksums[i][DIRECTION])->by_default("home_to_min")->as_string() != "home_to_max";
-	
-	        // homing cartesian position
-	        hinfo.homing_position = hinfo.home_direction ? THEKERNEL->config->value(checksums[i][MIN])->by_default(0)->as_number() : THEKERNEL->config->value(checksums[i][MAX])->by_default(200)->as_number();
-	
-	        // used to set maximum movement on homing, set by alpha_max_travel if defined
-	        hinfo.max_travel = THEKERNEL->config->value(checksums[i][MAX_TRAVEL])->by_default(500)->as_number();
-	
-	        // motor alarm info
-	        if (THEKERNEL->config->value(checksums[i][ALARM_PIN])->by_default("nc" )->as_string() != "nc") {
-	        	motor_alarm_info_t *info = new motor_alarm_info_t;
-	        	info->pin.from_string(THEKERNEL->config->value(checksums[i][ALARM_PIN])->as_string())->as_input();
-	            info->debounce = 0;
-	            info->axis =	i >Z_AXIS ? 'A'+i-3 : 'X'+i;
-	            info->axis_index = i;
-	            motor_alarms.push_back(info);
-	        }
-	
-	        hinfo.motor_alarm_pin.from_string(THEKERNEL->config->value(checksums[i][ALARM_PIN])->by_default("nc" )->as_string())->as_input();
-	
-	        // pin definitions for endstop pins
-	        for (int j = MIN_PIN; j <= MAX_PIN; ++j) {
-	            endstop_info_t *info = new endstop_info_t;
-	            info->pin.from_string(THEKERNEL->config->value(checksums[i][j])->by_default("nc" )->as_string())->as_input();
-	            if (!info->pin.connected()){
-	                // no pin defined try next
-	                delete info;
-	                continue;
-	            }
-	
-	            // enter into endstop array
-	            endstops.push_back(info);
-	
-	            // add index to the homing struct if this is the one used for homing
-	            if((hinfo.home_direction && j == MIN_PIN) || (!hinfo.home_direction && j == MAX_PIN)) hinfo.pin_info= info;
-	
-	            // init struct
-	            info->debounce = 0;
-	            info->axis =	i >Z_AXIS ? 'A'+i-3 : 'X'+i;
-	            info->axis_index = i;
-	
-	            // limits enabled
-	            info->limit_enable = THEKERNEL->config->value(checksums[i][LIMIT])->by_default(false)->as_bool();
-	            limit_enabled |= info->limit_enable;
-	        }
-	
-	        homing_axis.push_back(hinfo);
-	    }
-	}
 
     // if no pins defined then disable the module
     if(endstops.empty()) return false;
@@ -582,28 +583,8 @@ void Endstops::on_idle(void *argument)
 
 
     for(auto& i : endstops) {
-    	if(CARVERA == THEKERNEL->factory_set->MachineModel)
+    	if(THEKERNEL->factory_set->FuncSetting & ((1<<0)|(1<<1)))
     	{
-	        if(i->limit_enable && STEPPER[i->axis_index]->is_moving()) {
-	            // check min and max endstops
-	            if(debounced_get(&i->pin)) {
-	                // endstop triggered
-	                if(!THEKERNEL->is_grbl_mode()) {
-	                    THEKERNEL->streams->printf("Limit switch %c%c was hit - reset or M999 required\n", STEPPER[i->axis_index]->which_direction() ? '-' : '+', i->axis);
-	                }else{
-	                    THEKERNEL->streams->printf("ALARM: Hard limit %c%c\n", STEPPER[i->axis_index]->which_direction() ? '-' : '+', i->axis);
-	                }
-	                this->status = LIMIT_TRIGGERED;
-	                i->debounce = 0;
-	                // disables heaters and motors, ignores incoming Gcode and flushes block queue
-	                THEKERNEL->set_halt_reason(HARD_LIMIT);
-	                THEKERNEL->call_event(ON_HALT, nullptr);
-	                return;
-	            }
-	        }
-	    }
-	    else
-	    {
 	    	if(i->limit_enable && STEPPER[i->axis_index]->is_moving() && ((i->axis!='A') && (i->axis!='B')) ) {
 	            // check min and max endstops
 	            if(debounced_get(&i->pin)) {
@@ -622,6 +603,26 @@ void Endstops::on_idle(void *argument)
 	            }
 	        }
 	    }
+	    else
+    	{
+	        if(i->limit_enable && STEPPER[i->axis_index]->is_moving()) {
+	            // check min and max endstops
+	            if(debounced_get(&i->pin)) {
+	                // endstop triggered
+	                if(!THEKERNEL->is_grbl_mode()) {
+	                    THEKERNEL->streams->printf("Limit switch %c%c was hit - reset or M999 required\n", STEPPER[i->axis_index]->which_direction() ? '-' : '+', i->axis);
+	                }else{
+	                    THEKERNEL->streams->printf("ALARM: Hard limit %c%c\n", STEPPER[i->axis_index]->which_direction() ? '-' : '+', i->axis);
+	                }
+	                this->status = LIMIT_TRIGGERED;
+	                i->debounce = 0;
+	                // disables heaters and motors, ignores incoming Gcode and flushes block queue
+	                THEKERNEL->set_halt_reason(HARD_LIMIT);
+	                THEKERNEL->call_event(ON_HALT, nullptr);
+	                return;
+	            }
+	        }
+	    }	    
     }
 
     
@@ -819,7 +820,7 @@ void Endstops::home(axis_bitmap_t a)
     }
 
     if(home_z_first) home_xy();
-    if(CARVERA_AIR == THEKERNEL->factory_set->MachineModel)
+    if(THEKERNEL->factory_set->FuncSetting & (1<<0))	//A axis home enabled
     {
     	//We first move A B and C back a certain distance because the triggering gap of the A B and C is relatively long
 		// Start moving the axes back
