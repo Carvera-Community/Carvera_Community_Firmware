@@ -292,7 +292,16 @@ void Robot::load_config()
         }
 
         actuators[a]->change_steps_per_mm(THEKERNEL->config->value(motor_checksums[a][3])->by_default(a == 2 ? 2560.0F : 80.0F)->as_number());
-        actuators[a]->set_max_rate(THEKERNEL->config->value(motor_checksums[a][4])->by_default(3000.0F)->as_number()/60.0F); // it is in mm/min and converted to mm/sec
+        if((THEKERNEL->factory_set->FuncSetting & (1<<0)) && (a == 3))
+		{
+			uint16_t s = THEKERNEL->config->value(motor_checksums[a][4])->by_default(3000.0F)->as_number();
+			if(s > 2400) s=2400;
+        	actuators[a]->set_max_rate( s/60.0F); // it is in mm/min and converted to mm/sec
+        }
+        else
+        {
+        	actuators[a]->set_max_rate(THEKERNEL->config->value(motor_checksums[a][4])->by_default(3000.0F)->as_number()/60.0F); // it is in mm/min and converted to mm/sec
+        }
         actuators[a]->set_acceleration(THEKERNEL->config->value(motor_checksums[a][5])->by_default(NAN)->as_number()); // mm/secs²
     }
 
@@ -645,6 +654,7 @@ void Robot::on_gcode_received(void *argument)
 
                 } else if (gcode->subcode == 4) {
                     // G92.4 is a smoothie special it sets manual homing for X,Y,Z
+					THECONVEYOR->wait_for_idle();
                     // do a manual homing based on given coordinates, no endstops required
                     if(gcode->has_letter('X')){ THEROBOT->reset_axis_position(gcode->get_value('X'), X_AXIS); }
                     if(gcode->has_letter('Y')){ THEROBOT->reset_axis_position(gcode->get_value('Y'), Y_AXIS); }
