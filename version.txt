@@ -1,6 +1,14 @@
 Notice: 
 To let the Carvera work perfectly, please make sure both your controller software and firmware are up to date. For firmware, download the new firmware first, then use the 'update' function to upgrade the firmware, and reset the machine after the update is complete.
 
+[1.0.1]
+1. Bug fixing:The issue of the machine not responding to Controller commands or main buttons after the motor alarm
+2. Bug fixing: if the atc tool change operation laser detects a tool in the atc when there shouldn't be, or doesn't detect a tool when there should be it prints the same message to the MDI.
+3. Optimizing: Add data feedback on tabletop exploration ： 'Max deviation between high and low'
+4. Optimizing:when the feed rates in Gcode are not greater than zero, then will print Alarm info to the MDI
+5. Optimizing: Add motor alarm detection during machine home operation
+6. Firmware compatible with Carvera and Carvera Air
+
 [0.9.8]
 1. Optimizing: Improve file transfer speed
 2. Optimizing:  wifi Library file upgrade
