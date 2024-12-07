@@ -210,6 +210,8 @@ Kernel::Kernel()
     this->eeprom_data = new(AHB0) EEPROM_data();
     // read eeprom data
     this->read_eeprom_data();
+    // check eeprom data
+    this->check_eeprom_data();
 
     // Core modules
     this->add_module( this->conveyor       = new(AHB0) Conveyor()      );
@@ -572,7 +574,7 @@ std::string Kernel::get_diagnose_string()
         if(n > sizeof(buf)) n = sizeof(buf);
         str.append(buf, n);
     }
-    if(CARVERA_AIR == THEKERNEL->factory_set->MachineModel)
+    if(THEKERNEL->factory_set->FuncSetting & ((1<<0)|(1<<1)) )
     {
     	ok = PublicData::get_value(endstops_checksum, get_endstopAB_states_checksum, 0, data);
 	    if (ok) {
@@ -770,6 +772,64 @@ void Kernel::erase_eeprom_data()
 	} else {
 		this->streams->printf("EEPROM data erase finished.\n");
 	}
+}
+
+void Kernel::check_eeprom_data()
+{
+	bool needrewtite = false;
+	if(isnan(this->eeprom_data->TLO))
+	{
+		this->eeprom_data->TLO = 0;
+		needrewtite = true;
+	}
+	if(isnan(this->eeprom_data->REFMZ))
+	{
+		this->eeprom_data->REFMZ = 0;
+		needrewtite = true;
+	}
+	if(isnan(this->eeprom_data->TOOLMZ))
+	{
+		this->eeprom_data->TOOLMZ = 0;
+		needrewtite = true;
+	}
+	if(isnan(this->eeprom_data->reserve))
+	{
+		this->eeprom_data->reserve = 0;
+		needrewtite = true;
+	}
+	if(isnan(this->eeprom_data->TOOL))
+	{
+		this->eeprom_data->TOOL = 0;
+		needrewtite = true;
+	}
+	
+	if(isnan(this->eeprom_data->G54[0]))
+	{
+		this->eeprom_data->G54[0] = 0;
+		needrewtite = true;
+	}
+	if(isnan(this->eeprom_data->G54[1]))
+	{
+		this->eeprom_data->G54[1] = 0;
+		needrewtite = true;
+	}
+	if(isnan(this->eeprom_data->G54[2]))
+	{
+		this->eeprom_data->G54[2] = 0;
+		needrewtite = true;
+	}
+	if(isnan(this->eeprom_data->G54AB[0]))
+	{
+		this->eeprom_data->G54AB[0] = 0;
+		needrewtite = true;
+	}
+	if(isnan(this->eeprom_data->G54AB[1]))
+	{
+		this->eeprom_data->G54AB[1] = 0;
+		needrewtite = true;
+	}
+	if(needrewtite)
+		this->write_eeprom_data();
 }
 
 void Kernel::read_Factory_data()

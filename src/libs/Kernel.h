@@ -185,6 +185,7 @@ class Kernel {
         void read_eeprom_data();
         void write_eeprom_data();
         void erase_eeprom_data();
+        void check_eeprom_data();
         
         void read_Factory_data();
         void write_Factory_data();

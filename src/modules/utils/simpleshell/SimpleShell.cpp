@@ -1190,13 +1190,37 @@ void SimpleShell::test_4th_command( string parameters, StreamOutput *stream )
 	enpin.output();
 	alarmin.input();
 	
-	switch (THEKERNEL->factory_set->MachineModel)
+	if(THEKERNEL->factory_set->FuncSetting & ((1<<0)|(1<<1)))
 	{
-		case CARVERA_AIR:			
-			
-			stream->printf("check_4th beginning......\n");
-			dirpin = 1;
-			enpin = 0;
+		stream->printf("check_4th beginning......\n");
+		dirpin = 1;
+		enpin = 0;
+		
+		for(unsigned int i=0;i<380;i++)
+		{
+			for(unsigned int j=0; j<889; j++)
+			{
+				stepin = 1;
+				safe_delay_us(2);
+				stepin = 0;
+				safe_delay_us(2);
+				if(alarmin.get())
+				{
+					btriggered = true;
+					break;
+				}
+				else
+				{
+					bAlwaystrigger = false;
+				}
+			}
+			if(btriggered)
+				break;
+		}
+		
+		if(btriggered)
+		{
+			dirpin = 0;
 			
 			for(unsigned int i=0;i<380;i++)
 			{
@@ -1209,64 +1233,34 @@ void SimpleShell::test_4th_command( string parameters, StreamOutput *stream )
 					if(alarmin.get())
 					{
 						btriggered = true;
-						break;
 					}
 					else
 					{
 						bAlwaystrigger = false;
 					}
 				}
-				if(btriggered)
-					break;
 			}
-			
-			if(btriggered)
-			{
-				dirpin = 0;
-				
-				for(unsigned int i=0;i<380;i++)
-				{
-					for(unsigned int j=0; j<889; j++)
-					{
-						stepin = 1;
-						safe_delay_us(2);
-						stepin = 0;
-						safe_delay_us(2);
-						if(alarmin.get())
-						{
-							btriggered = true;
-						}
-						else
-						{
-							bAlwaystrigger = false;
-						}
-					}
-				}
-			}
-			
-			enpin = 1;
-			
-			if( false == btriggered)
-			{
-				stream->printf("0: the 4th's Endstop hasn't been triggered yet.\n");
-			}
-			if( true == bAlwaystrigger)
-			{
-				stream->printf("1: the 4th's Endstop be always triggered.\n");
-			}
-						
-			stream->printf("check_4th end.\n");
-			
-			if( (false == btriggered) || (true == bAlwaystrigger))
-			{
-	            THEKERNEL->set_halt_reason(HOME_FAIL);
-	            THEKERNEL->call_event(ON_HALT, nullptr);
-	            THEROBOT->disable_segmentation= false;
-	        }
-			break;
-		default:			
-			
-			break;
+		}
+		
+		enpin = 1;
+		
+		if( false == btriggered)
+		{
+			stream->printf("0: the 4th's Endstop hasn't been triggered yet.\n");
+		}
+		if( true == bAlwaystrigger)
+		{
+			stream->printf("1: the 4th's Endstop be always triggered.\n");
+		}
+					
+		stream->printf("check_4th end.\n");
+		
+		if( (false == btriggered) || (true == bAlwaystrigger))
+		{
+            THEKERNEL->set_halt_reason(HOME_FAIL);
+            THEKERNEL->call_event(ON_HALT, nullptr);
+            THEROBOT->disable_segmentation= false;
+        }
 	}
 }
 
@@ -1284,13 +1278,38 @@ void SimpleShell::test_5th_command( string parameters, StreamOutput *stream )
 	dirpin.output();
 	enpin.output();
 	alarmin.input();
-	switch (THEKERNEL->factory_set->MachineModel)
+	
+	if(THEKERNEL->factory_set->FuncSetting & ((1<<0)|(1<<1)))
 	{
-		case CARVERA_AIR:			
-			
-			stream->printf("check_5th beginning......\n");
-			dirpin = 1;
-			enpin = 0;
+		stream->printf("check_5th beginning......\n");
+		dirpin = 1;
+		enpin = 0;
+		
+		for(unsigned int i=0;i<380;i++)
+		{
+			for(unsigned int j=0; j<889; j++)
+			{
+				stepin = 1;
+				safe_delay_us(2);
+				stepin = 0;
+				safe_delay_us(2);
+				if(alarmin.get())
+				{
+					btriggered = true;
+					break;
+				}
+				else
+				{
+					bAlwaystrigger = false;
+				}
+			}
+			if(btriggered)
+				break;
+		}
+		
+		if(btriggered)
+		{
+			dirpin = 0;
 			
 			for(unsigned int i=0;i<380;i++)
 			{
@@ -1303,64 +1322,34 @@ void SimpleShell::test_5th_command( string parameters, StreamOutput *stream )
 					if(alarmin.get())
 					{
 						btriggered = true;
-						break;
 					}
 					else
 					{
 						bAlwaystrigger = false;
 					}
 				}
-				if(btriggered)
-					break;
 			}
-			
-			if(btriggered)
-			{
-				dirpin = 0;
-				
-				for(unsigned int i=0;i<380;i++)
-				{
-					for(unsigned int j=0; j<889; j++)
-					{
-						stepin = 1;
-						safe_delay_us(2);
-						stepin = 0;
-						safe_delay_us(2);
-						if(alarmin.get())
-						{
-							btriggered = true;
-						}
-						else
-						{
-							bAlwaystrigger = false;
-						}
-					}
-				}
-			}
-			
-			enpin = 1;
-			
-			if( false == btriggered)
-			{
-				stream->printf("0: the 5th's Endstop hasn't been triggered yet.\n");
-			}
-			if( true == bAlwaystrigger)
-			{
-				stream->printf("1: the 5th's Endstop be always triggered.\n");
-			}
-						
-			stream->printf("check_5th end.\n");
-			
-			if( (false == btriggered) || (true == bAlwaystrigger))
-			{
-	            THEKERNEL->set_halt_reason(HOME_FAIL);
-	            THEKERNEL->call_event(ON_HALT, nullptr);
-	            THEROBOT->disable_segmentation= false;
-	        }
-			break;
-		default:			
-			
-			break;
+		}
+		
+		enpin = 1;
+		
+		if( false == btriggered)
+		{
+			stream->printf("0: the 5th's Endstop hasn't been triggered yet.\n");
+		}
+		if( true == bAlwaystrigger)
+		{
+			stream->printf("1: the 5th's Endstop be always triggered.\n");
+		}
+					
+		stream->printf("check_5th end.\n");
+		
+		if( (false == btriggered) || (true == bAlwaystrigger))
+		{
+            THEKERNEL->set_halt_reason(HOME_FAIL);
+            THEKERNEL->call_event(ON_HALT, nullptr);
+            THEROBOT->disable_segmentation= false;
+        }
 	}
 }
 
