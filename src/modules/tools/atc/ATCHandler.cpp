@@ -53,6 +53,7 @@
 #define homing_rate_mm_s_checksum   CHECKSUM("homing_rate_mm_s")
 #define action_mm_checksum      	CHECKSUM("action_mm")
 #define action_rate_mm_s_checksum   CHECKSUM("action_rate_mm_s")
+#define num_atc_touchoff_checksum	CHECKSUM("num_atc_touchoff")
 
 #define detector_switch_checksum    CHECKSUM("toolsensor")
 #define detector_checksum           CHECKSUM("detector")
@@ -304,9 +305,13 @@ void ATCHandler::fill_pick_scripts(int new_tool, bool clear_z) {
 
 }
 
-void ATCHandler::fill_cali_scripts(bool is_probe, bool clear_z) {
+void ATCHandler::fill_cali_scripts(bool is_probe, bool clear_z, int num_probes) {
 	char buff[100];
 	
+	if (num_probes < 1){
+		num_probes = (atc_home_info.num_atc_touchoff ? atc_home_info.num_atc_touchoff : 1);
+	}
+
 	if(is_probe){
 	// open probe laser
 		this->script_queue.push("M494.1");
@@ -344,12 +349,16 @@ void ATCHandler::fill_cali_scripts(bool is_probe, bool clear_z) {
 		snprintf(buff, sizeof(buff), "G38.6 Z%.3f F%.3f", toolrack_z, probe_fast_rate);
 	}
 	this->script_queue.push(buff);
+	
+	
+	snprintf(buff, sizeof(buff), "M459 H%.3f F%.3f L%d", probe_retract_mm, probe_slow_rate, num_probes);
 	// lift a bit
-	snprintf(buff, sizeof(buff), "G91 G0 Z%.3f", THEROBOT->from_millimeters(probe_retract_mm));
+	//snprintf(buff, sizeof(buff), "G91 G0 Z%.3f", THEROBOT->from_millimeters(probe_retract_mm));
 	this->script_queue.push(buff);
 	// do calibrate with slow speed
-	snprintf(buff, sizeof(buff), "G38.6 Z%.3f F%.3f", -1 - probe_retract_mm, probe_slow_rate);
-	this->script_queue.push(buff);
+	//snprintf(buff, sizeof(buff), "G38.6 Z%.3f F%.3f", -1 - probe_retract_mm, probe_slow_rate);
+	//this->script_queue.push(buff);
+
 	// save new tool offset
 	this->script_queue.push("M493.1");
 	// lift z to safe position with fast speed
@@ -669,6 +678,7 @@ void ATCHandler::on_config_reload(void *argument)
 	atc_home_info.action_dist    = THEKERNEL->config->value(atc_checksum, action_mm_checksum)->by_default(1  )->as_number();
 	atc_home_info.homing_rate    = THEKERNEL->config->value(atc_checksum, homing_rate_mm_s_checksum)->by_default(0.4f )->as_number();
 	atc_home_info.action_rate    = THEKERNEL->config->value(atc_checksum, action_rate_mm_s_checksum)->by_default(0.25f)->as_number();
+	atc_home_info.num_atc_touchoff = THEKERNEL->config->value(atc_checksum,num_atc_touchoff_checksum)->by_default(1)->as_number();
 
 	detector_info.detect_pin.from_string( THEKERNEL->config->value(atc_checksum, detector_checksum, detect_pin_checksum)->by_default("0.20^" )->as_string())->as_input();
 	detector_info.detect_rate = THEKERNEL->config->value(atc_checksum, detector_checksum, detect_rate_mm_s_checksum)->by_default(1  )->as_number();
@@ -1346,12 +1356,17 @@ void ATCHandler::on_gcode_received(void *argument)
 
 			} else {
 				// do calibrate
+				int num_probes = 0;
+
+				if (gcode->has_letter('L')){
+					num_probes = gcode->get_value('L');
+				}
 				THEROBOT->push_state();
 				THEROBOT->get_axis_position(last_pos, 3);
 				set_inner_playing(true);
 				this->clear_script_queue();
 				atc_status = CALI;
-				this->fill_cali_scripts(active_tool == 0, true);
+				this->fill_cali_scripts(active_tool == 0, true, num_probes);
 
 			}
 		} else if (gcode->m == 492) {

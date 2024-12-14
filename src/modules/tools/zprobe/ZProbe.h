@@ -54,6 +54,7 @@ private:
     void probe_outsideCorner(Gcode *gcode);
     void probe_axisangle(Gcode *gcode);
     void calibrate_probe_bore(Gcode *gcode);
+    void average_multi_tlo(Gcode *gcode);
     
     void calibrate_Z(Gcode *gc);
     uint32_t read_probe(uint32_t dummy);
