@@ -832,7 +832,7 @@ void Endstops::home(axis_bitmap_t a)
 	                // now home A B or C
 	                float delta[i+1];
 	                for (size_t j = 0; j <= i; ++j) delta[j]= 0;
-	                delta[i]= homing_axis[i].retract*20; // retract*20 shoud > the whole triggering gap
+	                delta[i]= homing_axis[i].retract*50; // retract*50 shoud > the whole triggering gap
 	                if(!homing_axis[i].home_direction) delta[i]= -delta[i];
 	                THEROBOT->delta_move(delta, homing_axis[i].fast_rate, i+1);
 	                // wait for it
@@ -841,7 +841,7 @@ void Endstops::home(axis_bitmap_t a)
 	                if(homing_axis[i].pin_info->pin.get())
 	                {
 	                	for (size_t j = 0; j <= i; ++j) delta[j]= 0;
-		                delta[i]= homing_axis[i].retract*20; // retract*20 shoud > the whole triggering gap
+		                delta[i]= homing_axis[i].retract*50; // retract*50 shoud > the whole triggering gap
 		                if(!homing_axis[i].home_direction) delta[i]= -delta[i];
 		                THEROBOT->delta_move(delta, homing_axis[i].fast_rate, i+1);
 		                // wait for it
