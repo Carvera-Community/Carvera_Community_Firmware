@@ -125,14 +125,17 @@ void WifiProvider::receive_wifi_data() {
 			return;
 		}
 		for (int i = 0; i < received; i ++) {
+			if(THEKERNEL->is_cachewait()) {
+				continue;
+			}
 	        if(WifiData[i] == '?') {
 	            query_flag = true;
 	            continue;
 	        }
-			if (WifiData[i] == '&') {
-				diagnose_flag = true;
-				continue;
-			}
+			//if (WifiData[i] == '*') {
+			//	diagnose_flag = true;
+			//	continue;
+			//}
 	        if(WifiData[i] == 'X' - 'A' + 1) { // ^X
 	            halt_flag = true;
 	            continue;
@@ -473,7 +476,7 @@ void WifiProvider::on_gcode_received(void *argument)
 				if (param_type == STA_PARAM_TYPE_CHANNEL) {
 					THEKERNEL->streams->printf("STA param[%d]: %d\n", gcode->subcode, *param);
 				} else if (param_type == STA_PARAM_TYPE_MAC) {
-					THEKERNEL->streams->printf("STA param[%d]: %d\n", gcode->subcode, param_len);
+					THEKERNEL->streams->printf("STA param[%d]: %X-%X-%X-%X-%X-%X\n", gcode->subcode, *param,*(param+1),*(param+2),*(param+3),*(param+4),*(param+5));
 				} else {
 					THEKERNEL->streams->printf("STA param[%d]: %s\n", gcode->subcode, param);
 				}
