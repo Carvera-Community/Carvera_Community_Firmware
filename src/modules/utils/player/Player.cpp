@@ -1058,8 +1058,8 @@ void Player::flush_input(StreamOutput *stream)
 void Player::cancel_transfer(StreamOutput *stream)
 {
 	stream->_putc(CAN);
-	stream->_putc(CAN);
-	stream->_putc(CAN);
+	//stream->_putc(CAN);
+	//stream->_putc(CAN);
 	flush_input(stream);
 }
 
@@ -1177,6 +1177,9 @@ void Player::upload_command( string parameters, StreamOutput *stream )
         	set_serial_rx_irq(true);
         }
         THEKERNEL->set_uploading(false);
+	    THEKERNEL->set_cachewait(true);
+	    safe_delay_ms(1000);
+	    THEKERNEL->set_cachewait(false);
         return;
     }
 	
@@ -1336,7 +1339,10 @@ upload_error:
     if (stream->type() == 0) {
     	set_serial_rx_irq(true);
     }
-    THEKERNEL->set_uploading(false);
+    THEKERNEL->set_uploading(false);    
+    THEKERNEL->set_cachewait(true);
+    safe_delay_ms(1000);
+    THEKERNEL->set_cachewait(false);
 	stream->printf(error_msg);
 	return;
 upload_success:
@@ -1420,6 +1426,10 @@ void Player::download_command( string parameters, StreamOutput *stream )
         	set_serial_rx_irq(true);
         }
         THEKERNEL->set_uploading(false);
+	    THEKERNEL->set_cachewait(true);
+	    safe_delay_ms(1000);
+	    THEKERNEL->set_cachewait(false);
+        
         return;
     }
 
@@ -1571,6 +1581,9 @@ download_error:
     	set_serial_rx_irq(true);
     }
     THEKERNEL->set_uploading(false);
+    THEKERNEL->set_cachewait(true);
+    safe_delay_ms(1000);
+    THEKERNEL->set_cachewait(false);
 	stream->printf(error_msg);
 	return;
 download_success:
