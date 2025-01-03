@@ -75,7 +75,7 @@ extern "C" uint32_t  _sbrk(int size);
 // support upload file type definition
 #define FILETYPE	"lz"		//compressed by quicklz
 // version definition
-#define VERSION "1.0.1"
+#define VERSION "1.0.2.Beta"
 
 // command lookup table
 const SimpleShell::ptentry_t SimpleShell::commands_table[] = {
@@ -119,6 +119,8 @@ const SimpleShell::ptentry_t SimpleShell::commands_table[] = {
     {"check_4th",  SimpleShell::test_4th_command},
     {"check_led",  SimpleShell::test_led_command},
     {"fset",  SimpleShell::fset_command},
+    {"enable_4th_hd", SimpleShell::enable_4th_hd},
+    {"disable_4th_hd", SimpleShell::disable_4th_hd},
 
     // unknown command
     {NULL, NULL}
@@ -1013,14 +1015,15 @@ void SimpleShell::diagnose_command( string parameters, StreamOutput *stream)
 
     // get switchs state
     struct pad_switch pad;
-    if(CARVERA == THEKERNEL->factory_set->MachineModel)
+    if(THEKERNEL->factory_set->FuncSetting & (1<<2))	//ATC 
     {
     	ok = PublicData::get_value(switch_checksum, get_checksum("vacuum"), 0, &pad);
     }
-    else if(CARVERA_AIR == THEKERNEL->factory_set->MachineModel)
+    else
     {
     	ok = PublicData::get_value(switch_checksum, get_checksum("powerfan"), 0, &pad);
     }
+    	
     if (ok) {
         n = snprintf(buf, sizeof(buf), "|V:%d,%d", (int)pad.state, (int)pad.value);
         if(n > sizeof(buf)) n = sizeof(buf);
@@ -1038,6 +1041,21 @@ void SimpleShell::diagnose_command( string parameters, StreamOutput *stream)
         if(n > sizeof(buf)) n = sizeof(buf);
         str.append(buf, n);
     }
+    if(CARVERA_AIR == THEKERNEL->factory_set->MachineModel)
+	{	
+    	bool ok2 = false;
+    	bool ok3 = false;
+    	struct pad_switch pad2,pad3;
+	    ok = PublicData::get_value(switch_checksum, get_checksum("beep"), 0, &pad);
+	    ok2 = PublicData::get_value(switch_checksum, get_checksum("extendin"), 0, &pad2);
+	   	ok3 = PublicData::get_value(switch_checksum, get_checksum("extendout"), 0, &pad3);
+	    if (ok&&ok2&&ok3) {
+	        n = snprintf(buf, sizeof(buf), ",%d,%d,%d,%d", (int)pad.state, (int)pad2.state, (int)pad3.state, (int)pad3.value);
+	        if(n > sizeof(buf)) n = sizeof(buf);
+	        str.append(buf, n);
+	    }
+	    
+	}
     ok = PublicData::get_value(switch_checksum, get_checksum("toolsensor"), 0, &pad);
     if (ok) {
         n = snprintf(buf, sizeof(buf), "|T:%d", (int)pad.state);
@@ -1057,7 +1075,6 @@ void SimpleShell::diagnose_command( string parameters, StreamOutput *stream)
         str.append(buf, n);
     }
 
-
     // get states
     char data[11];
     ok = PublicData::get_value(endstops_checksum, get_endstop_states_checksum, 0, data);
@@ -1065,6 +1082,15 @@ void SimpleShell::diagnose_command( string parameters, StreamOutput *stream)
         n = snprintf(buf, sizeof(buf), "|E:%d,%d,%d,%d,%d,%d", data[0], data[1], data[2], data[3], data[4], data[5]);
         if(n > sizeof(buf)) n = sizeof(buf);
         str.append(buf, n);
+    }
+    if(THEKERNEL->factory_set->FuncSetting & ((1<<0)|(1<<1)) )
+    {
+    	ok = PublicData::get_value(endstops_checksum, get_endstopAB_states_checksum, 0, data);
+	    if (ok) {
+	        n = snprintf(buf, sizeof(buf), ",%d,%d", data[0],data[1]);
+	        if(n > sizeof(buf)) n = sizeof(buf);
+	        str.append(buf, n);
+	    }
     }
 
     // get probe and calibrate states
@@ -1075,9 +1101,9 @@ void SimpleShell::diagnose_command( string parameters, StreamOutput *stream)
         str.append(buf, n);
     }
 	
-    // get atc endstop and tool senser states
-    if(THEKERNEL->factory_set->FuncSetting & (1<<2))	//ATC 
-    {
+	if(THEKERNEL->factory_set->FuncSetting & (1<<2))	//ATC 
+	{
+	    // get atc endstop and tool senser states
 	    ok = PublicData::get_value(atc_handler_checksum, get_atc_pin_status_checksum, 0, &data[8]);
 	    if (ok) {
 	        n = snprintf(buf, sizeof(buf), "|A:%d,%d", data[8], data[9]);
@@ -1093,7 +1119,6 @@ void SimpleShell::diagnose_command( string parameters, StreamOutput *stream)
         if(n > sizeof(buf)) n = sizeof(buf);
         str.append(buf, n);
     }
-
 
     str.append("}\n");
     stream->printf("%s", str.c_str());
@@ -1166,30 +1191,44 @@ void SimpleShell::test_4th_command( string parameters, StreamOutput *stream )
 	bool btriggered = false;
 	bool bAlwaystrigger = true;
 	
-	GPIO stepin = GPIO(P1_21);
-	GPIO dirpin = GPIO(P1_23);
-	GPIO enpin = GPIO(P1_30);
-	GPIO alarmin = GPIO(P1_9);
-	stepin.output();
-	dirpin.output();
-	enpin.output();
-	alarmin.input();
+	GPIO *stepin, *dirpin, *enpin, *alarmin;
+	if(CARVERA == THEKERNEL->factory_set->MachineModel)
+	{
+		stepin  = new GPIO(P1_18);
+		dirpin  = new GPIO(P1_20);
+		enpin   = new GPIO(P3_26);
+		alarmin = new GPIO(P0_21);
+	}
+	else
+	{
+		stepin  = new GPIO(P1_21);
+		dirpin  = new GPIO(P1_23);
+		enpin   = new GPIO(P1_30);
+		alarmin = new GPIO(P1_9);
+	}
+	stepin->output();
+	dirpin->output();
+	enpin->output();
+	alarmin->input();
 	
 	if(THEKERNEL->factory_set->FuncSetting & ((1<<0)|(1<<1)))
 	{
 		stream->printf("check_4th beginning......\n");
-		dirpin = 1;
-		enpin = 0;
+		dirpin->write(1);
+		enpin->write(0);
 		
 		for(unsigned int i=0;i<380;i++)
 		{
 			for(unsigned int j=0; j<889; j++)
 			{
-				stepin = 1;
+				stepin->write(1);
 				safe_delay_us(2);
-				stepin = 0;
+				stepin->write(0);
 				safe_delay_us(2);
-				if(alarmin.get())
+				bool alarm = alarmin->get();
+				if(CARVERA == THEKERNEL->factory_set->MachineModel)
+					alarm = !alarm;
+				if(alarm)
 				{
 					btriggered = true;
 					break;
@@ -1205,17 +1244,21 @@ void SimpleShell::test_4th_command( string parameters, StreamOutput *stream )
 		
 		if(btriggered)
 		{
-			dirpin = 0;
+			dirpin->write(0);
 			
 			for(unsigned int i=0;i<380;i++)
 			{
 				for(unsigned int j=0; j<889; j++)
 				{
-					stepin = 1;
+					stepin->write(1);
 					safe_delay_us(2);
-					stepin = 0;
+					stepin->write(0);
 					safe_delay_us(2);
-					if(alarmin.get())
+					
+					bool alarm = alarmin->get();
+					if(CARVERA == THEKERNEL->factory_set->MachineModel)
+						alarm = !alarm;
+					if(alarm)
 					{
 						btriggered = true;
 					}
@@ -1227,7 +1270,7 @@ void SimpleShell::test_4th_command( string parameters, StreamOutput *stream )
 			}
 		}
 		
-		enpin = 1;
+		enpin->write(1);
 		
 		if( false == btriggered)
 		{
@@ -1413,6 +1456,79 @@ void SimpleShell::reset_command( string parameters, StreamOutput *stream)
     reset_delay_secs = 3; // reboot in 3 seconds
 }
 
+// enable the harmonic 4th Axis
+void SimpleShell::enable_4th_hd( string parameters, StreamOutput *stream)
+{
+	if(CARVERA == THEKERNEL->factory_set->MachineModel)
+    {
+		THEKERNEL->factory_set->FuncSetting |= 0x01;
+	    THEKERNEL->write_Factory_data();
+		// rewrite coordinate.rotation_offset_x to sd    
+	    char cmd[64];
+	    snprintf(cmd, sizeof(cmd), "config-set sd coordinate.rotation_offset_x 3.5");
+	    stream->printf("%s\n", cmd);
+	    struct SerialMessage message{&StreamOutput::NullStream, cmd, 0};
+	    THEKERNEL->call_event(ON_CONSOLE_LINE_RECEIVED, &message );
+	    
+	    //rewrite coordinate.rotation_offset_z to sd
+	    snprintf(cmd, sizeof(cmd), "config-set sd coordinate.rotation_offset_z 23");
+	    stream->printf("%s\n", cmd);
+	    struct SerialMessage message2{&StreamOutput::NullStream, cmd, 0};
+	    THEKERNEL->call_event(ON_CONSOLE_LINE_RECEIVED, &message2 );
+	    
+	    //rewrite delta_max_rate to sd
+	    snprintf(cmd, sizeof(cmd), "config-set sd delta_max_rate 2400");
+	    stream->printf("%s\n", cmd);
+	    struct SerialMessage message3{&StreamOutput::NullStream, cmd, 0};
+	    THEKERNEL->call_event(ON_CONSOLE_LINE_RECEIVED, &message3 );
+	    
+		stream->printf("successed! enalbe Harmonic Drive 4th Axis ok!\n");
+		
+		stream->printf("Rebooting machine in 3 seconds...\r\n");
+    	reset_delay_secs = 3; // reboot in 3 seconds
+	}
+	else
+	{		
+		stream->printf("Failed! This command is only for Carvera!\n");
+	}
+}
+
+// disable the Harmonic Drive 4th Axis
+void SimpleShell::disable_4th_hd( string parameters, StreamOutput *stream)
+{
+	if(CARVERA == THEKERNEL->factory_set->MachineModel)
+    {
+		THEKERNEL->factory_set->FuncSetting &= ~0x01;
+	    THEKERNEL->write_Factory_data();
+		// rewrite coordinate.rotation_offset_x to sd    
+	    char cmd[64];
+	    snprintf(cmd, sizeof(cmd), "config-set sd coordinate.rotation_offset_x -8.0");
+	    stream->printf("%s\n", cmd);
+	    struct SerialMessage message{&StreamOutput::NullStream, cmd, 0};
+	    THEKERNEL->call_event(ON_CONSOLE_LINE_RECEIVED, &message );
+	    
+	    //rewrite coordinate.rotation_offset_z to sd
+	    snprintf(cmd, sizeof(cmd), "config-set sd coordinate.rotation_offset_z 22.35");
+	    stream->printf("%s\n", cmd);
+	    struct SerialMessage message2{&StreamOutput::NullStream, cmd, 0};
+	    THEKERNEL->call_event(ON_CONSOLE_LINE_RECEIVED, &message2 );
+	    
+	    //rewrite delta_max_rate to sd
+	    snprintf(cmd, sizeof(cmd), "config-set sd delta_max_rate 10800");
+	    stream->printf("%s\n", cmd);
+	    struct SerialMessage message3{&StreamOutput::NullStream, cmd, 0};
+	    THEKERNEL->call_event(ON_CONSOLE_LINE_RECEIVED, &message3 );
+	    
+		stream->printf("successed! disalbe Harmonic Drive 4th Axis ok!\n");
+		
+		stream->printf("Rebooting machine in 3 seconds...\r\n");
+    	reset_delay_secs = 3; // reboot in 3 seconds
+	}
+	else
+	{		
+		stream->printf("Failed! This command is only for Carvera!\n");
+	}
+}
 // go into dfu boot mode
 void SimpleShell::dfu_command( string parameters, StreamOutput *stream)
 {
