@@ -71,14 +71,19 @@ void SerialConsole::on_set_public_data(void *argument) {
 void SerialConsole::on_serial_char_received() {
 	while (this->serial->readable()) {
 		char received = this->serial->getc();
+		
+		if(THEKERNEL->is_cachewait()) {
+			continue;
+		}
+		
 		if (received == '?') {
 			query_flag = true;
 			continue;
 		}
-		if (received == '*') {
-			diagnose_flag = true;
-			continue;
-		}
+		//if (received == '*') {
+		//	diagnose_flag = true;
+		//	continue;
+		//}
 		if (received == 'X'-'A'+1) { // ^X
 			halt_flag = true;
 			continue;
