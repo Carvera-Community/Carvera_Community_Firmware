@@ -88,6 +88,7 @@ Kernel::Kernel()
     probe_addr = 0;
     checkled = false;
     spindleon = false;
+    cachewait = false;
 
     instance = this; // setup the Singleton instance of the kernel    
     
@@ -470,6 +471,11 @@ std::string Kernel::get_query_string()
         if(n > sizeof(buf)) n = sizeof(buf);
         str.append(buf, n);
     }
+    
+    // machine state
+    n = snprintf(buf, sizeof(buf), "|C:%d,%d,%d,%d", THEKERNEL->factory_set->MachineModel,THEKERNEL->factory_set->FuncSetting,THEROBOT->inch_mode,THEROBOT->absolute_mode);
+    if(n > sizeof(buf)) n = sizeof(buf);
+    str.append(buf, n);
 
     str.append(">\n");
     return str;
@@ -958,6 +964,7 @@ void Kernel::erase_Factory_data()
 #define A_Axis_home_enable_checksum             CHECKSUM("A_Axis_home_enable")
 #define C_Axis_home_enable_checksum             CHECKSUM("C_Axis_home_enable")
 #define ATC_enable_checksum             		CHECKSUM("Atc_enable")
+#define CE1_Expand								CHECKSUM("CE1_Expand")
 
 void Kernel::read_Factroy_SD()
 {
@@ -1005,6 +1012,17 @@ void Kernel::read_Factroy_SD()
         					
         					bneedwrite = true;
         					break;
+        				case CE1_Expand:
+        					if( 1 == value )
+        						this->factory_set->FuncSetting |= 1<<3;
+        					else
+        						this->factory_set->FuncSetting &= ~(1<<3);
+        					
+        					bneedwrite = true;
+        					break;
+        				default:
+        					break;
+        					
         			}
         			
         		}
@@ -1084,7 +1102,7 @@ bool Kernel::process_line(const string &buffer, uint16_t *check_sum, unsigned ch
     char* endPtr;
     string sValue = buffer.substr(begin_value, vsize);
     *value = std::strtol(sValue.c_str(), &endPtr, 10);
-    
+    return true;
 }
 
 
