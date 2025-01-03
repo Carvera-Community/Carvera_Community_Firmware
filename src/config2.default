@@ -172,7 +172,7 @@ switch.beep.startup_state					false			# beep probe startup state
 
 switch.extendout.enable						true			# Enable this module
 switch.extendout.output_pin					2.2				# Pin this module controls
-switch.extendout.output_type				swpwm			# Digital means this is just an on or off pin
+switch.extendout.output_type				hwpwm			# Digital means this is just an on or off pin
 switch.extendout.input_on_command			M851			# Command that will turn this switch on
 switch.extendout.input_off_command			M852			# Command that will turn this switch off
 
@@ -257,13 +257,13 @@ gamma_motor_alarm_pin						3.25^			# servo motor alarm for Z axis
 delta_min_endstop							1.9^			# Pin to read min endstop, add a ! to invert if endstop is NO connected to ground
 delta_max_endstop							1.9^			# Pin to read max endstop, uncomment this and comment the above if using max endstops
 delta_homing_direction						home_to_min		# Or set to home_to_max and set alpha_max and uncomment the alpha_max_endstop
-delta_min									-1				# This gets loaded as the current position after homing when home_to_min is set
+delta_min									-0.5			# This gets loaded as the current position after homing when home_to_min is set
 delta_max									0				# This gets loaded as the current position after homing when home_to_max is set
 delta_max_travel							380 			# Max travel in mm for delta/A axis when homing
 delta_fast_homing_rate_mm_s					50				# delta/A fast homing feedrate in mm/second
 delta_slow_homing_rate_mm_s					10				# delta/A slow homing feedrate in mm/second
 delta_limit_enable                          true            # Set to true to enable A min and max limit switches
-delta_homing_retract_mm						1				# Distance to retract from the endstop after it is hit for delta/A
+delta_homing_retract_mm						0.5				# Distance to retract from the endstop after it is hit for delta/A
 delta_motor_alarm_pin						nc				# servo motor alarm for Z axis
 
 
