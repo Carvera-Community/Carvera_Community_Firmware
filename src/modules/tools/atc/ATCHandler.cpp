@@ -101,7 +101,14 @@ ATCHandler::ATCHandler()
     last_pos[2] = 0.0;
     probe_laser_last = 9999;
     playing_file = false;
-    tool_number = 6;
+    if(THEKERNEL->factory_set->FuncSetting & (1<<3))	//for CE1 expand
+	{
+    	tool_number = 8;
+    }
+    else
+    {
+    	tool_number = 6;
+    }
     g28_triggered = false;
     blaserManual = false;
     goto_position = -1;
@@ -385,7 +392,7 @@ void ATCHandler::fill_zprobe_abs_scripts() {
 	this->script_queue.push(buff);
 
 	// goto z probe position
-	if(CARVERA == THEKERNEL->factory_set->MachineModel)
+	if(!(THEKERNEL->factory_set->FuncSetting & (1<<0)) )
     {
 		snprintf(buff, sizeof(buff), "G53 G0 X%.3f Y%.3f", THEROBOT->from_millimeters(anchor1_x + rotation_offset_x - 3), THEROBOT->from_millimeters(anchor1_y + rotation_offset_y));
 	}
@@ -608,21 +615,40 @@ void ATCHandler::on_config_reload(void *argument)
 		this->toolrack_offset_x = THEKERNEL->config->value(coordinate_checksum, toolrack_offset_x_checksum)->by_default(126  )->as_number();
 		this->toolrack_offset_y = THEKERNEL->config->value(coordinate_checksum, toolrack_offset_y_checksum)->by_default(196  )->as_number();
 	}
-
+	
 	atc_tools.clear();
-	for (int i = 0; i <=  6; i ++) {
-		struct atc_tool tool;
-		tool.num = i;
-	    // lift z axis to atc start position
-		snprintf(buff, sizeof(buff), "tool%d", i);
-		tool.mx_mm = this->anchor1_x + this->toolrack_offset_x;
-		tool.my_mm = this->anchor1_y + this->toolrack_offset_y + (i == 0 ? 210 : (6 - i) * 30);
-		tool.mz_mm = this->toolrack_z;
-		atc_tools.push_back(tool);
+	if(THEKERNEL->factory_set->FuncSetting & (1<<3))	//for CE1 expand
+	{
+		for (int i = 0; i <=  8; i ++) {
+			struct atc_tool tool;
+			tool.num = i;
+		    // lift z axis to atc start position
+			snprintf(buff, sizeof(buff), "tool%d", i);
+			tool.mx_mm = this->anchor1_x + this->toolrack_offset_x;
+			tool.my_mm = this->anchor1_y + this->toolrack_offset_y -5 + (i == 0 ? 219 : (8 - i) * 25);
+			tool.mz_mm = this->toolrack_z - 4.5;
+			atc_tools.push_back(tool);
+		}
+		probe_mx_mm = this->anchor1_x + this->toolrack_offset_x;
+		probe_my_mm = this->anchor1_y + this->toolrack_offset_y -5 + 197;
+		probe_mz_mm = this->toolrack_z - 44.5;
 	}
-	probe_mx_mm = this->anchor1_x + this->toolrack_offset_x;
-	probe_my_mm = this->anchor1_y + this->toolrack_offset_y + 180;
-	probe_mz_mm = this->toolrack_z - 40;
+	else
+	{
+		for (int i = 0; i <=  6; i ++) {
+			struct atc_tool tool;
+			tool.num = i;
+		    // lift z axis to atc start position
+			snprintf(buff, sizeof(buff), "tool%d", i);
+			tool.mx_mm = this->anchor1_x + this->toolrack_offset_x;
+			tool.my_mm = this->anchor1_y + this->toolrack_offset_y + (i == 0 ? 210 : (6 - i) * 30);
+			tool.mz_mm = this->toolrack_z;
+			atc_tools.push_back(tool);
+		}
+		probe_mx_mm = this->anchor1_x + this->toolrack_offset_x;
+		probe_my_mm = this->anchor1_y + this->toolrack_offset_y + 180;
+		probe_mz_mm = this->toolrack_z - 40;
+	}
 	
 	if(CARVERA == THEKERNEL->factory_set->MachineModel)
 	{
@@ -1543,11 +1569,12 @@ void ATCHandler::on_main_loop(void *argument)
     			THEROBOT->reset_axis_position(fmodf(ma, 360.0), A_AXIS);
     		}    		
 			// shrink B value first before move
-    		ma = THEROBOT->actuators[B_AXIS]->get_current_position();
-    		if (fabs(ma) > 360) {
-    			THEROBOT->reset_axis_position(fmodf(ma, 360.0), B_AXIS);
-    		}
-			rapid_move(false, 0, 0, NAN, 0, 0);
+//    		ma = THEROBOT->actuators[B_AXIS]->get_current_position();
+//    		if (fabs(ma) > 360) {
+//    			THEROBOT->reset_axis_position(fmodf(ma, 360.0), B_AXIS);
+//    		}
+			//rapid_move(false, 0, 0, NAN, 0, 0);
+			rapid_move(false, 0, 0, NAN, 0, NAN);
 		} else if (goto_position == 3) {
 			// goto anchor 1
 			rapid_move(true, this->anchor1_x, this->anchor1_y, NAN, NAN, NAN);
@@ -1563,11 +1590,12 @@ void ATCHandler::on_main_loop(void *argument)
 					THEROBOT->reset_axis_position(fmodf(ma, 360.0), A_AXIS);
 				}    		
 				// shrink B value first before move
-				ma = THEROBOT->actuators[B_AXIS]->get_current_position();
+				/*ma = THEROBOT->actuators[B_AXIS]->get_current_position();
 				if (fabs(ma) > 360) {
 					THEROBOT->reset_axis_position(fmodf(ma, 360.0), B_AXIS);
-				}    		
-				rapid_move(false, position_x, position_y, NAN, fmodf(position_a, 360.0), fmodf(position_b, 360.0));
+				}*/
+				//rapid_move(false, position_x, position_y, NAN, fmodf(position_a, 360.0), fmodf(position_b, 360.0));
+				rapid_move(false, position_x, position_y, NAN, fmodf(position_a, 360.0), NAN);
 				// reset the A_AXIS position as target value
 				THEROBOT->reset_axis_position(position_a, A_AXIS);
 				// reset the B_AXIS position as target value
@@ -1585,13 +1613,13 @@ void ATCHandler::on_main_loop(void *argument)
 			}
 			else if (position_x < 8888 && position_y < 8888 && position_b < 88888888) {
 				// shrink B value first before move
-	    		float ma = THEROBOT->actuators[B_AXIS]->get_current_position();
+	    		/*float ma = THEROBOT->actuators[B_AXIS]->get_current_position();
 	    		if (fabs(ma) > 360) {
 	    			THEROBOT->reset_axis_position(fmodf(ma, 360.0), B_AXIS);
 	    		}    		
 				rapid_move(false, position_x, position_y, NAN, NAN, fmodf(position_b, 360.0));
 				// reset the B_AXIS position as target value
-				THEROBOT->reset_axis_position(position_b, B_AXIS);
+				THEROBOT->reset_axis_position(position_b, B_AXIS);*/
 			}
 			else if(position_x < 8888 && position_y < 8888 )
 			{
@@ -1605,11 +1633,12 @@ void ATCHandler::on_main_loop(void *argument)
 	    			THEROBOT->reset_axis_position(fmodf(ma, 360.0), A_AXIS);
 	    		}    		
 				// shrink B value first before move
-	    		ma = THEROBOT->actuators[B_AXIS]->get_current_position();
+	    		/*ma = THEROBOT->actuators[B_AXIS]->get_current_position();
 	    		if (fabs(ma) > 360) {
 	    			THEROBOT->reset_axis_position(fmodf(ma, 360.0), B_AXIS);
-	    		}    		
-				rapid_move(false, NAN, NAN, NAN, fmodf(position_a, 360.0), fmodf(position_b, 360.0));
+	    		}    	*/	
+				//rapid_move(false, NAN, NAN, NAN, fmodf(position_a, 360.0), fmodf(position_b, 360.0));
+				rapid_move(false, NAN, NAN, NAN, fmodf(position_a, 360.0), NAN);
 				// reset the A_AXIS position as target value
 				THEROBOT->reset_axis_position(position_a, A_AXIS);
 				// reset the B_AXIS position as target value
@@ -1629,13 +1658,13 @@ void ATCHandler::on_main_loop(void *argument)
 			else if(position_b < 88888888)
 			{
 				// shrink B value first before move
-	    		float ma = THEROBOT->actuators[B_AXIS]->get_current_position();
+	    		/*float ma = THEROBOT->actuators[B_AXIS]->get_current_position();
 	    		if (fabs(ma) > 360) {
 	    			THEROBOT->reset_axis_position(fmodf(ma, 360.0), B_AXIS);
 	    		}    		
 				rapid_move(false, NAN, NAN, NAN, NAN, fmodf(position_b, 360.0));
 				// reset the B_AXIS position as target value
-				THEROBOT->reset_axis_position(position_b, B_AXIS);
+				THEROBOT->reset_axis_position(position_b, B_AXIS);*/
 			}
 		} else if (goto_position == 6) {
 			// goto designative machine position
@@ -1646,11 +1675,12 @@ void ATCHandler::on_main_loop(void *argument)
 	    			THEROBOT->reset_axis_position(fmodf(ma, 360.0), A_AXIS);
 	    		}    		
 				// shrink B value first before move
-	    		ma = THEROBOT->actuators[B_AXIS]->get_current_position();
+	    		/*ma = THEROBOT->actuators[B_AXIS]->get_current_position();
 	    		if (fabs(ma) > 360) {
 	    			THEROBOT->reset_axis_position(fmodf(ma, 360.0), B_AXIS);
-	    		}    		
-				rapid_move(true, position_x, position_y, NAN, fmodf(position_a, 360.0), fmodf(position_b, 360.0));
+	    		}*/   		
+				//rapid_move(true, position_x, position_y, NAN, fmodf(position_a, 360.0), fmodf(position_b, 360.0));
+				rapid_move(true, position_x, position_y, NAN, fmodf(position_a, 360.0), NAN);
 				// reset the A_AXIS position as target value
 				THEROBOT->reset_axis_position(position_a, A_AXIS);
 				// reset the B_AXIS position as target value
@@ -1668,11 +1698,12 @@ void ATCHandler::on_main_loop(void *argument)
 			}
 			else if (position_x < 8888 && position_y < 8888 && position_b < 88888888) {
 				// shrink B value first before move
-	    		float ma = THEROBOT->actuators[B_AXIS]->get_current_position();
+	    		/*float ma = THEROBOT->actuators[B_AXIS]->get_current_position();
 	    		if (fabs(ma) > 360) {
 	    			THEROBOT->reset_axis_position(fmodf(ma, 360.0), B_AXIS);
-	    		}    		
-				rapid_move(true, position_x, position_y, NAN, NAN, fmodf(position_b, 360.0));
+	    		}*/
+				//rapid_move(true, position_x, position_y, NAN, NAN, fmodf(position_b, 360.0));
+				rapid_move(true, position_x, position_y, NAN, NAN, NAN);
 				// reset the B_AXIS position as target value
 				THEROBOT->reset_axis_position(position_b, B_AXIS);
 			}
@@ -1688,11 +1719,12 @@ void ATCHandler::on_main_loop(void *argument)
 	    			THEROBOT->reset_axis_position(fmodf(ma, 360.0), A_AXIS);
 	    		}    		
 				// shrink B value first before move
-	    		ma = THEROBOT->actuators[B_AXIS]->get_current_position();
+	    		/*ma = THEROBOT->actuators[B_AXIS]->get_current_position();
 	    		if (fabs(ma) > 360) {
 	    			THEROBOT->reset_axis_position(fmodf(ma, 360.0), B_AXIS);
-	    		}    		
-				rapid_move(true, NAN, NAN, NAN, fmodf(position_a, 360.0), fmodf(position_b, 360.0));
+	    		}*/
+				//rapid_move(true, NAN, NAN, NAN, fmodf(position_a, 360.0), fmodf(position_b, 360.0));
+				rapid_move(true, NAN, NAN, NAN, fmodf(position_a, 360.0), NAN);
 				// reset the A_AXIS position as target value
 				THEROBOT->reset_axis_position(position_a, A_AXIS);
 				// reset the B_AXIS position as target value
@@ -1712,13 +1744,13 @@ void ATCHandler::on_main_loop(void *argument)
 			else if(position_b < 88888888)
 			{
 				// shrink B value first before move
-	    		float ma = THEROBOT->actuators[B_AXIS]->get_current_position();
+	    		/*float ma = THEROBOT->actuators[B_AXIS]->get_current_position();
 	    		if (fabs(ma) > 360) {
 	    			THEROBOT->reset_axis_position(fmodf(ma, 360.0), B_AXIS);
 	    		}    		
 				rapid_move(true, NAN, NAN, NAN, NAN, fmodf(position_b, 360.0));
 				// reset the B_AXIS position as target value
-				THEROBOT->reset_axis_position(position_b, B_AXIS);
+				THEROBOT->reset_axis_position(position_b, B_AXIS);*/
 			}
 		}
 		position_x = 8888;
