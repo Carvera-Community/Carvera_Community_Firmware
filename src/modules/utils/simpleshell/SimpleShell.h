@@ -86,6 +86,10 @@ private:
     static void test_led_command( string parameters, StreamOutput *stream );
     
     static void fset_command( string parameters, StreamOutput *stream );
+    
+    static void enable_4th_hd(string parameters, StreamOutput *stream );
+    
+    static void disable_4th_hd( string parameters, StreamOutput *stream);
 
     typedef void (*PFUNC)(string parameters, StreamOutput *stream);
     typedef struct {
