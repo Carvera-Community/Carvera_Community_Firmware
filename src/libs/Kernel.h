@@ -180,7 +180,10 @@ class Kernel {
         uint8_t get_halt_reason() const { return halt_reason; }
 
         void set_atc_state(uint8_t state) { atc_state = state; }
-        uint8_t get_atc_state() const { return atc_state; }
+        uint8_t get_atc_state() const { return atc_state; }        
+        
+        void set_cachewait(bool f) { cachewait = f; }
+        bool is_cachewait() const { return cachewait; }
 
         void read_eeprom_data();
         void write_eeprom_data();
@@ -256,6 +259,7 @@ class Kernel {
             bool aborted: 1;
             bool zprobing:1;
             bool probeLaserOn:1;
+            volatile bool cachewait:1;
         };
         int iic_page_write(unsigned char u8PageNum, unsigned char u8len, unsigned char *pu8Array);
 
