@@ -291,15 +291,21 @@ void Robot::load_config()
             return;
         }
 
-        actuators[a]->change_steps_per_mm(THEKERNEL->config->value(motor_checksums[a][3])->by_default(a == 2 ? 2560.0F : 80.0F)->as_number());
         if((THEKERNEL->factory_set->FuncSetting & (1<<0)) && (a == 3))
 		{
 			uint16_t s = THEKERNEL->config->value(motor_checksums[a][4])->by_default(3000.0F)->as_number();
 			if(s > 2400) s=2400;
         	actuators[a]->set_max_rate( s/60.0F); // it is in mm/min and converted to mm/sec
+        	float steps = THEKERNEL->config->value(motor_checksums[a][3])->by_default(a == 2 ? 2560.0F : 80.0F)->as_number();
+        	if(CARVERA == THEKERNEL->factory_set->MachineModel)
+        	{
+        		steps = steps * 16.666666;
+        	}
+        	actuators[a]->change_steps_per_mm(steps);
         }
         else
         {
+        	actuators[a]->change_steps_per_mm(THEKERNEL->config->value(motor_checksums[a][3])->by_default(a == 2 ? 2560.0F : 80.0F)->as_number());
         	actuators[a]->set_max_rate(THEKERNEL->config->value(motor_checksums[a][4])->by_default(3000.0F)->as_number()/60.0F); // it is in mm/min and converted to mm/sec
         }
         actuators[a]->set_acceleration(THEKERNEL->config->value(motor_checksums[a][5])->by_default(NAN)->as_number()); // mm/secs²
