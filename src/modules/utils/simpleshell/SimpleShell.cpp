@@ -75,7 +75,7 @@ extern "C" uint32_t  _sbrk(int size);
 // support upload file type definition
 #define FILETYPE	"lz"		//compressed by quicklz
 // version definition
-#define VERSION "1.0.2.Beta"
+#define VERSION "1.0.2"
 
 // command lookup table
 const SimpleShell::ptentry_t SimpleShell::commands_table[] = {
@@ -1611,8 +1611,10 @@ void SimpleShell::grblDP_command( string parameters, StreamOutput *stream)
             THEROBOT->from_millimeters(std::get<0>(v[i])),
             THEROBOT->from_millimeters(std::get<1>(v[i])),
             THEROBOT->from_millimeters(std::get<2>(v[i])),
-            THEROBOT->from_millimeters(std::get<3>(v[i])),
-            THEROBOT->from_millimeters(std::get<4>(v[i])));
+            //THEROBOT->from_millimeters(std::get<3>(v[i])),
+            //THEROBOT->from_millimeters(std::get<4>(v[i])));
+            std::get<3>(v[i]),
+            std::get<4>(v[i]));
     }
 
     float *rd;
@@ -1628,8 +1630,10 @@ void SimpleShell::grblDP_command( string parameters, StreamOutput *stream)
         THEROBOT->from_millimeters(std::get<0>(v[n+1])),
         THEROBOT->from_millimeters(std::get<1>(v[n+1])),
         THEROBOT->from_millimeters(std::get<2>(v[n+1])),
-        THEROBOT->from_millimeters(std::get<3>(v[n+1])),
-        THEROBOT->from_millimeters(std::get<4>(v[n+1])));
+        //THEROBOT->from_millimeters(std::get<3>(v[n+1])),
+        //THEROBOT->from_millimeters(std::get<4>(v[n+1])));
+        std::get<3>(v[n+1]),
+        std::get<4>(v[n+1]));
 
     if(verbose) {
         stream->printf("[Tool Offset:%1.4f,%1.4f,%1.4f]\n",
