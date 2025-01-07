@@ -595,19 +595,23 @@ void Robot::on_gcode_received(void *argument)
                             }
                             
                             if(gcode->has_letter('A')) {
-                                a -= to_millimeters(gcode->get_value('A')) - std::get<A_AXIS>(pos);
+                                //a -= to_millimeters(gcode->get_value('A')) - std::get<A_AXIS>(pos);
+                                a -= gcode->get_value('A') - std::get<A_AXIS>(pos);
                             }
                             
                             if(gcode->has_letter('B')) {
-                                b -= to_millimeters(gcode->get_value('B')) - std::get<B_AXIS>(pos);
+                                //b -= to_millimeters(gcode->get_value('B')) - std::get<B_AXIS>(pos);
+                                b -= gcode->get_value('B') - std::get<B_AXIS>(pos);
                             }
 
                         } else {
                             if(gcode->has_letter('X')) x = to_millimeters(gcode->get_value('X'));
                             if(gcode->has_letter('Y')) y = to_millimeters(gcode->get_value('Y'));
                             if(gcode->has_letter('Z')) z = to_millimeters(gcode->get_value('Z'));
-                            if(gcode->has_letter('A')) a = to_millimeters(gcode->get_value('A'));
-                            if(gcode->has_letter('B')) b = to_millimeters(gcode->get_value('B'));
+                            //if(gcode->has_letter('A')) a = to_millimeters(gcode->get_value('A'));
+                            //if(gcode->has_letter('B')) b = to_millimeters(gcode->get_value('B'));
+                            if(gcode->has_letter('A')) a = gcode->get_value('A');
+                            if(gcode->has_letter('B')) b = gcode->get_value('B');
                             /*
                             if(absolute_mode) {
                                 // the value is the offset from machine zero
@@ -738,10 +742,12 @@ void Robot::on_gcode_received(void *argument)
                         z += to_millimeters(gcode->get_value('Z')) - std::get<Z_AXIS>(pos);
                     }
                     if(gcode->has_letter('A')) {
-                        a += to_millimeters(gcode->get_value('A')) - std::get<A_AXIS>(pos);
+                        //a += to_millimeters(gcode->get_value('A')) - std::get<A_AXIS>(pos);
+                        a += gcode->get_value('A') - std::get<A_AXIS>(pos);
                     }
                     if(gcode->has_letter('B')) {
-                        b += to_millimeters(gcode->get_value('B')) - std::get<B_AXIS>(pos);
+                        //b += to_millimeters(gcode->get_value('B')) - std::get<B_AXIS>(pos);
+                        b += gcode->get_value('B') - std::get<B_AXIS>(pos);
                     }
                     g92_offset = wcs_t(x, y, z, a, b);
                 }
@@ -828,7 +834,14 @@ void Robot::on_gcode_received(void *argument)
                     if(actuators[i]->is_extruder()) continue; //extruders handle this themselves
                     char axis= (i <= Z_AXIS ? 'X'+i : 'A'+(i-A_AXIS));
                     if(gcode->has_letter(axis)) {
-                        actuators[i]->change_steps_per_mm(this->to_millimeters(gcode->get_value(axis)));
+	                    if(i <= Z_AXIS)
+	                    {
+	                        actuators[i]->change_steps_per_mm(this->to_millimeters(gcode->get_value(axis)));
+	                    }
+	                    else
+	                    {
+	                    	actuators[i]->change_steps_per_mm(gcode->get_value(axis));
+	                    }
                     }
                     gcode->stream->printf("%c:%f ", axis, actuators[i]->get_steps_per_mm());
                 }
@@ -1210,7 +1223,8 @@ void Robot::process_move(Gcode *gcode, enum MOTION_MODE_T motion_mode)
 	for (int i = A_AXIS; i < n_motors; ++i) {
         char letter = 'A' + i - A_AXIS;
         if( gcode->has_letter(letter) ) {
-            param[i] = this->to_millimeters(gcode->get_value(letter));
+            //param[i] = this->to_millimeters(gcode->get_value(letter));
+            param[i] = gcode->get_value(letter);
         }
     }
     if(!next_command_is_MCS) {
