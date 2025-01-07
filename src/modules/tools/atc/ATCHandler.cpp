@@ -2039,11 +2039,13 @@ void ATCHandler::rapid_move(bool mc, float x, float y, float z, float a, float b
     
     if(!isnan(a)) {
         size_t n= strlen(cmd);
-        snprintf(&cmd[n], CMDLEN-n, " A%1.3f", THEROBOT->from_millimeters(a));
+        //snprintf(&cmd[n], CMDLEN-n, " A%1.3f", THEROBOT->from_millimeters(a));
+        snprintf(&cmd[n], CMDLEN-n, " A%1.3f", a);
     }
     if(!isnan(b)) {
         size_t n= strlen(cmd);
-        snprintf(&cmd[n], CMDLEN-n, " B%1.3f", THEROBOT->from_millimeters(b));
+        //snprintf(&cmd[n], CMDLEN-n, " B%1.3f", THEROBOT->from_millimeters(b));
+        snprintf(&cmd[n], CMDLEN-n, " B%1.3f", b);
     }
 
     // send as a command line as may have multiple G codes in it
