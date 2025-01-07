@@ -317,7 +317,8 @@ std::string Kernel::get_query_string()
         if(n > sizeof(buf)) n= sizeof(buf);
         str.append("|WPos:").append(buf, n);
         
-        n = snprintf(buf, sizeof(buf), ",%1.4f,%1.4f", robot->from_millimeters(std::get<A_AXIS>(pos)), robot->from_millimeters(std::get<B_AXIS>(pos)));
+        //n = snprintf(buf, sizeof(buf), ",%1.4f,%1.4f", robot->from_millimeters(std::get<A_AXIS>(pos)), robot->from_millimeters(std::get<B_AXIS>(pos)));
+        n = snprintf(buf, sizeof(buf), ",%1.4f,%1.4f", std::get<A_AXIS>(pos), std::get<B_AXIS>(pos));
         if(n > sizeof(buf)) n= sizeof(buf);
         str.append(buf, n);
 
@@ -330,7 +331,8 @@ std::string Kernel::get_query_string()
 
         str.append("|MPos:").append(buf, n);
         
-        n = snprintf(buf, sizeof(buf), ",%1.4f,%1.4f", robot->from_millimeters(std::get<A_AXIS>(mpos)), robot->from_millimeters(std::get<B_AXIS>(mpos)));
+        //n = snprintf(buf, sizeof(buf), ",%1.4f,%1.4f", robot->from_millimeters(std::get<A_AXIS>(mpos)), robot->from_millimeters(std::get<B_AXIS>(mpos)));
+        n = snprintf(buf, sizeof(buf), ",%1.4f,%1.4f", std::get<A_AXIS>(mpos), std::get<B_AXIS>(mpos));
         if(n > sizeof(buf)) n= sizeof(buf);
         str.append(buf, n);
 /*
@@ -350,7 +352,8 @@ std::string Kernel::get_query_string()
         if(n > sizeof(buf)) n= sizeof(buf);
         str.append("|WPos:").append(buf, n);
         
-        n = snprintf(buf, sizeof(buf), ",%1.4f,%1.4f", robot->from_millimeters(std::get<A_AXIS>(pos)), robot->from_millimeters(std::get<B_AXIS>(pos)));
+        //n = snprintf(buf, sizeof(buf), ",%1.4f,%1.4f", robot->from_millimeters(std::get<A_AXIS>(pos)), robot->from_millimeters(std::get<B_AXIS>(pos)));
+        n = snprintf(buf, sizeof(buf), ",%1.4f,%1.4f", std::get<A_AXIS>(pos), std::get<B_AXIS>(pos));
         if(n > sizeof(buf)) n= sizeof(buf);
         str.append(buf, n);
     }
