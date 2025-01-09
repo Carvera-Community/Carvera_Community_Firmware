@@ -412,7 +412,7 @@ default_seek_rate 3000					# Feed rate for G0 rapid mode (mm/min)
 alpha_max_rate 3000.0					# Max feed rate for X axis (mm/min)
 beta_max_rate 3000.0					# Max feed rate for Y axis (mm/min)
 gamma_max_rate 2000.0					# Max feed rate for Z axis (mm/min)
-delta_max_rate 2400.0 					# Max rotation speed rate for A axis (degree/min)
+delta_max_rate 1800.0 					# Max rotation speed rate for A axis (degree/min)
 epsilon_max_rate 100.0					# Max feed rate for auto tool changer (mm/min)
 
 acceleration 150						# Acceleration for X/Y/Z axis (mm/second/second)
