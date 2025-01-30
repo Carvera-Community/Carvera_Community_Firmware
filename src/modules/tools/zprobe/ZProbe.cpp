@@ -459,9 +459,7 @@ void ZProbe::on_gcode_received(void *argument)
                 gcode->stream->printf(" Probe: %d", c);
                 gcode->add_nl = true;
                 break;
-            case 459:
-                average_multi_tlo(gcode);
-                break;
+
             case 460:
                 calibrate_probe_bore(gcode);
                 break;
@@ -2306,61 +2304,5 @@ void ZProbe::calibrate_probe_bore(Gcode *gcode) //M460
     THEKERNEL->probe_tip_diameter = knownDiameter - ave;
     THEKERNEL->streams->printf("New Probe Tip Diameter is: %.3f\n", THEKERNEL->probe_tip_diameter);
     THEKERNEL->streams->printf("This value is temporary \n and will neeed to be saved to the config file with \n config-set sd zprobe.probe_tip_diameter # \n");
-
-}
-
-
-void ZProbe::average_multi_tlo(Gcode *gcode){
-    float TLO_sum = 0;
-    float TLO_min = 0;
-    float TLO_max = 0;
-    char buff[50];
-    int num_probes = 2;
-    float probe_retract_mm = 2;
-    float probe_slow_rate = 100;
-    float moveBuffer[3];
-
-    moveBuffer[0] = 0;
-    moveBuffer[1] = 0;
-    moveBuffer[2] = probe_retract_mm;
-    
-    float mpos[3];
-    
-    if (gcode->has_letter('L')) {
-        num_probes = gcode->get_value('L');
-    }
-    if (gcode->has_letter('H')) {
-        probe_retract_mm = gcode->get_value('H');
-    }
-    if (gcode->has_letter('F')) {
-        probe_slow_rate = gcode->get_value('F');
-    }
-
-    snprintf(buff, sizeof(buff), "G38.6 Z%.3f F%.3f", -1 - probe_retract_mm, probe_slow_rate);
-    Gcode probe_gcode(buff, &StreamOutput::NullStream);
-
-    for (int i=0; i < (num_probes); i++){
-        THECONVEYOR->wait_for_idle();
-        THEROBOT->delta_move(moveBuffer, probe_slow_rate, 3);
-        THECONVEYOR->wait_for_idle();
-        calibrate_Z(&probe_gcode);
-        //store current wcs pos value
-        THEROBOT->get_current_machine_position(mpos);
-        // current_position/mpos includes the compensation transform so we need to get the inverse to get actual position
-        if(THEROBOT->compensationTransform) THEROBOT->compensationTransform(mpos, true, true); // get inverse compensation transform
-        THEKERNEL->streams->printf("measured position: %.3f\n", mpos[2]);
-        TLO_sum += mpos[2];
-        if (TLO_min == 0 || TLO_max == 0){
-            TLO_min = mpos[2];
-            TLO_max = mpos[2];
-        }
-        TLO_min = std::min(TLO_min,mpos[2]);
-        TLO_max = std::max(TLO_max,mpos[2]);
-    }
-    
-    float ave_tlo_pos = TLO_sum / num_probes;
-    THEKERNEL->streams->printf("TLO Report: Ave: %.3f, Dif: %.3f, Min: %.3f, Max: %.3f", ave_tlo_pos, TLO_max-TLO_min, TLO_min, TLO_max );
-    coordinated_move(NAN,NAN,ave_tlo_pos,probe_slow_rate);
-
 
 }

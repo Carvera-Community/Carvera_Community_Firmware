@@ -87,7 +87,7 @@ private:
     void fill_change_scripts(int new_tool, bool clear_z);
     void fill_drop_scripts(int old_tool);
     void fill_pick_scripts(int new_tool, bool clear_z);
-    void fill_cali_scripts(bool is_probe, bool clear_z, int num_probes = 0);
+    void fill_cali_scripts(bool is_probe, bool clear_z);
 
     //
     void fill_manual_drop_scripts(int old_tool);
@@ -134,7 +134,6 @@ private:
         float homing_rate;
         float action_rate;
         float action_dist;
-        int num_atc_touchoff;
 
         struct {
             bool triggered:1;
