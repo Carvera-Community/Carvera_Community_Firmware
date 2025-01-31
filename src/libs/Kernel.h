@@ -234,6 +234,7 @@ class Kernel {
         float local_vars[20];
         float probe_outputs[5];
         float probe_tip_diameter = 1.6;
+        bool disable_endstops = false;
 
     private:
         // When a module asks to be called for a specific event ( a hook ), this is where that request is remembered

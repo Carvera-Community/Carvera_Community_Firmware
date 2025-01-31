@@ -581,7 +581,9 @@ void Endstops::on_idle(void *argument)
         return;
     }
 
-
+    if (THEKERNEL->disable_endstops == true){
+        return;
+    }
     for(auto& i : endstops) {
     	if(THEKERNEL->factory_set->FuncSetting & ((1<<0)|(1<<1)))
     	{
@@ -981,6 +983,8 @@ void Endstops::home(axis_bitmap_t a)
 
 void Endstops::process_home_command(Gcode* gcode)
 {
+    bool previous_disable_endstops = THEKERNEL->disable_endstops;
+    THEKERNEL->disable_endstops = false;
     // First wait for the queue to be empty
     THECONVEYOR->wait_for_idle();
 
@@ -1034,6 +1038,7 @@ void Endstops::process_home_command(Gcode* gcode)
 
     if(haxis.none()) {
         THEKERNEL->streams->printf("WARNING: Nothing to home\n");
+        THEKERNEL->disable_endstops  = previous_disable_endstops;
         return;
     }
 
@@ -1082,6 +1087,7 @@ void Endstops::process_home_command(Gcode* gcode)
         }
         // clear all the homed flags
         for (auto &p : homing_axis) p.homed= false;
+        THEKERNEL->disable_endstops  = previous_disable_endstops;
         return;
     }
 
@@ -1169,6 +1175,7 @@ void Endstops::process_home_command(Gcode* gcode)
         back_off_home(haxis);
         move_to_origin(haxis);
     }
+    THEKERNEL->disable_endstops  = previous_disable_endstops;
 }
 
 void Endstops::set_homing_offset(Gcode *gcode)
@@ -1319,7 +1326,19 @@ void Endstops::on_gcode_received(void *argument)
 
     } else if (gcode->has_m) {
 
-        switch (gcode->m) {
+        switch (gcode->m) { 
+            case 885: {
+                THEKERNEL->disable_endstops = true;
+                THEKERNEL->streams->printf("Hard Endstops Disabled");
+                break;
+            }
+            case 886: {
+                THEKERNEL->disable_endstops = false;
+                THEKERNEL->streams->printf("Hard Endstops Enabled");
+                break;
+            }
+
+
             case 119: {
                 for(auto& h : homing_axis) {
                     if(h.pin_info == nullptr) continue; // ignore if not a homing endstop
