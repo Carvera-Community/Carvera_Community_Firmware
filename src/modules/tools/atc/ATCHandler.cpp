@@ -210,7 +210,7 @@ void ATCHandler::fill_manual_pickup_scripts(int new_tool, bool clear_z, bool aut
 
 	if (auto_calibrate){
 		//print status
-		snprintf(buff, sizeof(buff), ";Tool is now installed.nRemove hands from the machine\nResume will auto calibrate the tool and continue program\n");
+		snprintf(buff, sizeof(buff), ";Tool is now installed.\nRemove hands from the machine\nResume will auto calibrate the tool and continue program\n");
 		this->script_queue.push(buff);
 		//pause
 		snprintf(buff, sizeof(buff), "M600.5");
@@ -218,7 +218,7 @@ void ATCHandler::fill_manual_pickup_scripts(int new_tool, bool clear_z, bool aut
 		this->fill_cali_scripts(new_tool == 0,false);
 	}else if (!isnan(custom_TLO)) {
 		//print status
-		snprintf(buff, sizeof(buff), ";Tool is now installed and TLO set as %.3f. Resume will continue program\n" , custom_TLO );
+		snprintf(buff, sizeof(buff), ";Tool is now installed and TLO set as %.3f.\n Resume will continue program\n" , custom_TLO );
 		this->script_queue.push(buff);
 		//set tool length offset
 		snprintf(buff, sizeof(buff), "M493.3 Z%.3f",custom_TLO);
