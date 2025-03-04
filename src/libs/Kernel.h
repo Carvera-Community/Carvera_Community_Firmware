@@ -232,7 +232,7 @@ class Kernel {
         bool checkled;
         bool spindleon;
         float local_vars[20];
-        float probe_outputs[5];
+        float probe_outputs[6];
         float probe_tip_diameter = 1.6;
         bool disable_endstops = false;
 

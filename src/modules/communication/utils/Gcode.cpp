@@ -192,7 +192,7 @@ float Gcode::get_variable_value(const char* expr, char** endptr) const{
         } else if(var_num == 150)
         {
             return THEKERNEL->probe_tip_diameter;
-        } else if(var_num >= 151 && var_num <= 155)
+        } else if(var_num >= 151 && var_num <= 156)
         {
             if (THEKERNEL->probe_outputs[var_num - 151] > -100000)
             {

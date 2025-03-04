@@ -49,12 +49,19 @@ private:
     void config_load();
     bool probe_XYZ(Gcode *gcode);
     void probe_bore(Gcode *gcode);
-    void probe_boss(Gcode *gcode);
+    void probe_boss(Gcode *gcode , bool calibration = false);
     void probe_insideCorner(Gcode *gcode);
     void probe_outsideCorner(Gcode *gcode);
     void probe_axisangle(Gcode *gcode);
     void calibrate_probe_bore(Gcode *gcode);
-    
+    void calibrate_probe_boss(Gcode *gcode);
+    void calibrate_probe_anchor(Gcode *gcode);
+    void calibrate_anchor1(Gcode *gcode);
+    void calibrate_anchor2(Gcode *gcode);
+    void calibrate_atc_positions(Gcode *gcode);
+    void calibrate_a_axis_headstock(Gcode *gcode);
+    void home_machine_with_pin(Gcode *gcode);
+    void single_axis_probe_double_tap(Gcode *gcode);
     void calibrate_Z(Gcode *gc);
     uint32_t read_probe(uint32_t dummy);
     uint32_t read_calibrate(uint32_t dummy);
