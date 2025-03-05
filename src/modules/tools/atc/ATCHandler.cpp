@@ -244,7 +244,7 @@ void ATCHandler::fill_manual_pickup_scripts(int new_tool, bool clear_z, bool aut
 void ATCHandler::fill_drop_scripts(int old_tool) {
 	char buff[100];
 
-	if (THEROBOT->is_homed_all_axes()) {
+	if (!THEROBOT->is_homed_all_axes()) {
 		return;
 	};
 	
@@ -281,7 +281,7 @@ void ATCHandler::fill_drop_scripts(int old_tool) {
 
 void ATCHandler::fill_pick_scripts(int new_tool, bool clear_z) {
 	char buff[100];
-	if (THEROBOT->is_homed_all_axes()) {
+	if (!THEROBOT->is_homed_all_axes()) {
 		return;
 	};
 	struct atc_tool *current_tool = &atc_tools[new_tool];
@@ -321,7 +321,7 @@ void ATCHandler::fill_pick_scripts(int new_tool, bool clear_z) {
 
 void ATCHandler::fill_cali_scripts(bool is_probe, bool clear_z) {
 	char buff[100];
-	if (THEROBOT->is_homed_all_axes()) {
+	if (!THEROBOT->is_homed_all_axes()) {
 		return;
 	};
 
@@ -486,7 +486,7 @@ void ATCHandler::fill_zprobe_scripts(float x_pos, float y_pos, float x_offset, f
 
 void ATCHandler::fill_zprobe_abs_scripts() {
 	char buff[100];
-	if (THEROBOT->is_homed_all_axes()) {
+	if (!THEROBOT->is_homed_all_axes()) {
 		return;
 	};
 	// set atc status
@@ -619,7 +619,7 @@ void ATCHandler::fill_autolevel_scripts(float x_pos, float y_pos,
 		float x_size, float y_size, int x_grids, int y_grids, float height)
 {
 	char buff[100];
-	if (THEROBOT->is_homed_all_axes()) {
+	if (!THEROBOT->is_homed_all_axes()) {
 		return;
 	};
 	// set atc status
