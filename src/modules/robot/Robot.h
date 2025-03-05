@@ -68,6 +68,9 @@ class Robot : public Module {
         uint8_t get_current_motion_mode() const {return current_motion_mode; }
         void clearLaserOffset();
 
+        bool is_homed_all_axes();
+        void override_homed_check(bool home_override_value);
+
         BaseSolution* arm_solution;                           // Selected Arm solution ( millimeters to step calculation )
 
         // gets accessed by Panel, Endstops, ZProbe
@@ -105,6 +108,7 @@ class Robot : public Module {
         };
 
     private:
+        bool home_override = false;
         enum MOTION_MODE_T {
             NONE,
             SEEK, // G0
