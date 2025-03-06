@@ -2076,3 +2076,24 @@ bool Robot::is_homed(uint8_t i) const
     if(!ok) return false;
     return homed[i];
 }
+
+bool Robot::is_homed_all_axes()
+{
+    if (this->home_override){
+        return true;
+    }
+    for (int i = X_AXIS; i <= Z_AXIS; ++i) {
+        if (!this->is_homed(i)){
+            THEKERNEL->streams->printf("Machine has not been homed\nUse M888 To disable homed check temporarily\n");
+            THEKERNEL->set_halt_reason(HOME_FAIL);
+            THEKERNEL->call_event(ON_HALT, nullptr);
+            return false;
+        }
+    }
+    return true;
+}
+
+void Robot::override_homed_check(bool home_override_value) {
+    this->home_override = home_override_value;
+    return;
+}
