@@ -23,6 +23,7 @@ class Endstops : public Module{
         Endstops();
         void on_module_loaded();
         void on_gcode_received(void* argument);
+        void check_4th(char *data);
 
     private:
         bool load_old_config();
@@ -61,6 +62,7 @@ class Endstops : public Module{
                 uint8_t axis_index:3;
                 bool limit_enable:1;
                 bool triggered:1;
+                bool Nontriggered:1;
             };
         };
 
