@@ -131,8 +131,6 @@ private:
     bool playing_file;
     bool g28_triggered;
     
-    bool blaserManual;
-
     uint16_t probe_laser_last;
 
     using atc_homing_info_t = struct {
