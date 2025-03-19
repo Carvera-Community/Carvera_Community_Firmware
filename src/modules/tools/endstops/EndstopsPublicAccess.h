@@ -11,5 +11,6 @@
 #define get_endstop_states_checksum CHECKSUM("endstop_states")
 #define get_endstopAB_states_checksum CHECKSUM("endstopAB_states")
 #define get_cover_endstop_state_checksum CHECKSUM("cover_endstop_state")
+#define get_check_4th_checksum CHECKSUM("check_4th_endstop_states")
 
 #endif
