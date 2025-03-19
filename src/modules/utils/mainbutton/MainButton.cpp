@@ -218,7 +218,9 @@ void MainButton::on_idle(void *argument)
         		if (us_ticker_read() - sleep_countdown_us > (uint32_t)auto_sleep_min * 60 * 1000000) {
     				// turn off 12V/24V power supply
 					this->switch_power_12(0);
-					this->switch_power_24(0);
+					this->switch_power_24(0);// turn off light
+					bool b = false;
+					PublicData::set_value( switch_checksum, light_checksum, state_checksum, &b );
         			// go to sleep
     				THEKERNEL->set_sleeping(true);
     				THEKERNEL->call_event(ON_HALT, nullptr);
