@@ -49,7 +49,7 @@ void SpindleControl::on_gcode_received(void *argument)
                 struct tool_status tool;
                 bool tool_ok = PublicData::get_value( atc_handler_checksum, get_tool_status_checksum, &tool );
                 if (tool_ok) {
-                	tool_ok = (tool.active_tool > 0  && tool.active_tool < 256);
+                	tool_ok = (tool.active_tool > 0  && tool.active_tool < 1000);
                 }
             	// check if is tool -1 or tool 0
             	if (!tool_ok) {
