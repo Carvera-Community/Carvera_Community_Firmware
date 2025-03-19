@@ -147,6 +147,11 @@ void ATCHandler::fill_change_scripts(int new_tool, bool clear_z) {
 
 void ATCHandler::fill_drop_scripts(int old_tool) {
 	char buff[100];
+
+	if (!THEROBOT->is_homed_all_axes()) {
+		return;
+	};
+	
 	struct atc_tool *current_tool = &atc_tools[old_tool];
 	// set atc status
 	this->script_queue.push("M497.1");
@@ -180,6 +185,9 @@ void ATCHandler::fill_drop_scripts(int old_tool) {
 
 void ATCHandler::fill_pick_scripts(int new_tool, bool clear_z) {
 	char buff[100];
+	if (!THEROBOT->is_homed_all_axes()) {
+		return;
+	};
 	struct atc_tool *current_tool = &atc_tools[new_tool];
 	// set atc status
 	this->script_queue.push("M497.2");
@@ -217,7 +225,10 @@ void ATCHandler::fill_pick_scripts(int new_tool, bool clear_z) {
 
 void ATCHandler::fill_cali_scripts(bool is_probe, bool clear_z) {
 	char buff[100];
-	
+	if (!THEROBOT->is_homed_all_axes()) {
+		return;
+	};
+
 	if(is_probe){
 	// open probe laser
 		this->script_queue.push("M494.1");
@@ -379,7 +390,9 @@ void ATCHandler::fill_zprobe_scripts(float x_pos, float y_pos, float x_offset, f
 
 void ATCHandler::fill_zprobe_abs_scripts() {
 	char buff[100];
-
+	if (!THEROBOT->is_homed_all_axes()) {
+		return;
+	};
 	// set atc status
 	this->script_queue.push("M497.5");	
 	
@@ -510,7 +523,9 @@ void ATCHandler::fill_autolevel_scripts(float x_pos, float y_pos,
 		float x_size, float y_size, int x_grids, int y_grids, float height)
 {
 	char buff[100];
-
+	if (!THEROBOT->is_homed_all_axes()) {
+		return;
+	};
 	// set atc status
 	this->script_queue.push("M497.6");
 	
@@ -1250,6 +1265,12 @@ void ATCHandler::on_gcode_received(void *argument)
 
 			}
 		} else if (gcode->m == 495) {
+			if (!THEROBOT->is_homed_all_axes()) {
+				this->atc_status = NONE;
+        		this->clear_script_queue();
+        		this->set_inner_playing(false);
+				return;
+			};
 			if (gcode->subcode == 3) {
 				float tool_dia = 3.175;
 				float probe_height = 9.0;
@@ -1456,7 +1477,14 @@ void ATCHandler::on_gcode_received(void *argument)
 				this->beep_tool_change(tool_to_change);
 
 			}
+		} else if ( gcode->m == 887 ) {
+			THEROBOT->override_homed_check(false);
+			THEKERNEL->streams->printf("Home Check Disabled\n");
+		} else if ( gcode->m == 888 ) {
+			THEROBOT->override_homed_check(true);
+			THEKERNEL->streams->printf("Home Check Enabled\n");
 		}
+
     } else if (gcode->has_g && gcode->g == 28 && gcode->subcode == 0) {
     	g28_triggered = true;
     }
