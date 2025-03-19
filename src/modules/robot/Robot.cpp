@@ -114,7 +114,8 @@
 // It takes care of cutting arcs into segments, same thing for line that are too long
 
 float ROUND_NEAR_HALF(float x) {
-	return roundf(x * 200.0) / 200.0;
+	//return roundf(x * 200.0) / 200.0;	2025.02.05
+	return x;
 }
 
 Robot::Robot()
