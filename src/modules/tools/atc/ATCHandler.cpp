@@ -113,7 +113,6 @@ ATCHandler::ATCHandler()
     }
 	max_manual_tool_number = 100000;
     g28_triggered = false;
-    blaserManual = false;
     goto_position = -1;
     position_x = 8888;
     position_y = 8888;
@@ -1346,7 +1345,7 @@ uint32_t ATCHandler::countdown_probe_laser(uint32_t dummy)
 		} 
 		else
 		{
-			this->probe_laser_last = 30;
+			this->probe_laser_last = 300;
 		}
 	}
     return 0;
@@ -2017,7 +2016,6 @@ void ATCHandler::on_gcode_received(void *argument)
 			{
 				// control probe laser
 				if (gcode->subcode == 0 ){
-					blaserManual = true;
 					// open probe laser
 					bool b = true;
 	            	PublicData::set_value( switch_checksum, detector_switch_checksum, state_checksum, &b );
@@ -2149,9 +2147,9 @@ void ATCHandler::on_gcode_received(void *argument)
 			            }
 			            if (gcode->has_letter('P')) {
 			            	gcode->stream->printf("goto x and y clearance first\r\n");
-			            	if(CARVERA_AIR == THEKERNEL->factory_set->MachineModel)
-    						{
-    							if (zprobe_abs) {
+			            	if(THEKERNEL->factory_set->FuncSetting & (1<<0) )
+			            	{
+			            		if (zprobe_abs) {
     								char buff[100];
     								// lift z to clearance position with fast speed
 									snprintf(buff, sizeof(buff), "G53 G0 Z%.3f", THEROBOT->from_millimeters(this->clearance_z));
@@ -2313,13 +2311,6 @@ void ATCHandler::on_main_loop(void *argument)
 			// waits for the queue to have enough room
 			THEKERNEL->call_event(ON_CONSOLE_LINE_RECEIVED, &message);
             return;
-        }
-        if(blaserManual == true)
-        {
-        	blaserManual = false;
-        	// close probe laser
-			bool b = false;
-        	PublicData::set_value( switch_checksum, detector_switch_checksum, state_checksum, &b );        		
         }
 
 		if (this->atc_status != AUTOMATION) {
