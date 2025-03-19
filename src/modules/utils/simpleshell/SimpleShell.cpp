@@ -75,7 +75,7 @@ extern "C" uint32_t  _sbrk(int size);
 // support upload file type definition
 #define FILETYPE	"lz"		//compressed by quicklz
 // version definition
-#define VERSION "1.0.2"
+#define VERSION "1.0.3Beta"
 
 // command lookup table
 const SimpleShell::ptentry_t SimpleShell::commands_table[] = {
@@ -1189,106 +1189,36 @@ void SimpleShell::model_command( string parameters, StreamOutput *stream )
 void SimpleShell::test_4th_command( string parameters, StreamOutput *stream )
 {	
 	bool btriggered = false;
-	bool bAlwaystrigger = true;
+	bool Nontriggered = false;
+	char data[2];
+	stream->printf("check_4th beginning......\n");
 	
-	GPIO *stepin, *dirpin, *enpin, *alarmin;
-	if(CARVERA == THEKERNEL->factory_set->MachineModel)
+	bool ok = PublicData::get_value(endstops_checksum, get_check_4th_checksum, 0, data);
+	if(ok)
 	{
-		stepin  = new GPIO(P1_18);
-		dirpin  = new GPIO(P1_20);
-		enpin   = new GPIO(P3_26);
-		alarmin = new GPIO(P0_21);
-	}
-	else
-	{
-		stepin  = new GPIO(P1_21);
-		dirpin  = new GPIO(P1_23);
-		enpin   = new GPIO(P1_30);
-		alarmin = new GPIO(P1_9);
-	}
-	stepin->output();
-	dirpin->output();
-	enpin->output();
-	alarmin->input();
-	
-	if(THEKERNEL->factory_set->FuncSetting & ((1<<0)|(1<<1)))
-	{
-		stream->printf("check_4th beginning......\n");
-		dirpin->write(1);
-		enpin->write(0);
-		
-		for(unsigned int i=0;i<380;i++)
-		{
-			for(unsigned int j=0; j<889; j++)
-			{
-				stepin->write(1);
-				safe_delay_us(2);
-				stepin->write(0);
-				safe_delay_us(2);
-				bool alarm = alarmin->get();
-				if(CARVERA == THEKERNEL->factory_set->MachineModel)
-					alarm = !alarm;
-				if(alarm)
-				{
-					btriggered = true;
-					break;
-				}
-				else
-				{
-					bAlwaystrigger = false;
-				}
-			}
-			if(btriggered)
-				break;
-		}
-		
-		if(btriggered)
-		{
-			dirpin->write(0);
-			
-			for(unsigned int i=0;i<380;i++)
-			{
-				for(unsigned int j=0; j<889; j++)
-				{
-					stepin->write(1);
-					safe_delay_us(2);
-					stepin->write(0);
-					safe_delay_us(2);
-					
-					bool alarm = alarmin->get();
-					if(CARVERA == THEKERNEL->factory_set->MachineModel)
-						alarm = !alarm;
-					if(alarm)
-					{
-						btriggered = true;
-					}
-					else
-					{
-						bAlwaystrigger = false;
-					}
-				}
-			}
-		}
-		
-		enpin->write(1);
-		
+		btriggered = data[0];
+		Nontriggered = data[1];
 		if( false == btriggered)
 		{
 			stream->printf("0: the 4th's Endstop hasn't been triggered yet.\n");
 		}
-		if( true == bAlwaystrigger)
+		if( false == Nontriggered)
 		{
 			stream->printf("1: the 4th's Endstop be always triggered.\n");
 		}
 					
 		stream->printf("check_4th end.\n");
 		
-		if( (false == btriggered) || (true == bAlwaystrigger))
+		if( (false == btriggered) || (false == Nontriggered))
 		{
             THEKERNEL->set_halt_reason(HOME_FAIL);
             THEKERNEL->call_event(ON_HALT, nullptr);
             THEROBOT->disable_segmentation= false;
         }
+	}
+	else
+	{
+		stream->printf("check_4th command failed\n");
 	}
 }
 
@@ -1477,7 +1407,7 @@ void SimpleShell::enable_4th_hd( string parameters, StreamOutput *stream)
 	    THEKERNEL->call_event(ON_CONSOLE_LINE_RECEIVED, &message2 );
 	    
 	    //rewrite delta_max_rate to sd
-	    snprintf(cmd, sizeof(cmd), "config-set sd delta_max_rate 2400");
+	    snprintf(cmd, sizeof(cmd), "config-set sd delta_max_rate 1800");
 	    stream->printf("%s\n", cmd);
 	    struct SerialMessage message3{&StreamOutput::NullStream, cmd, 0};
 	    THEKERNEL->call_event(ON_CONSOLE_LINE_RECEIVED, &message3 );
