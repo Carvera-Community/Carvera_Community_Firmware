@@ -461,8 +461,7 @@ void ZProbe::on_gcode_received(void *argument)
                 break;
 
             case 460:
-                if (gcode->subcode == 3) { //calibrate using anchor 2
-                    calibrate_probe_anchor(gcode);
+                if (gcode->subcode == 3) { //calibrate using anchor . Moved to atchandler for cleanliness
                 } else if (gcode->subcode == 2){//calibrate using boss
                     calibrate_probe_boss(gcode);
                 }else {
@@ -484,20 +483,6 @@ void ZProbe::on_gcode_received(void *argument)
                 break;
             case 465:
                 probe_axisangle(gcode);
-                break;
-            case 469:
-                if (gcode->subcode == 1){
-                    calibrate_anchor1(gcode);
-                }
-                else if (gcode->subcode == 2){
-                    calibrate_anchor2(gcode);
-                } else if(gcode->subcode == 3){
-                    calibrate_atc_positions(gcode);
-                } else if(gcode->subcode == 4){
-                    calibrate_a_axis_headstock(gcode);
-                } else {
-                    home_machine_with_pin(gcode);
-                }
                 break;
             case 466:
                 single_axis_probe_double_tap(gcode);
@@ -761,7 +746,7 @@ void ZProbe::on_get_public_data(void* argument)
     }
 }
 
-void ZProbe::probe_bore(Gcode *gcode) //G38.10
+void ZProbe::probe_bore(Gcode *gcode) //M461
 {
     THECONVEYOR->wait_for_idle();
     THEKERNEL->streams->printf("Probing Bore/Rectangular Pocket\n");
@@ -1037,7 +1022,7 @@ void ZProbe::probe_bore(Gcode *gcode) //G38.10
     
 }
 
-void ZProbe::probe_boss(Gcode *gcode, bool calibration) //M461
+void ZProbe::probe_boss(Gcode *gcode, bool calibration) //M462
 {
     THECONVEYOR->wait_for_idle();
     THEKERNEL->streams->printf("Probing Boss or Rectangular Block\n");
@@ -1441,7 +1426,7 @@ void ZProbe::probe_boss(Gcode *gcode, bool calibration) //M461
     }
 }
 
-void ZProbe::probe_insideCorner(Gcode *gcode) //M462
+void ZProbe::probe_insideCorner(Gcode *gcode) //M463
 {
     THECONVEYOR->wait_for_idle();
     THEKERNEL->streams->printf("Probing Inside Corner\n");
@@ -1662,7 +1647,7 @@ void ZProbe::probe_insideCorner(Gcode *gcode) //M462
     }
 }
 
-void ZProbe::probe_outsideCorner(Gcode *gcode) //M463
+void ZProbe::probe_outsideCorner(Gcode *gcode) //M464
 {
     THECONVEYOR->wait_for_idle();
     THEKERNEL->streams->printf("Probing Outside Corner\n");
@@ -1949,7 +1934,7 @@ void ZProbe::probe_outsideCorner(Gcode *gcode) //M463
     }
 }
 
-void ZProbe::probe_axisangle(Gcode *gcode) //M464
+void ZProbe::probe_axisangle(Gcode *gcode) //M465
 {
     THECONVEYOR->wait_for_idle();
     THEKERNEL->streams->printf("Probing 2 points to find an angle\n");
@@ -2290,7 +2275,7 @@ void ZProbe::probe_axisangle(Gcode *gcode) //M464
     }
 }
 
-void ZProbe::calibrate_probe_bore(Gcode *gcode) //M460
+void ZProbe::calibrate_probe_bore(Gcode *gcode) //M460.1
 {
     THECONVEYOR->wait_for_idle();
     THEKERNEL->streams->printf("Calibrating Probe With Bore\n");
@@ -2350,14 +2335,12 @@ void ZProbe::calibrate_probe_bore(Gcode *gcode) //M460
     }
 
     if (repeat < 1){
-        gcode->stream->printf("ALARM: Probe fail: repeat value cannot be less than 1\n");
-        THEKERNEL->call_event(ON_HALT, nullptr);
-        THEKERNEL->set_halt_reason(PROBE_FAIL);
-        return;
+        repeat = 1;
     }
 
     vector<float> probe_position_stack;
-    
+    THEKERNEL->probe_outputs[0] = 0;
+    THEKERNEL->probe_outputs[1] = 0;
 
     for(int i=0; i< repeat; i++) {
         std::sprintf(buff, "M461 X%.3f Y%.3f F%.3f D0 Q%3f K%.3f R%3f I%i", THEROBOT->from_millimeters(knownDiameter + 2), THEROBOT->from_millimeters(knownDiameter + 2), feed_rate,roation_angle,rapid_rate,retract_distance, probe_g38_subcode);
@@ -2383,11 +2366,11 @@ void ZProbe::calibrate_probe_bore(Gcode *gcode) //M460
     if (save_position){
         //TODO actually save the positon
     }else{
-        THEKERNEL->streams->printf("This value is temporary \n and will neeed to be saved to the config file with \n config-set sd zprobe.probe_tip_diameter # \n");
+        THEKERNEL->streams->printf("This value is temporary \n and will neeed to be saved to the config file with \n config-set sd zprobe.probe_tip_diameter %.3f \n", THEKERNEL->probe_tip_diameter);
     }
 }
 
-void ZProbe::calibrate_probe_boss(Gcode *gcode) //M460
+void ZProbe::calibrate_probe_boss(Gcode *gcode) //M460.2
 {
     THECONVEYOR->wait_for_idle();
     THEKERNEL->streams->printf("Calibrating Probe With Boss\n");
@@ -2397,7 +2380,6 @@ void ZProbe::calibrate_probe_boss(Gcode *gcode) //M460
     float roation_angle = 0;
     float side_depth = 2;
     float clearance_height = 2;
-    float rotation_offset_per_probe = 0;
     float extra_probe_distance = 4;
     int repeat = 1;
     float retract_distance = 1.5;
@@ -2466,33 +2448,39 @@ void ZProbe::calibrate_probe_boss(Gcode *gcode) //M460
     }
 
     if (repeat < 1){
-        gcode->stream->printf("ALARM: Probe fail: repeat value cannot be less than 1\n");
-        THEKERNEL->call_event(ON_HALT, nullptr);
-        THEKERNEL->set_halt_reason(PROBE_FAIL);
-        return;
+        repeat = 1;
     }
 
     vector<float> probe_position_stack;
     
+    THEKERNEL->probe_outputs[0] = 0;
+    THEKERNEL->probe_outputs[1] = 0;
 
     for(int i=0; i< repeat; i++) {
-        std::sprintf(buff, "M461 X%.3f Y%.3f F%.3f D0 Q%3f K%.3f R%3f I%i E%.3f C%.3f", THEROBOT->from_millimeters(knownDiameter + extra_probe_distance), THEROBOT->from_millimeters(knownDiameter + 2), feed_rate,roation_angle,rapid_rate,retract_distance, probe_g38_subcode, side_depth, clearance_height);
-        gcodeBuffer = new Gcode(buff, &StreamOutput::NullStream);
-        probe_bore(gcodeBuffer);
-        delete gcodeBuffer;
-        THECONVEYOR->wait_for_idle();
-        probe_position_stack.push_back(THEKERNEL->probe_outputs[0]);
-        probe_position_stack.push_back(THEKERNEL->probe_outputs[1]);
-        roation_angle += rotation_offset_per_probe;
+        if (gcode->has_letter('X')) {
+            std::sprintf(buff, "M462 X%.3f F%.3f D0 Q%3f K%.3f R%3f I%i E%.3f C%.3f", THEROBOT->from_millimeters(knownDiameter/2 + extra_probe_distance), feed_rate,roation_angle,rapid_rate,retract_distance, probe_g38_subcode, side_depth, clearance_height);
+            gcodeBuffer = new Gcode(buff, &StreamOutput::NullStream);
+            probe_boss(gcodeBuffer);
+            delete gcodeBuffer;
+            THECONVEYOR->wait_for_idle();
+            probe_position_stack.push_back(THEKERNEL->probe_outputs[0]);
+        } else{
+            std::sprintf(buff, "M462 Y%.3f F%.3f D0 Q%3f K%.3f R%3f I%i E%.3f C%.3f", THEROBOT->from_millimeters(knownDiameter/2 + extra_probe_distance), feed_rate,roation_angle,rapid_rate,retract_distance, probe_g38_subcode, side_depth, clearance_height);
+            gcodeBuffer = new Gcode(buff, &StreamOutput::NullStream);
+            probe_boss(gcodeBuffer);
+            delete gcodeBuffer;
+            THECONVEYOR->wait_for_idle();
+            probe_position_stack.push_back(THEKERNEL->probe_outputs[1]);
+        }
     }
     
     float sum = 0.0;
     for (const auto& pos : probe_position_stack) {
         sum += pos;
     }
-    float ave = sum / (repeat * 2);
+    float ave = sum / (repeat);
     
-    THEKERNEL->streams->printf("Average bore diameter: %.3f\n", ave);
+    THEKERNEL->streams->printf("Average boss distance: %.3f\n", ave);
     
     THEKERNEL->probe_tip_diameter = ave - knownDiameter;
     THEKERNEL->streams->printf("New Probe Tip Diameter is: %.3f\n", THEKERNEL->probe_tip_diameter);
@@ -2500,24 +2488,8 @@ void ZProbe::calibrate_probe_boss(Gcode *gcode) //M460
     if (save_position){
         //TODO actually save the positon
     }else{
-        THEKERNEL->streams->printf("This value is temporary \n and will neeed to be saved to the config file with \n config-set sd zprobe.probe_tip_diameter # \n");
+        THEKERNEL->streams->printf("This value is temporary \n and will neeed to be saved to the config file with \n config-set sd zprobe.probe_tip_diameter %.3f \n", THEKERNEL->probe_tip_diameter);
     }
-}
-
-void ZProbe::calibrate_probe_anchor(Gcode *gcode) //M460
-{
-    THECONVEYOR->wait_for_idle();
-    THEKERNEL->streams->printf("Calibrating Probe With Anchor 2\n");
-    //float anchor2_offset_x = THEKERNEL->config->value(CHECKSUM("coordinate"), CHECKSUM("anchor2_offset_x"))->by_default(90  )->as_number();
-	//float anchor2_offset_y = THEKERNEL->config->value(CHECKSUM("coordinate"), CHECKSUM("anchor2_offset_y"))->by_default(45.65F  )->as_number();
-    //float anchor_width = THEKERNEL->config->value(CHECKSUM("coordinate"), CHECKSUM("anchor_width"))->by_default(15  )->as_number();
-    //THEKERNEL->streams->printf("x: %.3f , y: %.3f , w: %.3f", anchor2_offset_x, anchor2_offset_y, anchor_width);
-    //coordinate.anchor2_offset_x
-    //coordinate.anchor2_offset_y
-    //coordinate.anchor_width
-    //goto machine position with G90 G53 G0 Z clearance, G90 G53 G0 X Y pos over anchor 2 (value from config + offset to get in right location)
-    //probe -z until hit top of anchor 2
-    //do caliibrate probe boss with known dimension of 15 (take value from config)
 }
 
 void ZProbe::single_axis_probe_double_tap(Gcode *gcode){
@@ -2698,35 +2670,4 @@ void ZProbe::single_axis_probe_double_tap(Gcode *gcode){
         }
     }
 
-}
-
-void ZProbe::calibrate_anchor1(Gcode *gcode){
-    //test is homed to prevent crashes
-    //move machine to clearance height
-    //move to xy position for probe (existing xy position or input values that override) + an offset in +X and +Y (default 10mm)
-    //probe down z until touch bed and retract
-    //corner probe -x, -y to find corner
-    //report
-    //if S value is used, update position in memory and try to set the config value. see if config-set works when sent from the machine.
-}
-
-void ZProbe::calibrate_anchor2(Gcode *gcode){
-
-}
-
-void ZProbe::calibrate_atc_positions(Gcode *gcode){
-    //use laser test to make sure all of the tool slots are empty
-}
-
-void ZProbe::calibrate_a_axis_headstock(Gcode *gcode){
-
-}
-
-void ZProbe::home_machine_with_pin(Gcode *gcode){
-    //test is homed
-    //move to clearance height
-    //move to xy position for reference pin, value in config
-    //probe -z to top of pin
-    //run boss probing routine with values in config
-    //compare center position to stored xy reference location in a way that the controller understands
 }

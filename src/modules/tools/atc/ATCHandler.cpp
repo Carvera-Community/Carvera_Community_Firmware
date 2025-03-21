@@ -73,6 +73,7 @@
 #define probe_height_mm_checksum	CHECKSUM("probe_height_mm")
 
 #define coordinate_checksum			CHECKSUM("coordinate")
+#define anchor_width_checksum		CHECKSUM("anchor_width")
 #define anchor1_x_checksum			CHECKSUM("anchor1_x")
 #define anchor1_y_checksum			CHECKSUM("anchor1_y")
 #define anchor2_offset_x_checksum	CHECKSUM("anchor2_offset_x")
@@ -80,6 +81,7 @@
 #define rotation_offset_x_checksum	CHECKSUM("rotation_offset_x")
 #define rotation_offset_y_checksum	CHECKSUM("rotation_offset_y")
 #define rotation_offset_z_checksum	CHECKSUM("rotation_offset_z")
+#define rotation_width_checksum		CHECKSUM("rotation_width")
 #define toolrack_offset_x_checksum	CHECKSUM("toolrack_offset_x")
 #define toolrack_offset_y_checksum	CHECKSUM("toolrack_offset_y")
 #define toolrack_z_checksum			CHECKSUM("toolrack_z")
@@ -124,6 +126,470 @@ void ATCHandler::clear_script_queue(){
 		this->script_queue.pop();
 	}
 }
+
+void ATCHandler::fill_calibrate_probe_anchor_scripts(bool invert_probe){
+	THEKERNEL->streams->printf("Calibrating Probe Tip With Anchor 2\n");
+	char buff[100];
+	if (!THEROBOT->is_homed_all_axes()){
+		return;
+	}
+
+	//print status
+	snprintf(buff, sizeof(buff), ";Confirm that 3 axis probe is in collet\nand anchor 2 is installed\nResume will continue program\n");
+	this->script_queue.push(buff);
+	
+	//pause
+	snprintf(buff, sizeof(buff), "M600.5");
+	this->script_queue.push(buff);
+
+
+	//move to clearance
+	snprintf(buff, sizeof(buff), "G90 G53 G0 Z%.3f", THEROBOT->from_millimeters(this->clearance_z));
+	this->script_queue.push(buff);
+
+	//move to anchor 2 probe position
+	snprintf(buff, sizeof(buff), "G91 G53 G0 X%.3f Y%.3f", this->anchor1_x + this->anchor2_offset_x - this->anchor_width/2, this->anchor1_y + this->anchor2_offset_y + 25);
+	this->script_queue.push(buff);
+	
+	//probe -z
+	if (!invert_probe){
+		snprintf(buff, sizeof(buff), "G38.3 Z-100 F450");
+		this->script_queue.push(buff);
+	} else{
+		snprintf(buff, sizeof(buff), "G38.5 Z-100 F450");
+		this->script_queue.push(buff);
+	}
+	snprintf(buff, sizeof(buff), "G91 G54 G0 Z3");
+	this->script_queue.push(buff);
+	
+	//execute calibration with specific values
+	
+	snprintf(buff, sizeof(buff), "M460.2 X%.3f E5 L2 I%i", this->anchor_width, invert_probe ? 1:0);
+	this->script_queue.push(buff);
+
+	snprintf(buff, sizeof(buff), "M462 X%.3f E5 I%i", this->anchor_width/2 + 3, invert_probe ? 1:0);
+	this->script_queue.push(buff);
+	
+}
+
+void ATCHandler::calibrate_set_value(Gcode *gcode)
+{
+	if (!gcode->has_letter('P')){
+		THEKERNEL->streams->printf("Not enough variables given to M469\n Abort\n");
+		return;
+	} else{
+		float final_x = 0;
+		float final_y = 0;
+		float final_z = 0;
+		switch ((int)gcode->get_value('P')){
+			case 0:
+				//home off pin
+				break;
+			case 1:
+				//calibrate anchor 1
+				if (!gcode->has_letter('X') && !gcode->has_letter('Y')){
+					THEKERNEL->streams->printf("Not enough variables given to M469\n Abort\n");
+					return;
+				}
+				THEKERNEL->streams->printf("Previous Anchor 1 X: %.3f\nPrevious Anchor 1 Y: %.3f\n", gcode->get_value('X'), gcode->get_value('Y'));
+				final_x = THEKERNEL->probe_outputs[3];
+				final_y = THEKERNEL->probe_outputs[4];
+				THEKERNEL->streams->printf("New Anchor 1 X: %.3f\nNew Anchor 1 Y: %.3f\n", final_x, final_y);
+				this->anchor1_x = final_x;
+				this->anchor1_y = final_y;
+				THEKERNEL->streams->printf("These values have been temporarily set. You can test the position with M496.3\nTo make them permanent run:\nconfig-set sd coordinate.anchor1_x %.3f\nconfig-set sd coordinate.anchor1_y %.3f\n", final_x, final_y);
+				break;
+				break;
+			case 2:
+				//calibrate anchor 2
+				if (!gcode->has_letter('X') && !gcode->has_letter('Y')){
+					THEKERNEL->streams->printf("Not enough variables given to M469\n Abort\n");
+					return;
+				}
+				THEKERNEL->streams->printf("Previous Anchor 2 X: %.3f\nPrevious Anchor 2 Y: %.3f\n", gcode->get_value('X'), gcode->get_value('Y'));
+				final_x = THEKERNEL->probe_outputs[3] - this->anchor1_x;
+				final_y = THEKERNEL->probe_outputs[4] - this->anchor1_y;
+				THEKERNEL->streams->printf("New Anchor 2 X: %.3f\nNew Anchor 2 Y: %.3f\n", final_x, final_y);
+				this->anchor2_offset_x = final_x;
+				this->anchor2_offset_y = final_y;
+				THEKERNEL->streams->printf("These values have been temporarily set. You can test the position with M496.4\nTo make them permanent run:\nconfig-set sd coordinate.anchor2_x %.3f\nconfig-set sd coordinate.anchor2_y %.3f\n you will need to check calibration on all other machine positions\n", final_x, final_y);
+				break;
+			case 3:
+				//calibrate atc positions - unable to complete due to lack of x axis travel
+			case 4:
+				//calibrate 4th axis headstock
+				if (!gcode->has_letter('Y')){
+					THEKERNEL->streams->printf("Not enough variables given to M469\n Abort\n");
+					return;
+				}
+				THEKERNEL->streams->printf("Previous 4th Headstock Y: %.3f\n", gcode->get_value('Y'));
+				final_y = THEKERNEL->probe_outputs[4] - this->anchor1_y;
+				THEKERNEL->streams->printf("New 4th Headstock Y: %.3f\n", final_y);
+				this->rotation_offset_y = final_y;
+				THEKERNEL->streams->printf("These values have been temporarily set. \nTo make them permanent run:\nconfig-set sd coordinate.rotation_offset_y %.3f\n", final_y);
+				break;
+			case 5:
+				//caibrate 4th axis height
+				//M469.6 A#120 B#119 C#118 Z%.3f P5
+				if (!gcode->has_letter('A') && !gcode->has_letter('B') && !gcode->has_letter('C') && !gcode->has_letter('D') && !gcode->has_letter('E') && !gcode->has_letter('Z') && !gcode->has_letter('R')){
+					THEKERNEL->streams->printf("Not enough variables given to M469\n Abort\n");
+					return;
+				}
+				THEKERNEL->streams->printf("Previous 4th Height: %.3f\n", gcode->get_value('Z'));
+
+				
+				final_y = -(gcode->get_value('B') + gcode->get_value('C') + gcode->get_value('D') + gcode->get_value('E'))/4 + gcode->get_value('A') + gcode->get_value('R')/2;
+				THEKERNEL->streams->printf("New 4th Height: %.3f\n", final_y);
+				//this->rotation_offset_z = final_y;
+				THEKERNEL->streams->printf("These values have been temporarily set. \nTo make them permanent run:\nconfig-set sd coordinate.rotation_offset_z %.3f\n", final_y);
+				break;
+			default:
+				return;
+				break;
+		}
+	}
+}
+
+void ATCHandler::calibrate_anchor1(Gcode *gcode) //M469.1
+{
+	THEKERNEL->streams->printf("Calibrating Anchor 1\n");
+	char buff[100];
+	if (!THEROBOT->is_homed_all_axes()){
+		return;
+	}
+
+	bool invert_probe = false;
+
+	if (gcode->has_letter('I')){
+		if (gcode->get_value('I')){
+			invert_probe = true;
+		}
+	}
+
+	//print status
+	snprintf(buff, sizeof(buff), ";Confirm that a 3 axis probe is in collet\nand anchor 1 is installed and clear\nResume will continue program\n");
+	this->script_queue.push(buff);
+	
+	//pause
+	snprintf(buff, sizeof(buff), "M600.5");
+	this->script_queue.push(buff);
+
+
+	//move to clearance
+	snprintf(buff, sizeof(buff), "G90 G53 G0 Z%.3f", THEROBOT->from_millimeters(this->clearance_z));
+	this->script_queue.push(buff);
+
+	//move to anchor 2 probe position
+	snprintf(buff, sizeof(buff), "G91 G53 G0 X%.3f Y%.3f", this->anchor1_x - 5, this->anchor1_y - 5);
+	this->script_queue.push(buff);
+	
+	//probe -z
+	if (!invert_probe){
+		snprintf(buff, sizeof(buff), "G38.3 Z-105 F450");
+		this->script_queue.push(buff);
+	} else{
+		snprintf(buff, sizeof(buff), "G38.5 Z-105 F450");
+		this->script_queue.push(buff);
+	}
+	snprintf(buff, sizeof(buff), "G91 G54 G0 Z3");
+	this->script_queue.push(buff);
+
+	snprintf(buff, sizeof(buff), "G91 G54 G0 X15 Y15");
+	this->script_queue.push(buff);
+	
+	//execute calibration with specific values
+	
+	snprintf(buff, sizeof(buff), "M463 X-20 Y-20 H8 C1 I%i", invert_probe ? 1:0);
+	this->script_queue.push(buff);
+
+	snprintf(buff, sizeof(buff), "M469.6 X%.3f Y%.3f P1", this->anchor1_x , this->anchor1_y);
+	this->script_queue.push(buff);
+}
+
+void ATCHandler::calibrate_anchor2(Gcode *gcode)//M469.2
+{
+	THEKERNEL->streams->printf("Calibrating Anchor 2\n");
+	char buff[100];
+	if (!THEROBOT->is_homed_all_axes()){
+		return;
+	}
+
+	bool invert_probe = false;
+
+	if (gcode->has_letter('I')){
+		if (gcode->get_value('I')){
+			invert_probe = true;
+		}
+	}
+
+	//print status
+	snprintf(buff, sizeof(buff), ";Confirm that a 3 axis probe is in collet\nand anchor 2 is installed and clear\n");
+	this->script_queue.push(buff);
+	snprintf(buff, sizeof(buff), ";Resume will continue program\n");
+	this->script_queue.push(buff);
+	
+	//pause
+	snprintf(buff, sizeof(buff), "M600.5");
+	this->script_queue.push(buff);
+
+
+	//move to clearance
+	snprintf(buff, sizeof(buff), "G90 G53 G0 Z%.3f", THEROBOT->from_millimeters(this->clearance_z));
+	this->script_queue.push(buff);
+
+	//move to anchor 2 probe position
+	snprintf(buff, sizeof(buff), "G91 G53 G0 X%.3f Y%.3f", this->anchor1_x + this->anchor2_offset_x - 7, this->anchor1_y + this->anchor2_offset_y - 7);
+	this->script_queue.push(buff);
+	
+	//probe -z
+	if (!invert_probe){
+		snprintf(buff, sizeof(buff), "G38.3 Z-105 F450");
+		this->script_queue.push(buff);
+	} else{
+		snprintf(buff, sizeof(buff), "G38.5 Z-105 F450");
+		this->script_queue.push(buff);
+	}
+	snprintf(buff, sizeof(buff), "G91 G54 G0 Z3");
+	this->script_queue.push(buff);
+
+	snprintf(buff, sizeof(buff), "G91 G54 G0 X20 Y20");
+	this->script_queue.push(buff);
+	
+	//execute calibration with specific values
+	
+	snprintf(buff, sizeof(buff), "M463 X-20 Y-20 H8 C1 I%i", invert_probe ? 1:0);
+	this->script_queue.push(buff);
+
+	snprintf(buff, sizeof(buff), "M469.6 X%.3f Y%.3f P2", this->anchor2_offset_x , this->anchor2_offset_y);
+	this->script_queue.push(buff);
+}
+
+void ATCHandler::calibrate_a_axis_headstock(Gcode *gcode)//M469.4
+{
+	float headstock_width = this->rotation_width/2 + 5;
+	float probe_height= this->rotation_offset_z - 6;
+
+	THEKERNEL->streams->printf("Calibrating A Axis Headstock Center\n");
+	char buff[100];
+	if (!THEROBOT->is_homed_all_axes()){
+		return;
+	}
+
+	bool invert_probe = false;
+
+	if (gcode->has_letter('I')){
+		if (gcode->get_value('I')){
+			invert_probe = true;
+		}
+	}
+	if (gcode->has_letter('Y')){
+		headstock_width = gcode->get_value('Y')/2+5;
+	}
+	if (gcode->has_letter('E')){
+		probe_height = gcode->get_value('E');
+	}
+
+	//print status
+	snprintf(buff, sizeof(buff), ";Confirm that a 3 axis probe is in collet\nand the 4th axis is installed and clear\nResume will continue program\n");
+	this->script_queue.push(buff);
+	
+	//pause
+	snprintf(buff, sizeof(buff), "M600.5");
+	this->script_queue.push(buff);
+
+
+	//move to clearance
+	snprintf(buff, sizeof(buff), "G90 G53 G0 Z%.3f", THEROBOT->from_millimeters(this->clearance_z));
+	this->script_queue.push(buff);
+
+	//move to probe position
+	snprintf(buff, sizeof(buff), "G91 G53 G0 X%.3f", this->anchor1_x + this->rotation_offset_x);
+	this->script_queue.push(buff);
+	snprintf(buff, sizeof(buff), "G91 G53 G0 Y%.3f", this->anchor1_y + this->rotation_offset_y);
+	this->script_queue.push(buff);
+	
+	//probe -z
+	if (!invert_probe){
+		snprintf(buff, sizeof(buff), "G38.3 Z-105 F450");
+		this->script_queue.push(buff);
+	} else{
+		snprintf(buff, sizeof(buff), "G38.5 Z-105 F450");
+		this->script_queue.push(buff);
+	}
+	snprintf(buff, sizeof(buff), "G91 G54 G0 Z3");
+	this->script_queue.push(buff);
+	
+	//execute calibration with specific values
+	snprintf(buff, sizeof(buff), "M462 Y%.3f E%.3f I%i", headstock_width , probe_height, invert_probe ? 1:0);
+	this->script_queue.push(buff);
+
+	snprintf(buff, sizeof(buff), "M469.6 Y%.3f P4" , this->rotation_offset_y);
+	this->script_queue.push(buff);
+	
+}
+
+void ATCHandler::calibrate_a_axis_height(Gcode *gcode) //M469.5
+{
+	float probe_height= this->rotation_offset_z;
+	float x_axis_offset = 60;
+	float pin_diameter = 6;
+
+	THEKERNEL->streams->printf("Calibrating A Axis Center Height\n");
+	char buff[100];
+	if (!THEROBOT->is_homed_all_axes()){
+		return;
+	}
+
+	bool invert_probe = false;
+
+	if (gcode->has_letter('I')){
+		if (gcode->get_value('I')){
+			invert_probe = true;
+		}
+	}
+	if (gcode->has_letter('X')){
+		x_axis_offset = gcode->get_value('X');
+	}
+	if (gcode->has_letter('E')){
+		probe_height = gcode->get_value('E');
+	}
+	if (gcode->has_letter('R')){
+		pin_diameter = gcode->get_value('R');
+	}
+
+	//print status
+	snprintf(buff, sizeof(buff), ";Confirm that a 3 axis probe is in collet\nand the 4th axis is installed with a pin and clear\n");
+	this->script_queue.push(buff);
+	snprintf(buff, sizeof(buff), ";This code uses variables #116-120\nResume will continue program\n");
+	this->script_queue.push(buff);
+	
+	//pause
+	snprintf(buff, sizeof(buff), "M600.5");
+	this->script_queue.push(buff);
+
+
+	//move to clearance
+	snprintf(buff, sizeof(buff), "G90 G53 G0 Z%.3f", THEROBOT->from_millimeters(this->clearance_z));
+	this->script_queue.push(buff);
+
+	//move to probe position
+	snprintf(buff, sizeof(buff), "G91 G53 G0 X%.3f", this->anchor1_x + this->rotation_offset_x);
+	this->script_queue.push(buff);
+	snprintf(buff, sizeof(buff), "G91 G53 G0 Y%.3f", this->anchor1_y + this->rotation_offset_y);
+	this->script_queue.push(buff);
+	
+	//probe -z
+	if (!invert_probe){
+		snprintf(buff, sizeof(buff), "G38.3 Z-105 F450");
+		this->script_queue.push(buff);
+		snprintf(buff, sizeof(buff), "#120 = #5023");
+		this->script_queue.push(buff);
+	} else{
+		snprintf(buff, sizeof(buff), "G38.5 Z-105 F450");
+		this->script_queue.push(buff);
+		snprintf(buff, sizeof(buff), "#120 = #5023");
+		this->script_queue.push(buff);
+	}
+	//move to clearance
+	snprintf(buff, sizeof(buff), "G90 G53 G0 Z%.3f", THEROBOT->from_millimeters(this->clearance_z));
+	this->script_queue.push(buff);
+
+	snprintf(buff, sizeof(buff), "G91 G53 G0 X%.3f", this->anchor1_x + this->rotation_offset_x + x_axis_offset);
+	this->script_queue.push(buff);
+	snprintf(buff, sizeof(buff), "G91 G53 G0 Y%.3f", this->anchor1_y + this->rotation_offset_y);
+	this->script_queue.push(buff);
+	
+	//probe -z
+	if (!invert_probe){
+		snprintf(buff, sizeof(buff), "G38.3 Z-105 F450");
+		this->script_queue.push(buff);
+		snprintf(buff, sizeof(buff), "G91 G0 Z3");
+		this->script_queue.push(buff);
+		snprintf(buff, sizeof(buff), "G38.3 Z-4 F150");
+		this->script_queue.push(buff);
+		snprintf(buff, sizeof(buff), "#119 = #5023");
+		this->script_queue.push(buff);
+	} else{
+		snprintf(buff, sizeof(buff), "G38.5 Z-105 F450");
+		this->script_queue.push(buff);
+		snprintf(buff, sizeof(buff), "G91 G0 Z3");
+		this->script_queue.push(buff);
+		snprintf(buff, sizeof(buff), "G38.5 Z-4 F150");
+		this->script_queue.push(buff);
+		snprintf(buff, sizeof(buff), "#119 = #5023");
+		this->script_queue.push(buff);
+	}
+	snprintf(buff, sizeof(buff), "G91 G0 Z3");
+	this->script_queue.push(buff);
+	snprintf(buff, sizeof(buff), "G91 G0 A90");
+	this->script_queue.push(buff);
+
+	if (!invert_probe){
+		snprintf(buff, sizeof(buff), "G38.3 Z-4 F150");
+		this->script_queue.push(buff);
+		snprintf(buff, sizeof(buff), "#118 = #5023");
+		this->script_queue.push(buff);
+	} else{
+		snprintf(buff, sizeof(buff), "G38.5 Z-4 F150");
+		this->script_queue.push(buff);
+		snprintf(buff, sizeof(buff), "#118 = #5023");
+		this->script_queue.push(buff);
+	}
+	snprintf(buff, sizeof(buff), "G91 G0 Z3");
+	this->script_queue.push(buff);
+	snprintf(buff, sizeof(buff), "G91 G0 A90");
+	this->script_queue.push(buff);
+
+	if (!invert_probe){
+		snprintf(buff, sizeof(buff), "G38.3 Z-4 F150");
+		this->script_queue.push(buff);
+		snprintf(buff, sizeof(buff), "#117 = #5023");
+		this->script_queue.push(buff);
+	} else{
+		snprintf(buff, sizeof(buff), "G38.5 Z-4 F150");
+		this->script_queue.push(buff);
+		snprintf(buff, sizeof(buff), "#117 = #5023");
+		this->script_queue.push(buff);
+	}
+	snprintf(buff, sizeof(buff), "G91 G0 Z3");
+	this->script_queue.push(buff);
+	snprintf(buff, sizeof(buff), "G91 G0 A90");
+	this->script_queue.push(buff);
+
+	if (!invert_probe){
+		snprintf(buff, sizeof(buff), "G38.3 Z-4 F150");
+		this->script_queue.push(buff);
+		snprintf(buff, sizeof(buff), "#116 = #5023");
+		this->script_queue.push(buff);
+	} else{
+		snprintf(buff, sizeof(buff), "G38.5 Z-4 F150");
+		this->script_queue.push(buff);
+		snprintf(buff, sizeof(buff), "#116 = #5023");
+		this->script_queue.push(buff);
+	}
+	//move to clearance
+	snprintf(buff, sizeof(buff), "G90 G53 G0 Z%.3f", THEROBOT->from_millimeters(this->clearance_z));
+	this->script_queue.push(buff);
+
+
+
+	
+	//execute calibration with specific values
+	snprintf(buff, sizeof(buff), "M469.6 A#120 B#119 C#118 D#117 E#116 R%.3f Z%.3f P5" , pin_diameter, this->rotation_offset_z);
+	this->script_queue.push(buff);
+}
+
+void ATCHandler::home_machine_with_pin(Gcode *gcode)//M469
+{
+	//test is homed
+    //move to clearance height
+    //move to xy position for reference pin, value in config
+    //probe -z to top of pin
+    //run boss probing routine with values in config
+    //compare center position to stored xy reference location in a way that the controller understands
+}
+
+
 
 void ATCHandler::fill_change_scripts(int new_tool, bool clear_z) {
 	char buff[100];
@@ -707,7 +1173,8 @@ void ATCHandler::on_config_reload(void *argument)
 	this->probe_slow_rate = THEKERNEL->config->value(atc_checksum, probe_checksum, slow_rate_mm_m_checksum)->by_default(60   )->as_number();
 	this->probe_retract_mm = THEKERNEL->config->value(atc_checksum, probe_checksum, retract_mm_checksum)->by_default(2   )->as_number();
 	this->probe_height_mm = THEKERNEL->config->value(atc_checksum, probe_checksum, probe_height_mm_checksum)->by_default(0   )->as_number();
-
+	
+	this->anchor_width = THEKERNEL->config->value(coordinate_checksum, anchor_width_checksum)->by_default(15  )->as_number();
 	this->anchor1_x = THEKERNEL->config->value(coordinate_checksum, anchor1_x_checksum)->by_default(-359  )->as_number();
 	this->anchor1_y = THEKERNEL->config->value(coordinate_checksum, anchor1_y_checksum)->by_default(-234  )->as_number();
 	this->anchor2_offset_x = THEKERNEL->config->value(coordinate_checksum, anchor2_offset_x_checksum)->by_default(90  )->as_number();
@@ -780,6 +1247,7 @@ void ATCHandler::on_config_reload(void *argument)
 		this->clearance_y = THEKERNEL->config->value(coordinate_checksum, clearance_y_checksum)->by_default(-21  )->as_number();
 		this->clearance_z = THEKERNEL->config->value(coordinate_checksum, clearance_z_checksum)->by_default(-5  )->as_number();
 	}
+	this->rotation_width = THEKERNEL->config->value(coordinate_checksum, rotation_width_checksum)->by_default(45  )->as_number();
 }
 
 void ATCHandler::on_halt(void* argument)
@@ -1225,6 +1693,55 @@ void ATCHandler::on_gcode_received(void *argument)
 					this->fill_cali_scripts(new_tool == 0, true);
 				}
 	        }
+		} else if (gcode->m == 460){
+			
+			if (gcode->subcode == 3) {
+				bool invert_probe = false;
+				if (gcode->has_letter('I')) {
+					if (gcode->get_value('I') > 0 ){
+						invert_probe = true;
+					}
+				}
+				set_inner_playing(true);
+				atc_status = AUTOMATION;
+				this->clear_script_queue();
+				this->fill_calibrate_probe_anchor_scripts(invert_probe);
+			}
+		} else if (gcode->m == 469) {
+			if (gcode->subcode == 1){
+				set_inner_playing(true);
+				atc_status = AUTOMATION;
+				this->clear_script_queue();
+				calibrate_anchor1(gcode);
+			}
+			else if (gcode->subcode == 2){
+				set_inner_playing(true);
+				atc_status = AUTOMATION;
+				this->clear_script_queue();
+				calibrate_anchor2(gcode);
+			} else if(gcode->subcode == 3){
+				return;
+			} else if(gcode->subcode == 4){
+				set_inner_playing(true);
+				atc_status = AUTOMATION;
+				this->clear_script_queue();
+				calibrate_a_axis_headstock(gcode);
+			} else if(gcode->subcode ==5){
+				set_inner_playing(true);
+				atc_status = AUTOMATION;
+				this->clear_script_queue();
+				calibrate_a_axis_height(gcode);
+			} else if(gcode->subcode == 6){
+				set_inner_playing(true);
+				atc_status = AUTOMATION;
+				this->clear_script_queue();
+				calibrate_set_value(gcode);
+			} else {
+				set_inner_playing(true);
+				atc_status = AUTOMATION;
+				this->clear_script_queue();
+				home_machine_with_pin(gcode);
+			}
 		} else if (gcode->m == 490)  {
 			if(THEKERNEL->factory_set->FuncSetting & (1<<2))	//ATC 
 			{	            
