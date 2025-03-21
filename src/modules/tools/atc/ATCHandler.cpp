@@ -111,7 +111,7 @@ ATCHandler::ATCHandler()
     {
     	tool_number = 6;
     }
-	max_manual_tool_number = 99;
+	max_manual_tool_number = 100000;
     g28_triggered = false;
     blaserManual = false;
     goto_position = -1;
