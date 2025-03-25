@@ -48,6 +48,12 @@ public:
 private:
     void config_load();
     bool probe_XYZ(Gcode *gcode);
+    void rotate_x(float x_axis_distance, float *x_x, float *x_y, float rotation_angle);
+    void rotate_y(float y_axis_distance, float *y_x, float *y_y, float rotation_angle);
+    void probe_x_sequence(float x_axis_distance, float rotation_angle, float retract_distance, float *x_out_x, float *x_out_y, int probe_g38_subcode, float feed_rate, float slowZprobeRate);
+    void probe_y_sequence(float y_axis_distance, float rotation_angle, float retract_distance, float *y_out_x, float *y_out_y, int probe_g38_subcode, float feed_rate, float slowZprobeRate);
+    int xy_probe_move_no_hit_alarm(int probe_g38_subcode, float x, float y, float feed_rate);
+    void z_probe_move_with_retract(int probe_g38_subcode, float z, float clearance_height, float feed_rate);
     void probe_bore(Gcode *gcode);
     void probe_boss(Gcode *gcode , bool calibration = false);
     void probe_insideCorner(Gcode *gcode);
