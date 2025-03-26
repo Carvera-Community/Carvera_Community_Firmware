@@ -89,11 +89,7 @@ private:
     void config_load();
     bool probe_XYZ(Gcode *gcode);
     void rotate(int axis, float axis_distance, float *y_x, float *y_y, float rotation_angle);
-    void rotate_x(float x_axis_distance, float *x_x, float *x_y, float rotation_angle);
-    void rotate_y(float y_axis_distance, float *y_x, float *y_y, float rotation_angle);
     void fast_slow_probe_sequence(int direction, int axis, probe_parameters param, xy_output_coordinates *out_coords);
-    void probe_x_sequence(int direction, probe_parameters param, xy_output_coordinates *out_coords);
-    void probe_y_sequence(int direction, probe_parameters param, xy_output_coordinates *out_coords);
     int xy_probe_move_alarm_when_hit(int direction, int probe_g38_subcode, float x, float y, float feed_rate);
     void z_probe_move_with_retract(int probe_g38_subcode, float z, float clearance_height, float feed_rate);
     void parse_parameters(Gcode *gcode, probe_parameters *param);

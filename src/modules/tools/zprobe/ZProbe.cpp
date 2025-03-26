@@ -760,7 +760,7 @@ void ZProbe::on_get_public_data(void* argument)
 }
 
 void ZProbe::rotate(int axis, float axis_distance, float *x, float *y, float rotation_angle){
-    if (axis = 1){
+    if (axis == 1){
         rotation_angle = rotation_angle + 90;
     }
     float x_component = cos(rotation_angle*pi/180);
@@ -782,14 +782,14 @@ void ZProbe::fast_slow_probe_sequence(int direction, int axis, probe_parameters 
     float y;
     float retractx;
     float retracty;
-    float axis_distance;
+    float axis_distance = 0;
 
     Gcode *gcodeBuffer;
 
     // make sure the direction is correct for the function call
-    if (axis = 0){
+    if (axis == 0){
         axis_distance = direction * param.x_axis_distance;
-    }else if(axis = 1){
+    }else if(axis == 1){
         axis_distance = direction * param.y_axis_distance;
     }
     
@@ -828,7 +828,7 @@ void ZProbe::fast_slow_probe_sequence(int direction, int axis, probe_parameters 
     if(THEROBOT->compensationTransform) THEROBOT->compensationTransform(mpos, true, true); // get inverse compensation transform
     
     // if probing x positive then the output goes to the positive out and vice versa
-    if (axis = 0){
+    if (axis == 0){
         if (direction > 0){
             out_coords->x_positive_x_out= old_mpos[0];
             out_coords->x_positive_y_out = old_mpos[1];
@@ -836,7 +836,7 @@ void ZProbe::fast_slow_probe_sequence(int direction, int axis, probe_parameters 
             out_coords->x_negative_x_out= old_mpos[0];
             out_coords->x_negative_y_out = old_mpos[1];
         }
-    }else if (axis = 1){
+    }else if (axis == 1){
         if (direction > 0){
             out_coords->y_positive_x_out= old_mpos[0];
             out_coords->y_positive_y_out = old_mpos[1];
@@ -1005,7 +1005,7 @@ void ZProbe::probe_bore(Gcode *gcode) //M461
 
             //THEKERNEL->streams->printf("X: %.3f Y: %.3f\n", out_coords.x_positive_x_out, out_coords.x_positive_y_out);
             //move back to the center position
-            coordinated_move(out_coords.origin_x, out_coords.origin.y, NAN, param.rapid_rate);
+            coordinated_move(out_coords.origin_x, out_coords.origin_y, NAN, param.rapid_rate);
 
             // probe in negative x direction
             fast_slow_probe_sequence(NEG, X_AXIS, param, &out_coords);
@@ -1013,7 +1013,7 @@ void ZProbe::probe_bore(Gcode *gcode) //M461
             //THEKERNEL->streams->printf("X: %.3f Y: %.3f\n", out_coords.x_negative_x_out, out_coords.x_negative_y_out);
             //calculate center of bore (will only be centered in x)
             out_coords.origin_x = (out_coords.x_positive_x_out + out_coords.x_negative_x_out)/2;
-            out_coords.origin_<x> = (out_coords.x_positive_y_out + out_coords.x_negative_y_out)/2;
+            out_coords.origin_y = (out_coords.x_positive_y_out + out_coords.x_negative_y_out)/2;
             //goto current center position
             coordinated_move(out_coords.origin_x, out_coords.origin_y, NAN, param.rapid_rate);
             THECONVEYOR->wait_for_idle();
