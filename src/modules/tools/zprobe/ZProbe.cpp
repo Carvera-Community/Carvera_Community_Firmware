@@ -772,7 +772,7 @@ void ZProbe::rotate(int axis, float axis_distance, float *x, float *y, float rot
     return;
 }
 
-void ZProbe::fast_slow_probe_sequence(int direction, int axis, probe_parameters param, xy_output_coordinates *out_coords){
+void ZProbe::fast_slow_probe_sequence(int axis, int direction, probe_parameters param, xy_output_coordinates *out_coords){
     float moveBuffer[3];
     char buff[100];
     float mpos[3];
@@ -1001,14 +1001,14 @@ void ZProbe::probe_bore(Gcode *gcode) //M461
 	for(int i=0; i< param.repeat; i++) {
         if (gcode->has_letter('X')) {
             // probe in positive x direction
-            fast_slow_probe_sequence(POS, X_AXIS, param, &out_coords);
+            fast_slow_probe_sequence(X_AXIS, POS, param, &out_coords);
 
             //THEKERNEL->streams->printf("X: %.3f Y: %.3f\n", out_coords.x_positive_x_out, out_coords.x_positive_y_out);
             //move back to the center position
             coordinated_move(out_coords.origin_x, out_coords.origin_y, NAN, param.rapid_rate);
 
             // probe in negative x direction
-            fast_slow_probe_sequence(NEG, X_AXIS, param, &out_coords);
+            fast_slow_probe_sequence(X_AXIS, NEG, param, &out_coords);
 
             //THEKERNEL->streams->printf("X: %.3f Y: %.3f\n", out_coords.x_negative_x_out, out_coords.x_negative_y_out);
             //calculate center of bore (will only be centered in x)
@@ -1028,7 +1028,7 @@ void ZProbe::probe_bore(Gcode *gcode) //M461
 
         if (gcode->has_letter('Y')) {
             // probe in positive < direction
-            fast_slow_probe_sequence(POS, Y_AXIS, param, &out_coords);
+            fast_slow_probe_sequence(Y_AXIS, POS, param, &out_coords);
 
             //THEKERNEL->streams->printf("X: %.3f Y: %.3f\n", out_coords.y_positive_x_out, out_coordsy_positive_y_out);
             //goto current center position
@@ -1036,7 +1036,7 @@ void ZProbe::probe_bore(Gcode *gcode) //M461
             THECONVEYOR->wait_for_idle();
             
             // probe in negative y direction
-            fast_slow_probe_sequence(NEG, Y_AXIS, param, &out_coords);
+            fast_slow_probe_sequence(Y_AXIS, NEG, param, &out_coords);
             
             //THEKERNEL->streams->printf("X: %.3f Y: %.3f\n", out_coords.x_negative_x_out, out_coords.x_negative_y_out);
             //calculate center of bore (will only be centered in x)
@@ -1160,7 +1160,7 @@ void ZProbe::probe_boss(Gcode *gcode, bool calibration) //M462
             z_probe_move_with_retract(param.probe_g38_subcode, -(param.side_depth + param.clearance_height), 1.0, param.feed_rate);
 
             // probe in positive x direction
-            fast_slow_probe_sequence(X_AXIS, POS, param, &out_coords);
+            fast_slow_probe_sequence(POS, X_AXIS, param, &out_coords);
 
             //THEKERNEL->streams->printf("X: %.3f Y: %.3f\n", out_coords.x_positive_x_out, out_coords.x_positive_y_out);
             //calculate center of bore (will only be centered in x)
