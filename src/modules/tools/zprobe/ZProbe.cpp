@@ -489,7 +489,7 @@ void ZProbe::on_gcode_received(void *argument)
                 probe_boss(gcode);
                 break;
             case 463:
-                //probe_insideCorner(gcode);
+                probe_insideCorner(gcode);
                 break;
             case 464:
                 probe_outsideCorner(gcode);
@@ -1160,7 +1160,7 @@ void ZProbe::probe_boss(Gcode *gcode, bool calibration) //M462
             z_probe_move_with_retract(param.probe_g38_subcode, -(param.side_depth + param.clearance_height), 1.0, param.feed_rate);
 
             // probe in positive x direction
-            fast_slow_probe_sequence(POS, X_AXIS, param, &out_coords);
+            fast_slow_probe_sequence(X_AXIS, POS, param, &out_coords);
 
             //THEKERNEL->streams->printf("X: %.3f Y: %.3f\n", out_coords.x_positive_x_out, out_coords.x_positive_y_out);
             //calculate center of bore (will only be centered in x)
