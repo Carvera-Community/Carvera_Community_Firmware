@@ -22,6 +22,46 @@ class Gcode;
 class StreamOutput;
 class LevelingStrategy;
 
+struct probe_parameters{
+    float x_axis_distance;
+    float y_axis_distance;
+    float x_rotated_x;
+    float x_rotated_y;
+    float y_rotated_x;
+    float y_rotated_y;
+    float rotation_angle;
+    float tool_dia;
+    float half_tool_dia_rotated_x_x;
+    float half_tool_dia_rotated_x_y;
+    float half_tool_dia_rotated_y_x;
+    float half_tool_dia_rotated_y_y;
+    float probe_height;
+    float side_depth;
+    float feed_rate;
+    float rapid_rate;
+    float slowZprobeRate;
+    float retract_distance;
+    float clearance_height;
+    float clearance_world_pos;
+    int repeat;
+    int probe_g38_subcode;
+    bool save_position;
+    bool invert_probe; 
+};
+
+struct xy_output_coordinates{
+    float x_positive_x_out;
+    float x_positive_y_out;
+    float x_negative_x_out;
+    float x_negative_y_out;
+    float y_positive_x_out;
+    float y_positive_y_out;
+    float y_negative_x_out;
+    float y_negative_y_out;
+    float origin_x;
+    float origin_y;
+};
+
 class ZProbe: public Module
 {
 
@@ -48,12 +88,15 @@ public:
 private:
     void config_load();
     bool probe_XYZ(Gcode *gcode);
+    void rotate(int axis, float axis_distance, float *y_x, float *y_y, float rotation_angle);
     void rotate_x(float x_axis_distance, float *x_x, float *x_y, float rotation_angle);
     void rotate_y(float y_axis_distance, float *y_x, float *y_y, float rotation_angle);
-    void probe_x_sequence(float x_axis_distance, float rotation_angle, float retract_distance, float *x_out_x, float *x_out_y, int probe_g38_subcode, float feed_rate, float slowZprobeRate);
-    void probe_y_sequence(float y_axis_distance, float rotation_angle, float retract_distance, float *y_out_x, float *y_out_y, int probe_g38_subcode, float feed_rate, float slowZprobeRate);
-    int xy_probe_move_no_hit_alarm(int probe_g38_subcode, float x, float y, float feed_rate);
+    void fast_slow_probe_sequence(int direction, int axis, probe_parameters param, xy_output_coordinates *out_coords);
+    void probe_x_sequence(int direction, probe_parameters param, xy_output_coordinates *out_coords);
+    void probe_y_sequence(int direction, probe_parameters param, xy_output_coordinates *out_coords);
+    int xy_probe_move_alarm_when_hit(int direction, int probe_g38_subcode, float x, float y, float feed_rate);
     void z_probe_move_with_retract(int probe_g38_subcode, float z, float clearance_height, float feed_rate);
+    void parse_parameters(Gcode *gcode, probe_parameters *param);
     void probe_bore(Gcode *gcode);
     void probe_boss(Gcode *gcode , bool calibration = false);
     void probe_insideCorner(Gcode *gcode);
