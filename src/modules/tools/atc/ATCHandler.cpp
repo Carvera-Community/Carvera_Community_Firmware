@@ -1332,7 +1332,7 @@ uint32_t ATCHandler::countdown_probe_laser(uint32_t dummy)
 	}
 	else 	//Manual Tool Change
 	{
-		if (THEKERNEL->is_probeLaserOn() /*&& !THEKERNEL->is_forceProbeLaserOn()*/) 
+		if (THEKERNEL->is_probeLaserOn()) 
 		{
 			if (this->probe_laser_last > 0) 
 			{
