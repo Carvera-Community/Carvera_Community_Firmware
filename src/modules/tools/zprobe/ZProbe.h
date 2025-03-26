@@ -43,6 +43,8 @@ struct probe_parameters{
     float retract_distance;
     float clearance_height;
     float clearance_world_pos;
+    float visualize_path_distance;
+    float rotation_offset_per_probe;
     int repeat;
     int probe_g38_subcode;
     bool save_position;

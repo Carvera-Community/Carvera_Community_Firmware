@@ -173,8 +173,6 @@ class Kernel {
         void set_zprobing(bool f) { zprobing = f; }
         bool is_zprobing() const { return zprobing; }
         
-        void set_forceProbeLaserOn(bool f) { forceProbeLaserOn = f; }
-        bool is_forceProbeLaserOn() { return forceProbeLaserOn; }
         void set_probeLaser(bool f) { probeLaserOn = f; }
         bool is_probeLaserOn() const { return probeLaserOn; }
 
@@ -262,7 +260,6 @@ class Kernel {
             bool aborted: 1;
             bool zprobing:1;
             bool probeLaserOn:1;
-            bool forceProbeLaserOn:1;
             volatile bool cachewait:1;
         };
         int iic_page_write(unsigned char u8PageNum, unsigned char u8len, unsigned char *pu8Array);

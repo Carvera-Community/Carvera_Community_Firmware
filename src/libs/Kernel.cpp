@@ -85,7 +85,6 @@ Kernel::Kernel()
     atc_state = 0;
     zprobing = false;
     probeLaserOn = false;
-    forceProbeLaserOn = false;
     probe_addr = 0;
     checkled = false;
     spindleon = false;
