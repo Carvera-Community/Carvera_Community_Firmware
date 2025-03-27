@@ -1,6 +1,14 @@
 Notice: 
 To let the Carvera work perfectly, please make sure both your controller software and firmware are up to date. For firmware, download the new firmware first, then use the 'update' function to upgrade the firmware, and reset the machine after the update is complete.
 
+[1.0.3]
+1. Bug fixing: When the distance between the start and end points of an arc is less than 0.00025, the actual machining process results in a full circle instead of the intended arc.
+2. Bug fixing: Resolved the issue where Carvera AIR triggers a manual alarm when the tool number exceeds 255.
+3. Bug fixing: Addressed the issue where the Carvera AIR's lighting does not turn off during sleep mode.
+4. Optimizing: Enhanced the check_4th command.
+5. Optimizing: Improved the return path for Z-probe detection when configuring the hd 4th axis on Carvera.
+6. Optimizing: Added a prompt that appears when performing tool calibration, tool change, or Z-probe if the machine has not been homed: "Machine has not been homed, Please home first!"
+
 [1.0.2]
 1. Carvera Support  the new 4th Axis Module (Harmonic Drive Version).
 2. Bug fixing: Fix the command to query the MAC address of the machine.
