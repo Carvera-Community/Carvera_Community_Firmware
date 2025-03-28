@@ -175,7 +175,7 @@ void ZProbe::config_load()
 
 uint32_t ZProbe::read_probe(uint32_t dummy)
 {
-    if (CARVERA_AIR == THEKERNEL->factory_set->MachineModel && !THEKERNEL->is_probeLaserOn() && (probing || calibrating)){
+    if (CARVERA_AIR == THEKERNEL->factory_set->MachineModel && (probing || calibrating)){
         THEKERNEL->set_probeLaser(true);
         bool b = true;
 		PublicData::set_value( switch_checksum, detector_switch_checksum, state_checksum, &b );
