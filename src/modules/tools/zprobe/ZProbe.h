@@ -25,6 +25,7 @@ class LevelingStrategy;
 struct probe_parameters{
     float x_axis_distance;
     float y_axis_distance;
+    float z_axis_distance;
     float x_rotated_x;
     float x_rotated_y;
     float y_rotated_x;
@@ -35,6 +36,9 @@ struct probe_parameters{
     float half_tool_dia_rotated_x_y;
     float half_tool_dia_rotated_y_x;
     float half_tool_dia_rotated_y_y;
+    float half_tool_dia_x;
+    float half_tool_dia_y;
+    float half_tool_dia_z;
     float probe_height;
     float side_depth;
     float feed_rate;
@@ -45,9 +49,10 @@ struct probe_parameters{
     float clearance_world_pos;
     float visualize_path_distance;
     float rotation_offset_per_probe;
+    float extra_probe_distance;
     int repeat;
     int probe_g38_subcode;
-    bool save_position;
+    int save_position;
     bool invert_probe; 
 };
 
@@ -60,8 +65,10 @@ struct xy_output_coordinates{
     float y_positive_y_out;
     float y_negative_x_out;
     float y_negative_y_out;
+    float z_negative_z_out;
     float origin_x;
     float origin_y;
+    float origin_z;
 };
 
 class ZProbe: public Module
@@ -91,10 +98,13 @@ private:
     void config_load();
     bool probe_XYZ(Gcode *gcode);
     void rotate(int axis, float axis_distance, float *y_x, float *y_y, float rotation_angle);
+    void rotateXY(float x_in, float y_in, float *x_out, float *y_out, float rotation_angle);
+    float get_xyz_move_length(float x, float y, float z);
     void fast_slow_probe_sequence( int axis, int direction, probe_parameters param, xy_output_coordinates *out_coords);
     int xy_probe_move_alarm_when_hit(int direction, int probe_g38_subcode, float x, float y, float feed_rate);
     void z_probe_move_with_retract(int probe_g38_subcode, float z, float clearance_height, float feed_rate);
     void parse_parameters(Gcode *gcode, probe_parameters *param);
+    void init_parameters(probe_parameters *param);
     void probe_bore(Gcode *gcode);
     void probe_boss(Gcode *gcode , bool calibration = false);
     void probe_insideCorner(Gcode *gcode);
