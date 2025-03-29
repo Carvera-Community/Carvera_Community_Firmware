@@ -175,7 +175,7 @@ void ZProbe::config_load()
 
 uint32_t ZProbe::read_probe(uint32_t dummy)
 {
-    if (CARVERA_AIR == THEKERNEL->factory_set->MachineModel && (probing || calibrating)){
+    if (CARVERA_AIR == THEKERNEL->factory_set->MachineModel && !THEKERNEL->is_probeLaserOn() && (probing || calibrating)){
         THEKERNEL->set_probeLaser(true);
         bool b = true;
 		PublicData::set_value( switch_checksum, detector_switch_checksum, state_checksum, &b );
@@ -534,6 +534,7 @@ void ZProbe::on_gcode_received(void *argument)
 // special way to probe in the X or Y or Z direction using planned moves, should work with any kinematics
 bool ZProbe::probe_XYZ(Gcode *gcode)
 {
+    THEKERNEL->streams->printf("in probexyz\n");
     float x= 0, y= 0, z= 0;
     if(gcode->has_letter('X')) {
         x= gcode->get_value('X');
@@ -565,7 +566,7 @@ bool ZProbe::probe_XYZ(Gcode *gcode)
         THEKERNEL->set_halt_reason(PROBE_FAIL);
         return false;
     }
-
+    THEKERNEL->streams->printf("Before probing true\n");
     // enable the probe checking in the timer
     probing = true;
     probe_detected = false;
@@ -574,7 +575,9 @@ bool ZProbe::probe_XYZ(Gcode *gcode)
 
     // do a delta move which will stop as soon as the probe is triggered, or the distance is reached
     float delta[3]= {x, y, z};
+    THEKERNEL->streams->printf("Before setzprobing true\n");
     THEKERNEL->set_zprobing(true);
+    THEKERNEL->streams->printf("After setzprobing true\n");
     if(!THEROBOT->delta_move(delta, rate, 3)) {
     	gcode->stream->printf("ERROR: Move too small,  %1.3f, %1.3f, %1.3f\n", x, y, z);
         THEKERNEL->set_halt_reason(PROBE_FAIL);
@@ -583,6 +586,7 @@ bool ZProbe::probe_XYZ(Gcode *gcode)
         THEKERNEL->set_zprobing(false);
         return false;
     }
+    THEKERNEL->streams->printf("After Move\n");
     THEKERNEL->set_zprobing(false);
 
     THEKERNEL->conveyor->wait_for_idle();
@@ -791,7 +795,6 @@ float ZProbe::get_xyz_move_length(float x, float y, float z){
 
 void ZProbe::fast_slow_probe_sequence(int axis, int direction, probe_parameters param, xy_output_coordinates *out_coords){
     float moveBuffer[3];
-    char buff[100];
     float mpos[3];
     float old_mpos[3];
     float retract_direction = 0;
@@ -802,8 +805,6 @@ void ZProbe::fast_slow_probe_sequence(int axis, int direction, probe_parameters 
     float retracty = 0;
     float retractz = 0;
     float axis_distance = 0;
-
-    Gcode *gcodeBuffer;
 
     // make sure the direction is correct for the function call
     if (axis == 0){
@@ -848,20 +849,22 @@ void ZProbe::fast_slow_probe_sequence(int axis, int direction, probe_parameters 
     }
     
     // do positive probe
-    std::sprintf(buff, "G38.%i X%.3f Y%.3f Z%.3f F%.3f", 2 + param.probe_g38_subcode, THEROBOT->from_millimeters(x), THEROBOT->from_millimeters(y), THEROBOT->from_millimeters(z), param.feed_rate);
-    gcodeBuffer = new Gcode(buff, &StreamOutput::NullStream);
-    probe_XYZ(gcodeBuffer);
-    delete gcodeBuffer;
+    memset(&this->buff, 0 , sizeof(this->buff));
+    std::sprintf(this->buff, "G38.%i X%.3f Y%.3f Z%.3f F%.3f", 2 + param.probe_g38_subcode, THEROBOT->from_millimeters(x), THEROBOT->from_millimeters(y), THEROBOT->from_millimeters(z), param.feed_rate);
+    this->gcodeBuffer = new Gcode(this->buff, &StreamOutput::NullStream);
+    THEKERNEL->call_event(ON_GCODE_RECEIVED, this->gcodeBuffer);
+    //delete gcodeBuffer;
     //move off the surface
     moveBuffer[0] = retractx;
     moveBuffer[1] = retracty;
     moveBuffer[2] = retractz;
     THEROBOT->delta_move(moveBuffer, param.feed_rate, 3);
     //slow probe
-    std::sprintf(buff, "G38.%i X%.3f Y%.3f Z%.3f F%.3f", 2 + param.probe_g38_subcode,THEROBOT->from_millimeters(x), THEROBOT->from_millimeters(y), THEROBOT->from_millimeters(z), param.slowZprobeRate);
-    gcodeBuffer = new Gcode(buff, &StreamOutput::NullStream);
-    probe_XYZ(gcodeBuffer);
-    delete gcodeBuffer;
+    memset(&this->buff, 0 , sizeof(this->buff));
+    std::sprintf(this->buff, "G38.%i X%.3f Y%.3f Z%.3f F%.3f", 2 + param.probe_g38_subcode,THEROBOT->from_millimeters(x), THEROBOT->from_millimeters(y), THEROBOT->from_millimeters(z), param.slowZprobeRate);
+    this->gcodeBuffer = new Gcode(this->buff, &StreamOutput::NullStream);
+    THEKERNEL->call_event(ON_GCODE_RECEIVED, this->gcodeBuffer);
+    //delete gcodeBuffer;
     //store position
     THEROBOT->get_current_machine_position(mpos);
     memcpy(old_mpos, mpos, sizeof(mpos));
@@ -902,16 +905,15 @@ void ZProbe::fast_slow_probe_sequence(int axis, int direction, probe_parameters 
 }
 
 int ZProbe::xy_probe_move_alarm_when_hit(int direction, int probe_g38_subcode, float x, float y, float feed_rate){
-    char buff[100];
-    Gcode *gcodeBuffer;
 
     THEKERNEL->streams->printf("XY MOVE DEBUG: dir: %i X: %.3f Y: %.3f feed: %.3f\n", direction, x, y, feed_rate);
 
     // do positive x probe
     //probe no hit alarm x_positive - G38.3, alarm if true
-    std::sprintf(buff, "G38.%i X%.3f Y%.3f F%.3f", 3+probe_g38_subcode,THEROBOT->from_millimeters(direction * x), THEROBOT->from_millimeters(direction * y), feed_rate);
-    gcodeBuffer = new Gcode(buff, &StreamOutput::NullStream);
-    if (probe_XYZ(gcodeBuffer)){
+    memset(&this->buff, 0 , sizeof(this->buff));
+    std::sprintf(this->buff, "G38.%i X%.3f Y%.3f F%.3f", 3+probe_g38_subcode,THEROBOT->from_millimeters(direction * x), THEROBOT->from_millimeters(direction * y), feed_rate);
+    this->gcodeBuffer = new Gcode(this->buff, &StreamOutput::NullStream);
+    if (probe_XYZ(this->gcodeBuffer)){
         THEKERNEL->streams->printf("ALARM: Probe hit wall when moving to outer position\n");
         THEKERNEL->call_event(ON_HALT, nullptr);
         THEKERNEL->set_halt_reason(PROBE_FAIL);
@@ -923,16 +925,14 @@ int ZProbe::xy_probe_move_alarm_when_hit(int direction, int probe_g38_subcode, f
 }
 
 void ZProbe::z_probe_move_with_retract(int probe_g38_subcode, float z, float clearance_height, float feed_rate){
-    Gcode *gcodeBuffer;
-    char buff[100];
     float moveBuffer[3];
 
     // do z probe with slow speed
     THEKERNEL->streams->printf("Probing Z with a distance of %.3f\n", z);
-
-    std::sprintf(buff, "G38.%i Z%.3f F%.3f", 3 + probe_g38_subcode, THEROBOT->from_millimeters(z), feed_rate);
-    gcodeBuffer = new Gcode(buff, &StreamOutput::NullStream);
-    if (probe_XYZ(gcodeBuffer)){ //probe down, if bottom surface reached, retract slightly
+    memset(&this->buff, 0 , sizeof(this->buff));
+    std::sprintf(this->buff, "G38.%i Z%.3f F%.3f", 3 + probe_g38_subcode, THEROBOT->from_millimeters(z), feed_rate);
+    this->gcodeBuffer = new Gcode(this->buff, &StreamOutput::NullStream);
+    if (probe_XYZ(this->gcodeBuffer)){ //probe down, if bottom surface reached, retract slightly
         THEKERNEL->streams->printf("Probed surface hit");
         moveBuffer[0] = 0;
         moveBuffer[1] = 0;
@@ -1002,21 +1002,22 @@ void ZProbe::parse_parameters(Gcode *gcode, probe_parameters *param){
 }
 
 void ZProbe::init_parameters(probe_parameters *param){
-    param->tool_dia = THEKERNEL->probe_tip_diameter;
-    param->probe_height = 0;
-    param->feed_rate = 300;
-    param->rapid_rate = 800;
-    param->x_axis_distance = 0;
-    param->y_axis_distance = 0;
-    param->rotation_angle = 0;
-    param->repeat = 1;
-    param->retract_distance = 1.5;
-    param->clearance_height = 2;
-    param->side_depth = 2;
-    param->probe_g38_subcode = 0;
-    param->invert_probe = false;
-    param->slowZprobeRate = 50;
-    param->extra_probe_distance = 4;
+    param->tool_dia = THEKERNEL->probe_tip_diameter;    //D
+    param->probe_height = 0;                            //H
+    param->feed_rate = 300;                             //F
+    param->rapid_rate = 800;                            //K
+    param->x_axis_distance = 0;                         //X
+    param->y_axis_distance = 0;                         //Y
+    param->z_axis_distance = 0;                         //Z
+    param->rotation_angle = 0;                          //Q
+    param->repeat = 1;                                  //L
+    param->retract_distance = 1.5;                      //R
+    param->clearance_height = 2;                        //C
+    param->side_depth = 2;                              //P
+    param->probe_g38_subcode = 0;                       //I
+    param->invert_probe = false;                        //I
+    param->slowZprobeRate = 50;                         
+    param->extra_probe_distance = 4;                    //J
 }
 
 void ZProbe::probe_bore(Gcode *gcode) //M461
@@ -1028,10 +1029,10 @@ void ZProbe::probe_bore(Gcode *gcode) //M461
     float old_mpos[3];
 
     //output points
-	struct xy_output_coordinates out_coords;
+	xy_output_coordinates out_coords;
 
     // init parameters
-    struct probe_parameters param;
+    probe_parameters param;
     init_parameters(&param);
 
     // fill param struct
@@ -1141,14 +1142,14 @@ void ZProbe::probe_boss(Gcode *gcode, bool calibration) //M462
     float old_mpos[3];
 
     //output points
-    struct xy_output_coordinates out_coords;
+    xy_output_coordinates out_coords;
 
     // init parameters
-    struct probe_parameters param;
+    probe_parameters param;
     init_parameters(&param);
 
     parse_parameters(gcode, &param);
-    THEKERNEL->streams->printf("DEBUG Parse: X: %.3f Y: %.3f H: %.3f\n", param.x_axis_distance, param.y_axis_distance, param.side_depth);
+    THEKERNEL->streams->printf("DEBUG Parse: X: %.3f Y: %.3f P: %.3f\n", param.x_axis_distance, param.y_axis_distance, param.side_depth);
 
     if (!gcode->has_letter('X') && !gcode->has_letter('Y')){ //error if there is a problem
         gcode->stream->printf("ALARM: Probe fail: No Axis Set\n");
@@ -1195,8 +1196,10 @@ void ZProbe::probe_boss(Gcode *gcode, bool calibration) //M462
         coordinated_move(NAN, NAN, param.clearance_world_pos, param.rapid_rate);
         THECONVEYOR->wait_for_idle();
         if (gcode->has_letter('X')) {
+            THEKERNEL->streams->printf("DEBUG: Probe Box X Before xy_probe");
             // return if probe touches wall during outside move
             if (xy_probe_move_alarm_when_hit(POS, param.probe_g38_subcode, param.x_rotated_x, param.x_rotated_y, param.feed_rate) == 1){
+                THEKERNEL->streams->printf("DEBUG: Probe Box After xy_probe");
                 return;
             }
             //probe z no hit no alarm -side_depth, retract slightly if probe point hit
@@ -1309,10 +1312,10 @@ void ZProbe::probe_insideCorner(Gcode *gcode) //M463
     float old_mpos[3];
 
     //output points
-    struct xy_output_coordinates out_coords;
+    xy_output_coordinates out_coords;
 
     // init parameters
-    struct probe_parameters param;
+    probe_parameters param;
     init_parameters(&param);
 
     parse_parameters(gcode, &param);
@@ -1402,10 +1405,10 @@ void ZProbe::probe_outsideCorner(Gcode *gcode) //M464
     float old_mpos[3];
 
     //output points
-    struct xy_output_coordinates out_coords;
+    xy_output_coordinates out_coords;
 
     // init parameters
-    struct probe_parameters param;
+    probe_parameters param;
     init_parameters(&param);
 
     parse_parameters(gcode, &param);
@@ -1537,10 +1540,10 @@ void ZProbe::probe_axisangle(Gcode *gcode) //M465
     float old_mpos[3];
 
     //output points
-	struct xy_output_coordinates out_coords;
+	xy_output_coordinates out_coords;
 
     // init parameters
-    struct probe_parameters param;
+    probe_parameters param;
     init_parameters(&param);
 
     parse_parameters(gcode, &param);
@@ -1687,12 +1690,9 @@ void ZProbe::calibrate_probe_bore(Gcode *gcode) //M460.1
 {
     THECONVEYOR->wait_for_idle();
     THEKERNEL->streams->printf("Calibrating Probe With Bore\n");
-    
-    char buff[100];
-    Gcode *gcodeBuffer;
 
     // init parameters
-    struct probe_parameters param;
+    probe_parameters param;
     init_parameters(&param);
 
     parse_parameters(gcode, &param);
@@ -1721,11 +1721,14 @@ void ZProbe::calibrate_probe_bore(Gcode *gcode) //M460.1
     THEKERNEL->probe_outputs[1] = 0;
 
     for(int i=0; i< param.repeat; i++) {
-        std::sprintf(buff, "M461 X%.3f Y%.3f F%.3f D0 Q%3f K%.3f R%3f I%i", THEROBOT->from_millimeters(knownDiameter + 2), THEROBOT->from_millimeters(knownDiameter + 2), param.feed_rate, param.rotation_angle, param.rapid_rate, param.retract_distance, param.probe_g38_subcode);
-        gcodeBuffer = new Gcode(buff, &StreamOutput::NullStream);
-        probe_bore(gcodeBuffer);
-        delete gcodeBuffer;
+        memset(&this->buff, 0 , sizeof(this->buff));
+        std::sprintf(this->buff, "M461 X%.3f Y%.3f F%.3f D0 Q%3f K%.3f R%3f I%i", THEROBOT->from_millimeters(knownDiameter + 2), THEROBOT->from_millimeters(knownDiameter + 2), param.feed_rate, param.rotation_angle, param.rapid_rate, param.retract_distance, param.probe_g38_subcode);
+        this->gcodeBuffer = new Gcode(this->buff, &StreamOutput::NullStream);
+        probe_bore(this->gcodeBuffer);
+        //delete gcodeBuffer;
+        THEKERNEL->streams->printf("DEBUG: Before wait_for_idle()");
         THECONVEYOR->wait_for_idle();
+        THEKERNEL->streams->printf("DEBUG: After wait_for_idle()");
         // only Y because the first probe in X can be off center and therefore completely wrong
         probe_position_stack.push_back(THEKERNEL->probe_outputs[1]);
         param.rotation_angle += param.rotation_offset_per_probe;
@@ -1752,12 +1755,9 @@ void ZProbe::calibrate_probe_boss(Gcode *gcode) //M460.2
 {
     THECONVEYOR->wait_for_idle();
     THEKERNEL->streams->printf("Calibrating Probe With Boss\n");
-    
-    char buff[100];
-    Gcode *gcodeBuffer;
 
     // init parameters
-    struct probe_parameters param;
+    probe_parameters param;
     init_parameters(&param);
 
     parse_parameters(gcode, &param);
@@ -1794,18 +1794,24 @@ void ZProbe::calibrate_probe_boss(Gcode *gcode) //M460.2
 
     for(int i=0; i< param.repeat; i++) {
         if (gcode->has_letter('X')) {
-            std::sprintf(buff, "M462 X%.3f F%.3f D0 Q%3f K%.3f R%3f I%i P%.3f C%.3f", THEROBOT->from_millimeters(knownDiameter/2 + param.extra_probe_distance), param.feed_rate, param.rotation_angle, param.rapid_rate, param.retract_distance, param.probe_g38_subcode, param.side_depth, param.clearance_height);
-            gcodeBuffer = new Gcode(buff, &StreamOutput::NullStream);
-            probe_boss(gcodeBuffer);
-            delete gcodeBuffer;
+            memset(&this->buff, 0 , sizeof(this->buff));
+            std::sprintf(this->buff, "M462 X%.3f F%.3f D0 Q%.3f K%.3f R%.3f I%i P%.3f C%.3f", THEROBOT->from_millimeters(knownDiameter/2 + param.extra_probe_distance), param.feed_rate, param.rotation_angle, param.rapid_rate, param.retract_distance, param.probe_g38_subcode, param.side_depth, param.clearance_height);
+            this->gcodeBuffer = new Gcode(this->buff, &StreamOutput::NullStream);
+            THEKERNEL->call_event(ON_GCODE_RECEIVED, this->gcodeBuffer);
+            //delete gcodeBuffer;
+            THEKERNEL->streams->printf("DEBUG: X Before wait_for_idle()");
             THECONVEYOR->wait_for_idle();
+            THEKERNEL->streams->printf("DEBUG: X After wait_for_idle()");
             probe_position_stack.push_back(THEKERNEL->probe_outputs[0]);
         } else{
-            std::sprintf(buff, "M462 Y%.3f F%.3f D0 Q%3f K%.3f R%3f I%i E%.3f C%.3f", THEROBOT->from_millimeters(knownDiameter/2 + param.extra_probe_distance), param.feed_rate, param.rotation_angle, param.rapid_rate, param.retract_distance, param.probe_g38_subcode, param.side_depth, param.clearance_height);
-            gcodeBuffer = new Gcode(buff, &StreamOutput::NullStream);
-            probe_boss(gcodeBuffer);
-            delete gcodeBuffer;
+            memset(&this->buff, 0 , sizeof(this->buff));
+            std::sprintf(this->buff, "M462 Y%.3f F%.3f D0 Q%.3f K%.3f R%.3f I%i P%.3f C%.3f", THEROBOT->from_millimeters(knownDiameter/2 + param.extra_probe_distance), param.feed_rate, param.rotation_angle, param.rapid_rate, param.retract_distance, param.probe_g38_subcode, param.side_depth, param.clearance_height);
+            this->gcodeBuffer = new Gcode(this->buff, &StreamOutput::NullStream);
+            THEKERNEL->call_event(ON_GCODE_RECEIVED, this->gcodeBuffer);
+            //delete gcodeBuffer;
+            THEKERNEL->streams->printf("DEBUG: Y Before wait_for_idle()");
             THECONVEYOR->wait_for_idle();
+            THEKERNEL->streams->printf("DEBUG: Y After wait_for_idle()");
             probe_position_stack.push_back(THEKERNEL->probe_outputs[1]);
         }
     }
@@ -1834,10 +1840,10 @@ void ZProbe::single_axis_probe_double_tap(Gcode *gcode){
     THEKERNEL->streams->printf("Probing Single Axis\n");
     
     //output points
-	struct xy_output_coordinates out_coords;
+	xy_output_coordinates out_coords;
 
     // init parameters
-    struct probe_parameters param;
+    probe_parameters param;
     init_parameters(&param);
     param.x_axis_distance = 0;
     param.y_axis_distance = 0;
@@ -1890,17 +1896,17 @@ void ZProbe::single_axis_probe_double_tap(Gcode *gcode){
     for (const auto& pos : probe_position_stack_x) {
         sum += pos;
     }
-    float ave_x = sum / (param.repeat) - tip_x;
+    float ave_x = sum / (param.repeat) + tip_x;
     sum = 0.0;
     for (const auto& pos : probe_position_stack_y) {
         sum += pos;
     }
-    float ave_y = sum / (param.repeat) - tip_y;
+    float ave_y = sum / (param.repeat) + tip_y;
     sum = 0.0;
     for (const auto& pos : probe_position_stack_z) {
         sum += pos;
     }
-    float ave_z = sum / (param.repeat) - tip_z;
+    float ave_z = sum / (param.repeat) + (param.tool_dia/2 - tip_z);
 
     if ((gcode->has_letter('X') && gcode->has_letter('Y')) || gcode->has_letter('Q')) {
         THEKERNEL->streams->printf("Final Positon: X:%.3f , Y:%.3f\n", ave_x , ave_y);
@@ -1925,9 +1931,8 @@ void ZProbe::single_axis_probe_double_tap(Gcode *gcode){
     if (gcode->has_letter('Z')){
         THEKERNEL->streams->printf("Final Positon Z: %.3f\n", ave_z);
         THEKERNEL->probe_outputs[5] = ave_z;
-        if (param.save_position > 0){
+        if (param.save_position == 2){
             THEROBOT->set_current_wcs_by_mpos( NAN, NAN, THEKERNEL->probe_outputs[5]);
         }
     }
-
 }

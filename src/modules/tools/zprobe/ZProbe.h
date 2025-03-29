@@ -126,6 +126,9 @@ private:
     float max_z;
     float dwell_before_probing;
 
+    Gcode* gcodeBuffer;
+    char buff[100];
+
     Pin pin;
     Pin calibrate_pin;
     std::vector<LevelingStrategy*> strategies;
