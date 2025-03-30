@@ -100,19 +100,19 @@ private:
     void rotate(int axis, float axis_distance, float *y_x, float *y_y, float rotation_angle);
     void rotateXY(float x_in, float y_in, float *x_out, float *y_out, float rotation_angle);
     float get_xyz_move_length(float x, float y, float z);
-    void fast_slow_probe_sequence( int axis, int direction, probe_parameters param, xy_output_coordinates *out_coords);
+    void fast_slow_probe_sequence( int axis, int direction);
     int xy_probe_move_alarm_when_hit(int direction, int probe_g38_subcode, float x, float y, float feed_rate);
     void z_probe_move_with_retract(int probe_g38_subcode, float z, float clearance_height, float feed_rate);
-    void parse_parameters(Gcode *gcode, probe_parameters *param);
-    void init_parameters(probe_parameters *param);
-    void probe_bore(Gcode *gcode);
-    void probe_boss(Gcode *gcode , bool calibration = false);
-    void probe_insideCorner(Gcode *gcode);
-    void probe_outsideCorner(Gcode *gcode);
-    void probe_axisangle(Gcode *gcode);
-    void calibrate_probe_bore(Gcode *gcode);
-    void calibrate_probe_boss(Gcode *gcode);
-    void single_axis_probe_double_tap(Gcode *gcode);
+    void parse_parameters(Gcode *gcode);
+    void init_parameters_and_out_coords();
+    void probe_bore();
+    void probe_boss(bool calibration = false);
+    void probe_insideCorner();
+    void probe_outsideCorner();
+    void probe_axisangle();
+    void calibrate_probe_bore();
+    void calibrate_probe_boss();
+    void single_axis_probe_double_tap();
     void calibrate_Z(Gcode *gc);
     uint32_t read_probe(uint32_t dummy);
     uint32_t read_calibrate(uint32_t dummy);
@@ -128,6 +128,8 @@ private:
 
     Gcode* gcodeBuffer;
     char buff[100];
+    probe_parameters param;
+    xy_output_coordinates out_coords;
 
     Pin pin;
     Pin calibrate_pin;
