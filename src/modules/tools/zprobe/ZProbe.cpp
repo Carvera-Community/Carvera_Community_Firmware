@@ -603,7 +603,6 @@ void ZProbe::on_gcode_received(void *argument)
 // special way to probe in the X or Y or Z direction using planned moves, should work with any kinematics
 bool ZProbe::probe_XYZ(Gcode *gcode)
 {
-    THEKERNEL->streams->printf("in probexyz\n");
     float x= 0, y= 0, z= 0;
     if(gcode->has_letter('X')) {
         x= gcode->get_value('X');
@@ -644,9 +643,7 @@ bool ZProbe::probe_XYZ(Gcode *gcode)
 
     // do a delta move which will stop as soon as the probe is triggered, or the distance is reached
     float delta[3]= {x, y, z};
-    THEKERNEL->streams->printf("Before setzprobing true\n");
     THEKERNEL->set_zprobing(true);
-    THEKERNEL->streams->printf("After setzprobing true\n");
     if(!THEROBOT->delta_move(delta, rate, 3)) {
     	gcode->stream->printf("ERROR: Move too small,  %1.3f, %1.3f, %1.3f\n", x, y, z);
         THEKERNEL->set_halt_reason(PROBE_FAIL);
@@ -655,7 +652,6 @@ bool ZProbe::probe_XYZ(Gcode *gcode)
         THEKERNEL->set_zprobing(false);
         return false;
     }
-    THEKERNEL->streams->printf("After Move\n");
     THEKERNEL->set_zprobing(false);
 
     THEKERNEL->conveyor->wait_for_idle();
@@ -934,6 +930,8 @@ void ZProbe::fast_slow_probe_sequence(int axis, int direction){
     this->gcodeBuffer = new Gcode(this->buff, &StreamOutput::NullStream);
     probe_XYZ(this->gcodeBuffer);
     delete gcodeBuffer;
+    // always wait for idle before getting the machine pos
+    THECONVEYOR->wait_for_idle();
     //store position
     THEROBOT->get_current_machine_position(mpos);
     memcpy(old_mpos, mpos, sizeof(mpos));
@@ -969,14 +967,12 @@ void ZProbe::fast_slow_probe_sequence(int axis, int direction){
     moveBuffer[1] = retracty;
     moveBuffer[2] = retractz;
     THEROBOT->delta_move(moveBuffer, param.feed_rate, 3);
-
+    // always wait for idle before getting the machine pos
+    THECONVEYOR->wait_for_idle();
     return;
 }
 
 int ZProbe::xy_probe_move_alarm_when_hit(int direction, int probe_g38_subcode, float x, float y, float feed_rate){
-
-    THEKERNEL->streams->printf("XY MOVE DEBUG: dir: %i X: %.3f Y: %.3f feed: %.3f\n", direction, x, y, feed_rate);
-
     // do positive x probe
     //probe no hit alarm x_positive - G38.3, alarm if true
     memset(&this->buff, 0 , sizeof(this->buff));
@@ -1112,7 +1108,8 @@ void ZProbe::probe_bore() //M461
 	if (param.probe_height != 0){
         z_probe_move_with_retract(param.probe_g38_subcode, -param.probe_height, param.clearance_height, param.feed_rate);
     }
-
+    // always wait for idle before getting the machine pos
+    THECONVEYOR->wait_for_idle();
     //save center position to use later
     THEROBOT->get_current_machine_position(mpos);
     memcpy(old_mpos, mpos, sizeof(mpos));
@@ -1174,7 +1171,7 @@ void ZProbe::probe_bore() //M461
                                                 + (out_coords.y_positive_y_out - out_coords.y_negative_y_out) 
                                                 * (out_coords.y_positive_y_out - out_coords.y_negative_y_out) 
                                             ) + param.tool_dia;
-            THEKERNEL->streams->printf("Distance Betweeen 2 Y surfaces (Diameter) is: %.3f and is stored at variable #152\n" , THEKERNEL->probe_outputs[1] );
+            THEKERNEL->streams->printf("Distance between 2 Y surfaces (Diameter) is: %.3f and is stored at variable #152\n" , THEKERNEL->probe_outputs[1] );
         }
 
 		
@@ -1196,8 +1193,6 @@ void ZProbe::probe_boss(bool calibration) //M462
     
     float mpos[3];
     float old_mpos[3];
-
-    THEKERNEL->streams->printf("DEBUG Parse: X: %.3f Y: %.3f P: %.3f\n", param.x_axis_distance, param.y_axis_distance, param.side_depth);
 
     if (calibration){
         param.tool_dia = 0;
@@ -1221,6 +1216,7 @@ void ZProbe::probe_boss(bool calibration) //M462
 
     rotate(X_AXIS, param.x_axis_distance, &param.x_rotated_x, &param.x_rotated_y, param.rotation_angle);
     rotate(Y_AXIS, param.y_axis_distance, &param.y_rotated_x, &param.y_rotated_y, param.rotation_angle);
+    // always wait for idle before getting the machine pos
     THECONVEYOR->wait_for_idle();
     //save center position to use later
     THEROBOT->get_current_machine_position(mpos);
@@ -1230,17 +1226,14 @@ void ZProbe::probe_boss(bool calibration) //M462
     out_coords.origin_x = mpos[0];
     this->out_coords.origin_y = mpos[1];
     this->param.clearance_world_pos = mpos[2]; //test old_mpos[2];
-    THEKERNEL->streams->printf("DEBUG: Clearance World Pos: %.2f", param.clearance_world_pos);
 	//setup repeat
 	for(int i=0; i< param.repeat; i++) {
         //goto clearance height
         coordinated_move(NAN, NAN, param.clearance_world_pos, param.rapid_rate);
         THECONVEYOR->wait_for_idle();
         if (param.x_axis_distance != 0) {
-            THEKERNEL->streams->printf("DEBUG: Probe Box X Before xy_probe");
             // return if probe touches wall during outside move
             if (xy_probe_move_alarm_when_hit(POS, param.probe_g38_subcode, param.x_rotated_x, param.x_rotated_y, param.feed_rate) == 1){
-                THEKERNEL->streams->printf("DEBUG: Probe Box After xy_probe");
                 return;
             }
             //probe z no hit no alarm -side_depth, retract slightly if probe point hit
@@ -1363,7 +1356,8 @@ void ZProbe::probe_insideCorner() //M463
 	if (param.probe_height != 0){
 		z_probe_move_with_retract(param.probe_g38_subcode, -param.probe_height, param.clearance_height, param.feed_rate);
     }
-
+    // always wait for idle before getting the machine pos
+    THECONVEYOR->wait_for_idle();
     //save center position to use later
     THEROBOT->get_current_machine_position(mpos);
     memcpy(old_mpos, mpos, sizeof(mpos));
@@ -1450,8 +1444,8 @@ void ZProbe::probe_outsideCorner() //M464
     rotate(X_AXIS, (param.tool_dia/2.0), &param.half_tool_dia_rotated_x_x, &param.half_tool_dia_rotated_x_y, param.rotation_angle);
     rotate(Y_AXIS, (param.tool_dia/2.0), &param.half_tool_dia_rotated_y_x, &param.half_tool_dia_rotated_y_y, param.rotation_angle);
 
-    THEKERNEL->streams->printf("DEBUG: X_x: %.3f X_y: %.3f Y_x: %.3f Y_y: %.3f\n", param.x_rotated_x, param.x_rotated_y, param.y_rotated_x, param.y_rotated_y);
-
+    // always wait for idle before getting the machine pos
+    THECONVEYOR->wait_for_idle();
     //save center position to use later
     THEROBOT->get_current_machine_position(mpos);
     memcpy(old_mpos, mpos, sizeof(mpos));
@@ -1508,7 +1502,6 @@ void ZProbe::probe_outsideCorner() //M464
         coordinated_move(NAN, NAN, param.clearance_world_pos, param.rapid_rate);
         THECONVEYOR->wait_for_idle();
 
-        THEKERNEL->streams->printf("entering in calculation routine");
         // calculate center position
         if (param.rotation_angle == 0)
         {
@@ -1569,7 +1562,8 @@ void ZProbe::probe_axisangle() //M465
 
     rotate(X_AXIS, param.x_axis_distance, &param.x_rotated_x, &param.x_rotated_y, param.rotation_angle);
     rotate(Y_AXIS, param.y_axis_distance, &param.y_rotated_x, &param.y_rotated_y, param.rotation_angle);
-
+    // always wait for idle before getting the machine pos
+    THECONVEYOR->wait_for_idle();
     //save center position to use later
     THEROBOT->get_current_machine_position(mpos);
     memcpy(old_mpos, mpos, sizeof(mpos));
@@ -1697,9 +1691,7 @@ void ZProbe::calibrate_probe_bore() //M460.1
     for(int i=0; i< param.repeat; i++) {
         probe_bore();
         //delete gcodeBuffer;
-        THEKERNEL->streams->printf("DEBUG: Before wait_for_idle()");
         THECONVEYOR->wait_for_idle();
-        THEKERNEL->streams->printf("DEBUG: After wait_for_idle()");
         // only Y because the first probe in X can be off center and therefore completely wrong
         probe_position_stack.push_back(THEKERNEL->probe_outputs[1]);
         param.rotation_angle += param.rotation_offset_per_probe;
@@ -1750,9 +1742,7 @@ void ZProbe::calibrate_probe_boss() //M460.2
             probe_boss(true);
             THEKERNEL->call_event(ON_GCODE_RECEIVED, this->gcodeBuffer);
             //delete gcodeBuffer;
-            THEKERNEL->streams->printf("DEBUG: X Before wait_for_idle()");
             THECONVEYOR->wait_for_idle();
-            THEKERNEL->streams->printf("DEBUG: X After wait_for_idle()");
             
             if (param.x_axis_distance != 0){
                 probe_position_stack.push_back(THEKERNEL->probe_outputs[0]);
