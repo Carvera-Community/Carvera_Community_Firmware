@@ -907,7 +907,7 @@ void ZProbe::fast_slow_probe_sequence(int axis, int direction){
         retractz = retract_direction * param.retract_distance;
     }else if (axis == 10){
         rotateXY(param.x_axis_distance, param.y_axis_distance, &x, &y, param.rotation_angle);
-        z = param.z_axis_distance < 0 ? param.z_axis_distance : -param.z_axis_distance;
+        z = param.z_axis_distance;
         retractx = retract_direction * (param.retract_distance/axis_distance) * x;
         retracty = retract_direction * (param.retract_distance/axis_distance) * y;
         retractz = retract_direction * (param.retract_distance/axis_distance) * z;
@@ -1823,7 +1823,7 @@ void ZProbe::single_axis_probe_double_tap(){
     for (const auto& pos : probe_position_stack_z) {
         sum += pos;
     }
-    float ave_z = sum / (param.repeat) + (param.tool_dia/2 - tip_z);
+    float ave_z = sum / (param.repeat) + (param.tool_dia/2 + tip_z);
 
     if ((param.x_axis_distance != 0 && param.y_axis_distance != 0) || param.rotation_angle != 0) {
         THEKERNEL->streams->printf("Final Positon: X:%.3f , Y:%.3f\n", ave_x , ave_y);
