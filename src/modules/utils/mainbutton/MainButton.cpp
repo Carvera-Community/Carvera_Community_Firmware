@@ -233,15 +233,24 @@ void MainButton::on_idle(void *argument)
         	if (state == IDLE) {
         		// turn off light timer
         		if (us_ticker_read() - light_countdown_us > (uint32_t)turn_off_light_min * 60 * 1000000) {
+        			light_countdown_us = us_ticker_read();
         			// turn off light
 					bool b = false;
 					PublicData::set_value( switch_checksum, light_checksum, state_checksum, &b );
         		}
-        	} else {
+        	} else if (state != SLEEP) {
         		light_countdown_us = us_ticker_read();
         		// turn on the light
-				bool b = true;
-				PublicData::set_value( switch_checksum, light_checksum, state_checksum, &b );
+        		struct pad_switch pad;
+        		bool ok = false;
+        		ok = PublicData::get_value(switch_checksum, light_checksum, state_checksum, &pad);
+        		if (ok) {
+        			if(!(bool)pad.value)
+        			{
+						bool b = true;
+						PublicData::set_value( switch_checksum, light_checksum, state_checksum, &b );
+        			}
+        		}
         	}
     	}
     	uint8_t halt_reason;
