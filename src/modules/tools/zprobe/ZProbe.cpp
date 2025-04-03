@@ -1013,8 +1013,8 @@ void ZProbe::parse_parameters(Gcode *gcode){
     if (gcode->has_letter('D')) { //probe tip diameter
         param.tool_dia = gcode->get_value('D');
     }
-    if (gcode->has_letter('P')) { //depth to probe sides from
-        param.side_depth = gcode->get_value('P');
+    if (gcode->has_letter('E')) { //depth to probe sides from
+        param.side_depth = gcode->get_value('E');
     }
     if (gcode->has_letter('H')) { //probe height above bore/disance to move down before probing
         param.probe_height = gcode->get_value('H');
@@ -1082,7 +1082,7 @@ void ZProbe::init_parameters_and_out_coords(){
     param.repeat = 1;                                  //L
     param.retract_distance = 1.5;                      //R
     param.clearance_height = 2;                        //C
-    param.side_depth = 2;                              //P
+    param.side_depth = 2;                              //E
     param.probe_g38_subcode = 0;                       //I
     param.invert_probe = false;                        //I
     param.slowZprobeRate = 50;                         
