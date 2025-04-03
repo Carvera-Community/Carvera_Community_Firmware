@@ -681,7 +681,7 @@ void ATCHandler::fill_manual_pickup_scripts(int new_tool, bool clear_z, bool aut
 		//pause
 		snprintf(buff, sizeof(buff), "M600.5");
 		this->script_queue.push(buff);
-		this->fill_cali_scripts(new_tool == 0,false);
+		this->fill_cali_scripts(new_tool == 0 || new_tool >= 999990,false);
 	}else if (!isnan(custom_TLO)) {
 		//print status
 		snprintf(buff, sizeof(buff), ";Tool is now installed and TLO set as %.3f.\n Resume will continue program\n" , custom_TLO );
@@ -1665,7 +1665,7 @@ void ATCHandler::on_gcode_received(void *argument)
 						THEKERNEL->streams->printf("Start picking new tool: T%d\r\n", new_tool);
 						atc_status = PICK;
 						this->fill_pick_scripts(new_tool, true);
-						this->fill_cali_scripts(new_tool == 0, false);
+						this->fill_cali_scripts(new_tool == 0 || new_tool >= 999990, false);
 					} else if(new_tool == -1 && (THEKERNEL->get_laser_mode())) {
 						THEROBOT->push_state();
 						THEROBOT->get_axis_position(last_pos, 3);
@@ -1690,7 +1690,7 @@ void ATCHandler::on_gcode_received(void *argument)
 					atc_status = CHANGE;
 					this->target_tool = new_tool;
 					this->fill_change_scripts(new_tool, true);
-					this->fill_cali_scripts(new_tool == 0, true);
+					this->fill_cali_scripts(new_tool == 0 || new_tool >= 999990, true);
 				}
 	        }
 		} else if (gcode->m == 460){
@@ -1857,7 +1857,7 @@ void ATCHandler::on_gcode_received(void *argument)
 				this->script_queue.push(buff);
 
 				atc_status = CALI;
-				this->fill_cali_scripts(active_tool == 0, true);
+				this->fill_cali_scripts(active_tool == 0 || new_tool >= 999990, true);
 
 				THECONVEYOR->wait_for_idle();
 				// lift z to safe position with fast speed
@@ -1909,7 +1909,7 @@ void ATCHandler::on_gcode_received(void *argument)
 				set_inner_playing(true);
 				this->clear_script_queue();
 				atc_status = CALI;
-				this->fill_cali_scripts(active_tool == 0, true);
+				this->fill_cali_scripts(active_tool == 0 || new_tool >= 999990, true);
 
 			}
 		} else if (gcode->m == 492) {
