@@ -222,7 +222,7 @@ uint32_t ZProbe::read_calibrate(uint32_t dummy)
         if (this->calibrate_pin.get()) {
             if (cali_debounce < debounce_ms) {
                 cali_debounce++;
-            } else if (tool.active_tool != 0 || probe_detected) {
+            } else if ((tool.active_tool > 0 && tool.active_tool < 999990) || probe_detected) {
                 // we signal the motors to stop, which will preempt any moves on that axis
                 // we do all motors as it may be a delta
                 for (auto &a : THEROBOT->actuators) a->stop_moving();
