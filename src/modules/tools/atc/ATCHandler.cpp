@@ -1252,6 +1252,7 @@ void ATCHandler::on_gcode_received(void *argument)
 					// open probe laser
 					bool b = true;
 	            	PublicData::set_value( switch_checksum, detector_switch_checksum, state_checksum, &b );
+	            	THEKERNEL->set_probeLaser(true);
 				}
 				else if( gcode->subcode == 1) {
 					// open probe laser
