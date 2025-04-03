@@ -523,9 +523,21 @@ float Gcode::parse_factor(const char*& expr) const {
     } else if (*expr == '#') {
         result = this->get_variable_value(expr, const_cast<char**>(&expr));
     } else {
+        const char* original_expr = expr;
+        while (*expr != '\0' && *expr != 'E' && *expr != 'e') {
+            expr++;
+        }
+
+        char temp_char = *expr;
+        *const_cast<char*>(expr) = '\0';
+
+        // Parse the number without the 'E' or 'e'
         char* end;
-        result = strtof(expr, &end);
-        if (end == expr) {
+        result = strtof(original_expr, &end);
+
+        *const_cast<char*>(expr) = temp_char;
+
+        if (end == original_expr) {
             THEKERNEL->set_halt_reason(MANUAL);
             THEKERNEL->call_event(ON_HALT, nullptr);
             THEKERNEL->streams->printf("Invalid number in expression, %c\n", *expr);
