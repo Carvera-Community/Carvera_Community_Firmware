@@ -1857,7 +1857,7 @@ void ATCHandler::on_gcode_received(void *argument)
 				this->script_queue.push(buff);
 
 				atc_status = CALI;
-				this->fill_cali_scripts(active_tool == 0 || new_tool >= 999990, true);
+				this->fill_cali_scripts(active_tool == 0 || active_tool >= 999990, true);
 
 				THECONVEYOR->wait_for_idle();
 				// lift z to safe position with fast speed
@@ -1909,7 +1909,7 @@ void ATCHandler::on_gcode_received(void *argument)
 				set_inner_playing(true);
 				this->clear_script_queue();
 				atc_status = CALI;
-				this->fill_cali_scripts(active_tool == 0 || new_tool >= 999990, true);
+				this->fill_cali_scripts(active_tool == 0 || active_tool >= 999990, true);
 
 			}
 		} else if (gcode->m == 492) {
