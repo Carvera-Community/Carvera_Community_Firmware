@@ -46,6 +46,7 @@
 #define return_feedrate_checksum CHECKSUM("return_feedrate")
 #define probe_height_checksum    CHECKSUM("probe_height")
 #define probe_tip_diameter_checksum CHECKSUM("probe_tip_diameter")
+#define toolZeroIs3Axis_checksum  CHECKSUM("tool_zero_is_3axis")
 #define gamma_max_checksum       CHECKSUM("gamma_max")
 #define max_z_checksum           CHECKSUM("max_z")
 #define reverse_z_direction_checksum CHECKSUM("reverse_z")
@@ -166,6 +167,7 @@ void ZProbe::config_load()
     this->reverse_z     = THEKERNEL->config->value(zprobe_checksum, reverse_z_direction_checksum)->by_default(false)->as_bool(); // Z probe moves in reverse direction
     this->max_z         = THEKERNEL->config->value(zprobe_checksum, max_z_checksum)->by_default(NAN)->as_number(); // maximum zprobe distance
     THEKERNEL->probe_tip_diameter = THEKERNEL->config->value(zprobe_checksum, probe_tip_diameter_checksum)->by_default(2)->as_number(); // probe tip diameter
+    this->tool_0_3axis  = THEKERNEL->config->value(zprobe_checksum, toolZeroIs3Axis_checksum)->by_default(false)->as_bool();
     if(isnan(this->max_z)){
         this->max_z = THEKERNEL->config->value(gamma_max_checksum)->by_default(200)->as_number(); // maximum zprobe distance
     }
@@ -490,8 +492,9 @@ void ZProbe::on_gcode_received(void *argument)
                         THEKERNEL->set_halt_reason(PROBE_FAIL);
                         return;
                     }
-                    parse_parameters(gcode);
-                    calibrate_probe_boss();
+                    if (parse_parameters(gcode)){
+                        calibrate_probe_boss();
+                    }
                 }else {
                     if (!gcode->has_letter('X') && !gcode->has_letter('Y') ) { //error if there is a problem
                         gcode->stream->printf("ALARM: Probe fail: No Radius Given\n");
@@ -499,8 +502,9 @@ void ZProbe::on_gcode_received(void *argument)
                         THEKERNEL->set_halt_reason(PROBE_FAIL);
                         return;
                     }
-                    parse_parameters(gcode);
-                    calibrate_probe_bore();
+                    if (parse_parameters(gcode)){
+                        calibrate_probe_bore();
+                    }
                 }
                 
                 break;
@@ -511,8 +515,9 @@ void ZProbe::on_gcode_received(void *argument)
                     THEKERNEL->set_halt_reason(PROBE_FAIL);
                     return;
                 }
-                parse_parameters(gcode);
-                probe_bore();
+                if (parse_parameters(gcode)){
+                    probe_bore();
+                }
                 break;
             case 462:
                 if (!gcode->has_letter('X') && !gcode->has_letter('Y')){ //error if there is a problem
@@ -521,8 +526,9 @@ void ZProbe::on_gcode_received(void *argument)
                     THEKERNEL->set_halt_reason(PROBE_FAIL);
                     return;
                 }
-                parse_parameters(gcode);
-                probe_boss();
+                if (parse_parameters(gcode)){
+                    probe_boss();
+                }
                 break;
             case 463:
                 if (!gcode->has_letter('X') || !gcode->has_letter('Y')){
@@ -531,8 +537,9 @@ void ZProbe::on_gcode_received(void *argument)
                     THEKERNEL->set_halt_reason(PROBE_FAIL);
                     return;
                 }
-                parse_parameters(gcode);
-                probe_insideCorner();
+                if (parse_parameters(gcode)){
+                    probe_insideCorner();
+                }
                 break;
             case 464:
                 if (!gcode->has_letter('X') || !gcode->has_letter('Y')){
@@ -541,8 +548,9 @@ void ZProbe::on_gcode_received(void *argument)
                     THEKERNEL->set_halt_reason(PROBE_FAIL);
                     return;
                 }
-                parse_parameters(gcode);
-                probe_outsideCorner();
+                if (parse_parameters(gcode)){
+                    probe_outsideCorner();
+                }
                 break;
             case 465:
                 if (!gcode->has_letter('X') && !gcode->has_letter('Y')){
@@ -557,8 +565,9 @@ void ZProbe::on_gcode_received(void *argument)
                     THEKERNEL->set_halt_reason(PROBE_FAIL);
                     return;
                 }
-                parse_parameters(gcode);
-                probe_axisangle();
+                if (parse_parameters(gcode)){
+                    probe_axisangle();
+                }
                 break;
             case 466:
                 if (!gcode->has_letter('X') && !gcode->has_letter('Y') && !gcode->has_letter('Z')){
@@ -567,8 +576,10 @@ void ZProbe::on_gcode_received(void *argument)
                     THEKERNEL->set_halt_reason(PROBE_FAIL);
                     return;
                 }
-                parse_parameters(gcode);
-                single_axis_probe_double_tap();
+                if (parse_parameters(gcode, (gcode->has_letter('Z') && !gcode->has_letter('X') && !gcode->has_letter('Y')))){
+                    single_axis_probe_double_tap();
+                }
+                break;
             case 670:
                 if (gcode->has_letter('S')) this->slow_feedrate = gcode->get_value('S');
                 if (gcode->has_letter('K')) this->fast_feedrate = gcode->get_value('K');
@@ -1008,8 +1019,16 @@ void ZProbe::z_probe_move_with_retract(int probe_g38_subcode, float z, float cle
     delete gcodeBuffer;
 }
 
-void ZProbe::parse_parameters(Gcode *gcode){
+bool ZProbe::parse_parameters(Gcode *gcode, bool override_probe_check){
     init_parameters_and_out_coords();
+
+    if (!((override_probe_check && THEKERNEL->eeprom_data->TOOL == 0) || (this->tool_0_3axis && THEKERNEL->eeprom_data->TOOL == 0) || THEKERNEL->eeprom_data->TOOL >= 999990)){
+        THEKERNEL->streams->printf("ALARM: Attempted To 3 Axis Probe with an improper tool number. Tool number needs to be >= 999990\n or you need to set tool 0 as a 3 axis probe with: \n config-set sd zprobe.tool_zero_is_3axis true \n");
+        THEKERNEL->call_event(ON_HALT, nullptr);
+        THEKERNEL->set_halt_reason(PROBE_FAIL);
+        return false;
+    }
+
     if (gcode->has_letter('D')) { //probe tip diameter
         param.tool_dia = gcode->get_value('D');
     }
@@ -1037,7 +1056,7 @@ void ZProbe::parse_parameters(Gcode *gcode){
     if (gcode->has_letter('F')) { //feed rate
         param.feed_rate = gcode->get_value('F');
     }
-    if (gcode->has_letter('K')) { //probe height above bore/disance to move down before probing
+    if (gcode->has_letter('K')) { //rapid feed rate
         param.rapid_rate = gcode->get_value('K');
     }
     if (gcode->has_letter('L')) { //repeat touch off
@@ -1065,6 +1084,8 @@ void ZProbe::parse_parameters(Gcode *gcode){
             param.invert_probe = true;
         }
     }
+
+    return true;
 }
 
 void ZProbe::init_parameters_and_out_coords(){

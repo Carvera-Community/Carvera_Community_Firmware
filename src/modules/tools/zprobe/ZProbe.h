@@ -103,7 +103,7 @@ private:
     void fast_slow_probe_sequence( int axis, int direction);
     int xy_probe_move_alarm_when_hit(int direction, int probe_g38_subcode, float x, float y, float feed_rate);
     void z_probe_move_with_retract(int probe_g38_subcode, float z, float clearance_height, float feed_rate);
-    void parse_parameters(Gcode *gcode);
+    bool parse_parameters(Gcode *gcode, bool override_probe_check = false);
     void init_parameters_and_out_coords();
     void probe_bore();
     void probe_boss(bool calibration = false);
@@ -124,6 +124,7 @@ private:
     float return_feedrate;
     float probe_height;
     float max_z;
+    bool tool_0_3axis;
     float dwell_before_probing;
 
     Gcode* gcodeBuffer;

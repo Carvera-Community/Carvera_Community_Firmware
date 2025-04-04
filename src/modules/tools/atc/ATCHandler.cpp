@@ -1690,7 +1690,7 @@ void ATCHandler::on_gcode_received(void *argument)
 					atc_status = CHANGE;
 					this->target_tool = new_tool;
 					this->fill_change_scripts(new_tool, true);
-					this->fill_cali_scripts(new_tool == 0 || new_tool >= 999990, true);
+					this->fill_cali_scripts((new_tool == 0 || new_tool >= 999990), true);
 				}
 	        }
 		} else if (gcode->m == 460){
