@@ -1,6 +1,15 @@
 Notice: 
 To let the Carvera work perfectly, please make sure both your controller software and firmware are up to date. For firmware, download the new firmware first, then use the 'update' function to upgrade the firmware, and reset the machine after the update is complete.
 
+[1.0.3c1.0.5]
+- update to makera 1.0.3
+    Bug fixing: When the distance between the start and end points of an arc is less than 0.00025, the actual machining process results in a full circle instead of the intended arc.
+    Bug fixing: Resolved the issue where Carvera AIR triggers a manual alarm when the tool number exceeds 255.
+    Bug fixing: Addressed the issue where the Carvera AIR's lighting does not turn off during sleep mode.
+    Optimizing: Enhanced the check_4th command.
+    Optimizing: Improved the return path for Z-probe detection when configuring the hd 4th axis on Carvera.
+    Optimizing: Added a prompt that appears when performing tool calibration, tool change, or Z-probe if the machine has not been homed: "Machine has not been homed, Please home first!"
+
 [1.0.1c1.0.3]
 1. added front button manual tool change behavior
 2. added multiple touchoffs to TLO calibration. M491 L5 will touch off 5 times and report. The default value for number of touchoffs is stored in the config as atc.num_atc_touchoff
