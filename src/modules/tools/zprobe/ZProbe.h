@@ -105,7 +105,7 @@ private:
     void z_probe_move_with_retract(int probe_g38_subcode, float z, float clearance_height, float feed_rate);
     bool parse_parameters(Gcode *gcode, bool override_probe_check = false);
     void init_parameters_and_out_coords();
-    void probe_bore();
+    void probe_bore(bool calibration = false);
     void probe_boss(bool calibration = false);
     void probe_insideCorner();
     void probe_outsideCorner();

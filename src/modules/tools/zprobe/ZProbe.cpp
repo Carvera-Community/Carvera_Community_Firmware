@@ -645,7 +645,6 @@ bool ZProbe::probe_XYZ(Gcode *gcode)
         THEKERNEL->set_halt_reason(PROBE_FAIL);
         return false;
     }
-    THEKERNEL->streams->printf("Before probing true\n");
     // enable the probe checking in the timer
     probing = true;
     probe_detected = false;
@@ -1110,13 +1109,17 @@ void ZProbe::init_parameters_and_out_coords(){
     param.extra_probe_distance = 4;                    //J
 }
 
-void ZProbe::probe_bore() //M461
+void ZProbe::probe_bore(bool calibration) //M461
 {
     THECONVEYOR->wait_for_idle();
     THEKERNEL->streams->printf("Probing Bore/Rectangular Pocket\n");
 
     float mpos[3];
     float old_mpos[3];
+
+    if (calibration){
+        param.tool_dia = 0;
+    }
 
     if (param.repeat < 1){
         THEKERNEL->streams->printf("ALARM: Probe fail: repeat value cannot be less than 1\n");
@@ -1202,8 +1205,14 @@ void ZProbe::probe_bore() //M461
     THEKERNEL->probe_outputs[4] = out_coords.origin_y;
     THEKERNEL->streams->printf("Center Point is: %.3f , %.3f and is stored in MCS as #154,#155\n" , THEKERNEL->probe_outputs[3],THEKERNEL->probe_outputs[4] );
 
-    if (param.save_position > 0){ 
-        THEROBOT->set_current_wcs_by_mpos( THEKERNEL->probe_outputs[3], THEKERNEL->probe_outputs[4], NAN);
+    if (param.save_position > 0){
+        if (param.x_axis_distance != 0 && param.y_axis_distance != 0){
+            THEROBOT->set_current_wcs_by_mpos( THEKERNEL->probe_outputs[3], THEKERNEL->probe_outputs[4], NAN);
+        }else if (param.x_axis_distance != 0){
+            THEROBOT->set_current_wcs_by_mpos( THEKERNEL->probe_outputs[3], NAN, NAN);
+        }else if (param.y_axis_distance != 0){
+            THEROBOT->set_current_wcs_by_mpos( NAN, THEKERNEL->probe_outputs[4], NAN);
+        } 
     }
 }
 
@@ -1357,7 +1366,13 @@ void ZProbe::probe_boss(bool calibration) //M462
     THEKERNEL->streams->printf("Center Point is: %.3f , %.3f and is stored in MCS as #154,#155\n" , THEKERNEL->probe_outputs[3],THEKERNEL->probe_outputs[4] );
 
     if (param.save_position > 0){
-        THEROBOT->set_current_wcs_by_mpos( THEKERNEL->probe_outputs[3], THEKERNEL->probe_outputs[4], NAN);
+        if (param.x_axis_distance != 0 && param.y_axis_distance != 0){
+            THEROBOT->set_current_wcs_by_mpos( THEKERNEL->probe_outputs[3], THEKERNEL->probe_outputs[4], NAN);
+        }else if (param.x_axis_distance != 0){
+            THEROBOT->set_current_wcs_by_mpos( THEKERNEL->probe_outputs[3], NAN, NAN);
+        }else if (param.y_axis_distance != 0){
+            THEROBOT->set_current_wcs_by_mpos( NAN, THEKERNEL->probe_outputs[4], NAN);
+        }
     }
 }
 
@@ -1694,11 +1709,18 @@ void ZProbe::calibrate_probe_bore() //M460.1
     THEKERNEL->streams->printf("Calibrating Probe With Bore\n");
 
     float knownDiameter = 0;
+
     if (param.x_axis_distance != 0){
         knownDiameter = param.x_axis_distance;
+    }else{
+        // if only Y is given set X to the same
+        param.x_axis_distance = param.y_axis_distance;
     }
     if (param.y_axis_distance != 0){
         knownDiameter = param.y_axis_distance;
+    }else{
+        // if only X is given set Y to the same
+        param.y_axis_distance = param.x_axis_distance;
     }
 
     if (param.repeat < 1){
@@ -1710,7 +1732,7 @@ void ZProbe::calibrate_probe_bore() //M460.1
     THEKERNEL->probe_outputs[1] = 0;
 
     for(int i=0; i< param.repeat; i++) {
-        probe_bore();
+        probe_bore(true);
         //delete gcodeBuffer;
         THECONVEYOR->wait_for_idle();
         // only Y because the first probe in X can be off center and therefore completely wrong
@@ -1726,12 +1748,13 @@ void ZProbe::calibrate_probe_bore() //M460.1
     
     THEKERNEL->streams->printf("Average bore diameter: %.3f\n", ave);
     
-    THEKERNEL->probe_tip_diameter = knownDiameter - ave;
-    THEKERNEL->streams->printf("New Probe Tip Diameter is: %.3f\n", THEKERNEL->probe_tip_diameter);
+    // Don't write the tip diameter directly without the user knowing.
+    //THEKERNEL->probe_tip_diameter = knownDiameter - ave;
+    THEKERNEL->streams->printf("New Probe Tip Diameter is: %.3f\n", (knownDiameter - ave));
     if (param.save_position > 0){
         //TODO actually save the positon
     }else{
-        THEKERNEL->streams->printf("This value is temporary \n and will neeed to be saved to the config file with \n config-set sd zprobe.probe_tip_diameter %.3f \n", THEKERNEL->probe_tip_diameter);
+        THEKERNEL->streams->printf("This value is temporary \n and will neeed to be saved to the config file with \n config-set sd zprobe.probe_tip_diameter %.3f \n", (knownDiameter - ave));
     }
 }
 
@@ -1780,13 +1803,13 @@ void ZProbe::calibrate_probe_boss() //M460.2
     
     THEKERNEL->streams->printf("Average boss distance: %.3f\n", ave);
     
-    THEKERNEL->probe_tip_diameter = ave - knownDiameter;
-    THEKERNEL->streams->printf("New Probe Tip Diameter is: %.3f\n", THEKERNEL->probe_tip_diameter);
+    //THEKERNEL->probe_tip_diameter = ave - knownDiameter;
+    THEKERNEL->streams->printf("New Probe Tip Diameter is: %.3f\n", (ave - knownDiameter));
 
     if (param.save_position > 0){
         //TODO actually save the positon
     }else{
-        THEKERNEL->streams->printf("This value is temporary \n and will neeed to be saved to the config file with \n config-set sd zprobe.probe_tip_diameter %.3f \n", THEKERNEL->probe_tip_diameter);
+        THEKERNEL->streams->printf("This value is temporary \n and will neeed to be saved to the config file with \n config-set sd zprobe.probe_tip_diameter %.3f \n", (ave - knownDiameter));
     }
 }
 
