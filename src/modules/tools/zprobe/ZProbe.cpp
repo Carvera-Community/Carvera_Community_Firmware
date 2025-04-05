@@ -1022,7 +1022,7 @@ bool ZProbe::parse_parameters(Gcode *gcode, bool override_probe_check){
     init_parameters_and_out_coords();
 
     if (!((override_probe_check && THEKERNEL->eeprom_data->TOOL == 0) || (this->tool_0_3axis && THEKERNEL->eeprom_data->TOOL == 0) || THEKERNEL->eeprom_data->TOOL >= 999990)){
-        THEKERNEL->streams->printf("ALARM: Attempted To 3 Axis Probe with an improper tool number. Tool number needs to be >= 999990\n or you need to set tool 0 as a 3 axis probe with: \n config-set sd zprobe.tool_zero_is_3axis true \n");
+        THEKERNEL->streams->printf("ALARM: Attempted to 3 axis probe with an improper tool number. Tool number needs to be >= 999990\n or you need to set tool 0 as a 3 axis probe with: \n config-set sd zprobe.tool_zero_is_3axis true \n");
         THEKERNEL->call_event(ON_HALT, nullptr);
         THEKERNEL->set_halt_reason(PROBE_FAIL);
         return false;
@@ -1870,20 +1870,20 @@ void ZProbe::single_axis_probe_double_tap(){
     float ave_z = sum / (param.repeat) + (param.tool_dia/2 + tip_z);
 
     if ((param.x_axis_distance != 0 && param.y_axis_distance != 0) || param.rotation_angle != 0) {
-        THEKERNEL->streams->printf("Final Positon: X:%.3f , Y:%.3f\n", ave_x , ave_y);
+        THEKERNEL->streams->printf("Final Position: X:%.3f , Y:%.3f\n", ave_x , ave_y);
         THEKERNEL->probe_outputs[3] = ave_x;
         THEKERNEL->probe_outputs[4] = ave_y;
         if (param.save_position > 0){
             THEROBOT->set_current_wcs_by_mpos( THEKERNEL->probe_outputs[3], THEKERNEL->probe_outputs[4], NAN);
         }
     } else if(param.x_axis_distance != 0){
-        THEKERNEL->streams->printf("Final Positon X: %.3f\n", ave_z);
+        THEKERNEL->streams->printf("Final Position X: %.3f\n", ave_x);
         THEKERNEL->probe_outputs[3] = ave_x;
         if (param.save_position > 0){
             THEROBOT->set_current_wcs_by_mpos( THEKERNEL->probe_outputs[3], NAN, NAN);
         }
     } else if(param.y_axis_distance != 0){
-        THEKERNEL->streams->printf("Final Positon Y: %.3f\n", ave_y);
+        THEKERNEL->streams->printf("Final Position Y: %.3f\n", ave_y);
         THEKERNEL->probe_outputs[4] = ave_y;
         if (param.save_position > 0){
             THEROBOT->set_current_wcs_by_mpos( NAN, THEKERNEL->probe_outputs[4], NAN);
