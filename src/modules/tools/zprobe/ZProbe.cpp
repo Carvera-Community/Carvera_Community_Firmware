@@ -1846,26 +1846,31 @@ void ZProbe::single_axis_probe_double_tap(){
         fast_slow_probe_sequence(XYZ, POS);
 
         THECONVEYOR->wait_for_idle();
-
-        probe_position_stack_x.push_back(out_coords.x_positive_x_out);
-        probe_position_stack_y.push_back(out_coords.y_positive_y_out);
-        probe_position_stack_z.push_back(out_coords.z_negative_z_out);
-
+        
+        if (param.x_rotated_x != 0) {probe_position_stack_x.push_back(out_coords.x_positive_x_out);}
+        if (param.y_rotated_y != 0) {probe_position_stack_y.push_back(out_coords.y_positive_y_out);}
+        if (param.z_axis_distance != 0) {probe_position_stack_z.push_back(out_coords.z_negative_z_out);}
     }
     
     float sum = 0.0;
-    for (const auto& pos : probe_position_stack_x) {
-        sum += pos;
+    if (!probe_position_stack_x.empty()){
+        for (const auto& pos : probe_position_stack_x) {
+            sum += pos;
+        }
     }
     float ave_x = sum / (param.repeat) + tip_x;
     sum = 0.0;
-    for (const auto& pos : probe_position_stack_y) {
-        sum += pos;
+    if (!probe_position_stack_y.empty()){
+        for (const auto& pos : probe_position_stack_y) {
+            sum += pos;
+        }
     }
     float ave_y = sum / (param.repeat) + tip_y;
     sum = 0.0;
-    for (const auto& pos : probe_position_stack_z) {
-        sum += pos;
+    if (!probe_position_stack_z.empty()){
+        for (const auto& pos : probe_position_stack_z) {
+            sum += pos;
+        }
     }
     float ave_z = sum / (param.repeat) + (param.tool_dia/2 + tip_z);
 
