@@ -8,7 +8,7 @@ To let the Carvera work perfectly, please make sure both your controller softwar
 - TLO probe calibration modification to increase accuracy
 - Tools 999990-999999 are for 3 axis probes. Tools outside this range cannot be used for M46X commands
 - added config setting config-set sd zprobe.tool_zero_is_3axis true allows the user to choose if tool 0 is also considered a 3 axis probe
-
+- added config setting config-set sd zprobe.calibration_safety_margin 0.1, during calibration of probe TLO, max distance to move after calibrate pin but before probe pin detected
 
 [1.0.1c1.0.3]
 1. added front button manual tool change behavior

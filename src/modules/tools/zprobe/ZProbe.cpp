@@ -46,6 +46,7 @@
 #define return_feedrate_checksum CHECKSUM("return_feedrate")
 #define probe_height_checksum    CHECKSUM("probe_height")
 #define probe_tip_diameter_checksum CHECKSUM("probe_tip_diameter")
+#define probe_calibration_safety_margin_checksum CHECKSUM("calibration_safety_margin")
 #define toolZeroIs3Axis_checksum  CHECKSUM("tool_zero_is_3axis")
 #define gamma_max_checksum       CHECKSUM("gamma_max")
 #define max_z_checksum           CHECKSUM("max_z")
@@ -105,7 +106,8 @@ void ZProbe::config_load()
     this->pin.from_string( THEKERNEL->config->value(zprobe_checksum, probe_pin_checksum)->by_default("2.6v" )->as_string())->as_input();
     this->calibrate_pin.from_string( THEKERNEL->config->value(zprobe_checksum, calibrate_pin_checksum)->by_default("0.5^" )->as_string())->as_input();
     this->debounce_ms    = THEKERNEL->config->value(zprobe_checksum, debounce_ms_checksum)->by_default(0  )->as_number();
-
+    this->probe_calibration_safety_margin = THEKERNEL->config->value(zprobe_checksum, probe_calibration_safety_margin_checksum)->by_default(0.1F)->as_number();
+    
     // get strategies to load
     vector<uint16_t> modules;
     THEKERNEL->config->get_module_list( &modules, leveling_strategy_checksum);
@@ -214,6 +216,7 @@ uint32_t ZProbe::read_calibrate(uint32_t dummy)
 
     struct tool_status tool;
     bool ok = PublicData::get_value( atc_handler_checksum, get_tool_status_checksum, &tool );
+    bool is_probe_tool = (tool.active_tool == 0 || tool.active_tool >= 999990);
 
     // just check z Axis move
     if (STEPPER[Z_AXIS]->is_moving()) {
@@ -222,20 +225,38 @@ uint32_t ZProbe::read_calibrate(uint32_t dummy)
     	}
         // if it is moving then we check the probe, and debounce it
         if (this->calibrate_pin.get()) {
+            // Record triggering of calibration pin
+            if (!calibrate_pin_triggered) {
+                calibrate_pin_triggered = true;
+                calibrate_pin_position = STEPPER[Z_AXIS]->get_current_position();
+            }
+
             if (cali_debounce < debounce_ms) {
                 cali_debounce++;
-            } else if ((tool.active_tool > 0 && tool.active_tool < 999990) || probe_detected) {
+            } else if (!is_probe_tool || probe_detected) {
                 // we signal the motors to stop, which will preempt any moves on that axis
                 // we do all motors as it may be a delta
                 for (auto &a : THEROBOT->actuators) a->stop_moving();
                 calibrate_detected = true;
                 cali_debounce = 0;
+            } else {
+                // We have a probe tool; we must make sure we don't move too far.
+                float current_z = STEPPER[Z_AXIS]->get_current_position();
+                float distance_moved = fabs(current_z - calibrate_pin_position);
+                if (distance_moved > this->probe_calibration_safety_margin) {
+                    for (auto &a : THEROBOT->actuators) a->stop_moving();
+                    THEKERNEL->streams->printf("ALARM: Probe failed to trigger within safety margin (%.2fmm)\n", 
+                                               this->probe_calibration_safety_margin);
+                    THEKERNEL->set_halt_reason(PROBE_FAIL);
+                    THEKERNEL->call_event(ON_HALT, nullptr);                
+                }
             }
-
         } else {
             // The endstop was not hit yet
             cali_debounce = 0;
-        }
+        } 
+    } else {
+       calibrate_pin_triggered = false;
     }
 
     return 0;
