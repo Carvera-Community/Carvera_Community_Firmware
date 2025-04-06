@@ -87,7 +87,7 @@ class Robot : public Module {
         wcs_t wcs2mcs(const wcs_t &pos) const;
         wcs_t wcs2mcs(const float *pos) const { return wcs2mcs(wcs_t(pos[X_AXIS], pos[Y_AXIS], pos[Z_AXIS], pos[A_AXIS], pos[B_AXIS])); }
 
-        void set_current_wcs_by_mpos(float x = NAN, float y = NAN, float z = NAN, float a = NAN, float b = NAN);
+        void set_current_wcs_by_mpos(float x = NAN, float y = NAN, float z = NAN, float a = NAN, float b = NAN, float r = NAN);
 
         struct {
             bool inch_mode:1;                                 // true for inch mode, false for millimeter mode ( default )
@@ -135,6 +135,8 @@ class Robot : public Module {
         uint8_t current_wcs{0}; // 0 means G54 is enabled this is persistent once saved with M500
         wcs_t g92_offset;
         wcs_t tool_offset; // used for multiple extruders, sets the tool offset for the current extruder applied first
+        float cos_r[MAX_WCS];
+        float sin_r[MAX_WCS];
         std::tuple<float, float, float, uint8_t> last_probe_position{0,0,0,0};
 
         uint8_t current_motion_mode;
