@@ -75,7 +75,7 @@ class ZProbe: public Module
 {
 
 public:
-    ZProbe() : invert_override(false),invert_probe(false) {};
+    ZProbe() : invert_override(false),invert_probe(false), probe_calibration_safety_margin(0.1F) {};
     virtual ~ZProbe() {};
 
     void on_module_loaded();
@@ -144,6 +144,8 @@ private:
     volatile bool calibrating;
     volatile bool probe_detected;
     volatile bool calibrate_detected;
+
+
     bool bfirstHitDetected  = false;
     bool bNoHited  = false;
     bool bDoubleHited  = false;
@@ -156,6 +158,15 @@ private:
         bool invert_override:1;
         bool invert_probe:1;
     };
+    
+    // Tracking variables to prevent probe crashes
+    // Track position when calibrate pin detected
+    volatile float calibrate_pin_position;  
+    // Track status of calibrate pin
+    volatile bool calibrate_pin_triggered;
+    // zprobe.calibrate_safety_margin
+    float probe_calibration_safety_margin;  
+    
 };
 
 #endif /* ZPROBE_H_ */
