@@ -1101,7 +1101,7 @@ bool ZProbe::parse_parameters(Gcode *gcode, bool override_probe_check){
         if (gcode->get_value('I') > 0)
         {
             param.probe_g38_subcode = 2;
-            param.invert_probe = true;
+            invert_probe = true;
         }
     }
 
@@ -1125,7 +1125,6 @@ void ZProbe::init_parameters_and_out_coords(){
     param.clearance_height = 2;                        //C
     param.side_depth = 2;                              //E
     param.probe_g38_subcode = 0;                       //I
-    param.invert_probe = false;                        //I
     param.slowZprobeRate = 50;                         
     param.extra_probe_distance = 4;                    //J
 }
@@ -1805,8 +1804,6 @@ void ZProbe::calibrate_probe_boss() //M460.2
 
     for(int i=0; i< param.repeat; i++) {
             probe_boss(true);
-            THEKERNEL->call_event(ON_GCODE_RECEIVED, this->gcodeBuffer);
-            //delete gcodeBuffer;
             THECONVEYOR->wait_for_idle();
             
             if (param.x_axis_distance != 0){
