@@ -490,8 +490,8 @@ void Robot::print_position(uint8_t subcode, std::string& res, bool ignore_extrud
 Robot::wcs_t Robot::mcs2wcs(const Robot::wcs_t& pos) const
 {
     return std::make_tuple(
-        std::get<X_AXIS>(pos) - std::get<X_AXIS>(wcs_offsets[current_wcs]) + std::get<X_AXIS>(g92_offset) - std::get<X_AXIS>(tool_offset),
-        std::get<Y_AXIS>(pos) - std::get<Y_AXIS>(wcs_offsets[current_wcs]) + std::get<Y_AXIS>(g92_offset) - std::get<Y_AXIS>(tool_offset),
+        this->cos_r[current_wcs] * (std::get<X_AXIS>(pos) - std::get<X_AXIS>(wcs_offsets[current_wcs])) + this->sin_r[current_wcs] * (std::get<Y_AXIS>(pos) - std::get<Y_AXIS>(wcs_offsets[current_wcs])) + std::get<X_AXIS>(g92_offset) - std::get<X_AXIS>(tool_offset),
+        this->cos_r[current_wcs] * (std::get<Y_AXIS>(pos) - std::get<Y_AXIS>(wcs_offsets[current_wcs])) - this->sin_r[current_wcs] * (std::get<X_AXIS>(pos) - std::get<X_AXIS>(wcs_offsets[current_wcs])) + std::get<Y_AXIS>(g92_offset) - std::get<Y_AXIS>(tool_offset),
         std::get<Z_AXIS>(pos) - std::get<Z_AXIS>(wcs_offsets[current_wcs]) + std::get<Z_AXIS>(g92_offset) - std::get<Z_AXIS>(tool_offset),
         std::get<A_AXIS>(pos) - std::get<A_AXIS>(wcs_offsets[current_wcs]) + std::get<A_AXIS>(g92_offset) - std::get<A_AXIS>(tool_offset),
         std::get<B_AXIS>(pos) - std::get<B_AXIS>(wcs_offsets[current_wcs]) + std::get<B_AXIS>(g92_offset) - std::get<B_AXIS>(tool_offset)
@@ -1190,10 +1190,24 @@ void Robot::process_move(Gcode *gcode, enum MOTION_MODE_T motion_mode)
     }
 
     float offset[3]{0,0,0};
-    for(char letter = 'I'; letter <= 'K'; letter++) {
-        if( gcode->has_letter(letter) ) {
-            offset[letter - 'I'] = this->to_millimeters(gcode->get_value(letter));
-        }
+    //for(char letter = 'I'; letter <= 'K'; letter++) {
+    //    if( gcode->has_letter(letter) ) {
+    //        offset[letter - 'I'] = this->to_millimeters(gcode->get_value(letter));
+    //    }
+    //}
+
+    if (gcode->has_letter('I') && gcode->has_letter('J')){
+        offset[0] = this->cos_r[current_wcs] * this->to_millimeters(gcode->get_value('I')) - this->sin_r[current_wcs] * this->to_millimeters(gcode->get_value('J'));
+        offset[1] = this->cos_r[current_wcs] * this->to_millimeters(gcode->get_value('J')) + this->sin_r[current_wcs] * this->to_millimeters(gcode->get_value('I'));
+    }else if (gcode->has_letter('I')){
+        offset[0] = this->cos_r[current_wcs] * this->to_millimeters(gcode->get_value('I'));
+        offset[1] = this->sin_r[current_wcs] * this->to_millimeters(gcode->get_value('I'));
+    }else if (gcode->has_letter('J')){
+        offset[0] = - this->sin_r[current_wcs] * this->to_millimeters(gcode->get_value('J'));
+        offset[1] = this->cos_r[current_wcs] * this->to_millimeters(gcode->get_value('J'));
+    }
+    if (gcode->has_letter('I')){
+        offset[2] = this->to_millimeters(gcode->get_value('K'));
     }
 
     // calculate target in machine coordinates (less compensation transform which needs to be done after segmentation)
