@@ -671,6 +671,7 @@ void Endstops::back_off_home(axis_bitmap_t axis)
         append_parameters(gcode_buf, params, sizeof(gcode_buf));
         Gcode gc(gcode_buf, &(StreamOutput::NullStream));
         THEROBOT->push_state();
+        THEROBOT->next_command_is_MCS= true; // needs to be in machine coordinates
         THEROBOT->absolute_mode = false; // needs to be relative mode
         THEROBOT->on_gcode_received(&gc); // send to robot directly
         // Wait for above to finish

@@ -1568,9 +1568,9 @@ void ZProbe::probe_outsideCorner() //M464
         {
             // 
             float lines_m1_value = tan(param.rotation_angle * pi / 180);
-            float lines_m2_value = -tan((90.0 - param.rotation_angle) * pi / 180);
-            float lines_c1_value = out_coords.x_positive_y_out - out_coords.x_positive_x_out * lines_m1_value;
-            float lines_c2_value = out_coords.y_positive_y_out - out_coords.y_positive_x_out * lines_m2_value;
+            float lines_m2_value = tan((param.rotation_angle + 90.0) * pi / 180);
+            float lines_c1_value = out_coords.y_positive_y_out - out_coords.y_positive_x_out * lines_m1_value;
+            float lines_c2_value = out_coords.x_positive_y_out - out_coords.x_positive_x_out * lines_m2_value;
             THEKERNEL->probe_outputs[3] = (lines_c2_value - lines_c1_value) / (lines_m1_value-lines_m2_value); // x_out
             THEKERNEL->probe_outputs[4] = (lines_m1_value * lines_c2_value - lines_m2_value * lines_c1_value) 
                                           / (lines_m1_value - lines_m2_value);   // y_out

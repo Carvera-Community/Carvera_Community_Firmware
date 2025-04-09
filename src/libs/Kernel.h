@@ -99,6 +99,8 @@ typedef struct {
 	int TOOL;
 	float G54AB[2];
     float perm_vars[20];
+    float cos_r_G54;
+    float sin_r_G54;
 } EEPROM_data;
 
 typedef struct {

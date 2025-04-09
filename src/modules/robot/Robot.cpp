@@ -160,6 +160,8 @@ void Robot::on_module_loaded()
     for (int i = 0; i < 9UL; i++){
         this->cos_r[i] = 1;
     }
+    this->cos_r[0] = THEKERNEL->eeprom_data->cos_r_G54;
+    this->sin_r[0] = THEKERNEL->eeprom_data->sin_r_G54;
 }
 
 #define ACTUATOR_CHECKSUMS(X) {     \
@@ -502,8 +504,8 @@ Robot::wcs_t Robot::mcs2wcs(const Robot::wcs_t& pos) const
 Robot::wcs_t Robot::wcs2mcs(const Robot::wcs_t& pos) const
 {
     return std::make_tuple(
-        std::get<X_AXIS>(pos) + std::get<X_AXIS>(wcs_offsets[current_wcs]) - std::get<X_AXIS>(g92_offset) + std::get<X_AXIS>(tool_offset),
-        std::get<Y_AXIS>(pos) + std::get<Y_AXIS>(wcs_offsets[current_wcs]) - std::get<Y_AXIS>(g92_offset) + std::get<Y_AXIS>(tool_offset),
+        std::get<X_AXIS>(wcs_offsets[current_wcs]) + this->cos_r[current_wcs] * (std::get<X_AXIS>(pos) - std::get<X_AXIS>(g92_offset) + std::get<X_AXIS>(tool_offset)) - this->sin_r[current_wcs] * (std::get<Y_AXIS>(pos) - std::get<Y_AXIS>(g92_offset) + std::get<Y_AXIS>(tool_offset)),
+        std::get<Y_AXIS>(wcs_offsets[current_wcs]) + this->cos_r[current_wcs] * (std::get<Y_AXIS>(pos) - std::get<Y_AXIS>(g92_offset) + std::get<Y_AXIS>(tool_offset)) + this->sin_r[current_wcs] * (std::get<X_AXIS>(pos) - std::get<X_AXIS>(g92_offset) + std::get<X_AXIS>(tool_offset)),
         std::get<Z_AXIS>(pos) + std::get<Z_AXIS>(wcs_offsets[current_wcs]) - std::get<Z_AXIS>(g92_offset) + std::get<Z_AXIS>(tool_offset),
         std::get<A_AXIS>(pos) + std::get<A_AXIS>(wcs_offsets[current_wcs]) - std::get<A_AXIS>(g92_offset) + std::get<A_AXIS>(tool_offset),
         std::get<B_AXIS>(pos) + std::get<B_AXIS>(wcs_offsets[current_wcs]) - std::get<B_AXIS>(g92_offset) + std::get<B_AXIS>(tool_offset)
@@ -542,6 +544,10 @@ void Robot::set_current_wcs_by_mpos(float x, float y, float z, float a, float b,
     if(isnan(b)){
         b = std::get<B_AXIS>(wcs_offsets[current_wcs]);
     }
+    if(!isnan(r)){
+        this->cos_r[current_wcs] = cos(r * (3.14159 / 180.0));
+        this->sin_r[current_wcs] = sin(r * (3.14159 / 180.0));
+    }
     THEROBOT->wcs_offsets[current_wcs] = Robot::wcs_t(x, y, z , a , b);
     // save wcs data to eeprom if current wcs = G54
     if (current_wcs == 0) {
@@ -550,6 +556,8 @@ void Robot::set_current_wcs_by_mpos(float x, float y, float z, float a, float b,
         THEKERNEL->eeprom_data->G54[2] = z;
         THEKERNEL->eeprom_data->G54AB[0] = a;
         THEKERNEL->eeprom_data->G54AB[1] = b;
+        THEKERNEL->eeprom_data->cos_r_G54 = this->cos_r[0];
+        THEKERNEL->eeprom_data->sin_r_G54 = this->sin_r[0];
         THEKERNEL->write_eeprom_data();
     }
 }
@@ -677,6 +685,8 @@ void Robot::on_gcode_received(void *argument)
                     	    THEKERNEL->eeprom_data->G54[2] = z;
                     	    THEKERNEL->eeprom_data->G54AB[0] = a;
                     	    THEKERNEL->eeprom_data->G54AB[1] = b;
+                            THEKERNEL->eeprom_data->cos_r_G54 = this->cos_r[0];
+                            THEKERNEL->eeprom_data->sin_r_G54 = this->sin_r[0];
                     	    THEKERNEL->write_eeprom_data();
                         }
                     }
@@ -1218,14 +1228,15 @@ void Robot::process_move(Gcode *gcode, enum MOTION_MODE_T motion_mode)
         if (this->absolute_mode) {
             // apply wcs offsets and g92 offset and tool offset
             if(!isnan(param[X_AXIS]) && !isnan(param[Y_AXIS])) {
-                target[X_AXIS]= ROUND_NEAR_HALF(std::get<X_AXIS>(wcs_offsets[current_wcs]) + this->cos_r[current_wcs] * param[X_AXIS] - this->sin_r[current_wcs] * param[Y_AXIS] - std::get<X_AXIS>(g92_offset) + std::get<X_AXIS>(tool_offset));
-                target[Y_AXIS]= ROUND_NEAR_HALF(std::get<Y_AXIS>(wcs_offsets[current_wcs]) + this->cos_r[current_wcs] * param[Y_AXIS] + this->sin_r[current_wcs] * param[X_AXIS] - std::get<Y_AXIS>(g92_offset) + std::get<Y_AXIS>(tool_offset));
+                target[X_AXIS]= ROUND_NEAR_HALF(std::get<X_AXIS>(wcs_offsets[current_wcs]) + this->cos_r[current_wcs] * (param[X_AXIS] - std::get<X_AXIS>(g92_offset) + std::get<X_AXIS>(tool_offset)) - this->sin_r[current_wcs] * (param[Y_AXIS] - std::get<Y_AXIS>(g92_offset) + std::get<Y_AXIS>(tool_offset)));
+                target[Y_AXIS]= ROUND_NEAR_HALF(std::get<Y_AXIS>(wcs_offsets[current_wcs]) + this->cos_r[current_wcs] * (param[Y_AXIS] - std::get<Y_AXIS>(g92_offset) + std::get<Y_AXIS>(tool_offset)) + this->sin_r[current_wcs] * (param[X_AXIS] - std::get<X_AXIS>(g92_offset) + std::get<X_AXIS>(tool_offset)));
+                THEKERNEL->streams->printf("wcs_offset_x: %.3f cos_r: %.3f x_value: %.3f",std::get<X_AXIS>(wcs_offsets[current_wcs]), this->cos_r[current_wcs], param[X_AXIS]);
             }else if(!isnan(param[X_AXIS])) {
-                target[X_AXIS]= ROUND_NEAR_HALF(std::get<X_AXIS>(wcs_offsets[current_wcs]) + this->cos_r[current_wcs] * param[X_AXIS] - std::get<X_AXIS>(g92_offset) + std::get<X_AXIS>(tool_offset));
-                target[Y_AXIS]= ROUND_NEAR_HALF(std::get<Y_AXIS>(wcs_offsets[current_wcs]) + this->sin_r[current_wcs] * param[X_AXIS] - std::get<Y_AXIS>(g92_offset) + std::get<Y_AXIS>(tool_offset));
+                target[X_AXIS]= ROUND_NEAR_HALF(std::get<X_AXIS>(wcs_offsets[current_wcs]) + this->cos_r[current_wcs] * (param[X_AXIS] - std::get<X_AXIS>(g92_offset) + std::get<X_AXIS>(tool_offset)) - this->sin_r[current_wcs] * (- std::get<Y_AXIS>(g92_offset) + std::get<Y_AXIS>(tool_offset)));
+                target[Y_AXIS]= ROUND_NEAR_HALF(std::get<Y_AXIS>(wcs_offsets[current_wcs]) + this->cos_r[current_wcs] * (- std::get<Y_AXIS>(g92_offset) + std::get<Y_AXIS>(tool_offset)) + this->sin_r[current_wcs] * (param[X_AXIS] - std::get<X_AXIS>(g92_offset) + std::get<X_AXIS>(tool_offset)));
             }else if(!isnan(param[Y_AXIS])) {
-                target[X_AXIS]= ROUND_NEAR_HALF(std::get<X_AXIS>(wcs_offsets[current_wcs]) - this->sin_r[current_wcs] * param[Y_AXIS] - std::get<X_AXIS>(g92_offset) + std::get<X_AXIS>(tool_offset));
-                target[Y_AXIS]= ROUND_NEAR_HALF(std::get<Y_AXIS>(wcs_offsets[current_wcs]) + this->cos_r[current_wcs] * param[Y_AXIS] - std::get<Y_AXIS>(g92_offset) + std::get<Y_AXIS>(tool_offset));
+                target[X_AXIS]= ROUND_NEAR_HALF(std::get<X_AXIS>(wcs_offsets[current_wcs]) + this->cos_r[current_wcs] * (- std::get<X_AXIS>(g92_offset) + std::get<X_AXIS>(tool_offset)) - this->sin_r[current_wcs] * (param[Y_AXIS] - std::get<Y_AXIS>(g92_offset) + std::get<Y_AXIS>(tool_offset)));
+                target[Y_AXIS]= ROUND_NEAR_HALF(std::get<Y_AXIS>(wcs_offsets[current_wcs]) + this->cos_r[current_wcs] * (param[Y_AXIS] - std::get<Y_AXIS>(g92_offset) + std::get<Y_AXIS>(tool_offset)) + this->sin_r[current_wcs] * (- std::get<X_AXIS>(g92_offset) + std::get<X_AXIS>(tool_offset)));
             }
 
             if(!isnan(param[Z_AXIS])) {
@@ -1244,7 +1255,7 @@ void Robot::process_move(Gcode *gcode, enum MOTION_MODE_T motion_mode)
                 target[X_AXIS]= ROUND_NEAR_HALF(this->cos_r[current_wcs] * param[X_AXIS] + machine_position[X_AXIS]);
                 target[Y_AXIS]= ROUND_NEAR_HALF(this->sin_r[current_wcs] * param[X_AXIS] + machine_position[Y_AXIS]);
             }else if(!isnan(param[Y_AXIS])) {
-                target[X_AXIS]= ROUND_NEAR_HALF(this->sin_r[current_wcs] * param[Y_AXIS] + machine_position[X_AXIS]);
+                target[X_AXIS]= ROUND_NEAR_HALF(- this->sin_r[current_wcs] * param[Y_AXIS] + machine_position[X_AXIS]);
                 target[Y_AXIS]= ROUND_NEAR_HALF(this->cos_r[current_wcs] * param[Y_AXIS] + machine_position[Y_AXIS]);
             }
 

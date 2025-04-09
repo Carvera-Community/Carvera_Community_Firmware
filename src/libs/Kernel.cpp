@@ -837,6 +837,16 @@ void Kernel::check_eeprom_data()
 		this->eeprom_data->G54AB[1] = 0;
 		needrewtite = true;
 	}
+    if(isnan(this->eeprom_data->cos_r_G54))
+	{
+		this->eeprom_data->cos_r_G54 = 1;
+		needrewtite = true;
+	}
+    if(isnan(this->eeprom_data->sin_r_G54))
+	{
+		this->eeprom_data->sin_r_G54 = 0;
+		needrewtite = true;
+	}
 	if(needrewtite)
 		this->write_eeprom_data();
 }
