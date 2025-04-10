@@ -75,7 +75,11 @@ class ZProbe: public Module
 {
 
 public:
-    ZProbe() : invert_override(false),invert_probe(false), probe_calibration_safety_margin(0.1F) {};
+    ZProbe() : invert_override(false),invert_probe(false) {
+        probe_calibration_safety_margin = 0.1F;
+        reset_probe_tracking();  
+    };
+
     virtual ~ZProbe() {};
 
     void on_module_loaded();
@@ -118,6 +122,8 @@ private:
     uint32_t read_calibrate(uint32_t dummy);
     void on_get_public_data(void* argument);
     uint32_t probe_doubleHit(uint32_t dummy);
+    void reset_probe_tracking();
+    bool is_probe_tool();
 
     float slow_feedrate;
     float fast_feedrate;
@@ -162,11 +168,11 @@ private:
     // Tracking variables to prevent probe crashes
     // Track position when calibrate pin detected
     volatile float calibrate_pin_position;  
-    // Track status of calibrate pin
-    volatile bool calibrate_pin_triggered;
     // zprobe.calibrate_safety_margin
-    float probe_calibration_safety_margin;  
-    
+    float probe_calibration_safety_margin;
+    // Z position when probe pin triggered        
+    volatile float probe_pin_position;
+    volatile float calibrate_current_z;
 };
 
 #endif /* ZPROBE_H_ */
