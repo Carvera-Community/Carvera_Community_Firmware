@@ -250,8 +250,8 @@ uint32_t ZProbe::read_calibrate(uint32_t dummy)
                 // If we've exceeded the calibration distance, set PROBE_FAIL.
                 // The error will be reported in calibrate_Z.
                 if (distance_moved > probe_calibration_safety_margin) {
-                    for (auto &a : THEROBOT->actuators) a->stop_moving();                    
-                    THEKERNEL->set_halt_reason(PROBE_FAIL);
+                    safety_margin_exceeded = true;
+                    for (auto &a : THEROBOT->actuators) a->stop_moving();
                 }
             }
         } else {
@@ -636,6 +636,8 @@ void ZProbe::on_gcode_received(void *argument)
 }
 
 void ZProbe::reset_probe_tracking() {
+    THEKERNEL->streams->printf("reset_probe_tracking");
+    safety_margin_exceeded = false;
     calibrate_pin_position = 0.0F;
     probe_pin_position = 0.0F;
     calibrate_current_z = 0.0F;
@@ -743,6 +745,7 @@ bool ZProbe::is_probe_tool() {
 // just probe / calibrate Z using calibrate pin
 void ZProbe::calibrate_Z(Gcode *gcode)
 {
+    THEKERNEL->streams->printf("Start calibrate_Z method \n");
     float z= 0;
     if(gcode->has_letter('Z')) {
         z= gcode->get_value('Z');
@@ -764,6 +767,7 @@ void ZProbe::calibrate_Z(Gcode *gcode)
         return;
     }
 
+    THEKERNEL->streams->printf("Before setting calibrating to true \n");
     probing = false;
     calibrating = true;
     probe_detected = false;
@@ -771,8 +775,9 @@ void ZProbe::calibrate_Z(Gcode *gcode)
     debounce = 0;
     cali_debounce = 0;
 
+    THEKERNEL->streams->printf("Before reset probe \n");
     reset_probe_tracking();
-
+    THEKERNEL->streams->printf("After reset probe \n");
     // If calibration is happening with a probe tool, enable tracking of probe position in the read_probe ISR.
     if (is_probe_tool()) {
         probing = true;
@@ -781,6 +786,7 @@ void ZProbe::calibrate_Z(Gcode *gcode)
     // do a delta move which will stop as soon as the probe is triggered, or the distance is reached
     float delta[3]= {0, 0, z};
     THEKERNEL->set_zprobing(true);
+    THEKERNEL->streams->printf("Before delta move \n");
     if(!THEROBOT->delta_move(delta, rate, 3)) {
         gcode->stream->printf("ERROR: Move too small,  %1.3f\n", z);
         THEKERNEL->set_halt_reason(PROBE_FAIL);
@@ -790,6 +796,7 @@ void ZProbe::calibrate_Z(Gcode *gcode)
         return;
     }
     THEKERNEL->set_zprobing(false);
+    THEKERNEL->streams->printf("After delta move\n");
 
     THEKERNEL->conveyor->wait_for_idle();
 
@@ -803,16 +810,19 @@ void ZProbe::calibrate_Z(Gcode *gcode)
     float pos[3];
     THEROBOT->get_axis_position(pos, 3);
     
-    if (THEKERNEL->get_halt_reason() == PROBE_FAIL) {
+    if (safety_margin_exceeded) {
+        safety_margin_exceeded = false;
+        THEKERNEL->set_halt_reason(PROBE_FAIL);
+        THEKERNEL->call_event(ON_HALT, nullptr);
         gcode->stream->printf("ALARM: Probe failed to trigger within safety margin (%.2fmm)\n", 
                              this->probe_calibration_safety_margin);
+        gcode->stream->printf("Distance moved: %.3f\n", distance_moved, calibrate_current_z, calibrate_pin_position, safety_margin_exceeded);
         gcode->stream->printf("Probe pin triggered: %d, position: %.3f\n", probe_detected, probe_pin_position);
         gcode->stream->printf("Calibrate pin triggered: %d, position: %.3f\n", calibrate_detected, calibrate_pin_position);
         gcode->stream->printf("Current position: %.3f\n", THEKERNEL->robot->from_millimeters(pos[Z_AXIS]));
         gcode->stream->printf("Error detected at position: %.3f\n", calibrate_current_z);
         gcode->stream->printf("Safety Margin Value: %.3f\n",  probe_calibration_safety_margin);
-        gcode->stream->printf("debounce: %d, cali_debounce: %d, debounce_ms: %d\n", debounce, cali_debounce, debounce_ms);
-        THEKERNEL->call_event(ON_HALT, nullptr);
+        gcode->stream->printf("debounce: %d, cali_debounce: %d, debounce_ms: %d\n", debounce, cali_debounce, debounce_ms);        
         return;
     }
 
