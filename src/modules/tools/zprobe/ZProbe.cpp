@@ -93,8 +93,8 @@ void ZProbe::on_module_loaded()
     // we read the probe in this timer
     probing = false;
     calibrating = false;
-    THEKERNEL->slow_ticker->attach(100, this, &ZProbe::read_probe);
-    THEKERNEL->slow_ticker->attach(100, this, &ZProbe::read_calibrate);
+    THEKERNEL->slow_ticker->attach(1000, this, &ZProbe::read_probe);
+    THEKERNEL->slow_ticker->attach(1000, this, &ZProbe::read_calibrate);
 	if(!(THEKERNEL->factory_set->FuncSetting & (1<<2)))	//Manual Tool change 
 	{
     	THEKERNEL->slow_ticker->attach(100, this, &ZProbe::probe_doubleHit);
@@ -657,6 +657,9 @@ bool ZProbe::probe_XYZ(Gcode *gcode)
         z= gcode->get_value('Z');
     }
 
+    // Apply wcs rotation for G38
+    rotateXY(x, y, &x, &y, THEROBOT->r[THEROBOT->get_current_wcs()]);
+
     if(x == 0 && y == 0 && z == 0) {
         gcode->stream->printf("error:at least one of X Y or Z must be specified, and be > or < 0\n");
         return false;
@@ -807,6 +810,7 @@ void ZProbe::calibrate_Z(Gcode *gcode)
         gcode->stream->printf("Calibrate pin triggered: %d, position: %.3f\n", calibrate_detected, calibrate_pin_position);
         gcode->stream->printf("Current position: %.3f\n", THEKERNEL->robot->from_millimeters(pos[Z_AXIS]));
         gcode->stream->printf("Error detected at position: %.3f\n", calibrate_current_z);
+        gcode->stream->printf("Safety Margin Value: %.3f\n",  probe_calibration_safety_margin);
         gcode->stream->printf("debounce: %d, cali_debounce: %d, debounce_ms: %d\n", debounce, cali_debounce, debounce_ms);
         THEKERNEL->call_event(ON_HALT, nullptr);
         return;
@@ -913,29 +917,25 @@ void ZProbe::on_get_public_data(void* argument)
     }
 }
 
-void ZProbe::rotate(int axis, float axis_distance, float *x, float *y, float rotation_angle){
-    if (axis == 1){
-        rotation_angle = rotation_angle + 90;
+void ZProbe::rotate(int axis, float axis_distance, float* x, float* y, float rotation_angle){
+    if (axis == 0){
+        rotateXY(axis_distance, NAN, x, y, rotation_angle);
+    }else if (axis == 1){
+        rotateXY(NAN, axis_distance, x, y, rotation_angle);
     }
-    float x_component = cos(rotation_angle*pi/180);
-    float y_component = sin(rotation_angle*pi/180);
-
-    *x = axis_distance * x_component;
-    *y = axis_distance * y_component;
-
-    return;
 }
 
-void ZProbe::rotateXY(float x_in, float y_in, float *x_out, float *y_out, float rotation_angle){
-    
-    float cos_angle = cos(rotation_angle*pi/180);
-    float sin_angle = sin(rotation_angle*pi/180);
-
-    // multiply rotation matrix with the xy vector
-    *x_out = x_in * cos_angle - y_in * sin_angle;
-    *y_out = x_in * sin_angle + y_in * cos_angle;
-
-    return;
+void ZProbe::rotateXY(float x_in, float y_in, float* x_out, float* y_out, float rotation_angle){
+    if (!isnan(x_in) && !isnan(y_in)){
+        *x_out = x_in * cos(rotation_angle * (pi/180.0)) - y_in * sin(rotation_angle * (pi/180.0));
+        *y_out = x_in * sin(rotation_angle * (pi/180.0)) + y_in * cos(rotation_angle * (pi/180.0));
+    }else if(!isnan(x_in)){
+        *x_out = x_in * cos(rotation_angle * (pi/180.0));
+        *y_out = x_in * sin(rotation_angle * (pi/180.0));
+    }else if(!isnan(y_in)){
+        *x_out = - y_in * sin(rotation_angle * (pi/180.0));
+        *y_out = y_in * cos(rotation_angle * (pi/180.0));
+    }
 }
 
 float ZProbe::get_xyz_move_length(float x, float y, float z){
@@ -982,8 +982,8 @@ void ZProbe::fast_slow_probe_sequence(int axis, int direction){
     if (axis == 0 || axis == 1){
         // rotate either x or y
         rotate(axis, axis_distance, &x, &y, param.rotation_angle);
-        // rotate the retraction distance
-        rotate(axis, (retract_direction * param.retract_distance), &retractx, &retracty, param.rotation_angle);
+        // rotate the retraction distance to the correct values in the mcs;
+        rotate(axis, (retract_direction * param.retract_distance), &retractx, &retracty, param.rotation_angle_mcs);
         z = retractz = 0;
     }else if(axis == 2){
         retractx = x = retracty = y = 0;
@@ -995,6 +995,9 @@ void ZProbe::fast_slow_probe_sequence(int axis, int direction){
         retractx = retract_direction * (param.retract_distance/axis_distance) * x;
         retracty = retract_direction * (param.retract_distance/axis_distance) * y;
         retractz = retract_direction * (param.retract_distance/axis_distance) * z;
+
+        // rotate the retraction again, because the delta move is in mcs and not wcs
+        rotateXY(retractx, retracty, &retractx, &retracty, THEROBOT->r[THEROBOT->get_current_wcs()]);
     }
     
     // do positive probe
@@ -1123,8 +1126,9 @@ bool ZProbe::parse_parameters(Gcode *gcode, bool override_probe_check){
     if (gcode->has_letter('Z')) { //radius y
         param.z_axis_distance = gcode->get_value('Z');
     }
-    if (gcode->has_letter('Q')) { //roation of pocket
+    if (gcode->has_letter('Q')) { //add a rotation angle to the currently active angle (wcs)
         param.rotation_angle = gcode->get_value('Q');
+        param.rotation_angle_mcs = param.rotation_angle_mcs + param.rotation_angle;
     }
     if (gcode->has_letter('F')) { //feed rate
         param.feed_rate = gcode->get_value('F');
@@ -1173,6 +1177,7 @@ void ZProbe::init_parameters_and_out_coords(){
     param.y_axis_distance = 0;                         //Y
     param.z_axis_distance = 0;                         //Z
     param.rotation_angle = 0;                          //Q
+    param.rotation_angle_mcs = THEROBOT->r[THEROBOT->get_current_wcs()];
     param.repeat = 1;                                  //L
     param.retract_distance = 1.5;                      //R
     param.clearance_height = 2;                        //C
@@ -1477,8 +1482,8 @@ void ZProbe::probe_insideCorner() //M463
 
     rotate(X_AXIS, param.x_axis_distance, &param.x_rotated_x, &param.x_rotated_y, param.rotation_angle);
     rotate(Y_AXIS, param.y_axis_distance, &param.y_rotated_x, &param.y_rotated_y, param.rotation_angle);
-    rotate(X_AXIS, (param.tool_dia/2.0), &param.half_tool_dia_rotated_x_x, &param.half_tool_dia_rotated_x_y, param.rotation_angle);
-    rotate(Y_AXIS, (param.tool_dia/2.0), &param.half_tool_dia_rotated_y_x, &param.half_tool_dia_rotated_y_y, param.rotation_angle);
+    rotate(X_AXIS, (param.tool_dia/2.0), &param.half_tool_dia_rotated_x_x, &param.half_tool_dia_rotated_x_y, param.rotation_angle_mcs);
+    rotate(Y_AXIS, (param.tool_dia/2.0), &param.half_tool_dia_rotated_y_x, &param.half_tool_dia_rotated_y_y, param.rotation_angle_mcs);
 
 	//setup repeat
 	for(int i=0; i< param.repeat; i++) {
@@ -1499,7 +1504,7 @@ void ZProbe::probe_insideCorner() //M463
         THECONVEYOR->wait_for_idle();
         
         // calculate center position
-        if (param.rotation_angle == 0)
+        if (param.rotation_angle_mcs == 0)
         {
             THEKERNEL->probe_outputs[3] = out_coords.x_positive_x_out;
             THEKERNEL->probe_outputs[4] = out_coords.y_positive_y_out;
@@ -1507,8 +1512,8 @@ void ZProbe::probe_insideCorner() //M463
         else
         {
             // 
-            float lines_m1_value = tan(param.rotation_angle * pi / 180);
-            float lines_m2_value = -tan((90.0 - param.rotation_angle) * pi / 180);
+            float lines_m1_value = tan(param.rotation_angle_mcs * pi / 180);
+            float lines_m2_value = -tan((90.0 - param.rotation_angle_mcs) * pi / 180);
             float lines_c1_value = out_coords.x_positive_y_out - out_coords.x_positive_x_out * lines_m1_value;
             float lines_c2_value = out_coords.y_positive_y_out - out_coords.y_positive_x_out * lines_m2_value;
             THEKERNEL->probe_outputs[3] = (lines_c2_value - lines_c1_value) / (lines_m1_value-lines_m2_value); // x_out
@@ -1550,9 +1555,8 @@ void ZProbe::probe_outsideCorner() //M464
 
     rotate(X_AXIS, param.x_axis_distance, &param.x_rotated_x, &param.x_rotated_y, param.rotation_angle);
     rotate(Y_AXIS, param.y_axis_distance, &param.y_rotated_x, &param.y_rotated_y, param.rotation_angle);
-    rotate(X_AXIS, (param.tool_dia/2.0), &param.half_tool_dia_rotated_x_x, &param.half_tool_dia_rotated_x_y, param.rotation_angle);
-    rotate(Y_AXIS, (param.tool_dia/2.0), &param.half_tool_dia_rotated_y_x, &param.half_tool_dia_rotated_y_y, param.rotation_angle);
-
+    rotate(X_AXIS, (param.tool_dia/2.0), &param.half_tool_dia_rotated_x_x, &param.half_tool_dia_rotated_x_y, param.rotation_angle_mcs);
+    rotate(Y_AXIS, (param.tool_dia/2.0), &param.half_tool_dia_rotated_y_x, &param.half_tool_dia_rotated_y_y, param.rotation_angle_mcs);
     // always wait for idle before getting the machine pos
     THECONVEYOR->wait_for_idle();
     //save center position to use later
@@ -1612,7 +1616,7 @@ void ZProbe::probe_outsideCorner() //M464
         THECONVEYOR->wait_for_idle();
 
         // calculate center position
-        if (param.rotation_angle == 0)
+        if (param.rotation_angle_mcs == 0)
         {
             THEKERNEL->probe_outputs[3] = out_coords.x_positive_x_out;
             THEKERNEL->probe_outputs[4] = out_coords.y_positive_y_out;
@@ -1620,8 +1624,9 @@ void ZProbe::probe_outsideCorner() //M464
         else
         {
             // 
-            float lines_m1_value = tan(param.rotation_angle * pi / 180);
-            float lines_m2_value = tan((param.rotation_angle + 90.0) * pi / 180);
+            
+            float lines_m1_value = tan(param.rotation_angle_mcs * pi / 180);
+            float lines_m2_value = tan((param.rotation_angle_mcs + 90.0) * pi / 180);
             float lines_c1_value = out_coords.y_positive_y_out - out_coords.y_positive_x_out * lines_m1_value;
             float lines_c2_value = out_coords.x_positive_y_out - out_coords.x_positive_x_out * lines_m2_value;
             THEKERNEL->probe_outputs[3] = (lines_c2_value - lines_c1_value) / (lines_m1_value-lines_m2_value); // x_out
@@ -1638,7 +1643,13 @@ void ZProbe::probe_outsideCorner() //M464
     THEKERNEL->streams->printf("Corner found. X coordinate stored in #154 as MCS %.3f , Y coordinate in #155 as MCS %.3f  \n", THEKERNEL->probe_outputs[3], THEKERNEL->probe_outputs[4] );
     
     if (param.save_position > 0){
-        THEROBOT->set_current_wcs_by_mpos( THEKERNEL->probe_outputs[3], THEKERNEL->probe_outputs[4], NAN);
+        THEROBOT->set_current_wcs_by_mpos(THEKERNEL->probe_outputs[3], THEKERNEL->probe_outputs[4], NAN);
+        if (param.save_position == 2){
+            coordinated_move(NAN, NAN, out_coords.z_negative_z_out + 2, param.rapid_rate);
+            THECONVEYOR->wait_for_idle();
+            coordinated_move(THEKERNEL->probe_outputs[3], THEKERNEL->probe_outputs[4], out_coords.z_negative_z_out + 2, param.rapid_rate);
+            THECONVEYOR->wait_for_idle();
+        }
     }
 }
 
@@ -1649,8 +1660,10 @@ void ZProbe::probe_axisangle() //M465
 
     float mpos[3];
     float old_mpos[3];
+    bool probe_x = false;
 
     if (param.x_axis_distance != 0) {
+        probe_x = true;
         param.y_axis_distance = param.side_depth;
     }else{
         param.x_axis_distance = param.side_depth;
@@ -1688,7 +1701,7 @@ void ZProbe::probe_axisangle() //M465
         //goto clearance height
         //coordinated_move(NAN, NAN, clearance_world_pos, rapid_rate);
 
-        if (param.x_axis_distance != 0) {
+        if (probe_x) {
             
             fast_slow_probe_sequence(Y_AXIS, POS);
             THECONVEYOR->wait_for_idle();
@@ -1718,10 +1731,7 @@ void ZProbe::probe_axisangle() //M465
             THEKERNEL->probe_outputs[2] = atan (  (out_coords.y_positive_y_out - out_coords.x_positive_y_out) 
                                                 / (out_coords.y_positive_x_out - out_coords.x_positive_x_out)) * 180 /pi;
             THEKERNEL->streams->printf("Angle from X Axis is: %.3f degrees or %.3f radians and is stored in radians at variable #153\n" , THEKERNEL->probe_outputs[2] , THEKERNEL->probe_outputs[2] * pi / 180 );
-        }
-
-        if (param.y_axis_distance != 0) {
-
+        }else{
             fast_slow_probe_sequence(X_AXIS, POS);
             THECONVEYOR->wait_for_idle();
 
@@ -1773,6 +1783,9 @@ void ZProbe::probe_axisangle() //M465
         //return to center position
         THECONVEYOR->wait_for_idle();
         coordinated_move(out_coords.origin_x, out_coords.origin_y, NAN, param.rapid_rate );
+    }
+    if (param.save_position == 1){
+        THEROBOT->set_current_wcs_by_mpos(NAN,NAN,NAN,NAN,NAN,THEKERNEL->probe_outputs[2]);
     }
 }
 
@@ -1895,8 +1908,7 @@ void ZProbe::single_axis_probe_double_tap(){
         THEKERNEL->set_halt_reason(PROBE_FAIL);
         return;
     }
-    
-    
+
     // rotate the x y coordinates around z
     rotateXY(param.x_axis_distance, param.y_axis_distance, &param.x_rotated_x, &param.y_rotated_y, param.rotation_angle);
     // get the move length
@@ -1905,6 +1917,8 @@ void ZProbe::single_axis_probe_double_tap(){
     float tip_x = param.tool_dia/(2 * move_distance) * param.x_rotated_x;
     float tip_y = param.tool_dia/(2 * move_distance) * param.y_rotated_y;
     float tip_z = param.tool_dia/(2 * move_distance) * param.z_axis_distance;
+
+    rotateXY(tip_x, tip_y, &tip_x, &tip_y, THEROBOT->r[THEROBOT->get_current_wcs()]);
 
     vector<float> probe_position_stack_x;
     vector<float> probe_position_stack_y;
