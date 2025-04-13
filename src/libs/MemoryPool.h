@@ -5,12 +5,6 @@
 // #include <cstdio>
 #include <cstdlib>
 
-#ifdef MEMDEBUG
-    #define MDEBUG(...) printf(__VA_ARGS__)
-#else
-    #define MDEBUG(...) do {} while (0)
-#endif
-
 class StreamOutput;
 
 /*
@@ -34,6 +28,13 @@ public:
 
     uint32_t free(void);
 
+    // Getters for internal state (used by debug validation)
+    void* getBase() const { return base; }
+    uint16_t getSize() const { return size; }
+
+    // Validate the integrity of the pool structure and optionally check free block patterns
+    bool validate_pool_integrity(bool check_free_pattern) const;
+
     MemoryPool* next;
 
     static MemoryPool* first;
@@ -41,6 +42,11 @@ public:
 private:
     void* base;
     uint16_t size;
+
+    #if POOL_DEBUG_ENABLED == 1
+    // Friend function for validation (defined in cpp)
+    friend bool validate_pool_integrity_internal(const MemoryPool* pool, bool check_free_pattern);
+    #endif
 };
 
 // this overloads "placement new"
@@ -54,5 +60,7 @@ inline void  operator delete(void* p, MemoryPool& pool)
 {
     pool.dealloc(p);
 }
+
+extern MemoryPool AHB; // the main AHB memory pool
 
 #endif /* _MEMORYPOOL_H */

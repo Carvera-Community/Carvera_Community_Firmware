@@ -1,0 +1,90 @@
+# .github/workflows/ci.yml
+name: Carvera Community Firmware Build
+
+on:
+  push:
+    branches: ['**']
+    tags: ['v*.*.*']
+  pull_request:
+    branches: ['main']
+env:
+  GCC_VERSION: 14.2
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    outputs:
+      version: ${{ steps.set-version.outputs.VERSION }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set TOOLCHAIN_DIR
+        run: echo "TOOLCHAIN_DIR=$GITHUB_WORKSPACE/toolchain/$GCC_VERSION" >> $GITHUB_ENV
+
+      - name: Set VERSION
+        id: set-version
+        run: |
+          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+            echo "VERSION=${GITHUB_REF_NAME}" >> $GITHUB_OUTPUT
+          else
+            echo "VERSION=${GITHUB_REF_NAME}-${GITHUB_SHA::7}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Cache compiler toolchain
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.TOOLCHAIN_DIR }}
+          key:   ${{ runner.os }}-toolchain-gcc-${{ env.GCC_VERSION }}
+          restore-keys: |
+            ${{ runner.os }}-toolchain-gcc-
+
+      - name: Build firmware
+        run: |
+          ./build/build.sh --gcc ${{ env.GCC_VERSION }} --clean VERSION=${{ steps.set-version.outputs.VERSION }}
+          cp LPC1768/main.bin firmware-${{ steps.set-version.outputs.VERSION }}.bin      
+          tar czf firmware-debug-symbols-${{ steps.set-version.outputs.VERSION }}.tar.gz LPC1768/main.elf LPC1768/main.map
+
+      - name: Upload firmware artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: firmware-${{ steps.set-version.outputs.VERSION }}
+          path: firmware-${{ steps.set-version.outputs.VERSION }}.bin
+          compression-level: 0
+          
+      - name: Upload debug symbols artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: firmware-debug-symbols-${{ steps.set-version.outputs.VERSION }}
+          path: firmware-debug-symbols-${{ steps.set-version.outputs.VERSION }}.tar.gz
+          compression-level: 0
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download firmware artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: firmware-${{ needs.build.outputs.version }}
+          path: release-assets
+
+      - name: Download debug symbols artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: firmware-debug-symbols-${{ needs.build.outputs.version }}
+          path: release-assets
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          files: |
+            release-assets/firmware-${{ needs.build.outputs.version }}.bin
+            release-assets/firmware-debug-symbols-${{ needs.build.outputs.version }}.tar.gz
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -15,6 +15,8 @@
 #include <map>
 #include <vector>
 #include <queue>
+#include <cstdint>
+
 using std::string;
 
 class StreamOutput;

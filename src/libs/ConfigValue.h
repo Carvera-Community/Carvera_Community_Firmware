@@ -9,6 +9,7 @@
 #define CONFIGVALUE_H
 
 #include <string>
+#include <cstdint>
 using std::string;
 
 class ConfigValue{

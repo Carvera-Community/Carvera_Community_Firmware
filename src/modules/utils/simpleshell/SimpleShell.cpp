@@ -55,6 +55,7 @@
 #include "WifiPublicAccess.h"
 
 #include "mbed.h" // for wait_ms()
+#include <strings.h> // For strncasecmp
 
 extern unsigned int g_maximumHeapAddress;
 extern unsigned char xbuff[8200];
@@ -75,7 +76,8 @@ extern "C" uint32_t  _sbrk(int size);
 // support upload file type definition
 #define FILETYPE	"lz"		//compressed by quicklz
 // version definition
-#define VERSION "1.0.2"
+// Version is defined by makefile using -D__GITVERSIONSTRING__ 
+#define VERSION __GITVERSIONSTRING__
 
 // command lookup table
 const SimpleShell::ptentry_t SimpleShell::commands_table[] = {
@@ -804,17 +806,21 @@ void SimpleShell::save_command( string parameters, StreamOutput *stream )
 void SimpleShell::mem_command( string parameters, StreamOutput *stream)
 {
     bool verbose = shift_parameter( parameters ).find_first_of("Vv") != string::npos;
-    unsigned long heap = (unsigned long)_sbrk(0);
-    unsigned long m = g_maximumHeapAddress - heap;
-    stream->printf("Unused Heap: %lu bytes\r\n", m);
+    unsigned long heap_top = (unsigned long)_sbrk(0);
+    unsigned long heap_unallocated_top = (STACK_SIZE && g_maximumHeapAddress != 0) ? g_maximumHeapAddress - heap_top : 0; // Calculate unallocated space at the top if stack limit is set
+    stream->printf("Main Heap Unallocated Top: %lu bytes\r\n", heap_unallocated_top);
 
-    uint32_t f = heapWalk(stream, verbose);
-    stream->printf("Total Free RAM: %lu bytes\r\n", m + f);
+    uint32_t heap_fragmented_free = heapWalk(stream, verbose); // Calculates and prints used/free within allocated heap part
+    stream->printf("Total Free RAM (Main Heap): %lu bytes\r\n", heap_unallocated_top + heap_fragmented_free);
 
-    stream->printf("Free AHB0: %lu, AHB1: %lu\r\n", AHB0.free(), AHB1.free());
+    // Use MemoryPool::free() which calculates total free space in the pool
+    uint32_t ahb_total_free = AHB.free();
+    stream->printf("AHB Pool Total Free: %lu bytes\r\n", ahb_total_free);
+
     if (verbose) {
-        AHB0.debug(stream);
-        AHB1.debug(stream);
+        stream->printf("--- AHB Pool Details ---\n");
+        AHB.debug(stream); // Detailed AHB pool breakdown
+        stream->printf("--- End AHB Pool Details ---\n");
     }
 
     stream->printf("Block size: %u bytes, Tickinfo size: %u bytes\n", sizeof(Block), sizeof(Block::tickinfo_t) * Block::n_actuators);
@@ -2060,7 +2066,7 @@ void SimpleShell::test_command( string parameters, StreamOutput *stream)
         }
 
         uint32_t sps= strtol(stepspersec.c_str(), NULL, 10);
-        sps= std::max(sps, 1UL);
+        sps= std::max(sps, static_cast<uint32_t>(1UL));
 
         uint32_t delayus= 1000000.0F / sps;
         for(int s= 0;s<steps;s++) {

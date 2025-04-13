@@ -89,6 +89,11 @@
 #define clearance_y_checksum		CHECKSUM("clearance_y")
 #define clearance_z_checksum		CHECKSUM("clearance_z")
 
+// String message constants for common user prompts
+#define MSG_PROBE_COLLET_ANCHOR1 ";Confirm that a 3 axis probe is in collet\\nand anchor 1 is installed and clear\\nResume will continue program\\n"
+#define MSG_PROBE_COLLET_4AXIS ";Confirm that a 3 axis probe is in collet\\nand the 4th axis is installed and clear\\nResume will continue program\\n"
+#define MSG_TOOL_INSTALLED ";Tool is now installed.\\nRemove hands from the machine\\nResume will auto calibrate the tool and continue program\\n"
+
 ATCHandler::ATCHandler()
 {
     atc_status = NONE;
@@ -180,7 +185,6 @@ void ATCHandler::calibrate_set_value(Gcode *gcode)
 	} else{
 		float final_x = 0;
 		float final_y = 0;
-		float final_z = 0;
 		switch ((int)gcode->get_value('P')){
 			case 0:
 				//home off pin
@@ -253,7 +257,7 @@ void ATCHandler::calibrate_set_value(Gcode *gcode)
 void ATCHandler::calibrate_anchor1(Gcode *gcode) //M469.1
 {
 	THEKERNEL->streams->printf("Calibrating Anchor 1\n");
-	char buff[100];
+	char buff[115];
 	if (!THEROBOT->is_homed_all_axes()){
 		return;
 	}
@@ -267,7 +271,7 @@ void ATCHandler::calibrate_anchor1(Gcode *gcode) //M469.1
 	}
 
 	//print status
-	snprintf(buff, sizeof(buff), ";Confirm that a 3 axis probe is in collet\nand anchor 1 is installed and clear\nResume will continue program\n");
+	snprintf(buff, sizeof(buff), MSG_PROBE_COLLET_ANCHOR1);
 	this->script_queue.push(buff);
 	
 	//pause
@@ -370,7 +374,7 @@ void ATCHandler::calibrate_a_axis_headstock(Gcode *gcode)//M469.4
 	float probe_height= this->rotation_offset_z - 6;
 
 	THEKERNEL->streams->printf("Calibrating A Axis Headstock Center\n");
-	char buff[100];
+	char buff[115];
 	if (!THEROBOT->is_homed_all_axes()){
 		return;
 	}
@@ -383,14 +387,14 @@ void ATCHandler::calibrate_a_axis_headstock(Gcode *gcode)//M469.4
 		}
 	}
 	if (gcode->has_letter('Y')){
-		headstock_width = gcode->get_value('Y')/2+5;
+			headstock_width = gcode->get_value('Y')/2+5;
 	}
 	if (gcode->has_letter('E')){
 		probe_height = gcode->get_value('E');
 	}
 
 	//print status
-	snprintf(buff, sizeof(buff), ";Confirm that a 3 axis probe is in collet\nand the 4th axis is installed and clear\nResume will continue program\n");
+	snprintf(buff, sizeof(buff), MSG_PROBE_COLLET_4AXIS);
 	this->script_queue.push(buff);
 	
 	//pause
@@ -430,7 +434,6 @@ void ATCHandler::calibrate_a_axis_headstock(Gcode *gcode)//M469.4
 
 void ATCHandler::calibrate_a_axis_height(Gcode *gcode) //M469.5
 {
-	float probe_height= this->rotation_offset_z;
 	float x_axis_offset = 60;
 	float pin_diameter = 6;
 
@@ -451,7 +454,7 @@ void ATCHandler::calibrate_a_axis_height(Gcode *gcode) //M469.5
 		x_axis_offset = gcode->get_value('X');
 	}
 	if (gcode->has_letter('E')){
-		probe_height = gcode->get_value('E');
+		pin_diameter = gcode->get_value('E');
 	}
 	if (gcode->has_letter('R')){
 		pin_diameter = gcode->get_value('R');
@@ -614,7 +617,6 @@ void ATCHandler::fill_change_scripts(int new_tool, bool clear_z) {
 
 void ATCHandler::fill_manual_drop_scripts(int old_tool) {
 	char buff[100];
-	struct atc_tool *current_tool = &atc_tools[old_tool];
 	// set atc status
 	this->script_queue.push("M497.1");
 	//make extra sure the spindle is off
@@ -649,8 +651,7 @@ void ATCHandler::fill_manual_drop_scripts(int old_tool) {
 }
 
 void ATCHandler::fill_manual_pickup_scripts(int new_tool, bool clear_z, bool auto_calibrate = false, float custom_TLO = NAN) {
-	char buff[100];
-	struct atc_tool *current_tool = &atc_tools[new_tool];
+	char buff[115];
 	// set atc status
 	this->script_queue.push("M497.2");
 	// lift z to safe position with fast speed
@@ -676,7 +677,7 @@ void ATCHandler::fill_manual_pickup_scripts(int new_tool, bool clear_z, bool aut
 
 	if (auto_calibrate){
 		//print status
-		snprintf(buff, sizeof(buff), ";Tool is now installed.\nRemove hands from the machine\nResume will auto calibrate the tool and continue program\n");
+		snprintf(buff, sizeof(buff), MSG_TOOL_INSTALLED);
 		this->script_queue.push(buff);
 		//pause
 		snprintf(buff, sizeof(buff), "M600.5");

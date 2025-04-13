@@ -17,6 +17,8 @@
 #include <array>
 #include <vector>
 #include <string>
+#include "modules/utils/wifi/WifiProvider.h"
+#include "libs/USBDevice/MSCFileSystem.h"
 
 // 9 WCS offsets
 #define MAX_WCS 9UL
@@ -261,6 +263,8 @@ class Kernel {
             bool zprobing:1;
             bool probeLaserOn:1;
             volatile bool cachewait:1;
+            bool disable_serial_console:1;
+            bool halt_on_error_debug:1;
         };
         int iic_page_write(unsigned char u8PageNum, unsigned char u8len, unsigned char *pu8Array);
 

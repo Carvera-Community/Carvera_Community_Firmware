@@ -59,7 +59,8 @@
 #define grbl_mode_checksum                          CHECKSUM("grbl_mode")
 #define feed_hold_enable_checksum                   CHECKSUM("enable_feed_hold")
 #define ok_per_line_checksum                        CHECKSUM("ok_per_line")
-
+#define disable_serial_console_checksum             CHECKSUM("disable_serial_console")
+#define halt_on_error_debug_checksum                CHECKSUM("halt_on_error_debug")
 Kernel* Kernel::instance;
 
 #define	EEP_MAX_PAGE_SIZE	32
@@ -89,6 +90,7 @@ Kernel::Kernel()
     checkled = false;
     spindleon = false;
     cachewait = false;
+    disable_serial_console = false;
 
     instance = this; // setup the Singleton instance of the kernel    
     
@@ -96,62 +98,24 @@ Kernel::Kernel()
     this->i2c = new mbed::I2C(P0_27, P0_28);
     this->i2c->frequency(200000);
     
-    this->factory_set = new(AHB0) FACTORY_SET();
+    this->factory_set = new(AHB) FACTORY_SET();
     // read Factory setting data from eeprom
     this->read_Factory_data();
     // read Factory settings data from sd
     this->read_Factroy_SD();
 
-    // serial first at fixed baud rate (DEFAULT_SERIAL_BAUD_RATE) so config can report errors to serial
-    // Set to UART0, this will be changed to use the same UART as MRI if it's enabled
-    this->serial = new(AHB0) SerialConsole(P2_8, P2_9, DEFAULT_SERIAL_BAUD_RATE);
-    // this->serial = new SerialConsole(USBTX, USBRX, DEFAULT_SERIAL_BAUD_RATE);
 
     // Config next, but does not load cache yet
-    this->config = new(AHB0) Config();
+    this->config = new(AHB) Config();
 
-    // Pre-load the config cache, do after setting up serial so we can report errors to serial
+    // Pre-load the config cache
     this->config->config_cache_load();
 
-    // now config is loaded we can do normal setup for serial based on config
-    delete this->serial;
-    this->serial = NULL;
-
-    this->streams = new(AHB0) StreamOutputPool();
+    this->streams = new(AHB) StreamOutputPool();
 
     this->current_path   = "/";
 
-    // Configure UART depending on MRI config
-    // Match up the SerialConsole to MRI UART. This makes it easy to use only one UART for both debug and actual commands.
     NVIC_SetPriorityGrouping(0);
-
-    /*
-#if MRI_ENABLE != 0
-    switch( __mriPlatform_CommUartIndex() ) {
-        case 0:
-            this->serial = new(AHB0) SerialConsole(P2_8, P2_9, this->config->value(uart0_checksum, baud_rate_setting_checksum)->by_default(DEFAULT_SERIAL_BAUD_RATE)->as_number());
-            break;
-        case 1:
-            this->serial = new(AHB0) SerialConsole(  p13,   p14, this->config->value(uart0_checksum, baud_rate_setting_checksum)->by_default(DEFAULT_SERIAL_BAUD_RATE)->as_number());
-            break;
-        case 2:
-            this->serial = new(AHB0) SerialConsole(  p28,   p27, this->config->value(uart0_checksum, baud_rate_setting_checksum)->by_default(DEFAULT_SERIAL_BAUD_RATE)->as_number());
-            break;
-        case 3:
-            this->serial = new(AHB0) SerialConsole(   p9,   p10, this->config->value(uart0_checksum, baud_rate_setting_checksum)->by_default(DEFAULT_SERIAL_BAUD_RATE)->as_number());
-            break;
-    }
-#endif*/
-
-    // init FT232
-
-
-    // default
-    if(this->serial == NULL) {
-        // this->serial = new(AHB0) SerialConsole(P2_8, P2_9, this->config->value(uart_checksum, baud_rate_setting_checksum)->by_default(DEFAULT_SERIAL_BAUD_RATE)->as_number());
-    	this->serial = new(AHB0) SerialConsole(P2_8, P2_9, 115200);
-    }
-
     //some boards don't have leds.. TOO BAD!
     this->use_leds = !this->config->value( disable_leds_checksum )->by_default(false)->as_bool();
 
@@ -166,13 +130,24 @@ Kernel::Kernel()
     // we expect ok per line now not per G code, setting this to false will return to the old (incorrect) way of ok per G code
     this->ok_per_line = this->config->value( ok_per_line_checksum )->by_default(true)->as_bool();
 
-    this->add_module( this->serial );
+    // Option to disable serial console. Useful primarily if MRI is enabled and
+    // you want to keep the serial port dedicated for such traffic. Or you want
+    // to save some memory?
+    this->disable_serial_console = this->config->value( disable_serial_console_checksum )->by_default(false)->as_bool();
+    
+    // Check if we should break into the debugger on halt
+    this->halt_on_error_debug = this->config->value( halt_on_error_debug_checksum )->by_default(false)->as_bool();
+
+    if (!this->disable_serial_console) {
+        this->serial = new(AHB) SerialConsole(P2_8, P2_9, 115200);
+        this->add_module( this->serial );
+    }
 
     // HAL stuff
-    add_module( this->slow_ticker = new(AHB0) SlowTicker());
+    add_module( this->slow_ticker = new(AHB) SlowTicker());
 
-    this->step_ticker = new(AHB0) StepTicker();
-    this->adc = new(AHB0) Adc();
+    this->step_ticker = new(AHB) StepTicker();
+    this->adc = new(AHB) Adc();
 
     // TODO : These should go into platform-specific files
     // LPC17xx-specific
@@ -208,20 +183,20 @@ Kernel::Kernel()
     this->step_ticker->set_frequency( this->base_stepping_frequency );
     this->step_ticker->set_unstep_time( microseconds_per_step_pulse );
 
-    this->eeprom_data = new(AHB0) EEPROM_data();
+    this->eeprom_data = new(AHB) EEPROM_data();
     // read eeprom data
     this->read_eeprom_data();
     // check eeprom data
     this->check_eeprom_data();
 
     // Core modules
-    this->add_module( this->conveyor       = new(AHB0) Conveyor()      );
-    this->add_module( this->gcode_dispatch = new(AHB0) GcodeDispatch() );
-    this->add_module( this->robot          = new(AHB0) Robot()         );
-    this->add_module( this->simpleshell    = new(AHB0) SimpleShell()   );
+    this->add_module( this->simpleshell    = new(AHB) SimpleShell()   );
+    this->add_module( this->conveyor       = new(AHB) Conveyor()      );
+    this->add_module( this->gcode_dispatch = new(AHB) GcodeDispatch() );
+    this->add_module( this->robot          = new(AHB) Robot()         );
 
-    this->planner = new(AHB0) Planner();
-    this->configurator = new(AHB0) Configurator();
+    this->planner = new(AHB) Planner();
+    this->configurator = new(AHB) Configurator();
 }
 
 // get current state
@@ -652,6 +627,12 @@ void Kernel::call_event(_EVENT_ENUM id_event, void * argument)
     }
 
     if(id_event == ON_HALT) {
+        // If we just entered a halt state AND the debug flag is enabled, break into the debugger.
+        // This happens after ON_HALT handlers have run, presumably stopping motion planners etc.
+        if (this->halted && this->halt_on_error_debug) {
+             __debugbreak(); // Enter debugger
+        }
+
         if(!this->halted || !was_idle) {
             // if we were running and this is a HALT
             // or if we are clearing the halt with $X or M999
