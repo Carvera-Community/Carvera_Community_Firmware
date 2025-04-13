@@ -89,6 +89,8 @@ class Robot : public Module {
 
         void set_current_wcs_by_mpos(float x = NAN, float y = NAN, float z = NAN, float a = NAN, float b = NAN, float r = NAN);
 
+        float r[MAX_WCS];
+
         struct {
             bool inch_mode:1;                                 // true for inch mode, false for millimeter mode ( default )
             bool absolute_mode:1;                             // true for absolute mode ( default ), false for relative mode

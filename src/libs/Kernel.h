@@ -101,6 +101,7 @@ typedef struct {
     float perm_vars[20];
     float cos_r_G54;
     float sin_r_G54;
+    float r_G54;
 } EEPROM_data;
 
 typedef struct {
