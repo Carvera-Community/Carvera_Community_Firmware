@@ -10,6 +10,7 @@
 
 #include "Module.h"
 #include "Pin.h"
+#include <fastmath.h>
 
 #include <vector>
 
@@ -102,7 +103,7 @@ private:
     void config_load();
     bool probe_XYZ(Gcode *gcode);
     void rotate(int axis, float axis_distance, float *y_x, float *y_y, float rotation_angle);
-    void rotateXY(float x_in, float y_in, float *x_out, float *y_out, float rotation_angle);
+    void rotateXY(float x_in = NAN, float y_in = NAN, float *x_out = nullptr, float *y_out = nullptr, float rotation_angle = 0);
     float get_xyz_move_length(float x, float y, float z);
     void fast_slow_probe_sequence( int axis, int direction);
     int xy_probe_move_alarm_when_hit(int direction, int probe_g38_subcode, float x, float y, float feed_rate);
@@ -173,6 +174,8 @@ private:
     // Z position when probe pin triggered        
     volatile float probe_pin_position;
     volatile float calibrate_current_z;
+    volatile bool safety_margin_exceeded;
+    volatile float distance_moved;
 };
 
 #endif /* ZPROBE_H_ */
