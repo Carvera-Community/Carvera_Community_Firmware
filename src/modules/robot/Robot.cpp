@@ -657,7 +657,7 @@ void Robot::on_gcode_received(void *argument)
                             }
                             
                             if(gcode->has_letter('Z')) {
-                                z = to_millimeters(gcode->get_value('Z')) - machine_position[Z_AXIS];
+                                z = machine_position[Z_AXIS] - to_millimeters(gcode->get_value('Z'));
                             }
                             
                             if(gcode->has_letter('A')) {
