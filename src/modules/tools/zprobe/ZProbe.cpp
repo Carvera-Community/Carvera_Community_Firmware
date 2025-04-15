@@ -200,7 +200,8 @@ uint32_t ZProbe::read_probe(uint32_t dummy)
             if (!probe_detected) {
                 probe_detected = true;
                 probe_pin_position = STEPPER[Z_AXIS]->get_current_position();
-            } else {
+            // if we are calibrating, the stop to the actuators comes from the read_calibrate method
+            } else if (!calibrating) {
                 // we signal the motors to stop, which will preempt any moves on that axis
                 // we do all motors as it may be a delta
                 for (auto &a : THEROBOT->actuators) a->stop_moving();
@@ -251,7 +252,7 @@ uint32_t ZProbe::read_calibrate(uint32_t dummy)
                 // The error will be reported in calibrate_Z.
                 if (distance_moved > probe_calibration_safety_margin) {
                     safety_margin_exceeded = true;
-                    for (auto &a : THEROBOT->actuators) a->stop_moving();
+                    for (auto &a : THEROBOT->actuators) a->stop_moving();                    
                 }
             }
         } else {
@@ -636,7 +637,6 @@ void ZProbe::on_gcode_received(void *argument)
 }
 
 void ZProbe::reset_probe_tracking() {
-    THEKERNEL->streams->printf("reset_probe_tracking");
     safety_margin_exceeded = false;
     calibrate_pin_position = 0.0F;
     probe_pin_position = 0.0F;
@@ -767,7 +767,6 @@ void ZProbe::calibrate_Z(Gcode *gcode)
         return;
     }
 
-    THEKERNEL->streams->printf("Before setting calibrating to true \n");
     probing = false;
     calibrating = true;
     probe_detected = false;
@@ -775,9 +774,8 @@ void ZProbe::calibrate_Z(Gcode *gcode)
     debounce = 0;
     cali_debounce = 0;
 
-    THEKERNEL->streams->printf("Before reset probe \n");
     reset_probe_tracking();
-    THEKERNEL->streams->printf("After reset probe \n");
+
     // If calibration is happening with a probe tool, enable tracking of probe position in the read_probe ISR.
     if (is_probe_tool()) {
         probing = true;
@@ -822,7 +820,7 @@ void ZProbe::calibrate_Z(Gcode *gcode)
         gcode->stream->printf("Current position: %.3f\n", THEKERNEL->robot->from_millimeters(pos[Z_AXIS]));
         gcode->stream->printf("Error detected at position: %.3f\n", calibrate_current_z);
         gcode->stream->printf("Safety Margin Value: %.3f\n",  probe_calibration_safety_margin);
-        gcode->stream->printf("debounce: %d, cali_debounce: %d, debounce_ms: %d\n", debounce, cali_debounce, debounce_ms);        
+        gcode->stream->printf("debounce: %d, cali_debounce: %d, debounce_ms: %d\n", debounce, cali_debounce, debounce_ms);
         return;
     }
 
@@ -1523,9 +1521,9 @@ void ZProbe::probe_insideCorner() //M463
         {
             // 
             float lines_m1_value = tan(param.rotation_angle_mcs * pi / 180);
-            float lines_m2_value = -tan((90.0 - param.rotation_angle_mcs) * pi / 180);
-            float lines_c1_value = out_coords.x_positive_y_out - out_coords.x_positive_x_out * lines_m1_value;
-            float lines_c2_value = out_coords.y_positive_y_out - out_coords.y_positive_x_out * lines_m2_value;
+            float lines_m2_value = tan((param.rotation_angle_mcs + 90.0) * pi / 180);
+            float lines_c1_value = out_coords.y_positive_y_out - out_coords.y_positive_x_out * lines_m1_value;
+            float lines_c2_value = out_coords.x_positive_y_out - out_coords.x_positive_x_out * lines_m2_value;
             THEKERNEL->probe_outputs[3] = (lines_c2_value - lines_c1_value) / (lines_m1_value-lines_m2_value); // x_out
             THEKERNEL->probe_outputs[4] = (lines_m1_value * lines_c2_value - lines_m2_value * lines_c1_value) 
                                           / (lines_m1_value - lines_m2_value);   // y_out
@@ -1634,9 +1632,8 @@ void ZProbe::probe_outsideCorner() //M464
         else
         {
             // 
-            
-            float lines_m1_value = tan(param.rotation_angle_mcs * pi / 180);
-            float lines_m2_value = tan((param.rotation_angle_mcs + 90.0) * pi / 180);
+            float lines_m1_value = tan(param.rotation_angle * pi / 180);
+            float lines_m2_value = tan((param.rotation_angle + 90.0) * pi / 180);
             float lines_c1_value = out_coords.y_positive_y_out - out_coords.y_positive_x_out * lines_m1_value;
             float lines_c2_value = out_coords.x_positive_y_out - out_coords.x_positive_x_out * lines_m2_value;
             THEKERNEL->probe_outputs[3] = (lines_c2_value - lines_c1_value) / (lines_m1_value-lines_m2_value); // x_out
