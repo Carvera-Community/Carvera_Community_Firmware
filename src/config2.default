@@ -286,6 +286,8 @@ zprobe.debounce_ms							1				# Set if noisy
 # zprobe.probe_height							2				# How much above bed to start probe
 # zprobe.max_z								100				# max z
 zprobe.calibrate_pin						0.5^			# calibrate_pin
+zprobe.probe_tip_diameter					2.0				#3 axis probe tip diamter
+zprobe.calibration_safety_margin              0.1             # max distance to move after calibrate pin but before probe pin detected
 
 # Leveling strategy
 leveling-strategy.rectangular-grid.enable					true
