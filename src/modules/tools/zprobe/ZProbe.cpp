@@ -200,7 +200,8 @@ uint32_t ZProbe::read_probe(uint32_t dummy)
             if (!probe_detected) {
                 probe_detected = true;
                 probe_pin_position = STEPPER[Z_AXIS]->get_current_position();
-            } else {
+            // if we are calibrating, the stop to the actuators comes from the read_calibrate method
+            } else if (!calibrating) {
                 // we signal the motors to stop, which will preempt any moves on that axis
                 // we do all motors as it may be a delta
                 for (auto &a : THEROBOT->actuators) a->stop_moving();
