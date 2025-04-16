@@ -491,16 +491,6 @@ void Robot::print_position(uint8_t subcode, std::string& res, bool ignore_extrud
 }
 
 // converts current last milestone (machine position without compensation transform) to work coordinate system (inverse transform)
-//Robot::wcs_t Robot::mcs2wcs(const Robot::wcs_t& pos) const
-//{
-//    return std::make_tuple(
-//        this->cos_r[current_wcs] * (std::get<X_AXIS>(pos) - std::get<X_AXIS>(wcs_offsets[current_wcs])) + this->sin_r[current_wcs] * (std::get<Y_AXIS>(pos) - std::get<Y_AXIS>(wcs_offsets[current_wcs])) + std::get<X_AXIS>(g92_offset) - std::get<X_AXIS>(tool_offset),
-//        this->cos_r[current_wcs] * (std::get<Y_AXIS>(pos) - std::get<Y_AXIS>(wcs_offsets[current_wcs])) - this->sin_r[current_wcs] * (std::get<X_AXIS>(pos) - std::get<X_AXIS>(wcs_offsets[current_wcs])) + std::get<Y_AXIS>(g92_offset) - std::get<Y_AXIS>(tool_offset),
-//        std::get<Z_AXIS>(pos) - std::get<Z_AXIS>(wcs_offsets[current_wcs]) + std::get<Z_AXIS>(g92_offset) - std::get<Z_AXIS>(tool_offset),
-//        std::get<A_AXIS>(pos) - std::get<A_AXIS>(wcs_offsets[current_wcs]) + std::get<A_AXIS>(g92_offset) - std::get<A_AXIS>(tool_offset),
-//        std::get<B_AXIS>(pos) - std::get<B_AXIS>(wcs_offsets[current_wcs]) + std::get<B_AXIS>(g92_offset) - std::get<B_AXIS>(tool_offset)
-//    );
-//}
 Robot::wcs_t Robot::mcs2selected_wcs(const wcs_t &pos, size_t n) const
 {
     return std::make_tuple(

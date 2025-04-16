@@ -1498,6 +1498,9 @@ void ZProbe::probe_insideCorner() //M463
         
         fast_slow_probe_sequence(X_AXIS, POS);
 
+        out_coords.x_positive_x_out = out_coords.x_positive_x_out + (param.x_axis_distance>= 0 ? 1.0f : -1.0f) *  param.half_tool_dia_rotated_x_x;
+        out_coords.x_positive_y_out = out_coords.x_positive_y_out + (param.x_axis_distance>= 0 ? 1.0f : -1.0f) *  param.half_tool_dia_rotated_x_y;
+
         //THEKERNEL->streams->printf("X: %.3f Y: %.3f\n", x_positive_x_out, x_positive_y_out);
 
         //goto current center position
@@ -1505,6 +1508,9 @@ void ZProbe::probe_insideCorner() //M463
         THECONVEYOR->wait_for_idle();
 
         fast_slow_probe_sequence(Y_AXIS, POS);
+
+        out_coords.y_positive_y_out = out_coords.y_positive_y_out + (param.y_axis_distance>= 0 ? 1.0f : -1.0f) * param.half_tool_dia_rotated_y_y;
+        out_coords.y_positive_x_out = out_coords.y_positive_x_out + (param.y_axis_distance>= 0 ? 1.0f : -1.0f) * param.half_tool_dia_rotated_y_x;
 
         //THEKERNEL->streams->printf("X: %.3f Y: %.3f\n", y_positive_x_out, y_positive_y_out);
         //goto current center position
