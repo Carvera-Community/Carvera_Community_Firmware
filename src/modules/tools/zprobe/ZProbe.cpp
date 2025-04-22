@@ -200,11 +200,11 @@ uint32_t ZProbe::read_calibrate(uint32_t dummy)
     if (!calibrating || calibrate_detected) return 0;
 
     // just check z Axis move
-    if (STEPPER[Z_AXIS]->is_moving()) {
+    if (STEPPER[X_AXIS]->is_moving() || STEPPER[Y_AXIS]->is_moving() || STEPPER[Z_AXIS]->is_moving()) {
     	if (this->pin.get()) {
     		probe_detected = true;
     	}
-        // if it is moving then we check the probe, and debounce it
+        // if it is moving then we check the toolsetter, and debounce it
         if (this->calibrate_pin.get()) {
             if (cali_debounce < debounce_ms) {
                 cali_debounce++;
@@ -595,16 +595,25 @@ bool ZProbe::probe_XYZ(Gcode *gcode)
 }
 
 // just probe / calibrate Z using calibrate pin
-void ZProbe::calibrate_Z(Gcode *gcode)
+// This function is updated to leverage probe_XYZ code, accomodating 3d tool setter.
+bool ZProbe::calibrate_Z(Gcode *gcode)
 {
-    float z= 0;
-    if(gcode->has_letter('Z')) {
-        z= gcode->get_value('Z');
+    float x = 0, y = 0, z = 0;
+    if (gcode->has_letter('X')) {
+        x = gcode->get_value('X');
     }
 
-    if(z == 0) {
-        gcode->stream->printf("error: Z must be specified, and be > or < 0\n");
-        return;
+    if (gcode->has_letter('Y')) {
+        y = gcode->get_value('Y');
+    }
+
+    if (gcode->has_letter('Z')) {
+        z = gcode->get_value('Z');
+    }
+
+    if (x == 0 && y == 0 && z == 0) {
+        gcode->stream->printf("error: at least one of X, Y, or Z must be specified, and be > or < 0\n");
+        return false;
     }
 
     // get probe feedrate in mm/min and convert to mm/sec if specified
@@ -614,8 +623,10 @@ void ZProbe::calibrate_Z(Gcode *gcode)
     THEKERNEL->conveyor->wait_for_idle();
 
     if (this->calibrate_pin.get()) {
-        gcode->stream->printf("error: ZCalibrate triggered before move, aborting command.\n");
-        return;
+        gcode->stream->printf("Error: Tool calibration triggered before move, aborting command.\n");
+        THEKERNEL->set_halt_reason(CALIBRATE_FAIL);
+        THEKERNEL->call_event(ON_HALT, nullptr);
+        return false;
     }
 
     // enable the probe checking in the timer
@@ -626,18 +637,19 @@ void ZProbe::calibrate_Z(Gcode *gcode)
     cali_debounce = 0;
 
     // do a delta move which will stop as soon as the probe is triggered, or the distance is reached
-    float delta[3]= {0, 0, z};
+    float delta[3] = {x, y, z};
     THEKERNEL->set_zprobing(true);
-    if(!THEROBOT->delta_move(delta, rate, 3)) {
-        gcode->stream->printf("ERROR: Move too small,  %1.3f\n", z);
-        THEKERNEL->set_halt_reason(PROBE_FAIL);
+    if (!THEROBOT->delta_move(delta, rate, 3)) {
+        gcode->stream->printf("ERROR: Move too small, X: %1.3f, Y: %1.3f, Z: %1.3f\n", x, y, z);
+        THEKERNEL->set_halt_reason(CALIBRATE_FAIL);
         THEKERNEL->call_event(ON_HALT, nullptr);
         calibrating = false;
         THEKERNEL->set_zprobing(false);
-        return;
+        return false;
     }
     THEKERNEL->set_zprobing(false);
 
+    // Wait until the move is finished
     THEKERNEL->conveyor->wait_for_idle();
 
     // disable probe checking
@@ -655,17 +667,19 @@ void ZProbe::calibrate_Z(Gcode *gcode)
     gcode->stream->printf("[PRB:%1.3f,%1.3f,%1.3f:%d]\n", THEKERNEL->robot->from_millimeters(pos[X_AXIS]), THEKERNEL->robot->from_millimeters(pos[Y_AXIS]), THEKERNEL->robot->from_millimeters(pos[Z_AXIS]), calibrateok);
     THEROBOT->set_last_probe_position(std::make_tuple(pos[X_AXIS], pos[Y_AXIS], pos[Z_AXIS], calibrateok));
 
-    if (calibrateok == 0) {
-        // issue error if probe was not triggered and subcode is 2 or 4
+    if (calibrateok == 0 && gcode->subcode == 6) {
+        // Issue error if probe was not triggered and subcode is 6
         gcode->stream->printf("ALARM: Calibrate fail!\n");
         THEKERNEL->set_halt_reason(CALIBRATE_FAIL);
         THEKERNEL->call_event(ON_HALT, nullptr);
+        return false;
     }
 
     if (probe_detected) {
-    	this->probe_trigger_time = us_ticker_read();
+        this->probe_trigger_time = us_ticker_read();
     }
 
+    return calibrateok == 1;
 }
 
 // issue a coordinated move directly to robot, and return when done

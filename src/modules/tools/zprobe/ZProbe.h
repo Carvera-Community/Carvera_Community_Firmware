@@ -55,7 +55,7 @@ private:
     void probe_axisangle(Gcode *gcode);
     void calibrate_probe_bore(Gcode *gcode);
     
-    void calibrate_Z(Gcode *gc);
+    bool calibrate_Z(Gcode *gc);
     uint32_t read_probe(uint32_t dummy);
     uint32_t read_calibrate(uint32_t dummy);
     void on_get_public_data(void* argument);
