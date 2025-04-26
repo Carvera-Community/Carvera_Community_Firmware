@@ -305,6 +305,16 @@ uint32_t ZProbe::probe_doubleHit(uint32_t dummy)
     return 0;
 }
 
+bool ZProbe::check_last_probe_ok(){
+    float px, py, pz;
+    uint8_t ps;
+    std::tie(px, py, pz, ps) = THEROBOT->get_last_probe_position();
+    if (ps == 1) {
+        return true;
+    }
+    return false;
+}
+
 // single probe in Z with custom feedrate
 // returns boolean value indicating if probe was triggered
 bool ZProbe::run_probe(float& mm, float feedrate, float max_dist, bool reverse)
@@ -1102,6 +1112,13 @@ bool ZProbe::parse_parameters(Gcode *gcode, bool override_probe_check){
         THEKERNEL->call_event(ON_HALT, nullptr);
         THEKERNEL->set_halt_reason(PROBE_FAIL);
         return false;
+    }else if(THEROBOT->get_probe_tool_not_calibrated() && gcode->has_letter('S') && (gcode->has_letter('H') || gcode->has_letter('Z'))){
+        if(gcode->get_value('S') == 2){
+            THEKERNEL->streams->printf("ALARM: Probe not calibrated. Please calibrate probe before probing.\n");
+            THEKERNEL->call_event(ON_HALT, nullptr);
+            THEKERNEL->set_halt_reason(PROBE_FAIL);
+            return false;
+        }
     }
 
     if (gcode->has_letter('D')) { //probe tip diameter
@@ -1280,7 +1297,7 @@ void ZProbe::probe_bore(bool calibration) //M461
     THEKERNEL->probe_outputs[4] = out_coords.origin_y;
     THEKERNEL->streams->printf("Center Point is: %.3f , %.3f and is stored in MCS as #154,#155\n" , THEKERNEL->probe_outputs[3],THEKERNEL->probe_outputs[4] );
 
-    if (param.save_position > 0){
+    if (param.save_position > 0 && check_last_probe_ok()){
         if (param.x_axis_distance != 0 && param.y_axis_distance != 0){
             THEROBOT->set_current_wcs_by_mpos( THEKERNEL->probe_outputs[3], THEKERNEL->probe_outputs[4], NAN);
         }else if (param.x_axis_distance != 0){
@@ -1313,7 +1330,7 @@ void ZProbe::probe_boss(bool calibration) //M462
 	if (param.probe_height != 0){
         param.z_axis_distance = param.probe_height;
         fast_slow_probe_sequence(Z_AXIS, POS);
-        if (param.save_position == 2){
+        if (param.save_position == 2 && check_last_probe_ok()){
             THEROBOT->set_current_wcs_by_mpos( NAN, NAN, out_coords.z_negative_z_out);
         }
         //z_probe_move_with_retract(param.probe_g38_subcode, -param.probe_height, param.clearance_height, param.feed_rate);
@@ -1440,7 +1457,7 @@ void ZProbe::probe_boss(bool calibration) //M462
     THEKERNEL->probe_outputs[4] = out_coords.origin_y;
     THEKERNEL->streams->printf("Center Point is: %.3f , %.3f and is stored in MCS as #154,#155\n" , THEKERNEL->probe_outputs[3],THEKERNEL->probe_outputs[4] );
 
-    if (param.save_position > 0){
+    if (param.save_position > 0 && check_last_probe_ok()){
         if (param.x_axis_distance != 0 && param.y_axis_distance != 0){
             THEROBOT->set_current_wcs_by_mpos( THEKERNEL->probe_outputs[3], THEKERNEL->probe_outputs[4], NAN);
         }else if (param.x_axis_distance != 0){
@@ -1550,7 +1567,7 @@ void ZProbe::probe_outsideCorner() //M464
 	if (param.probe_height != 0){
         param.z_axis_distance = param.probe_height;
         fast_slow_probe_sequence(Z_AXIS, POS);
-        if (param.save_position == 2){
+        if (param.save_position == 2 && check_last_probe_ok()){
             THEROBOT->set_current_wcs_by_mpos( NAN, NAN, out_coords.z_negative_z_out);
         }
         //z_probe_move_with_retract(param.probe_g38_subcode, -param.probe_height, param.clearance_height, param.feed_rate);
@@ -1645,7 +1662,7 @@ void ZProbe::probe_outsideCorner() //M464
 	}
     THEKERNEL->streams->printf("Corner found. X coordinate stored in #154 as MCS %.3f , Y coordinate in #155 as MCS %.3f  \n", THEKERNEL->probe_outputs[3], THEKERNEL->probe_outputs[4] );
     
-    if (param.save_position > 0){
+    if (param.save_position > 0 && check_last_probe_ok()){
         THEROBOT->set_current_wcs_by_mpos(THEKERNEL->probe_outputs[3], THEKERNEL->probe_outputs[4], NAN);
         if (param.save_position == 2){
             coordinated_move(NAN, NAN, out_coords.z_negative_z_out + 2, param.rapid_rate);
@@ -1962,26 +1979,26 @@ void ZProbe::single_axis_probe_double_tap(){
         THEKERNEL->streams->printf("Final Position: X:%.3f , Y:%.3f\n", ave_x , ave_y);
         THEKERNEL->probe_outputs[3] = ave_x;
         THEKERNEL->probe_outputs[4] = ave_y;
-        if (param.save_position > 0){
+        if (param.save_position > 0 && check_last_probe_ok()){
             THEROBOT->set_current_wcs_by_mpos( THEKERNEL->probe_outputs[3], THEKERNEL->probe_outputs[4], NAN);
         }
     } else if(param.x_axis_distance != 0){
         THEKERNEL->streams->printf("Final Position X: %.3f\n", ave_x);
         THEKERNEL->probe_outputs[3] = ave_x;
-        if (param.save_position > 0){
+        if (param.save_position > 0 && check_last_probe_ok()){
             THEROBOT->set_current_wcs_by_mpos( THEKERNEL->probe_outputs[3], NAN, NAN);
         }
     } else if(param.y_axis_distance != 0){
         THEKERNEL->streams->printf("Final Position Y: %.3f\n", ave_y);
         THEKERNEL->probe_outputs[4] = ave_y;
-        if (param.save_position > 0){
+        if (param.save_position > 0 && check_last_probe_ok()){
             THEROBOT->set_current_wcs_by_mpos( NAN, THEKERNEL->probe_outputs[4], NAN);
         }
     }
     if (param.z_axis_distance != 0){
         THEKERNEL->streams->printf("Final Positon Z: %.3f\n", ave_z);
         THEKERNEL->probe_outputs[5] = ave_z;
-        if (param.save_position == 2){
+        if (param.save_position == 2 && check_last_probe_ok()){
             THEROBOT->set_current_wcs_by_mpos( NAN, NAN, THEKERNEL->probe_outputs[5]);
         }
     }

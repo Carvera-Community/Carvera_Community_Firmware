@@ -837,6 +837,11 @@ void Kernel::check_eeprom_data()
 		this->eeprom_data->G54AB[1] = 0;
 		needrewtite = true;
 	}
+    if(!((this->eeprom_data->probe_tool_not_calibrated & ~1) == 0))
+	{
+		this->eeprom_data->probe_tool_not_calibrated = true;
+		needrewtite = true;
+	}
 	if(needrewtite)
 		this->write_eeprom_data();
 }

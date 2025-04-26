@@ -1952,12 +1952,20 @@ void ATCHandler::on_gcode_received(void *argument)
 			}
 		} else if (gcode->m == 493) {
 			if (gcode->subcode == 0 || gcode->subcode == 1) {
+				if (this->active_tool == 0 || this->active_tool >= 999990){
+					THEROBOT->set_probe_tool_not_calibrated(false);
+				}
 				// set tooll offset
 				set_tool_offset();
 			} else if (gcode->subcode == 2) {
 				// set new tool
 				if (gcode->has_letter('T')) {
 		    		this->active_tool = gcode->get_value('T');
+					if (this->active_tool == 0 || this->active_tool >= 999990){
+						THEROBOT->set_probe_tool_not_calibrated(true);
+					}else{
+						THEROBOT->set_probe_tool_not_calibrated(false);
+					}
 		    		// save current tool data to eeprom
 		    		if (THEKERNEL->eeprom_data->TOOL != this->active_tool) {
 		        	    THEKERNEL->eeprom_data->TOOL = this->active_tool;
@@ -2061,6 +2069,13 @@ void ATCHandler::on_gcode_received(void *argument)
 	        			THEKERNEL->streams->printf("ALARM: Can not do Automatic work in laser mode!\n");
 	        			return;
 	        		}
+					if ((this->active_tool == 0 || this->active_tool >= 999990) && THEROBOT->get_probe_tool_not_calibrated()){
+						THEKERNEL->streams->printf("ALARM: Probe not calibrated. Please calibrate probe before probing.\n");
+						THEKERNEL->call_event(ON_HALT, nullptr);
+						THEKERNEL->set_halt_reason(CALIBRATE_FAIL);
+						return;
+					}
+					
 
 					bool margin = false;
 					bool zprobe = false;

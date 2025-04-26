@@ -99,6 +99,7 @@ typedef struct {
 	int TOOL;
 	float G54AB[2];
     float perm_vars[20];
+    bool probe_tool_not_calibrated;
 } EEPROM_data;
 
 typedef struct {
