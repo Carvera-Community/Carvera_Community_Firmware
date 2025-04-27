@@ -150,6 +150,7 @@ void Robot::on_module_loaded()
     // load tlo data from eeprom
     float tlo[3] = {0, 0, THEKERNEL->eeprom_data->TLO};
     this->loadToolOffset(tlo);
+    this->probe_tool_not_calibrated = THEKERNEL->eeprom_data->probe_tool_not_calibrated;
 
     // load wcs data from eeprom
 	float x = THEKERNEL->eeprom_data->G54[0];
@@ -539,6 +540,9 @@ void Robot::set_current_wcs_by_mpos(float x, float y, float z, float a, float b,
     }
     if(isnan(z)){
         z = std::get<Z_AXIS>(wcs_offsets[current_wcs]);
+    }else{
+        PublicData::set_value(atc_handler_checksum, set_ref_tool_mz_checksum, nullptr);
+        this->clearToolOffset();
     }
     if(isnan(a)){
         a = std::get<A_AXIS>(wcs_offsets[current_wcs]);
@@ -621,6 +625,12 @@ void Robot::on_gcode_received(void *argument)
                         wcs_t pos= mcs2selected_wcs(machine_position, n);
                         // notify atc module to change ref tool mcs if Z wcs offset is chaned
                         if (gcode->has_letter('Z')) {
+                            if (probe_tool_not_calibrated && (THEKERNEL->eeprom_data->TOOL = 0 || THEKERNEL->eeprom_data->TOOL >= 999990)){
+                                THEKERNEL->streams->printf("ALARM: Probe not calibrated. Please calibrate probe before probing.\n");
+                                THEKERNEL->call_event(ON_HALT, nullptr);
+                                THEKERNEL->set_halt_reason(CALIBRATE_FAIL);
+                                return;
+                            }
                         	PublicData::set_value(atc_handler_checksum, set_ref_tool_mz_checksum, nullptr);
                         	this->clearToolOffset();
                         }
@@ -2187,4 +2197,16 @@ bool Robot::is_homed_all_axes()
 void Robot::override_homed_check(bool home_override_value) {
     this->home_override = home_override_value;
     return;
+}
+
+void Robot::set_probe_tool_not_calibrated(bool value)
+{
+    probe_tool_not_calibrated = value;
+    THEKERNEL->eeprom_data->probe_tool_not_calibrated = value;
+    THEKERNEL->write_eeprom_data();
+}
+
+bool Robot::get_probe_tool_not_calibrated()
+{
+    return probe_tool_not_calibrated;
 }

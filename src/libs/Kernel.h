@@ -102,6 +102,7 @@ typedef struct {
     float cos_r_G54;
     float sin_r_G54;
     float r_G54;
+    bool probe_tool_not_calibrated;
 } EEPROM_data;
 
 typedef struct {

@@ -852,6 +852,11 @@ void Kernel::check_eeprom_data()
 		this->eeprom_data->r_G54 = 0;
 		needrewtite = true;
 	}
+    if(!((this->eeprom_data->probe_tool_not_calibrated & ~1) == 0))
+	{
+		this->eeprom_data->probe_tool_not_calibrated = true;
+		needrewtite = true;
+	}
 	if(needrewtite)
 		this->write_eeprom_data();
 }
@@ -883,7 +888,7 @@ void Kernel::read_Factory_data()
 	
 	if( Check_Factory_Data((unsigned char*)i2c_buffer, sizeof(FACTORY_SET)+2 ) )
 	{
-    	memcpy(this->factory_set, &i2c_buffer[2], size);
+    	memcpy(this->factory_set, &i2c_buffer[2], sizeof(FACTORY_SET));
     }
     else
     {

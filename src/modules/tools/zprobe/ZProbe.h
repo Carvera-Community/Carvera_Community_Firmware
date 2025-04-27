@@ -87,6 +87,7 @@ public:
     void on_module_loaded();
     void on_gcode_received(void *argument);
 
+    bool check_last_probe_ok();
     bool run_probe(float& mm, float feedrate, float max_dist= -1, bool reverse= false);
     bool run_probe_return(float& mm, float feedrate, float max_dist= -1, bool reverse= false);
     bool doProbeAt(float &mm, float x, float y);
