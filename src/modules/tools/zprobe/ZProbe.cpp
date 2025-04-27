@@ -1777,8 +1777,8 @@ void ZProbe::probe_axisangle() //M465
             
             //calculate angle
             //inverse tan ( (Point 2 y - Point 1 Y) / (Point 2 x - point 1 X) )
-            THEKERNEL->probe_outputs[2] = atan (  (out_coords.y_positive_y_out - out_coords.x_positive_y_out) 
-                                                / (out_coords.y_positive_x_out - out_coords.x_positive_x_out)) * 180 /pi;
+            THEKERNEL->probe_outputs[2] = atan (  (out_coords.y_positive_x_out - out_coords.x_positive_x_out) 
+                                                / (out_coords.x_positive_y_out - out_coords.y_positive_y_out)) * 180 /pi;
             THEKERNEL->streams->printf("Angle from Y Axis is: %.3f degrees or %.3f radians and is stored in radians at variable #153\n" , THEKERNEL->probe_outputs[2] , THEKERNEL->probe_outputs[2] * pi / 180 );
         }
 
