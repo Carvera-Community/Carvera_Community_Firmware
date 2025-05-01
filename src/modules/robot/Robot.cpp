@@ -148,6 +148,7 @@ void Robot::on_module_loaded()
     // load tlo data from eeprom
     float tlo[3] = {0, 0, THEKERNEL->eeprom_data->TLO};
     this->loadToolOffset(tlo);
+    this->probe_tool_not_calibrated = THEKERNEL->eeprom_data->probe_tool_not_calibrated;
 
     // load wcs data from eeprom
 	float x = THEKERNEL->eeprom_data->G54[0];
@@ -483,14 +484,14 @@ void Robot::print_position(uint8_t subcode, std::string& res, bool ignore_extrud
 }
 
 // converts current last milestone (machine position without compensation transform) to work coordinate system (inverse transform)
-Robot::wcs_t Robot::mcs2wcs(const Robot::wcs_t& pos) const
+Robot::wcs_t Robot::mcs2selected_wcs(const wcs_t &pos, size_t n) const
 {
     return std::make_tuple(
-        std::get<X_AXIS>(pos) - std::get<X_AXIS>(wcs_offsets[current_wcs]) + std::get<X_AXIS>(g92_offset) - std::get<X_AXIS>(tool_offset),
-        std::get<Y_AXIS>(pos) - std::get<Y_AXIS>(wcs_offsets[current_wcs]) + std::get<Y_AXIS>(g92_offset) - std::get<Y_AXIS>(tool_offset),
-        std::get<Z_AXIS>(pos) - std::get<Z_AXIS>(wcs_offsets[current_wcs]) + std::get<Z_AXIS>(g92_offset) - std::get<Z_AXIS>(tool_offset),
-        std::get<A_AXIS>(pos) - std::get<A_AXIS>(wcs_offsets[current_wcs]) + std::get<A_AXIS>(g92_offset) - std::get<A_AXIS>(tool_offset),
-        std::get<B_AXIS>(pos) - std::get<B_AXIS>(wcs_offsets[current_wcs]) + std::get<B_AXIS>(g92_offset) - std::get<B_AXIS>(tool_offset)
+        std::get<X_AXIS>(pos) - std::get<X_AXIS>(wcs_offsets[n]) + std::get<X_AXIS>(g92_offset) - std::get<X_AXIS>(tool_offset),
+        std::get<Y_AXIS>(pos) - std::get<Y_AXIS>(wcs_offsets[n]) + std::get<Y_AXIS>(g92_offset) - std::get<Y_AXIS>(tool_offset),
+        std::get<Z_AXIS>(pos) - std::get<Z_AXIS>(wcs_offsets[n]) + std::get<Z_AXIS>(g92_offset) - std::get<Z_AXIS>(tool_offset),
+        std::get<A_AXIS>(pos) - std::get<A_AXIS>(wcs_offsets[n]) + std::get<A_AXIS>(g92_offset) - std::get<A_AXIS>(tool_offset),
+        std::get<B_AXIS>(pos) - std::get<B_AXIS>(wcs_offsets[n]) + std::get<B_AXIS>(g92_offset) - std::get<B_AXIS>(tool_offset)
     );
 }
 
@@ -531,6 +532,9 @@ void Robot::set_current_wcs_by_mpos(float x, float y, float z, float a, float b)
     }
     if(isnan(z)){
         z = std::get<Z_AXIS>(wcs_offsets[current_wcs]);
+    }else{
+        PublicData::set_value(atc_handler_checksum, set_ref_tool_mz_checksum, nullptr);
+        this->clearToolOffset();
     }
     if(isnan(a)){
         a = std::get<A_AXIS>(wcs_offsets[current_wcs]);
@@ -603,24 +607,30 @@ void Robot::on_gcode_received(void *argument)
                         std::tie(x, y, z, a, b) = wcs_offsets[n];
                         // notify atc module to change ref tool mcs if Z wcs offset is chaned
                         if (gcode->has_letter('Z')) {
+                            if (probe_tool_not_calibrated && (THEKERNEL->eeprom_data->TOOL = 0 || THEKERNEL->eeprom_data->TOOL >= 999990)){
+                                THEKERNEL->streams->printf("ALARM: Probe not calibrated. Please calibrate probe before probing.\n");
+                                THEKERNEL->call_event(ON_HALT, nullptr);
+                                THEKERNEL->set_halt_reason(CALIBRATE_FAIL);
+                                return;
+                            }
                         	PublicData::set_value(atc_handler_checksum, set_ref_tool_mz_checksum, nullptr);
                         	this->clearToolOffset();
                         }
                         if(gcode->get_int('L') == 20) {
                             // this makes the current machine position (less compensation transform) the offset
                             // get current position in WCS
-                            wcs_t pos= mcs2wcs(machine_position);
+                            wcs_t pos= mcs2selected_wcs(machine_position, n);
 
                             if(gcode->has_letter('X')){
-                                x -= to_millimeters(gcode->get_value('X')) - std::get<X_AXIS>(pos);
+                                x = machine_position[X_AXIS] - to_millimeters(gcode->get_value('X'));
                             }
 
                             if(gcode->has_letter('Y')){
-                                y -= to_millimeters(gcode->get_value('Y')) - std::get<Y_AXIS>(pos);
+                                y = machine_position[Y_AXIS] - to_millimeters(gcode->get_value('Y'));
                             }
                             
                             if(gcode->has_letter('Z')) {
-                                z -= to_millimeters(gcode->get_value('Z')) - std::get<Z_AXIS>(pos);
+                                z = machine_position[Z_AXIS] - to_millimeters(gcode->get_value('Z'));
                             }
                             
                             if(gcode->has_letter('A')) {
@@ -2125,4 +2135,16 @@ bool Robot::is_homed_all_axes()
 void Robot::override_homed_check(bool home_override_value) {
     this->home_override = home_override_value;
     return;
+}
+
+void Robot::set_probe_tool_not_calibrated(bool value)
+{
+    probe_tool_not_calibrated = value;
+    THEKERNEL->eeprom_data->probe_tool_not_calibrated = value;
+    THEKERNEL->write_eeprom_data();
+}
+
+bool Robot::get_probe_tool_not_calibrated()
+{
+    return probe_tool_not_calibrated;
 }
