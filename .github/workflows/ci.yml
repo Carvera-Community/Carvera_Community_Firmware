@@ -3,14 +3,27 @@ name: Carvera Community Firmware Build
 
 on:
   push:
-    branches: ['**']
-    tags: ['v*.*.*']
+    tags: ['v*']
   pull_request:
-    branches: ['main']
+    branches: ['master', 'Dev']
 env:
   GCC_VERSION: 14.2
 
 jobs:
+  pr-checks:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout (full history)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Run all checks
+        run: ./.github/scripts/run-checks.sh
+        env:
+          GITHUB_TOKEN:            ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY:       ${{ github.repository }}
+          GITHUB_SHA:              ${{ github.sha }}
+          GITHUB_EVENT_PATH:       ${{ github.event_path }}  
   build:
     runs-on: ubuntu-latest
 
@@ -18,19 +31,17 @@ jobs:
       version: ${{ steps.set-version.outputs.VERSION }}
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set TOOLCHAIN_DIR
         run: echo "TOOLCHAIN_DIR=$GITHUB_WORKSPACE/toolchain/$GCC_VERSION" >> $GITHUB_ENV
 
       - name: Set VERSION
         id: set-version
-        run: |
-          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
-            echo "VERSION=${GITHUB_REF_NAME}" >> $GITHUB_OUTPUT
-          else
-            echo "VERSION=${GITHUB_REF_NAME}-${GITHUB_SHA::7}" >> $GITHUB_OUTPUT
-          fi
+        run: ./.github/scripts/set-version.sh
 
       - name: Cache compiler toolchain
         uses: actions/cache@v4

@@ -48,6 +48,7 @@ print_help() {
   echo "                   Defaults to ${DEFAULT_GCC_VERSION}."
   echo "                   Supported versions are determined by build/gcc.sh."
   echo "  --clean          Run 'make clean' before starting the build."
+  echo "  --output <path>  Specify the output path for the build artifact."
   echo "  --help           Display this help message and exit."
   echo ""
   echo "Example:"
@@ -63,6 +64,7 @@ main() {
     local run_clean=false
     local show_help=false
     local make_extra_args=()
+    local output_path=""
     local os
     local cpu_count
     local make_cmd
@@ -83,6 +85,15 @@ main() {
             --clean)
                 run_clean=true
                 shift 1
+                ;;
+            --output)
+                if [[ -z "${2:-}" ]]; then
+                    echo "Error: --output option requires a path argument." >&2
+                    print_help >&2
+                    exit 1
+                fi
+                output_path="$2"
+                shift 2
                 ;;
             --help)
                 show_help=true
@@ -159,6 +170,47 @@ main() {
              exit 1
         fi
         echo "Build finished successfully." >&2
+
+        # --- Handle Output Copy ---
+        if [[ -n "$output_path" ]]; then
+            local source_file="$PROJECT_ROOT/LPC1768/main.bin"
+            local dest_path
+            local dest_dir
+
+            if [[ ! -f "$source_file" ]]; then
+                echo "Error: Build artifact not found at $source_file" >&2
+                exit 1
+            fi
+
+            # Determine absolute path for output_path if it's relative
+            if [[ "$output_path" != /* ]]; then
+                output_path="$ORIGINAL_PWD/$output_path"
+            fi
+
+            # Check if output_path is a directory
+            if [[ -d "$output_path" ]]; then
+                dest_path="$output_path/main.bin"
+                dest_dir="$output_path"
+            else
+                # Assume output_path includes the filename
+                dest_path="$output_path"
+                dest_dir=$(dirname "$output_path")
+            fi
+
+            # Check if destination directory exists
+            if [[ ! -d "$dest_dir" ]]; then
+                echo "Error: Destination directory $dest_dir does not exist." >&2
+                exit 1
+            fi
+
+             # Perform the copy
+             echo "Copying $source_file to $dest_path" >&2
+             if ! cp "$source_file" "$dest_path"; then
+                 echo "Error: Failed to copy build artifact to $dest_path" >&2
+                 exit 1
+             fi
+             echo "Successfully copied artifact to $dest_path" >&2
+        fi
     )
     exit $? # Exit with the status code of the subshell (and thus the make command)
 }

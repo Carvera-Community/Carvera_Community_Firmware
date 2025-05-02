@@ -19,6 +19,12 @@ Defaults to '14.2'. Passed directly to gcc.ps1.
 If specified, runs 'make clean' using the selected GCC toolchain before
 starting the main build.
 
+.PARAMETER OutputPath
+Specifies the path where the final `main.bin` artifact should be copied.
+If the path is an existing directory, the artifact will be copied into it as `main.bin`.
+If the path points to a non-existent file in an existing directory, the artifact will be copied to that path.
+The destination directory must exist.
+
 .PARAMETER Help
 Displays this help message and exits.
 
@@ -59,6 +65,9 @@ param(
 
     [Parameter(Mandatory=$false)]
     [switch]$Clean,
+
+    [Parameter(Mandatory=$false)]
+    [string]$OutputPath,
 
     [Parameter(Mandatory=$false)]
     [switch]$Help
@@ -156,6 +165,48 @@ try {
         throw "Build failed with exit code $exitCode."
     }
     Write-Host "Build finished successfully." -ForegroundColor Green
+
+    # --- Handle Output Copy --- 
+    if ($exitCode -eq 0 -and $PSBoundParameters.ContainsKey('OutputPath') -and -not [string]::IsNullOrWhiteSpace($OutputPath)) {
+        $sourceFile = Join-Path $ProjectRoot "LPC1768/main.bin"
+        if (-not (Test-Path $sourceFile -PathType Leaf)) {
+            Write-Error "Build artifact not found at $sourceFile"
+            exit 1
+        }
+
+        # Resolve OutputPath to an absolute path
+        $resolvedOutputPath = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($OutputPath)
+
+        $destPath = ""
+        $destDir = ""
+
+        # Check if resolvedOutputPath is a directory
+        if (Test-Path $resolvedOutputPath -PathType Container) {
+            $destDir = $resolvedOutputPath
+            $destPath = Join-Path $destDir "main.bin"
+        } else {
+            # Assume it includes the filename
+            $destPath = $resolvedOutputPath
+            $destDir = Split-Path -Parent $destPath
+        }
+
+        # Check if destination directory exists
+        if (-not (Test-Path $destDir -PathType Container)) {
+            Write-Error "Destination directory $destDir does not exist."
+            exit 1
+        }
+
+        # Perform the copy
+        Write-Host "Copying $sourceFile to $destPath" -ForegroundColor Cyan
+        try {
+            Copy-Item -Path $sourceFile -Destination $destPath -Force -ErrorAction Stop
+            Write-Host "Successfully copied artifact to $destPath" -ForegroundColor Green
+        } catch {
+            Write-Error "Failed to copy build artifact to $destPath`: $($_.Exception.Message)"
+            exit 1
+        }
+    }
+
 } catch {
     Write-Error "Failed during build step: $($_.Exception.Message)"
     # Exit code already captured, just report error
