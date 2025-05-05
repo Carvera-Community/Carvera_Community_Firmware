@@ -12,6 +12,8 @@ env:
 jobs:
   pr-checks:
     runs-on: ubuntu-latest
+    permissions:
+      checks: write
     steps:
       - name: Checkout (full history)
         uses: actions/checkout@v4
