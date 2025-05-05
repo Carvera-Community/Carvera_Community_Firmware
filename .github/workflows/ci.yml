@@ -14,18 +14,21 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       checks: write
+    if: github.event_name == 'pull_request'
     steps:
-      - name: Checkout (full history)
+      - name: Checkout PR head
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.ref }}
       - name: Run all checks
         run: ./.github/scripts/run-checks.sh
         env:
           GITHUB_TOKEN:            ${{ secrets.GITHUB_TOKEN }}
           GITHUB_REPOSITORY:       ${{ github.repository }}
+          PR_HEAD_SHA:           ${{ github.event.pull_request.head.sha }}
           GITHUB_SHA:              ${{ github.sha }}
-          GITHUB_EVENT_PATH:       ${{ github.event_path }}  
+          GITHUB_EVENT_PATH:       ${{ github.event_path }}
   build:
     runs-on: ubuntu-latest
 
