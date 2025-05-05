@@ -19,6 +19,8 @@
 #include <mri.h>
 #include <cmsis.h>
 #include "mpu.h"
+#include <new>
+#include <type_traits>
 
 #include "platform_memory.h"
 
@@ -36,6 +38,10 @@ extern unsigned int     __bss_start__;
 extern unsigned int     __bss_end__;
 extern unsigned int     __StackTop;
 extern "C" unsigned int __end__;
+
+// Allocate static raw memory buffers aligned and sized for MemoryPool objects
+// Use __attribute__ for alignment
+static typename std::aligned_storage<sizeof(MemoryPool), alignof(MemoryPool)>::type _ahb_pool_mem;
 
 extern "C" int  main(void);
 extern "C" void __libc_init_array(void);
@@ -57,7 +63,7 @@ extern "C" void _start(void)
         enableMPU();
     }
     if (MRI_ENABLE) {
-        __mriInit(MRI_INIT_PARAMETERS);
+        mriInit(MRI_INIT_PARAMETERS);
         if (MRI_BREAK_ON_INIT)
             __debugbreak();
     }
@@ -65,23 +71,19 @@ extern "C" void _start(void)
 
     // MemoryPool stuff - needs to be initialised before __libc_init_array
     // so static ctors can use them
-    extern uint8_t __AHB0_block_start;
-    extern uint8_t __AHB0_dyn_start;
-    extern uint8_t __AHB0_end;
-    extern uint8_t __AHB1_block_start;
-    extern uint8_t __AHB1_dyn_start;
-    extern uint8_t __AHB1_end;
+    extern uint8_t __AHB_block_start;
+    extern uint8_t __AHB_dyn_start;
+    extern uint8_t __AHB_end;
 
-    // zero the data sections in AHB0 and AHB1
-    memset(&__AHB0_block_start, 0, &__AHB0_dyn_start - &__AHB0_block_start);
-    memset(&__AHB1_block_start, 0, &__AHB1_dyn_start - &__AHB1_block_start);
+    // zero the data sections in AHB
+    memset(&__AHB_block_start, 0, &__AHB_dyn_start - &__AHB_block_start);
 
-    MemoryPool _AHB0_stack(&__AHB0_dyn_start, &__AHB0_end - &__AHB0_dyn_start);
-    MemoryPool _AHB1_stack(&__AHB1_dyn_start, &__AHB1_end - &__AHB1_dyn_start);
+    // Construct the MemoryPool objects in the statically allocated raw buffers
+    // using placement new.
+    new (&_ahb_pool_mem) MemoryPool(&__AHB_dyn_start, &__AHB_end - &__AHB_dyn_start);
 
-
-    _AHB0 = &_AHB0_stack;
-    _AHB1 = &_AHB1_stack;
+    // Assign the addresses of the constructed objects (in the buffers) to the global pointers
+    _ahb = reinterpret_cast<MemoryPool*>(&_ahb_pool_mem);
     // MemoryPool init done
 
     __libc_init_array();
@@ -151,7 +153,7 @@ extern "C" int __real__read(int file, char *ptr, int len);
 extern "C" int __wrap__read(int file, char *ptr, int len)
 {
     if (MRI_SEMIHOST_STDIO && file < 3)
-        return __mriNewlib_SemihostRead(file, ptr, len);
+        return mriNewlib_SemihostRead(file, ptr, len);
     return __real__read(file, ptr, len);
 }
 
@@ -160,7 +162,7 @@ extern "C" int __real__write(int file, char *ptr, int len);
 extern "C" int __wrap__write(int file, char *ptr, int len)
 {
     if (MRI_SEMIHOST_STDIO && file < 3)
-        return __mriNewlib_SemihostWrite(file, ptr, len);
+        return mriNewlib_SemihostWrite(file, ptr, len);
     return __real__write(file, ptr, len);
 }
 

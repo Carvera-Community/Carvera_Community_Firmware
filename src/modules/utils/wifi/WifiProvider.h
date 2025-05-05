@@ -56,8 +56,8 @@ private:
     void query_wifi_status();
 
     uint32_t ip_to_int(char* ip_addr);
-    void int_to_ip(uint32_t i_ip, char *ip_addr);
-    void get_broadcast_from_ip_and_netmask(char *broadcast_addr, char *ip_addr, char *netmask);
+    void int_to_ip(uint32_t i_ip, char *ip_addr, size_t buffer_size);
+    void get_broadcast_from_ip_and_netmask(char *broadcast_addr, size_t broadcast_buffer_size, char *ip_addr, char *netmask);
 
     void on_pin_rise();
     void receive_wifi_data();
@@ -75,7 +75,7 @@ private:
 	int udp_recv_port;
 	int tcp_timeout_s;
 	int connection_fail_count;
-	string machine_name;
+	char machine_name[64]; // Fixed-size buffer to avoid std::string heap allocation
 	char ap_address[16];
 	char ap_netmask[16];
 	char sta_address[16];

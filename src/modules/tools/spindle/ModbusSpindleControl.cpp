@@ -50,3 +50,23 @@ void ModbusSpindleControl::on_module_loaded()
     modbus = new Modbus(tx_pin, rx_pin, dir_pin);
 }
 
+void ModbusSpindleControl::turn_on(void)
+{
+    // TODO: Implement Modbus command to turn spindle on
+}
+
+void ModbusSpindleControl::turn_off(void)
+{
+    // TODO: Implement Modbus command to turn spindle off
+}
+
+void ModbusSpindleControl::set_speed(int rpm)
+{
+    // TODO: Implement Modbus command to set spindle speed
+}
+
+void ModbusSpindleControl::report_speed(void)
+{
+    // TODO: Implement Modbus command to report spindle speed
+}
+

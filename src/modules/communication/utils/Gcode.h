@@ -10,6 +10,7 @@
 #define GCODE_H
 #include <string>
 #include <map>
+#include <cstdint>
 
 using std::string;
 

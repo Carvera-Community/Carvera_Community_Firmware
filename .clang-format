@@ -1,0 +1,43 @@
+BasedOnStyle:        LLVM        # Reasonable baseline that is easy to tweak
+IndentWidth:         4
+TabWidth:            4
+UseTab:              Never       # Every file in the tree is space‑indented
+
+# ─── Braces ────────────────────────────────────────────────────────────────
+BreakBeforeBraces:   Stroustrup  # Functions/records: brace on new line;
+                                 # control statements: brace on same line
+BraceWrapping:
+  AfterFunction:     true        # constructor like
+                                 #   Foo::Foo()
+                                 #   {
+  AfterControlStatement: false   #   if (x) {
+  AfterEnum:          true
+  AfterClass:         true
+  AfterNamespace:     true
+  AfterStruct:        true
+  SplitEmptyFunction: false
+  SplitEmptyRecord:   false
+  SplitEmptyNamespace:false
+
+# ─── Spaces ───────────────────────────────────────────────────────────────
+SpaceBeforeParens:   ControlStatements   # `if (` / `while (` etc.
+SpacesInParentheses: false
+SpaceInEmptyParentheses: false
+PointerAlignment:    Right        # `char *ptr`
+ReferenceAlignment:  Right        # `Foo &ref`
+SpaceBeforeRangeBasedForLoopColon: true
+
+# ─── Line breaking / length ───────────────────────────────────────────────
+ColumnLimit:         120          # Source already exceeds 80 quite often
+AllowShortFunctionsOnASingleLine: Empty
+AllowShortIfStatementsOnASingleLine: false
+AllowShortBlocksOnASingleLine: Empty
+
+# ─── Includes ─────────────────────────────────────────────────────────────
+SortIncludes:        false        # Preserve the hand‑grouped include order
+IncludeBlocks:       Preserve
+
+# ─── Misc ────────────────────────────────────────────────────────────────
+ReflowComments:      false        # Don’t reshape existing comment blocks
+AlignConsecutiveAssignments: false
+AlignConsecutiveDeclarations: false

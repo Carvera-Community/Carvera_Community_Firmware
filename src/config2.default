@@ -19,6 +19,7 @@ new_status_format							true
 
 # USB
 # usb_en_pin								1.19
+disable_serial_console						false           # Disable serial console (to reserve for MRI/GDB)
 
 # Basic motion configuration
 #default_feed_rate							1000			# Default speed (mm/minute) for G1/G2/G3 moves

@@ -4,6 +4,7 @@
 
 #include <string.h>
 #include <tuple>
+#include <stdint.h>
 
 #define delta_grid_leveling_strategy_checksum CHECKSUM("delta-grid")
 

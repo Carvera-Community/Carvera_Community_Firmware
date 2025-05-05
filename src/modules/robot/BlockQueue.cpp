@@ -4,6 +4,7 @@
 #include <cstdlib>
 #include "cmsis.h"
 #include "platform_memory.h"
+#include <cstdint>
 
 /*
  * constructors
@@ -20,7 +21,15 @@ BlockQueue::BlockQueue(unsigned int length)
 {
     head_i = tail_i = 0;
     isr_tail_i = tail_i;
-    void *v= AHB0.alloc(sizeof(Block) * length);
+    void *v= AHB.alloc(sizeof(Block) * length);
+    if (v == nullptr) {
+        // TODO: Optionally add error reporting here (e.g., THEKERNEL->streams->printf("FATAL: BlockQueue alloc failed!\n");)
+        // For now, just ensure the queue is unusable
+        this->length = 0;
+        this->ring = nullptr;
+        // Consider adding __disable_irq(); while(1); or similar if this is truly fatal
+        return;
+    }
     ring = new(v) Block[length];
     // TODO: handle allocation failure
     this->length = length;
@@ -35,7 +44,7 @@ BlockQueue::~BlockQueue()
     head_i = tail_i = length = 0;
     isr_tail_i = tail_i;
     if(ring != nullptr)
-        AHB0.dealloc(ring); // delete [] ring;
+        AHB.dealloc(ring); // delete [] ring;
     ring = nullptr;
 }
 
@@ -169,7 +178,7 @@ bool BlockQueue::resize(unsigned int length)
                 __enable_irq();
 
                 if (ring != nullptr)
-                    AHB0.dealloc(ring); // delete [] ring;
+                    AHB.dealloc(ring); // delete [] ring;
                 ring = nullptr;
 
                 return true;
@@ -181,7 +190,11 @@ bool BlockQueue::resize(unsigned int length)
         }
 
         // Note: we don't use realloc so we can fall back to the existing ring if allocation fails
-        void *v= AHB0.alloc(sizeof(Block) * length);
+        void *v= AHB.alloc(sizeof(Block) * length);
+        if (v == nullptr) {
+            // Allocation failed, cannot resize
+            return false;
+        }
         Block* newring = new(v) Block[length];
 
         if (newring != nullptr)
@@ -199,14 +212,14 @@ bool BlockQueue::resize(unsigned int length)
                 __enable_irq();
 
                 if (oldring != nullptr)
-                    AHB0.dealloc(oldring); // delete [] oldring;
+                    AHB.dealloc(oldring); // delete [] oldring;
 
                 return true;
             }
 
             __enable_irq();
 
-            AHB0.dealloc(newring); // delete [] newring;
+            AHB.dealloc(newring); // delete [] newring;
         }
     }
 

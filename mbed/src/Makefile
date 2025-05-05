@@ -1,6 +1,7 @@
 #!/usr/bin/make
 
-DEVICES      =mbed-lpc1768.mk mbed-lpc11u24.mk
+# DEVICES      =mbed-lpc1768.mk mbed-lpc11u24.mk
+DEVICES      =mbed-lpc1768.mk
 DEVICESCLEAN =$(addsuffix .clean,$(DEVICES))
 
 

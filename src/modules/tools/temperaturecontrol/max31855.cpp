@@ -68,11 +68,16 @@ float Max31855::get_temperature()
     if(readings.size()==0) return infinityf();
 
     float sum = 0;
+    int count = 0;
     for (int i=0; i<readings.size(); i++) {
-        sum += *readings.get_ref(i);
+        float* ref = readings.get_ref(i);
+        if (ref) {
+            sum += *ref;
+            count++;
+        }
     }
-
-    return sum / readings.size();
+    if (count == 0) return infinityf();
+    return sum / count;
 }
 
 // ask the temperature sensor hardware for a value, store it in a buffer

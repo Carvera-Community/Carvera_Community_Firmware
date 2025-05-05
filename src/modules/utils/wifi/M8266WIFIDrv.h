@@ -1347,7 +1347,6 @@ u8 M8266WIFI_SPI_Disconnect_TcpClient(u8 link_no, ClientInfo *client_info, u16* 
  *     =1, success                                                                 *
  *     =0, has error(s)                                                            *
  ***********************************************************************************/
- u8 M8266WIFI_SPI_Disconnect_TcpClient(u8 link_no, ClientInfo *client_info, u16* status);
 
 /***********************************************************************************
  * M8266WIFI_SPI_Query_Tcp_Retran_Max                                              *

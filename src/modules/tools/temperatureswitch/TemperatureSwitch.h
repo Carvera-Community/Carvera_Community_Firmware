@@ -21,7 +21,7 @@ using namespace std;
 #include "libs/Module.h"
 #include <string>
 #include <vector>
-
+#include <cstdint>
 class TemperatureSwitch : public Module
 {
     public:

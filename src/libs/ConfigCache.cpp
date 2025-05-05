@@ -43,7 +43,7 @@ void ConfigCache::replace_or_push_back(ConfigValue *new_value)
             // Replace with the provided value
             delete cv; // free up old one
             cv =  new_value;
-            printf("WARNING: duplicate config line replaced\n");
+            // printf("WARNING: duplicate config line replaced\n");
             return;
         }
     }

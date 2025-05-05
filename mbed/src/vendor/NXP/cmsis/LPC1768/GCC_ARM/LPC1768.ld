@@ -5,8 +5,7 @@ MEMORY
   FLASH (rx) : ORIGIN = 16K, LENGTH = (512K - 16K)
   RAM (rwx) : ORIGIN = 0x100000C8, LENGTH = (32K - 0xC8)
 
-  USB_RAM(rwx) : ORIGIN = 0x2007C000, LENGTH = 16K
-  ETH_RAM(rwx) : ORIGIN = 0x20080000, LENGTH = 16K
+  AHB_SRAM(rwx) : ORIGIN = 0x2007C000, LENGTH = 32K
 }
 
 /* Linker script to place sections and symbol values. Should be used together
@@ -155,26 +154,27 @@ SECTIONS
 
 
     /* Code can explicitly ask for data to be 
-       placed in these higher RAM banks where
-       they will be left uninitialized. 
+        placed in these higher RAM banks where
+        they will be left uninitialized.
     */
-    .AHBSRAM0 (NOLOAD):
-    {
-        Image$$RW_IRAM2$$Base = . ;
-        PROVIDE(__AHB0_block_start = .);
-        *(AHBSRAM0)
-        Image$$RW_IRAM2$$ZI$$Limit = .;
-        PROVIDE(__AHB0_dyn_start = .);
-        PROVIDE(__AHB0_end = ORIGIN(USB_RAM) + LENGTH(USB_RAM));
-    } > USB_RAM
 
-    .AHBSRAM1 (NOLOAD):
+    .AHBSRAM (NOLOAD) :
     {
-        Image$$RW_IRAM3$$Base = . ;
-        PROVIDE(__AHB1_block_start = .);
-        *(AHBSRAM1)
-        Image$$RW_IRAM3$$ZI$$Limit = .;
-        PROVIDE(__AHB1_dyn_start = .);
-        PROVIDE(__AHB1_end = ORIGIN(ETH_RAM) + LENGTH(ETH_RAM));
-    } > ETH_RAM
+        Image$$RW_IRAM1$$Base = . ;
+        PROVIDE(__AHB_block_start = .);
+
+        . = ALIGN(4);
+
+        PROVIDE(__ohci_registers_t_start = Image$$RW_IRAM1$$Base);
+
+        /* Reserve 0x200 bytes for USB OHCI controller registers */
+        . = . + 0x200;
+
+        PROVIDE(__ohci_registers_t_end = .);
+
+        *(AHBSRAM)
+        Image$$RW_IRAM1$$ZI$$Limit = .;
+        PROVIDE(__AHB_dyn_start = .);
+        PROVIDE(__AHB_end = ORIGIN(AHB_SRAM) + LENGTH(AHB_SRAM));
+    } > AHB_SRAM
 }

@@ -60,8 +60,10 @@ void SoftSerial::prepare_tx(int c)
     switch (_parity) {
         case Forced1:
             _char |= 1 << (_bits + 1);
+            // fall through
         case Forced0:
             _char &= ~(1 << (_bits + 1));
+            // fall through
         case Even:
             parity = false;
             for (int i = 0; i<_bits; i++) {
@@ -69,6 +71,7 @@ void SoftSerial::prepare_tx(int c)
                     parity = !parity;
             }
             _char |= parity << (_bits + 1);
+            // fall through
         case Odd:
             parity = true;
             for (int i = 0; i<_bits; i++) {
@@ -76,6 +79,7 @@ void SoftSerial::prepare_tx(int c)
                     parity = !parity;
             }
             _char |= parity << (_bits + 1);
+            // fall through
         case None:
             // No parity, nothing to do here
             break;
