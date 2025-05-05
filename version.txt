@@ -1,6 +1,9 @@
 Notice: 
 To let the Carvera work perfectly, please make sure both your controller software and firmware are up to date. For firmware, download the new firmware first, then use the 'update' function to upgrade the firmware, and reset the machine after the update is complete.
 
+[dev improvements branch] 
+1. developer quality-of-life enhancements, no user-visible features. See DEVELOPER.md for details. USB-C GDB debugging support, improved memory management with validation and bug fixes, and seamless GCC 14.2.1 toolchain integration on Linux, macOS, and Windows.
+
 [1.0.1c1.0.3]
 1. added front button manual tool change behavior
 2. added multiple touchoffs to TLO calibration. M491 L5 will touch off 5 times and report. The default value for number of touchoffs is stored in the config as atc.num_atc_touchoff
