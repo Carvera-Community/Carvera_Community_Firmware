@@ -88,6 +88,7 @@ Kernel::Kernel()
     probe_addr = 0;
     checkled = false;
     spindleon = false;
+    cachewait = false;
 
     instance = this; // setup the Singleton instance of the kernel    
     
@@ -210,6 +211,8 @@ Kernel::Kernel()
     this->eeprom_data = new(AHB0) EEPROM_data();
     // read eeprom data
     this->read_eeprom_data();
+    // check eeprom data
+    this->check_eeprom_data();
 
     // Core modules
     this->add_module( this->conveyor       = new(AHB0) Conveyor()      );
@@ -314,7 +317,8 @@ std::string Kernel::get_query_string()
         if(n > sizeof(buf)) n= sizeof(buf);
         str.append("|WPos:").append(buf, n);
         
-        n = snprintf(buf, sizeof(buf), ",%1.4f,%1.4f", robot->from_millimeters(std::get<A_AXIS>(pos)), robot->from_millimeters(std::get<B_AXIS>(pos)));
+        //n = snprintf(buf, sizeof(buf), ",%1.4f,%1.4f", robot->from_millimeters(std::get<A_AXIS>(pos)), robot->from_millimeters(std::get<B_AXIS>(pos)));
+        n = snprintf(buf, sizeof(buf), ",%1.4f,%1.4f", std::get<A_AXIS>(pos), std::get<B_AXIS>(pos));
         if(n > sizeof(buf)) n= sizeof(buf);
         str.append(buf, n);
 
@@ -327,7 +331,8 @@ std::string Kernel::get_query_string()
 
         str.append("|MPos:").append(buf, n);
         
-        n = snprintf(buf, sizeof(buf), ",%1.4f,%1.4f", robot->from_millimeters(std::get<A_AXIS>(mpos)), robot->from_millimeters(std::get<B_AXIS>(mpos)));
+        //n = snprintf(buf, sizeof(buf), ",%1.4f,%1.4f", robot->from_millimeters(std::get<A_AXIS>(mpos)), robot->from_millimeters(std::get<B_AXIS>(mpos)));
+        n = snprintf(buf, sizeof(buf), ",%1.4f,%1.4f", std::get<A_AXIS>(mpos), std::get<B_AXIS>(mpos));
         if(n > sizeof(buf)) n= sizeof(buf);
         str.append(buf, n);
 /*
@@ -347,7 +352,8 @@ std::string Kernel::get_query_string()
         if(n > sizeof(buf)) n= sizeof(buf);
         str.append("|WPos:").append(buf, n);
         
-        n = snprintf(buf, sizeof(buf), ",%1.4f,%1.4f", robot->from_millimeters(std::get<A_AXIS>(pos)), robot->from_millimeters(std::get<B_AXIS>(pos)));
+        //n = snprintf(buf, sizeof(buf), ",%1.4f,%1.4f", robot->from_millimeters(std::get<A_AXIS>(pos)), robot->from_millimeters(std::get<B_AXIS>(pos)));
+        n = snprintf(buf, sizeof(buf), ",%1.4f,%1.4f", std::get<A_AXIS>(pos), std::get<B_AXIS>(pos));
         if(n > sizeof(buf)) n= sizeof(buf);
         str.append(buf, n);
     }
@@ -468,6 +474,11 @@ std::string Kernel::get_query_string()
         if(n > sizeof(buf)) n = sizeof(buf);
         str.append(buf, n);
     }
+    
+    // machine state
+    n = snprintf(buf, sizeof(buf), "|C:%d,%d,%d,%d", THEKERNEL->factory_set->MachineModel,THEKERNEL->factory_set->FuncSetting,THEROBOT->inch_mode,THEROBOT->absolute_mode);
+    if(n > sizeof(buf)) n = sizeof(buf);
+    str.append(buf, n);
 
     str.append(">\n");
     return str;
@@ -572,7 +583,7 @@ std::string Kernel::get_diagnose_string()
         if(n > sizeof(buf)) n = sizeof(buf);
         str.append(buf, n);
     }
-    if(CARVERA_AIR == THEKERNEL->factory_set->MachineModel)
+    if(THEKERNEL->factory_set->FuncSetting & ((1<<0)|(1<<1)) )
     {
     	ok = PublicData::get_value(endstops_checksum, get_endstopAB_states_checksum, 0, data);
 	    if (ok) {
@@ -772,6 +783,69 @@ void Kernel::erase_eeprom_data()
 	}
 }
 
+void Kernel::check_eeprom_data()
+{
+	bool needrewtite = false;
+	if(isnan(this->eeprom_data->TLO))
+	{
+		this->eeprom_data->TLO = 0;
+		needrewtite = true;
+	}
+	if(isnan(this->eeprom_data->REFMZ))
+	{
+		this->eeprom_data->REFMZ = 0;
+		needrewtite = true;
+	}
+	if(isnan(this->eeprom_data->TOOLMZ))
+	{
+		this->eeprom_data->TOOLMZ = 0;
+		needrewtite = true;
+	}
+	if(isnan(this->eeprom_data->reserve))
+	{
+		this->eeprom_data->reserve = 0;
+		needrewtite = true;
+	}
+	if(isnan(this->eeprom_data->TOOL))
+	{
+		this->eeprom_data->TOOL = 0;
+		needrewtite = true;
+	}
+	
+	if(isnan(this->eeprom_data->G54[0]))
+	{
+		this->eeprom_data->G54[0] = 0;
+		needrewtite = true;
+	}
+	if(isnan(this->eeprom_data->G54[1]))
+	{
+		this->eeprom_data->G54[1] = 0;
+		needrewtite = true;
+	}
+	if(isnan(this->eeprom_data->G54[2]))
+	{
+		this->eeprom_data->G54[2] = 0;
+		needrewtite = true;
+	}
+	if(isnan(this->eeprom_data->G54AB[0]))
+	{
+		this->eeprom_data->G54AB[0] = 0;
+		needrewtite = true;
+	}
+	if(isnan(this->eeprom_data->G54AB[1]))
+	{
+		this->eeprom_data->G54AB[1] = 0;
+		needrewtite = true;
+	}
+    if(!((this->eeprom_data->probe_tool_not_calibrated & ~1) == 0))
+	{
+		this->eeprom_data->probe_tool_not_calibrated = true;
+		needrewtite = true;
+	}
+	if(needrewtite)
+		this->write_eeprom_data();
+}
+
 void Kernel::read_Factory_data()
 {
 	unsigned int size = sizeof(FACTORY_SET)+4;	//0x5A 0xA5 DATA CRC(2byte)
@@ -799,7 +873,7 @@ void Kernel::read_Factory_data()
 	
 	if( Check_Factory_Data((unsigned char*)i2c_buffer, sizeof(FACTORY_SET)+2 ) )
 	{
-    	memcpy(this->factory_set, &i2c_buffer[2], size);
+    	memcpy(this->factory_set, &i2c_buffer[2], sizeof(FACTORY_SET));
     }
     else
     {
@@ -898,6 +972,7 @@ void Kernel::erase_Factory_data()
 #define A_Axis_home_enable_checksum             CHECKSUM("A_Axis_home_enable")
 #define C_Axis_home_enable_checksum             CHECKSUM("C_Axis_home_enable")
 #define ATC_enable_checksum             		CHECKSUM("Atc_enable")
+#define CE1_Expand								CHECKSUM("CE1_Expand")
 
 void Kernel::read_Factroy_SD()
 {
@@ -945,6 +1020,17 @@ void Kernel::read_Factroy_SD()
         					
         					bneedwrite = true;
         					break;
+        				case CE1_Expand:
+        					if( 1 == value )
+        						this->factory_set->FuncSetting |= 1<<3;
+        					else
+        						this->factory_set->FuncSetting &= ~(1<<3);
+        					
+        					bneedwrite = true;
+        					break;
+        				default:
+        					break;
+        					
         			}
         			
         		}
@@ -1024,7 +1110,7 @@ bool Kernel::process_line(const string &buffer, uint16_t *check_sum, unsigned ch
     char* endPtr;
     string sValue = buffer.substr(begin_value, vsize);
     *value = std::strtol(sValue.c_str(), &endPtr, 10);
-    
+    return true;
 }
 
 

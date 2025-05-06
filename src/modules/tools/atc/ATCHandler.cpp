@@ -73,6 +73,7 @@
 #define probe_height_mm_checksum	CHECKSUM("probe_height_mm")
 
 #define coordinate_checksum			CHECKSUM("coordinate")
+#define anchor_width_checksum		CHECKSUM("anchor_width")
 #define anchor1_x_checksum			CHECKSUM("anchor1_x")
 #define anchor1_y_checksum			CHECKSUM("anchor1_y")
 #define anchor2_offset_x_checksum	CHECKSUM("anchor2_offset_x")
@@ -80,6 +81,7 @@
 #define rotation_offset_x_checksum	CHECKSUM("rotation_offset_x")
 #define rotation_offset_y_checksum	CHECKSUM("rotation_offset_y")
 #define rotation_offset_z_checksum	CHECKSUM("rotation_offset_z")
+#define rotation_width_checksum		CHECKSUM("rotation_width")
 #define toolrack_offset_x_checksum	CHECKSUM("toolrack_offset_x")
 #define toolrack_offset_y_checksum	CHECKSUM("toolrack_offset_y")
 #define toolrack_z_checksum			CHECKSUM("toolrack_z")
@@ -101,8 +103,15 @@ ATCHandler::ATCHandler()
     last_pos[2] = 0.0;
     probe_laser_last = 9999;
     playing_file = false;
-    tool_number = 6;
-	max_manual_tool_number = 99;
+    if(THEKERNEL->factory_set->FuncSetting & (1<<3))	//for CE1 expand
+	{
+    	tool_number = 8;
+    }
+    else
+    {
+    	tool_number = 6;
+    }
+	max_manual_tool_number = 100000;
     g28_triggered = false;
     blaserManual = false;
     goto_position = -1;
@@ -117,6 +126,470 @@ void ATCHandler::clear_script_queue(){
 		this->script_queue.pop();
 	}
 }
+
+void ATCHandler::fill_calibrate_probe_anchor_scripts(bool invert_probe){
+	THEKERNEL->streams->printf("Calibrating Probe Tip With Anchor 2\n");
+	char buff[100];
+	if (!THEROBOT->is_homed_all_axes()){
+		return;
+	}
+
+	//print status
+	snprintf(buff, sizeof(buff), ";Confirm that 3 axis probe is in collet\nand anchor 2 is installed\nResume will continue program\n");
+	this->script_queue.push(buff);
+	
+	//pause
+	snprintf(buff, sizeof(buff), "M600.5");
+	this->script_queue.push(buff);
+
+
+	//move to clearance
+	snprintf(buff, sizeof(buff), "G90 G53 G0 Z%.3f", THEROBOT->from_millimeters(this->clearance_z));
+	this->script_queue.push(buff);
+
+	//move to anchor 2 probe position
+	snprintf(buff, sizeof(buff), "G91 G53 G0 X%.3f Y%.3f", this->anchor1_x + this->anchor2_offset_x - this->anchor_width/2, this->anchor1_y + this->anchor2_offset_y + 25);
+	this->script_queue.push(buff);
+	
+	//probe -z
+	if (!invert_probe){
+		snprintf(buff, sizeof(buff), "G38.3 Z-100 F450");
+		this->script_queue.push(buff);
+	} else{
+		snprintf(buff, sizeof(buff), "G38.5 Z-100 F450");
+		this->script_queue.push(buff);
+	}
+	snprintf(buff, sizeof(buff), "G91 G54 G0 Z3");
+	this->script_queue.push(buff);
+	
+	//execute calibration with specific values
+	
+	snprintf(buff, sizeof(buff), "M460.2 X%.3f E5 L2 I%i", this->anchor_width, invert_probe ? 1:0);
+	this->script_queue.push(buff);
+
+	snprintf(buff, sizeof(buff), "M462 X%.3f E5 I%i", this->anchor_width/2 + 3, invert_probe ? 1:0);
+	this->script_queue.push(buff);
+	
+}
+
+void ATCHandler::calibrate_set_value(Gcode *gcode)
+{
+	if (!gcode->has_letter('P')){
+		THEKERNEL->streams->printf("Not enough variables given to M469\n Abort\n");
+		return;
+	} else{
+		float final_x = 0;
+		float final_y = 0;
+		float final_z = 0;
+		switch ((int)gcode->get_value('P')){
+			case 0:
+				//home off pin
+				break;
+			case 1:
+				//calibrate anchor 1
+				if (!gcode->has_letter('X') && !gcode->has_letter('Y')){
+					THEKERNEL->streams->printf("Not enough variables given to M469\n Abort\n");
+					return;
+				}
+				THEKERNEL->streams->printf("Previous Anchor 1 X: %.3f\nPrevious Anchor 1 Y: %.3f\n", gcode->get_value('X'), gcode->get_value('Y'));
+				final_x = THEKERNEL->probe_outputs[3];
+				final_y = THEKERNEL->probe_outputs[4];
+				THEKERNEL->streams->printf("New Anchor 1 X: %.3f\nNew Anchor 1 Y: %.3f\n", final_x, final_y);
+				this->anchor1_x = final_x;
+				this->anchor1_y = final_y;
+				THEKERNEL->streams->printf("These values have been temporarily set. You can test the position with M496.3\nTo make them permanent run:\nconfig-set sd coordinate.anchor1_x %.3f\nconfig-set sd coordinate.anchor1_y %.3f\n", final_x, final_y);
+				break;
+				break;
+			case 2:
+				//calibrate anchor 2
+				if (!gcode->has_letter('X') && !gcode->has_letter('Y')){
+					THEKERNEL->streams->printf("Not enough variables given to M469\n Abort\n");
+					return;
+				}
+				THEKERNEL->streams->printf("Previous Anchor 2 X: %.3f\nPrevious Anchor 2 Y: %.3f\n", gcode->get_value('X'), gcode->get_value('Y'));
+				final_x = THEKERNEL->probe_outputs[3] - this->anchor1_x;
+				final_y = THEKERNEL->probe_outputs[4] - this->anchor1_y;
+				THEKERNEL->streams->printf("New Anchor 2 X: %.3f\nNew Anchor 2 Y: %.3f\n", final_x, final_y);
+				this->anchor2_offset_x = final_x;
+				this->anchor2_offset_y = final_y;
+				THEKERNEL->streams->printf("These values have been temporarily set. You can test the position with M496.4\nTo make them permanent run:\nconfig-set sd coordinate.anchor2_x %.3f\nconfig-set sd coordinate.anchor2_y %.3f\n you will need to check calibration on all other machine positions\n", final_x, final_y);
+				break;
+			case 3:
+				//calibrate atc positions - unable to complete due to lack of x axis travel
+			case 4:
+				//calibrate 4th axis headstock
+				if (!gcode->has_letter('Y')){
+					THEKERNEL->streams->printf("Not enough variables given to M469\n Abort\n");
+					return;
+				}
+				THEKERNEL->streams->printf("Previous 4th Headstock Y: %.3f\n", gcode->get_value('Y'));
+				final_y = THEKERNEL->probe_outputs[4] - this->anchor1_y;
+				THEKERNEL->streams->printf("New 4th Headstock Y: %.3f\n", final_y);
+				this->rotation_offset_y = final_y;
+				THEKERNEL->streams->printf("These values have been temporarily set. \nTo make them permanent run:\nconfig-set sd coordinate.rotation_offset_y %.3f\n", final_y);
+				break;
+			case 5:
+				//caibrate 4th axis height
+				//M469.6 A#120 B#119 C#118 Z%.3f P5
+				if (!gcode->has_letter('A') && !gcode->has_letter('B') && !gcode->has_letter('C') && !gcode->has_letter('D') && !gcode->has_letter('E') && !gcode->has_letter('Z') && !gcode->has_letter('R')){
+					THEKERNEL->streams->printf("Not enough variables given to M469\n Abort\n");
+					return;
+				}
+				THEKERNEL->streams->printf("Previous 4th Height: %.3f\n", gcode->get_value('Z'));
+
+				
+				final_y = -(gcode->get_value('B') + gcode->get_value('C') + gcode->get_value('D') + gcode->get_value('E'))/4 + gcode->get_value('A') + gcode->get_value('R')/2;
+				THEKERNEL->streams->printf("New 4th Height: %.3f\n", final_y);
+				//this->rotation_offset_z = final_y;
+				THEKERNEL->streams->printf("These values have been temporarily set. \nTo make them permanent run:\nconfig-set sd coordinate.rotation_offset_z %.3f\n", final_y);
+				break;
+			default:
+				return;
+				break;
+		}
+	}
+}
+
+void ATCHandler::calibrate_anchor1(Gcode *gcode) //M469.1
+{
+	THEKERNEL->streams->printf("Calibrating Anchor 1\n");
+	char buff[100];
+	if (!THEROBOT->is_homed_all_axes()){
+		return;
+	}
+
+	bool invert_probe = false;
+
+	if (gcode->has_letter('I')){
+		if (gcode->get_value('I')){
+			invert_probe = true;
+		}
+	}
+
+	//print status
+	snprintf(buff, sizeof(buff), ";Confirm that a 3 axis probe is in collet\nand anchor 1 is installed and clear\nResume will continue program\n");
+	this->script_queue.push(buff);
+	
+	//pause
+	snprintf(buff, sizeof(buff), "M600.5");
+	this->script_queue.push(buff);
+
+
+	//move to clearance
+	snprintf(buff, sizeof(buff), "G90 G53 G0 Z%.3f", THEROBOT->from_millimeters(this->clearance_z));
+	this->script_queue.push(buff);
+
+	//move to anchor 2 probe position
+	snprintf(buff, sizeof(buff), "G91 G53 G0 X%.3f Y%.3f", this->anchor1_x - 5, this->anchor1_y - 5);
+	this->script_queue.push(buff);
+	
+	//probe -z
+	if (!invert_probe){
+		snprintf(buff, sizeof(buff), "G38.3 Z-105 F450");
+		this->script_queue.push(buff);
+	} else{
+		snprintf(buff, sizeof(buff), "G38.5 Z-105 F450");
+		this->script_queue.push(buff);
+	}
+	snprintf(buff, sizeof(buff), "G91 G54 G0 Z3");
+	this->script_queue.push(buff);
+
+	snprintf(buff, sizeof(buff), "G91 G54 G0 X15 Y15");
+	this->script_queue.push(buff);
+	
+	//execute calibration with specific values
+	
+	snprintf(buff, sizeof(buff), "M463 X-20 Y-20 H8 C1 I%i", invert_probe ? 1:0);
+	this->script_queue.push(buff);
+
+	snprintf(buff, sizeof(buff), "M469.6 X%.3f Y%.3f P1", this->anchor1_x , this->anchor1_y);
+	this->script_queue.push(buff);
+}
+
+void ATCHandler::calibrate_anchor2(Gcode *gcode)//M469.2
+{
+	THEKERNEL->streams->printf("Calibrating Anchor 2\n");
+	char buff[100];
+	if (!THEROBOT->is_homed_all_axes()){
+		return;
+	}
+
+	bool invert_probe = false;
+
+	if (gcode->has_letter('I')){
+		if (gcode->get_value('I')){
+			invert_probe = true;
+		}
+	}
+
+	//print status
+	snprintf(buff, sizeof(buff), ";Confirm that a 3 axis probe is in collet\nand anchor 2 is installed and clear\n");
+	this->script_queue.push(buff);
+	snprintf(buff, sizeof(buff), ";Resume will continue program\n");
+	this->script_queue.push(buff);
+	
+	//pause
+	snprintf(buff, sizeof(buff), "M600.5");
+	this->script_queue.push(buff);
+
+
+	//move to clearance
+	snprintf(buff, sizeof(buff), "G90 G53 G0 Z%.3f", THEROBOT->from_millimeters(this->clearance_z));
+	this->script_queue.push(buff);
+
+	//move to anchor 2 probe position
+	snprintf(buff, sizeof(buff), "G91 G53 G0 X%.3f Y%.3f", this->anchor1_x + this->anchor2_offset_x - 7, this->anchor1_y + this->anchor2_offset_y - 7);
+	this->script_queue.push(buff);
+	
+	//probe -z
+	if (!invert_probe){
+		snprintf(buff, sizeof(buff), "G38.3 Z-105 F450");
+		this->script_queue.push(buff);
+	} else{
+		snprintf(buff, sizeof(buff), "G38.5 Z-105 F450");
+		this->script_queue.push(buff);
+	}
+	snprintf(buff, sizeof(buff), "G91 G54 G0 Z3");
+	this->script_queue.push(buff);
+
+	snprintf(buff, sizeof(buff), "G91 G54 G0 X20 Y20");
+	this->script_queue.push(buff);
+	
+	//execute calibration with specific values
+	
+	snprintf(buff, sizeof(buff), "M463 X-20 Y-20 H8 C1 I%i", invert_probe ? 1:0);
+	this->script_queue.push(buff);
+
+	snprintf(buff, sizeof(buff), "M469.6 X%.3f Y%.3f P2", this->anchor2_offset_x , this->anchor2_offset_y);
+	this->script_queue.push(buff);
+}
+
+void ATCHandler::calibrate_a_axis_headstock(Gcode *gcode)//M469.4
+{
+	float headstock_width = this->rotation_width/2 + 5;
+	float probe_height= this->rotation_offset_z - 6;
+
+	THEKERNEL->streams->printf("Calibrating A Axis Headstock Center\n");
+	char buff[100];
+	if (!THEROBOT->is_homed_all_axes()){
+		return;
+	}
+
+	bool invert_probe = false;
+
+	if (gcode->has_letter('I')){
+		if (gcode->get_value('I')){
+			invert_probe = true;
+		}
+	}
+	if (gcode->has_letter('Y')){
+		headstock_width = gcode->get_value('Y')/2+5;
+	}
+	if (gcode->has_letter('E')){
+		probe_height = gcode->get_value('E');
+	}
+
+	//print status
+	snprintf(buff, sizeof(buff), ";Confirm that a 3 axis probe is in collet\nand the 4th axis is installed and clear\nResume will continue program\n");
+	this->script_queue.push(buff);
+	
+	//pause
+	snprintf(buff, sizeof(buff), "M600.5");
+	this->script_queue.push(buff);
+
+
+	//move to clearance
+	snprintf(buff, sizeof(buff), "G90 G53 G0 Z%.3f", THEROBOT->from_millimeters(this->clearance_z));
+	this->script_queue.push(buff);
+
+	//move to probe position
+	snprintf(buff, sizeof(buff), "G91 G53 G0 X%.3f", this->anchor1_x + this->rotation_offset_x);
+	this->script_queue.push(buff);
+	snprintf(buff, sizeof(buff), "G91 G53 G0 Y%.3f", this->anchor1_y + this->rotation_offset_y);
+	this->script_queue.push(buff);
+	
+	//probe -z
+	if (!invert_probe){
+		snprintf(buff, sizeof(buff), "G38.3 Z-105 F450");
+		this->script_queue.push(buff);
+	} else{
+		snprintf(buff, sizeof(buff), "G38.5 Z-105 F450");
+		this->script_queue.push(buff);
+	}
+	snprintf(buff, sizeof(buff), "G91 G54 G0 Z3");
+	this->script_queue.push(buff);
+	
+	//execute calibration with specific values
+	snprintf(buff, sizeof(buff), "M462 Y%.3f E%.3f I%i", headstock_width , probe_height, invert_probe ? 1:0);
+	this->script_queue.push(buff);
+
+	snprintf(buff, sizeof(buff), "M469.6 Y%.3f P4" , this->rotation_offset_y);
+	this->script_queue.push(buff);
+	
+}
+
+void ATCHandler::calibrate_a_axis_height(Gcode *gcode) //M469.5
+{
+	float probe_height= this->rotation_offset_z;
+	float x_axis_offset = 60;
+	float pin_diameter = 6;
+
+	THEKERNEL->streams->printf("Calibrating A Axis Center Height\n");
+	char buff[100];
+	if (!THEROBOT->is_homed_all_axes()){
+		return;
+	}
+
+	bool invert_probe = false;
+
+	if (gcode->has_letter('I')){
+		if (gcode->get_value('I')){
+			invert_probe = true;
+		}
+	}
+	if (gcode->has_letter('X')){
+		x_axis_offset = gcode->get_value('X');
+	}
+	if (gcode->has_letter('E')){
+		probe_height = gcode->get_value('E');
+	}
+	if (gcode->has_letter('R')){
+		pin_diameter = gcode->get_value('R');
+	}
+
+	//print status
+	snprintf(buff, sizeof(buff), ";Confirm that a 3 axis probe is in collet\nand the 4th axis is installed with a pin and clear\n");
+	this->script_queue.push(buff);
+	snprintf(buff, sizeof(buff), ";This code uses variables #116-120\nResume will continue program\n");
+	this->script_queue.push(buff);
+	
+	//pause
+	snprintf(buff, sizeof(buff), "M600.5");
+	this->script_queue.push(buff);
+
+
+	//move to clearance
+	snprintf(buff, sizeof(buff), "G90 G53 G0 Z%.3f", THEROBOT->from_millimeters(this->clearance_z));
+	this->script_queue.push(buff);
+
+	//move to probe position
+	snprintf(buff, sizeof(buff), "G91 G53 G0 X%.3f", this->anchor1_x + this->rotation_offset_x);
+	this->script_queue.push(buff);
+	snprintf(buff, sizeof(buff), "G91 G53 G0 Y%.3f", this->anchor1_y + this->rotation_offset_y);
+	this->script_queue.push(buff);
+	
+	//probe -z
+	if (!invert_probe){
+		snprintf(buff, sizeof(buff), "G38.3 Z-105 F450");
+		this->script_queue.push(buff);
+		snprintf(buff, sizeof(buff), "#120 = #5023");
+		this->script_queue.push(buff);
+	} else{
+		snprintf(buff, sizeof(buff), "G38.5 Z-105 F450");
+		this->script_queue.push(buff);
+		snprintf(buff, sizeof(buff), "#120 = #5023");
+		this->script_queue.push(buff);
+	}
+	//move to clearance
+	snprintf(buff, sizeof(buff), "G90 G53 G0 Z%.3f", THEROBOT->from_millimeters(this->clearance_z));
+	this->script_queue.push(buff);
+
+	snprintf(buff, sizeof(buff), "G91 G53 G0 X%.3f", this->anchor1_x + this->rotation_offset_x + x_axis_offset);
+	this->script_queue.push(buff);
+	snprintf(buff, sizeof(buff), "G91 G53 G0 Y%.3f", this->anchor1_y + this->rotation_offset_y);
+	this->script_queue.push(buff);
+	
+	//probe -z
+	if (!invert_probe){
+		snprintf(buff, sizeof(buff), "G38.3 Z-105 F450");
+		this->script_queue.push(buff);
+		snprintf(buff, sizeof(buff), "G91 G0 Z3");
+		this->script_queue.push(buff);
+		snprintf(buff, sizeof(buff), "G38.3 Z-4 F150");
+		this->script_queue.push(buff);
+		snprintf(buff, sizeof(buff), "#119 = #5023");
+		this->script_queue.push(buff);
+	} else{
+		snprintf(buff, sizeof(buff), "G38.5 Z-105 F450");
+		this->script_queue.push(buff);
+		snprintf(buff, sizeof(buff), "G91 G0 Z3");
+		this->script_queue.push(buff);
+		snprintf(buff, sizeof(buff), "G38.5 Z-4 F150");
+		this->script_queue.push(buff);
+		snprintf(buff, sizeof(buff), "#119 = #5023");
+		this->script_queue.push(buff);
+	}
+	snprintf(buff, sizeof(buff), "G91 G0 Z3");
+	this->script_queue.push(buff);
+	snprintf(buff, sizeof(buff), "G91 G0 A90");
+	this->script_queue.push(buff);
+
+	if (!invert_probe){
+		snprintf(buff, sizeof(buff), "G38.3 Z-4 F150");
+		this->script_queue.push(buff);
+		snprintf(buff, sizeof(buff), "#118 = #5023");
+		this->script_queue.push(buff);
+	} else{
+		snprintf(buff, sizeof(buff), "G38.5 Z-4 F150");
+		this->script_queue.push(buff);
+		snprintf(buff, sizeof(buff), "#118 = #5023");
+		this->script_queue.push(buff);
+	}
+	snprintf(buff, sizeof(buff), "G91 G0 Z3");
+	this->script_queue.push(buff);
+	snprintf(buff, sizeof(buff), "G91 G0 A90");
+	this->script_queue.push(buff);
+
+	if (!invert_probe){
+		snprintf(buff, sizeof(buff), "G38.3 Z-4 F150");
+		this->script_queue.push(buff);
+		snprintf(buff, sizeof(buff), "#117 = #5023");
+		this->script_queue.push(buff);
+	} else{
+		snprintf(buff, sizeof(buff), "G38.5 Z-4 F150");
+		this->script_queue.push(buff);
+		snprintf(buff, sizeof(buff), "#117 = #5023");
+		this->script_queue.push(buff);
+	}
+	snprintf(buff, sizeof(buff), "G91 G0 Z3");
+	this->script_queue.push(buff);
+	snprintf(buff, sizeof(buff), "G91 G0 A90");
+	this->script_queue.push(buff);
+
+	if (!invert_probe){
+		snprintf(buff, sizeof(buff), "G38.3 Z-4 F150");
+		this->script_queue.push(buff);
+		snprintf(buff, sizeof(buff), "#116 = #5023");
+		this->script_queue.push(buff);
+	} else{
+		snprintf(buff, sizeof(buff), "G38.5 Z-4 F150");
+		this->script_queue.push(buff);
+		snprintf(buff, sizeof(buff), "#116 = #5023");
+		this->script_queue.push(buff);
+	}
+	//move to clearance
+	snprintf(buff, sizeof(buff), "G90 G53 G0 Z%.3f", THEROBOT->from_millimeters(this->clearance_z));
+	this->script_queue.push(buff);
+
+
+
+	
+	//execute calibration with specific values
+	snprintf(buff, sizeof(buff), "M469.6 A#120 B#119 C#118 D#117 E#116 R%.3f Z%.3f P5" , pin_diameter, this->rotation_offset_z);
+	this->script_queue.push(buff);
+}
+
+void ATCHandler::home_machine_with_pin(Gcode *gcode)//M469
+{
+	//test is homed
+    //move to clearance height
+    //move to xy position for reference pin, value in config
+    //probe -z to top of pin
+    //run boss probing routine with values in config
+    //compare center position to stored xy reference location in a way that the controller understands
+}
+
+
 
 void ATCHandler::fill_change_scripts(int new_tool, bool clear_z) {
 	char buff[100];
@@ -203,15 +676,15 @@ void ATCHandler::fill_manual_pickup_scripts(int new_tool, bool clear_z, bool aut
 
 	if (auto_calibrate){
 		//print status
-		snprintf(buff, sizeof(buff), ";Tool is now installed.nRemove hands from the machine\nResume will auto calibrate the tool and continue program\n");
+		snprintf(buff, sizeof(buff), ";Tool is now installed.\nRemove hands from the machine\nResume will auto calibrate the tool and continue program\n");
 		this->script_queue.push(buff);
 		//pause
 		snprintf(buff, sizeof(buff), "M600.5");
 		this->script_queue.push(buff);
-		this->fill_cali_scripts(new_tool == 0,false);
+		this->fill_cali_scripts(new_tool == 0 || new_tool >= 999990,false);
 	}else if (!isnan(custom_TLO)) {
 		//print status
-		snprintf(buff, sizeof(buff), ";Tool is now installed and TLO set as %.3f. Resume will continue program\n" , custom_TLO );
+		snprintf(buff, sizeof(buff), ";Tool is now installed and TLO set as %.3f.\n Resume will continue program\n" , custom_TLO );
 		this->script_queue.push(buff);
 		//set tool length offset
 		snprintf(buff, sizeof(buff), "M493.3 Z%.3f",custom_TLO);
@@ -236,6 +709,11 @@ void ATCHandler::fill_manual_pickup_scripts(int new_tool, bool clear_z, bool aut
 
 void ATCHandler::fill_drop_scripts(int old_tool) {
 	char buff[100];
+
+	if (!THEROBOT->is_homed_all_axes()) {
+		return;
+	};
+	
 	struct atc_tool *current_tool = &atc_tools[old_tool];
 	// set atc status
 	this->script_queue.push("M497.1");
@@ -269,6 +747,9 @@ void ATCHandler::fill_drop_scripts(int old_tool) {
 
 void ATCHandler::fill_pick_scripts(int new_tool, bool clear_z) {
 	char buff[100];
+	if (!THEROBOT->is_homed_all_axes()) {
+		return;
+	};
 	struct atc_tool *current_tool = &atc_tools[new_tool];
 	// set atc status
 	this->script_queue.push("M497.2");
@@ -306,7 +787,10 @@ void ATCHandler::fill_pick_scripts(int new_tool, bool clear_z) {
 
 void ATCHandler::fill_cali_scripts(bool is_probe, bool clear_z) {
 	char buff[100];
-	
+	if (!THEROBOT->is_homed_all_axes()) {
+		return;
+	};
+
 	if(is_probe){
 	// open probe laser
 		this->script_queue.push("M494.1");
@@ -468,7 +952,9 @@ void ATCHandler::fill_zprobe_scripts(float x_pos, float y_pos, float x_offset, f
 
 void ATCHandler::fill_zprobe_abs_scripts() {
 	char buff[100];
-
+	if (!THEROBOT->is_homed_all_axes()) {
+		return;
+	};
 	// set atc status
 	this->script_queue.push("M497.5");	
 	
@@ -480,7 +966,7 @@ void ATCHandler::fill_zprobe_abs_scripts() {
 	this->script_queue.push(buff);
 
 	// goto z probe position
-	if(CARVERA == THEKERNEL->factory_set->MachineModel)
+	if(!(THEKERNEL->factory_set->FuncSetting & (1<<0)) )
     {
 		snprintf(buff, sizeof(buff), "G53 G0 X%.3f Y%.3f", THEROBOT->from_millimeters(anchor1_x + rotation_offset_x - 3), THEROBOT->from_millimeters(anchor1_y + rotation_offset_y));
 	}
@@ -599,7 +1085,9 @@ void ATCHandler::fill_autolevel_scripts(float x_pos, float y_pos,
 		float x_size, float y_size, int x_grids, int y_grids, float height)
 {
 	char buff[100];
-
+	if (!THEROBOT->is_homed_all_axes()) {
+		return;
+	};
 	// set atc status
 	this->script_queue.push("M497.6");
 	
@@ -685,7 +1173,8 @@ void ATCHandler::on_config_reload(void *argument)
 	this->probe_slow_rate = THEKERNEL->config->value(atc_checksum, probe_checksum, slow_rate_mm_m_checksum)->by_default(60   )->as_number();
 	this->probe_retract_mm = THEKERNEL->config->value(atc_checksum, probe_checksum, retract_mm_checksum)->by_default(2   )->as_number();
 	this->probe_height_mm = THEKERNEL->config->value(atc_checksum, probe_checksum, probe_height_mm_checksum)->by_default(0   )->as_number();
-
+	
+	this->anchor_width = THEKERNEL->config->value(coordinate_checksum, anchor_width_checksum)->by_default(15  )->as_number();
 	this->anchor1_x = THEKERNEL->config->value(coordinate_checksum, anchor1_x_checksum)->by_default(-359  )->as_number();
 	this->anchor1_y = THEKERNEL->config->value(coordinate_checksum, anchor1_y_checksum)->by_default(-234  )->as_number();
 	this->anchor2_offset_x = THEKERNEL->config->value(coordinate_checksum, anchor2_offset_x_checksum)->by_default(90  )->as_number();
@@ -703,21 +1192,40 @@ void ATCHandler::on_config_reload(void *argument)
 		this->toolrack_offset_x = THEKERNEL->config->value(coordinate_checksum, toolrack_offset_x_checksum)->by_default(126  )->as_number();
 		this->toolrack_offset_y = THEKERNEL->config->value(coordinate_checksum, toolrack_offset_y_checksum)->by_default(196  )->as_number();
 	}
-
+	
 	atc_tools.clear();
-	for (int i = 0; i <=  6; i ++) {
-		struct atc_tool tool;
-		tool.num = i;
-	    // lift z axis to atc start position
-		snprintf(buff, sizeof(buff), "tool%d", i);
-		tool.mx_mm = this->anchor1_x + this->toolrack_offset_x;
-		tool.my_mm = this->anchor1_y + this->toolrack_offset_y + (i == 0 ? 210 : (6 - i) * 30);
-		tool.mz_mm = this->toolrack_z;
-		atc_tools.push_back(tool);
+	if(THEKERNEL->factory_set->FuncSetting & (1<<3))	//for CE1 expand
+	{
+		for (int i = 0; i <=  8; i ++) {
+			struct atc_tool tool;
+			tool.num = i;
+		    // lift z axis to atc start position
+			snprintf(buff, sizeof(buff), "tool%d", i);
+			tool.mx_mm = this->anchor1_x + this->toolrack_offset_x;
+			tool.my_mm = this->anchor1_y + this->toolrack_offset_y -5 + (i == 0 ? 219 : (8 - i) * 25);
+			tool.mz_mm = this->toolrack_z - 4.5;
+			atc_tools.push_back(tool);
+		}
+		probe_mx_mm = this->anchor1_x + this->toolrack_offset_x;
+		probe_my_mm = this->anchor1_y + this->toolrack_offset_y -5 + 197;
+		probe_mz_mm = this->toolrack_z - 44.5;
 	}
-	probe_mx_mm = this->anchor1_x + this->toolrack_offset_x;
-	probe_my_mm = this->anchor1_y + this->toolrack_offset_y + 180;
-	probe_mz_mm = this->toolrack_z - 40;
+	else
+	{
+		for (int i = 0; i <=  6; i ++) {
+			struct atc_tool tool;
+			tool.num = i;
+		    // lift z axis to atc start position
+			snprintf(buff, sizeof(buff), "tool%d", i);
+			tool.mx_mm = this->anchor1_x + this->toolrack_offset_x;
+			tool.my_mm = this->anchor1_y + this->toolrack_offset_y + (i == 0 ? 210 : (6 - i) * 30);
+			tool.mz_mm = this->toolrack_z;
+			atc_tools.push_back(tool);
+		}
+		probe_mx_mm = this->anchor1_x + this->toolrack_offset_x;
+		probe_my_mm = this->anchor1_y + this->toolrack_offset_y + 180;
+		probe_mz_mm = this->toolrack_z - 40;
+	}
 	
 	if(CARVERA == THEKERNEL->factory_set->MachineModel)
 	{
@@ -739,6 +1247,7 @@ void ATCHandler::on_config_reload(void *argument)
 		this->clearance_y = THEKERNEL->config->value(coordinate_checksum, clearance_y_checksum)->by_default(-21  )->as_number();
 		this->clearance_z = THEKERNEL->config->value(coordinate_checksum, clearance_z_checksum)->by_default(-5  )->as_number();
 	}
+	this->rotation_width = THEKERNEL->config->value(coordinate_checksum, rotation_width_checksum)->by_default(45  )->as_number();
 }
 
 void ATCHandler::on_halt(void* argument)
@@ -1156,7 +1665,7 @@ void ATCHandler::on_gcode_received(void *argument)
 						THEKERNEL->streams->printf("Start picking new tool: T%d\r\n", new_tool);
 						atc_status = PICK;
 						this->fill_pick_scripts(new_tool, true);
-						this->fill_cali_scripts(new_tool == 0, false);
+						this->fill_cali_scripts(new_tool == 0 || new_tool >= 999990, false);
 					} else if(new_tool == -1 && (THEKERNEL->get_laser_mode())) {
 						THEROBOT->push_state();
 						THEROBOT->get_axis_position(last_pos, 3);
@@ -1181,9 +1690,58 @@ void ATCHandler::on_gcode_received(void *argument)
 					atc_status = CHANGE;
 					this->target_tool = new_tool;
 					this->fill_change_scripts(new_tool, true);
-					this->fill_cali_scripts(new_tool == 0, true);
+					this->fill_cali_scripts((new_tool == 0 || new_tool >= 999990), true);
 				}
 	        }
+		} else if (gcode->m == 460){
+			
+			if (gcode->subcode == 3) {
+				bool invert_probe = false;
+				if (gcode->has_letter('I')) {
+					if (gcode->get_value('I') > 0 ){
+						invert_probe = true;
+					}
+				}
+				set_inner_playing(true);
+				atc_status = AUTOMATION;
+				this->clear_script_queue();
+				this->fill_calibrate_probe_anchor_scripts(invert_probe);
+			}
+		} else if (gcode->m == 469) {
+			if (gcode->subcode == 1){
+				set_inner_playing(true);
+				atc_status = AUTOMATION;
+				this->clear_script_queue();
+				calibrate_anchor1(gcode);
+			}
+			else if (gcode->subcode == 2){
+				set_inner_playing(true);
+				atc_status = AUTOMATION;
+				this->clear_script_queue();
+				calibrate_anchor2(gcode);
+			} else if(gcode->subcode == 3){
+				return;
+			} else if(gcode->subcode == 4){
+				set_inner_playing(true);
+				atc_status = AUTOMATION;
+				this->clear_script_queue();
+				calibrate_a_axis_headstock(gcode);
+			} else if(gcode->subcode ==5){
+				set_inner_playing(true);
+				atc_status = AUTOMATION;
+				this->clear_script_queue();
+				calibrate_a_axis_height(gcode);
+			} else if(gcode->subcode == 6){
+				set_inner_playing(true);
+				atc_status = AUTOMATION;
+				this->clear_script_queue();
+				calibrate_set_value(gcode);
+			} else {
+				set_inner_playing(true);
+				atc_status = AUTOMATION;
+				this->clear_script_queue();
+				home_machine_with_pin(gcode);
+			}
 		} else if (gcode->m == 490)  {
 			if(THEKERNEL->factory_set->FuncSetting & (1<<2))	//ATC 
 			{	            
@@ -1299,7 +1857,7 @@ void ATCHandler::on_gcode_received(void *argument)
 				this->script_queue.push(buff);
 
 				atc_status = CALI;
-				this->fill_cali_scripts(active_tool == 0, true);
+				this->fill_cali_scripts(active_tool == 0 || active_tool >= 999990, true);
 
 				THECONVEYOR->wait_for_idle();
 				// lift z to safe position with fast speed
@@ -1351,7 +1909,7 @@ void ATCHandler::on_gcode_received(void *argument)
 				set_inner_playing(true);
 				this->clear_script_queue();
 				atc_status = CALI;
-				this->fill_cali_scripts(active_tool == 0, true);
+				this->fill_cali_scripts(active_tool == 0 || active_tool >= 999990, true);
 
 			}
 		} else if (gcode->m == 492) {
@@ -1394,12 +1952,20 @@ void ATCHandler::on_gcode_received(void *argument)
 			}
 		} else if (gcode->m == 493) {
 			if (gcode->subcode == 0 || gcode->subcode == 1) {
+				if (this->active_tool == 0 || this->active_tool >= 999990){
+					THEROBOT->set_probe_tool_not_calibrated(false);
+				}
 				// set tooll offset
 				set_tool_offset();
 			} else if (gcode->subcode == 2) {
 				// set new tool
 				if (gcode->has_letter('T')) {
 		    		this->active_tool = gcode->get_value('T');
+					if (this->active_tool == 0 || this->active_tool >= 999990){
+						THEROBOT->set_probe_tool_not_calibrated(true);
+					}else{
+						THEROBOT->set_probe_tool_not_calibrated(false);
+					}
 		    		// save current tool data to eeprom
 		    		if (THEKERNEL->eeprom_data->TOOL != this->active_tool) {
 		        	    THEKERNEL->eeprom_data->TOOL = this->active_tool;
@@ -1476,6 +2042,12 @@ void ATCHandler::on_gcode_received(void *argument)
 
 			}
 		} else if (gcode->m == 495) {
+			if (!THEROBOT->is_homed_all_axes()) {
+				this->atc_status = NONE;
+        		this->clear_script_queue();
+        		this->set_inner_playing(false);
+				return;
+			};
 			if (gcode->subcode == 3) {
 				float tool_dia = 3.175;
 				float probe_height = 9.0;
@@ -1497,6 +2069,13 @@ void ATCHandler::on_gcode_received(void *argument)
 	        			THEKERNEL->streams->printf("ALARM: Can not do Automatic work in laser mode!\n");
 	        			return;
 	        		}
+					if ((this->active_tool == 0 || this->active_tool >= 999990) && THEROBOT->get_probe_tool_not_calibrated()){
+						THEKERNEL->streams->printf("ALARM: Probe not calibrated. Please calibrate probe before probing.\n");
+						THEKERNEL->call_event(ON_HALT, nullptr);
+						THEKERNEL->set_halt_reason(CALIBRATE_FAIL);
+						return;
+					}
+					
 
 					bool margin = false;
 					bool zprobe = false;
@@ -1682,7 +2261,14 @@ void ATCHandler::on_gcode_received(void *argument)
 				this->beep_tool_change(tool_to_change);
 
 			}
+		} else if ( gcode->m == 887 ) {
+			THEROBOT->override_homed_check(false);
+			THEKERNEL->streams->printf("Home Check Disabled\n");
+		} else if ( gcode->m == 888 ) {
+			THEROBOT->override_homed_check(true);
+			THEKERNEL->streams->printf("Home Check Enabled\n");
 		}
+
     } else if (gcode->has_g && gcode->g == 28 && gcode->subcode == 0) {
     	g28_triggered = true;
     }
@@ -1793,11 +2379,12 @@ void ATCHandler::on_main_loop(void *argument)
     			THEROBOT->reset_axis_position(fmodf(ma, 360.0), A_AXIS);
     		}    		
 			// shrink B value first before move
-    		ma = THEROBOT->actuators[B_AXIS]->get_current_position();
-    		if (fabs(ma) > 360) {
-    			THEROBOT->reset_axis_position(fmodf(ma, 360.0), B_AXIS);
-    		}
-			rapid_move(false, 0, 0, NAN, 0, 0);
+//    		ma = THEROBOT->actuators[B_AXIS]->get_current_position();
+//    		if (fabs(ma) > 360) {
+//    			THEROBOT->reset_axis_position(fmodf(ma, 360.0), B_AXIS);
+//    		}
+			//rapid_move(false, 0, 0, NAN, 0, 0);
+			rapid_move(false, 0, 0, NAN, 0, NAN);
 		} else if (goto_position == 3) {
 			// goto anchor 1
 			rapid_move(true, this->anchor1_x, this->anchor1_y, NAN, NAN, NAN);
@@ -1813,11 +2400,12 @@ void ATCHandler::on_main_loop(void *argument)
 					THEROBOT->reset_axis_position(fmodf(ma, 360.0), A_AXIS);
 				}    		
 				// shrink B value first before move
-				ma = THEROBOT->actuators[B_AXIS]->get_current_position();
+				/*ma = THEROBOT->actuators[B_AXIS]->get_current_position();
 				if (fabs(ma) > 360) {
 					THEROBOT->reset_axis_position(fmodf(ma, 360.0), B_AXIS);
-				}    		
-				rapid_move(false, position_x, position_y, NAN, fmodf(position_a, 360.0), fmodf(position_b, 360.0));
+				}*/
+				//rapid_move(false, position_x, position_y, NAN, fmodf(position_a, 360.0), fmodf(position_b, 360.0));
+				rapid_move(false, position_x, position_y, NAN, fmodf(position_a, 360.0), NAN);
 				// reset the A_AXIS position as target value
 				THEROBOT->reset_axis_position(position_a, A_AXIS);
 				// reset the B_AXIS position as target value
@@ -1835,13 +2423,13 @@ void ATCHandler::on_main_loop(void *argument)
 			}
 			else if (position_x < 8888 && position_y < 8888 && position_b < 88888888) {
 				// shrink B value first before move
-	    		float ma = THEROBOT->actuators[B_AXIS]->get_current_position();
+	    		/*float ma = THEROBOT->actuators[B_AXIS]->get_current_position();
 	    		if (fabs(ma) > 360) {
 	    			THEROBOT->reset_axis_position(fmodf(ma, 360.0), B_AXIS);
 	    		}    		
 				rapid_move(false, position_x, position_y, NAN, NAN, fmodf(position_b, 360.0));
 				// reset the B_AXIS position as target value
-				THEROBOT->reset_axis_position(position_b, B_AXIS);
+				THEROBOT->reset_axis_position(position_b, B_AXIS);*/
 			}
 			else if(position_x < 8888 && position_y < 8888 )
 			{
@@ -1855,11 +2443,12 @@ void ATCHandler::on_main_loop(void *argument)
 	    			THEROBOT->reset_axis_position(fmodf(ma, 360.0), A_AXIS);
 	    		}    		
 				// shrink B value first before move
-	    		ma = THEROBOT->actuators[B_AXIS]->get_current_position();
+	    		/*ma = THEROBOT->actuators[B_AXIS]->get_current_position();
 	    		if (fabs(ma) > 360) {
 	    			THEROBOT->reset_axis_position(fmodf(ma, 360.0), B_AXIS);
-	    		}    		
-				rapid_move(false, NAN, NAN, NAN, fmodf(position_a, 360.0), fmodf(position_b, 360.0));
+	    		}    	*/	
+				//rapid_move(false, NAN, NAN, NAN, fmodf(position_a, 360.0), fmodf(position_b, 360.0));
+				rapid_move(false, NAN, NAN, NAN, fmodf(position_a, 360.0), NAN);
 				// reset the A_AXIS position as target value
 				THEROBOT->reset_axis_position(position_a, A_AXIS);
 				// reset the B_AXIS position as target value
@@ -1879,13 +2468,13 @@ void ATCHandler::on_main_loop(void *argument)
 			else if(position_b < 88888888)
 			{
 				// shrink B value first before move
-	    		float ma = THEROBOT->actuators[B_AXIS]->get_current_position();
+	    		/*float ma = THEROBOT->actuators[B_AXIS]->get_current_position();
 	    		if (fabs(ma) > 360) {
 	    			THEROBOT->reset_axis_position(fmodf(ma, 360.0), B_AXIS);
 	    		}    		
 				rapid_move(false, NAN, NAN, NAN, NAN, fmodf(position_b, 360.0));
 				// reset the B_AXIS position as target value
-				THEROBOT->reset_axis_position(position_b, B_AXIS);
+				THEROBOT->reset_axis_position(position_b, B_AXIS);*/
 			}
 		} else if (goto_position == 6) {
 			// goto designative machine position
@@ -1896,11 +2485,12 @@ void ATCHandler::on_main_loop(void *argument)
 	    			THEROBOT->reset_axis_position(fmodf(ma, 360.0), A_AXIS);
 	    		}    		
 				// shrink B value first before move
-	    		ma = THEROBOT->actuators[B_AXIS]->get_current_position();
+	    		/*ma = THEROBOT->actuators[B_AXIS]->get_current_position();
 	    		if (fabs(ma) > 360) {
 	    			THEROBOT->reset_axis_position(fmodf(ma, 360.0), B_AXIS);
-	    		}    		
-				rapid_move(true, position_x, position_y, NAN, fmodf(position_a, 360.0), fmodf(position_b, 360.0));
+	    		}*/   		
+				//rapid_move(true, position_x, position_y, NAN, fmodf(position_a, 360.0), fmodf(position_b, 360.0));
+				rapid_move(true, position_x, position_y, NAN, fmodf(position_a, 360.0), NAN);
 				// reset the A_AXIS position as target value
 				THEROBOT->reset_axis_position(position_a, A_AXIS);
 				// reset the B_AXIS position as target value
@@ -1918,11 +2508,12 @@ void ATCHandler::on_main_loop(void *argument)
 			}
 			else if (position_x < 8888 && position_y < 8888 && position_b < 88888888) {
 				// shrink B value first before move
-	    		float ma = THEROBOT->actuators[B_AXIS]->get_current_position();
+	    		/*float ma = THEROBOT->actuators[B_AXIS]->get_current_position();
 	    		if (fabs(ma) > 360) {
 	    			THEROBOT->reset_axis_position(fmodf(ma, 360.0), B_AXIS);
-	    		}    		
-				rapid_move(true, position_x, position_y, NAN, NAN, fmodf(position_b, 360.0));
+	    		}*/
+				//rapid_move(true, position_x, position_y, NAN, NAN, fmodf(position_b, 360.0));
+				rapid_move(true, position_x, position_y, NAN, NAN, NAN);
 				// reset the B_AXIS position as target value
 				THEROBOT->reset_axis_position(position_b, B_AXIS);
 			}
@@ -1938,11 +2529,12 @@ void ATCHandler::on_main_loop(void *argument)
 	    			THEROBOT->reset_axis_position(fmodf(ma, 360.0), A_AXIS);
 	    		}    		
 				// shrink B value first before move
-	    		ma = THEROBOT->actuators[B_AXIS]->get_current_position();
+	    		/*ma = THEROBOT->actuators[B_AXIS]->get_current_position();
 	    		if (fabs(ma) > 360) {
 	    			THEROBOT->reset_axis_position(fmodf(ma, 360.0), B_AXIS);
-	    		}    		
-				rapid_move(true, NAN, NAN, NAN, fmodf(position_a, 360.0), fmodf(position_b, 360.0));
+	    		}*/
+				//rapid_move(true, NAN, NAN, NAN, fmodf(position_a, 360.0), fmodf(position_b, 360.0));
+				rapid_move(true, NAN, NAN, NAN, fmodf(position_a, 360.0), NAN);
 				// reset the A_AXIS position as target value
 				THEROBOT->reset_axis_position(position_a, A_AXIS);
 				// reset the B_AXIS position as target value
@@ -1962,13 +2554,13 @@ void ATCHandler::on_main_loop(void *argument)
 			else if(position_b < 88888888)
 			{
 				// shrink B value first before move
-	    		float ma = THEROBOT->actuators[B_AXIS]->get_current_position();
+	    		/*float ma = THEROBOT->actuators[B_AXIS]->get_current_position();
 	    		if (fabs(ma) > 360) {
 	    			THEROBOT->reset_axis_position(fmodf(ma, 360.0), B_AXIS);
 	    		}    		
 				rapid_move(true, NAN, NAN, NAN, NAN, fmodf(position_b, 360.0));
 				// reset the B_AXIS position as target value
-				THEROBOT->reset_axis_position(position_b, B_AXIS);
+				THEROBOT->reset_axis_position(position_b, B_AXIS);*/
 			}
 		}
 		position_x = 8888;
@@ -2007,11 +2599,13 @@ void ATCHandler::rapid_move(bool mc, float x, float y, float z, float a, float b
     
     if(!isnan(a)) {
         size_t n= strlen(cmd);
-        snprintf(&cmd[n], CMDLEN-n, " A%1.3f", THEROBOT->from_millimeters(a));
+        //snprintf(&cmd[n], CMDLEN-n, " A%1.3f", THEROBOT->from_millimeters(a));
+        snprintf(&cmd[n], CMDLEN-n, " A%1.3f", a);
     }
     if(!isnan(b)) {
         size_t n= strlen(cmd);
-        snprintf(&cmd[n], CMDLEN-n, " B%1.3f", THEROBOT->from_millimeters(b));
+        //snprintf(&cmd[n], CMDLEN-n, " B%1.3f", THEROBOT->from_millimeters(b));
+        snprintf(&cmd[n], CMDLEN-n, " B%1.3f", b);
     }
 
     // send as a command line as may have multiple G codes in it
@@ -2032,7 +2626,7 @@ void ATCHandler::on_get_public_data(void* argument)
     PublicDataRequest* pdr = static_cast<PublicDataRequest*>(argument);
 
     if(!pdr->starts_with(atc_handler_checksum)) return;
-
+	
     if(pdr->second_element_is(get_tool_status_checksum)) {
     	if (this->active_tool >= 0) {
             struct tool_status *t= static_cast<tool_status*>(pdr->get_data_ptr());
@@ -2049,7 +2643,10 @@ void ATCHandler::on_get_public_data(void* argument)
         data[0] = (char)this->atc_home_info.pin.get();
         data[1] = (char)this->detector_info.detect_pin.get();
         pdr->set_taken();
-    }
+    } else if (pdr->second_element_is(get_atc_clamped_status_checksum)) {
+		uint8_t* data = static_cast<uint8_t*>(pdr->get_data_ptr());
+		*data = static_cast<uint8_t>(this->atc_home_info.clamp_status); //0 unhomed, 1 clamped, 2 unclamped
+	}
 }
 
 void ATCHandler::on_set_public_data(void* argument)

@@ -99,6 +99,7 @@ typedef struct {
 	int TOOL;
 	float G54AB[2];
     float perm_vars[20];
+    bool probe_tool_not_calibrated;
 } EEPROM_data;
 
 typedef struct {
@@ -180,11 +181,15 @@ class Kernel {
         uint8_t get_halt_reason() const { return halt_reason; }
 
         void set_atc_state(uint8_t state) { atc_state = state; }
-        uint8_t get_atc_state() const { return atc_state; }
+        uint8_t get_atc_state() const { return atc_state; }        
+        
+        void set_cachewait(bool f) { cachewait = f; }
+        bool is_cachewait() const { return cachewait; }
 
         void read_eeprom_data();
         void write_eeprom_data();
         void erase_eeprom_data();
+        void check_eeprom_data();
         
         void read_Factory_data();
         void write_Factory_data();
@@ -228,8 +233,9 @@ class Kernel {
         bool checkled;
         bool spindleon;
         float local_vars[20];
-        float probe_outputs[5];
+        float probe_outputs[6];
         float probe_tip_diameter = 1.6;
+        bool disable_endstops = false;
 
     private:
         // When a module asks to be called for a specific event ( a hook ), this is where that request is remembered
@@ -255,6 +261,7 @@ class Kernel {
             bool aborted: 1;
             bool zprobing:1;
             bool probeLaserOn:1;
+            volatile bool cachewait:1;
         };
         int iic_page_write(unsigned char u8PageNum, unsigned char u8len, unsigned char *pu8Array);
 

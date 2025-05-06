@@ -36,9 +36,9 @@ junction_deviation							0.01			#
 #z_junction_deviation						0.0				# For Z only moves, -1 uses junction_deviation, zero disables junction_deviation on z moves DO NOT SET ON A DELTA
 
 # Cartesian axis speed limits
-x_axis_max_speed							4000			# Maximum speed in mm/min
-y_axis_max_speed							4000			# Maximum speed in mm/min
-z_axis_max_speed							3000			# Maximum speed in mm/min
+#x_axis_max_speed							4000			# Maximum speed in mm/min
+#y_axis_max_speed							4000			# Maximum speed in mm/min
+#z_axis_max_speed							3000			# Maximum speed in mm/min
 
 # Stepper module configuration
 # Pins are defined as  ports, and pin numbers, appending "!" to the number will invert a pin
@@ -234,6 +234,17 @@ gamma_limit_enable                          true            # Set to true to ena
 gamma_homing_retract_mm						1				# Distance to retract from the endstop after it is hit for gamma/Z
 gamma_motor_alarm_pin						3.25!^			# servo motor alarm for Z axis
 
+delta_min_endstop							0.21!^			# Pin to read min endstop, add a ! to invert if endstop is NO connected to ground
+delta_max_endstop							0.21!^			# Pin to read max endstop, uncomment this and comment the above if using max endstops
+delta_homing_direction						home_to_min		# Or set to home_to_max and set alpha_max and uncomment the alpha_max_endstop
+delta_min									-0.5			# This gets loaded as the current position after homing when home_to_min is set
+delta_max									0				# This gets loaded as the current position after homing when home_to_max is set
+delta_max_travel							380 			# Max travel in mm for delta/A axis when homing
+delta_fast_homing_rate_mm_s					50				# delta/A fast homing feedrate in mm/second
+delta_slow_homing_rate_mm_s					10				# delta/A slow homing feedrate in mm/second
+delta_limit_enable                          true            # Set to true to enable A min and max limit switches
+delta_homing_retract_mm						0.5				# Distance to retract from the endstop after it is hit for delta/A
+delta_motor_alarm_pin						nc				# servo motor alarm for Z axis
 
 # Optional order in which axis will home, default is they all home at the same time,
 # If this is set it will force each axis to home one at a time in the specified order
@@ -254,6 +265,7 @@ zprobe.debounce_ms							1				# Set if noisy
 # zprobe.max_z								100				# max z
 zprobe.calibrate_pin						0.5^			# calibrate_pin
 zprobe.probe_tip_diameter					1.6				#3 axis probe tip diamter
+zprobe.calibration_safety_margin              0.1             # max distance to move after calibrate pin but before probe pin detected
 
 # Leveling strategy
 leveling-strategy.rectangular-grid.enable					true
@@ -374,9 +386,9 @@ coordinate.toolrack_offset_x 356		# Tool 6 X Offset relative to anchor1
 coordinate.toolrack_offset_y 0.0		# Tool 6 Y Offset relative to anchor1
 coordinate.toolrack_z -112.5			# ATC Z axis machine coordinates
 
-coordinate.rotation_offset_x -8.0		# Rotation module X Offset relative to anchor1
+coordinate.rotation_offset_x 3.5		# Rotation module X Offset relative to anchor1
 coordinate.rotation_offset_y 37.5		# Rotation module Y Offset relative to anchor1
-coordinate.rotation_offset_z 22.35		# Rotation module Z Offset relative to chuck center
+coordinate.rotation_offset_z 23		    # Rotation module Z Offset relative to chuck center
 
 coordinate.anchor_width 15.0			# Width of two anchors
 coordinate.anchor_length 100.0			# Length of two anchors
@@ -401,7 +413,7 @@ default_seek_rate 3000					# Feed rate for G0 rapid mode (mm/min)
 alpha_max_rate 3000.0					# Max feed rate for X axis (mm/min)
 beta_max_rate 3000.0					# Max feed rate for Y axis (mm/min)
 gamma_max_rate 2000.0					# Max feed rate for Z axis (mm/min)
-delta_max_rate 10800.0 					# Max rotation speed rate for A axis (degree/min)
+delta_max_rate 1800.0 					# Max rotation speed rate for A axis (degree/min)
 epsilon_max_rate 100.0					# Max feed rate for auto tool changer (mm/min)
 
 acceleration 150						# Acceleration for X/Y/Z axis (mm/second/second)

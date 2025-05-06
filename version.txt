@@ -1,6 +1,20 @@
 Notice: 
 To let the Carvera work perfectly, please make sure both your controller software and firmware are up to date. For firmware, download the new firmware first, then use the 'update' function to upgrade the firmware, and reset the machine after the update is complete.
 
+- added support for touch probe on carvera air
+- refactor of probing sequences code to combine repeated code
+- added S2 parameter for M462, M464, M466 that also saves Z offset if an H parameter is given
+- M466 added 3 axis simultanious move support for part inspections
+- TLO probe calibration modification to increase accuracy
+- Tools 999990-999999 are for 3 axis probes. Tools outside this range cannot be used for M46X commands
+- added config setting config-set sd zprobe.tool_zero_is_3axis true allows the user to choose if tool 0 is also considered a 3 axis probe
+- added config setting config-set sd zprobe.calibration_safety_margin 0.1, during calibration of probe TLO, max distance to move after calibrate pin but before probe pin detected
+
+[1.0.1c1.0.3]
+1. added front button manual tool change behavior
+2. added multiple touchoffs to TLO calibration. M491 L5 will touch off 5 times and report. The default value for number of touchoffs is stored in the config as atc.num_atc_touchoff
+3. updated to reflect carvera firmware release 1.0.1, fixing a bug with the 4th axis eeprom
+
 [1.0.1c1.0.2 beta3]
 1. fixing typo that caused tool 6 changes to fail by dropping the tool outside the atc
 
@@ -26,7 +40,29 @@ controller. Use the community controller for the most up to date features.
 12.Feature: 3 axis probing commands M460-465 https://github.com/Carvera-Community/Carvera_Community_Firmware/pull/43
 
 [1.0.1]
-Bug fixing:The issue of the machine not responding to Controller commands or main buttons after the motor alarm
+1. Bug fixing:The issue of the machine not responding to Controller commands or main buttons after the motor alarm
+2. Bug fixing: if the atc tool change operation laser detects a tool in the atc when there shouldn't be, or doesn't detect a tool when there should be it prints the same message to the MDI.
+3. Optimizing: Add data feedback on tabletop exploration ： 'Max deviation between high and low'
+4. Optimizing:when the feed rates in Gcode are not greater than zero, then will print Alarm info to the MDI
+5. Optimizing: Add motor alarm detection during machine home operation
+6. Firmware compatible with Carvera and Carvera Air
+
+[1.0.2]
+1. Carvera Support  the new 4th Axis Module (Harmonic Drive Version).
+2. Bug fixing: Fix the command to query the MAC address of the machine.
+3. Optimizing: Improve the stability of file transfer and reduce the problem of machine movement when uploading files abnormally.
+4. Optimizing:Change external output to hardware PWM mode.
+5. Optimizing:The command to query diagnostic information has been changed from the character '*' to 'diagnose'
+6. Bug fixing: Fix the issue of incorrect 4-axis rotation angle in Inch mode
+
+**NOTE: To ensure the compatibility of firmware and controller, it is recommended to upgrade both firmware and Controller.**
+
+[1.0.1]
+1. Bug fixing:The issue of the machine not responding to Controller commands or main buttons after the motor alarm
+2. Bug fixing: if the atc tool change operation laser detects a tool in the atc when there shouldn't be, or doesn't detect a tool when there should be it prints the same message to the MDI.
+3. Optimizing: Add data feedback on tabletop exploration ： 'Max deviation between high and low'
+4. Optimizing:when the feed rates in Gcode are not greater than zero, then will print Alarm info to the MDI
+5. Optimizing: Add motor alarm detection during machin
 
 [1.0.0]
 1. Optimizing: Add data feedback on tabletop exploration ： 'Max deviation between high and low'

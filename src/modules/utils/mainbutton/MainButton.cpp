@@ -20,6 +20,8 @@
 #include "LaserPublicAccess.h"
 #include "PlayerPublicAccess.h"
 #include "ATCHandlerPublicAccess.h"
+#include "Gcode.h"
+#include "modules/robot/Conveyor.h"
 
 using namespace std;
 
@@ -264,8 +266,8 @@ void MainButton::on_idle(void *argument)
     				system_reset(false);
     				break;
     			case TOOL:
-    				// Finish tool change waiting for Carvera Air
-    				THEKERNEL->set_tool_waiting(false);
+					// Finish tool change waiting for Carvera Air
+					THEKERNEL->set_tool_waiting(false);
     				break;
     		}
     	} else if (button_state == BUTTON_LONG_PRESSED ) {
@@ -283,6 +285,41 @@ void MainButton::on_idle(void *argument)
 	    				THEKERNEL->set_sleeping(true);
 	    				THEKERNEL->call_event(ON_HALT, nullptr);
 	    			}
+					else if(this->long_press_enable == "ToolChange" && !THEKERNEL->is_tool_waiting()) {
+						uint8_t atc_clamp_status;
+						uint8_t old_state = state;
+						THEKERNEL->set_tool_waiting(true);
+
+						PublicData::get_value(atc_handler_checksum, get_atc_clamped_status_checksum, 0, &atc_clamp_status);
+						THEKERNEL->streams->printf("atc clamped status = %d \n" , atc_clamp_status); //0 is unhomed, 1 is clamped, 2 is unclamped
+						THEKERNEL->streams->printf("Running Manual Tool Change From Front Button\n");
+						Gcode gc1("M490.2", &StreamOutput::NullStream);
+						Gcode gc2("M490.1", &StreamOutput::NullStream);
+						switch (atc_clamp_status){
+							case 0: //atc unhomed
+								THEKERNEL->call_event(ON_GCODE_RECEIVED, &gc1);
+								THECONVEYOR->wait_for_idle();
+								THEKERNEL->streams->printf("Toolholder Should Be Empty\n");
+								break;
+
+							case 1: //atc clamped
+								THEKERNEL->call_event(ON_GCODE_RECEIVED, &gc1);
+								THECONVEYOR->wait_for_idle();
+								THEKERNEL->streams->printf("Toolholder Should Be Empty\n");
+								break;
+							case 2: //atc unclamped
+								THEKERNEL->call_event(ON_GCODE_RECEIVED, &gc2);
+								THECONVEYOR->wait_for_idle();
+								THEKERNEL->streams->printf("Tool Should Be Clamped. Set Tool Number\n");
+								break;
+							default:
+								break;
+
+						}
+						THECONVEYOR->wait_for_idle();
+						THEKERNEL->set_tool_waiting(false);
+						
+	    			}
 
 // turn off 12V/24V power supply
 //    				this->switch_power_12(0);
@@ -299,7 +336,47 @@ void MainButton::on_idle(void *argument)
     				break;
     			case HOLD:
     				// resume
-    				THEKERNEL->set_feed_hold(false);
+					if(this->long_press_enable == "ToolChange" && !THEKERNEL->is_tool_waiting()) {
+						uint8_t atc_clamp_status;
+						uint8_t old_state = state;
+						THEKERNEL->set_tool_waiting(true);
+
+						PublicData::get_value(atc_handler_checksum, get_atc_clamped_status_checksum, 0, &atc_clamp_status);
+						THEKERNEL->streams->printf("atc clamped status = %d \n" , atc_clamp_status); //0 is unhomed, 1 is clamped, 2 is unclamped
+						THEKERNEL->streams->printf("Running Manual Tool Change From Front Button\n");
+						Gcode gc1("M490.2", &StreamOutput::NullStream);
+						Gcode gc2("M490.1", &StreamOutput::NullStream);
+						switch (atc_clamp_status){
+							case 0: //atc unhomed
+								THEKERNEL->call_event(ON_GCODE_RECEIVED, &gc1);
+								THECONVEYOR->wait_for_idle();
+								THEKERNEL->streams->printf("Toolholder Should Be Empty\n");
+								break;
+
+							case 1: //atc clamped
+								THEKERNEL->call_event(ON_GCODE_RECEIVED, &gc1);
+								THECONVEYOR->wait_for_idle();
+								THEKERNEL->streams->printf("Toolholder Should Be Empty\n");
+								break;
+							case 2: //atc unclamped
+								THEKERNEL->call_event(ON_GCODE_RECEIVED, &gc2);
+								THECONVEYOR->wait_for_idle();
+								THEKERNEL->streams->printf("Tool Should Be Clamped. Set Tool Number\n");
+								break;
+							default:
+								break;
+
+						}
+						THECONVEYOR->wait_for_idle();
+						THEKERNEL->set_tool_waiting(false);
+						
+	    			}else
+					{
+						THEKERNEL->set_feed_hold(false);
+						THEKERNEL->set_suspending(false);
+					}
+
+    				
     				break;
     			case ALARM:
     				halt_reason = THEKERNEL->get_halt_reason();
@@ -612,7 +689,7 @@ void MainButton::set_led_color(unsigned char R1, unsigned char G1, unsigned char
 	//first segment
 	temp = R1;
 	for (j = 0; j < 8; j++) {
-		if (temp & (0x80 >> j)) //·¢ËÍ1
+		if (temp & (0x80 >> j)) //ï¿½ï¿½ï¿½ï¿½1
 		{
 			LPC_GPIO1->FIOSET = 1 << 15; //0x00008000;
 			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
@@ -632,7 +709,7 @@ void MainButton::set_led_color(unsigned char R1, unsigned char G1, unsigned char
 			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
 			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
 		}
-		else                //·¢ËÍ0
+		else                //ï¿½ï¿½ï¿½ï¿½0
 		{
 			LPC_GPIO1->FIOSET = 1 << 15;
 			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
@@ -651,7 +728,7 @@ void MainButton::set_led_color(unsigned char R1, unsigned char G1, unsigned char
 	}
 	temp = G1;
 	for (j = 0; j < 8; j++) {
-		if (temp & (0x80 >> j)) //·¢ËÍ1
+		if (temp & (0x80 >> j)) //ï¿½ï¿½ï¿½ï¿½1
 		{
 			LPC_GPIO1->FIOSET = 1 << 15; //0x00008000;
 			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
@@ -671,7 +748,7 @@ void MainButton::set_led_color(unsigned char R1, unsigned char G1, unsigned char
 			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
 			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
 		}
-		else                //·¢ËÍ0
+		else                //ï¿½ï¿½ï¿½ï¿½0
 		{
 			LPC_GPIO1->FIOSET = 1 << 15;
 			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
@@ -690,7 +767,7 @@ void MainButton::set_led_color(unsigned char R1, unsigned char G1, unsigned char
 	}
 	temp = B1;
 	for (j = 0; j < 8; j++) {
-		if (temp & (0x80 >> j)) //·¢ËÍ1
+		if (temp & (0x80 >> j)) //ï¿½ï¿½ï¿½ï¿½1
 		{
 			LPC_GPIO1->FIOSET = 1 << 15; //0x00008000;
 			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
@@ -710,7 +787,7 @@ void MainButton::set_led_color(unsigned char R1, unsigned char G1, unsigned char
 			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
 			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
 		}
-		else                //·¢ËÍ0
+		else                //ï¿½ï¿½ï¿½ï¿½0
 		{
 			LPC_GPIO1->FIOSET = 1 << 15;
 			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
@@ -730,7 +807,7 @@ void MainButton::set_led_color(unsigned char R1, unsigned char G1, unsigned char
 	//second segment
 	temp = R2;
 	for (j = 0; j < 8; j++) {
-		if (temp & (0x80 >> j)) //·¢ËÍ1
+		if (temp & (0x80 >> j)) //ï¿½ï¿½ï¿½ï¿½1
 		{
 			LPC_GPIO1->FIOSET = 1 << 15; //0x00008000;
 			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
@@ -750,7 +827,7 @@ void MainButton::set_led_color(unsigned char R1, unsigned char G1, unsigned char
 			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
 			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
 		}
-		else                //·¢ËÍ0
+		else                //ï¿½ï¿½ï¿½ï¿½0
 		{
 			LPC_GPIO1->FIOSET = 1 << 15;
 			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
@@ -769,7 +846,7 @@ void MainButton::set_led_color(unsigned char R1, unsigned char G1, unsigned char
 	}
 	temp = G2;
 	for (j = 0; j < 8; j++) {
-		if (temp & (0x80 >> j)) //·¢ËÍ1
+		if (temp & (0x80 >> j)) //ï¿½ï¿½ï¿½ï¿½1
 		{
 			LPC_GPIO1->FIOSET = 1 << 15; //0x00008000;
 			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
@@ -789,7 +866,7 @@ void MainButton::set_led_color(unsigned char R1, unsigned char G1, unsigned char
 			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
 			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
 		}
-		else                //·¢ËÍ0
+		else                //ï¿½ï¿½ï¿½ï¿½0
 		{
 			LPC_GPIO1->FIOSET = 1 << 15;
 			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
@@ -808,7 +885,7 @@ void MainButton::set_led_color(unsigned char R1, unsigned char G1, unsigned char
 	}
 	temp = B2;
 	for (j = 0; j < 8; j++) {
-		if (temp & (0x80 >> j)) //·¢ËÍ1
+		if (temp & (0x80 >> j)) //ï¿½ï¿½ï¿½ï¿½1
 		{
 			LPC_GPIO1->FIOSET = 1 << 15; //0x00008000;
 			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
@@ -828,7 +905,7 @@ void MainButton::set_led_color(unsigned char R1, unsigned char G1, unsigned char
 			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
 			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
 		}
-		else                //·¢ËÍ0
+		else                //ï¿½ï¿½ï¿½ï¿½0
 		{
 			LPC_GPIO1->FIOSET = 1 << 15;
 			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
@@ -848,7 +925,7 @@ void MainButton::set_led_color(unsigned char R1, unsigned char G1, unsigned char
 	//third segment
 	temp = R3;
 	for (j = 0; j < 8; j++) {
-		if (temp & (0x80 >> j)) //·¢ËÍ1
+		if (temp & (0x80 >> j)) //ï¿½ï¿½ï¿½ï¿½1
 		{
 			LPC_GPIO1->FIOSET = 1 << 15; //0x00008000;
 			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
@@ -868,7 +945,7 @@ void MainButton::set_led_color(unsigned char R1, unsigned char G1, unsigned char
 			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
 			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
 		}
-		else                //·¢ËÍ0
+		else                //ï¿½ï¿½ï¿½ï¿½0
 		{
 			LPC_GPIO1->FIOSET = 1 << 15;
 			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
@@ -887,7 +964,7 @@ void MainButton::set_led_color(unsigned char R1, unsigned char G1, unsigned char
 	}
 	temp = G3;
 	for (j = 0; j < 8; j++) {
-		if (temp & (0x80 >> j)) //·¢ËÍ1
+		if (temp & (0x80 >> j)) //ï¿½ï¿½ï¿½ï¿½1
 		{
 			LPC_GPIO1->FIOSET = 1 << 15; //0x00008000;
 			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
@@ -907,7 +984,7 @@ void MainButton::set_led_color(unsigned char R1, unsigned char G1, unsigned char
 			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
 			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
 		}
-		else                //·¢ËÍ0
+		else                //ï¿½ï¿½ï¿½ï¿½0
 		{
 			LPC_GPIO1->FIOSET = 1 << 15;
 			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
@@ -926,7 +1003,7 @@ void MainButton::set_led_color(unsigned char R1, unsigned char G1, unsigned char
 	}
 	temp = B3;
 	for (j = 0; j < 8; j++) {
-		if (temp & (0x80 >> j)) //·¢ËÍ1
+		if (temp & (0x80 >> j)) //ï¿½ï¿½ï¿½ï¿½1
 		{
 			LPC_GPIO1->FIOSET = 1 << 15; //0x00008000;
 			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
@@ -946,7 +1023,7 @@ void MainButton::set_led_color(unsigned char R1, unsigned char G1, unsigned char
 			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
 			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
 		}
-		else                //·¢ËÍ0
+		else                //ï¿½ï¿½ï¿½ï¿½0
 		{
 			LPC_GPIO1->FIOSET = 1 << 15;
 			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
@@ -966,7 +1043,7 @@ void MainButton::set_led_color(unsigned char R1, unsigned char G1, unsigned char
 	//forth segment
 	temp = R4;
 	for (j = 0; j < 8; j++) {
-		if (temp & (0x80 >> j)) //·¢ËÍ1
+		if (temp & (0x80 >> j)) //ï¿½ï¿½ï¿½ï¿½1
 		{
 			LPC_GPIO1->FIOSET = 1 << 15; //0x00008000;
 			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
@@ -986,7 +1063,7 @@ void MainButton::set_led_color(unsigned char R1, unsigned char G1, unsigned char
 			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
 			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
 		}
-		else                //·¢ËÍ0
+		else                //ï¿½ï¿½ï¿½ï¿½0
 		{
 			LPC_GPIO1->FIOSET = 1 << 15;
 			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
@@ -1005,7 +1082,7 @@ void MainButton::set_led_color(unsigned char R1, unsigned char G1, unsigned char
 	}
 	temp = G4;
 	for (j = 0; j < 8; j++) {
-		if (temp & (0x80 >> j)) //·¢ËÍ1
+		if (temp & (0x80 >> j)) //ï¿½ï¿½ï¿½ï¿½1
 		{
 			LPC_GPIO1->FIOSET = 1 << 15; //0x00008000;
 			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
@@ -1025,7 +1102,7 @@ void MainButton::set_led_color(unsigned char R1, unsigned char G1, unsigned char
 			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
 			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
 		}
-		else                //·¢ËÍ0
+		else                //ï¿½ï¿½ï¿½ï¿½0
 		{
 			LPC_GPIO1->FIOSET = 1 << 15;
 			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
@@ -1044,7 +1121,7 @@ void MainButton::set_led_color(unsigned char R1, unsigned char G1, unsigned char
 	}
 	temp = B4;
 	for (j = 0; j < 8; j++) {
-		if (temp & (0x80 >> j)) //·¢ËÍ1
+		if (temp & (0x80 >> j)) //ï¿½ï¿½ï¿½ï¿½1
 		{
 			LPC_GPIO1->FIOSET = 1 << 15; //0x00008000;
 			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
@@ -1064,7 +1141,7 @@ void MainButton::set_led_color(unsigned char R1, unsigned char G1, unsigned char
 			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
 			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
 		}
-		else                //·¢ËÍ0
+		else                //ï¿½ï¿½ï¿½ï¿½0
 		{
 			LPC_GPIO1->FIOSET = 1 << 15;
 			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
@@ -1085,7 +1162,7 @@ void MainButton::set_led_color(unsigned char R1, unsigned char G1, unsigned char
 	//fifth segment
 	temp = R5;
 	for (j = 0; j < 8; j++) {
-		if (temp & (0x80 >> j)) //·¢ËÍ1
+		if (temp & (0x80 >> j)) //ï¿½ï¿½ï¿½ï¿½1
 		{
 			LPC_GPIO1->FIOSET = 1 << 15; //0x00008000;
 			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
@@ -1105,7 +1182,7 @@ void MainButton::set_led_color(unsigned char R1, unsigned char G1, unsigned char
 			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
 			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
 		}
-		else                //·¢ËÍ0
+		else                //ï¿½ï¿½ï¿½ï¿½0
 		{
 			LPC_GPIO1->FIOSET = 1 << 15;
 			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
@@ -1124,7 +1201,7 @@ void MainButton::set_led_color(unsigned char R1, unsigned char G1, unsigned char
 	}
 	temp = G5;
 	for (j = 0; j < 8; j++) {
-		if (temp & (0x80 >> j)) //·¢ËÍ1
+		if (temp & (0x80 >> j)) //ï¿½ï¿½ï¿½ï¿½1
 		{
 			LPC_GPIO1->FIOSET = 1 << 15; //0x00008000;
 			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
@@ -1144,7 +1221,7 @@ void MainButton::set_led_color(unsigned char R1, unsigned char G1, unsigned char
 			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
 			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
 		}
-		else                //·¢ËÍ0
+		else                //ï¿½ï¿½ï¿½ï¿½0
 		{
 			LPC_GPIO1->FIOSET = 1 << 15;
 			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
@@ -1163,7 +1240,7 @@ void MainButton::set_led_color(unsigned char R1, unsigned char G1, unsigned char
 	}
 	temp = B5;
 	for (j = 0; j < 8; j++) {
-		if (temp & (0x80 >> j)) //·¢ËÍ1
+		if (temp & (0x80 >> j)) //ï¿½ï¿½ï¿½ï¿½1
 		{
 			LPC_GPIO1->FIOSET = 1 << 15; //0x00008000;
 			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
@@ -1183,7 +1260,7 @@ void MainButton::set_led_color(unsigned char R1, unsigned char G1, unsigned char
 			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
 			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
 		}
-		else                //·¢ËÍ0
+		else                //ï¿½ï¿½ï¿½ï¿½0
 		{
 			LPC_GPIO1->FIOSET = 1 << 15;
 			__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
@@ -1211,7 +1288,7 @@ void MainButton::set_led_color(unsigned char R, unsigned char G, unsigned char B
 	temp[2] = B;
 	for (i = 0; i < 3; i++) {
 		for (j = 0; j < 8; j++) {
-			if (temp[i] & (0x80 >> j)) //·¢ËÍ1
+			if (temp[i] & (0x80 >> j)) //ï¿½ï¿½ï¿½ï¿½1
 			{
 				LPC_GPIO1->FIOSET = 1 << 15; //0x00008000;
 				__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
@@ -1227,7 +1304,7 @@ void MainButton::set_led_color(unsigned char R, unsigned char G, unsigned char B
 				LPC_GPIO1->FIOCLR = 1 << 15;
 				__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();
 			}
-			else                //·¢ËÍ0
+			else                //ï¿½ï¿½ï¿½ï¿½0
 			{
 				LPC_GPIO1->FIOSET = 1 << 15;
 				__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();__NOP();

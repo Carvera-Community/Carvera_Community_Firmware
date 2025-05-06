@@ -67,7 +67,7 @@ delta_en_pin								1.30			# Pin for delta enable
 #delta_max_rate								10800.0			# mm/min transform from degree/min
 #delta_acceleration							360			    # degree/secÂ²
 #delta_steps_per_mm							26.666667		# may be steps per degree for example (26.67)
-delta_steps_per_mm							888.88888		# may be steps per degree for example (26.67)
+delta_steps_per_mm							888.888889		# may be steps per degree for example (26.67)
 
 # B axis
 epsilon_step_pin							1.22			# Pin for delta stepper step signal
@@ -172,7 +172,7 @@ switch.beep.startup_state					false			# beep probe startup state
 
 switch.extendout.enable						true			# Enable this module
 switch.extendout.output_pin					2.2				# Pin this module controls
-switch.extendout.output_type				swpwm			# Digital means this is just an on or off pin
+switch.extendout.output_type				hwpwm			# Digital means this is just an on or off pin
 switch.extendout.input_on_command			M851			# Command that will turn this switch on
 switch.extendout.input_off_command			M852			# Command that will turn this switch off
 
@@ -257,13 +257,13 @@ gamma_motor_alarm_pin						3.25^			# servo motor alarm for Z axis
 delta_min_endstop							1.9^			# Pin to read min endstop, add a ! to invert if endstop is NO connected to ground
 delta_max_endstop							1.9^			# Pin to read max endstop, uncomment this and comment the above if using max endstops
 delta_homing_direction						home_to_min		# Or set to home_to_max and set alpha_max and uncomment the alpha_max_endstop
-delta_min									-1				# This gets loaded as the current position after homing when home_to_min is set
+delta_min									-0.5			# This gets loaded as the current position after homing when home_to_min is set
 delta_max									0				# This gets loaded as the current position after homing when home_to_max is set
 delta_max_travel							380 			# Max travel in mm for delta/A axis when homing
 delta_fast_homing_rate_mm_s					50				# delta/A fast homing feedrate in mm/second
 delta_slow_homing_rate_mm_s					10				# delta/A slow homing feedrate in mm/second
 delta_limit_enable                          true            # Set to true to enable A min and max limit switches
-delta_homing_retract_mm						1				# Distance to retract from the endstop after it is hit for delta/A
+delta_homing_retract_mm						0.5				# Distance to retract from the endstop after it is hit for delta/A
 delta_motor_alarm_pin						nc				# servo motor alarm for Z axis
 
 
@@ -286,6 +286,8 @@ zprobe.debounce_ms							1				# Set if noisy
 # zprobe.probe_height							2				# How much above bed to start probe
 # zprobe.max_z								100				# max z
 zprobe.calibrate_pin						0.5^			# calibrate_pin
+zprobe.probe_tip_diameter					2.0				#3 axis probe tip diamter
+zprobe.calibration_safety_margin              0.1             # max distance to move after calibrate pin but before probe pin detected
 
 # Leveling strategy
 leveling-strategy.rectangular-grid.enable					true
@@ -433,7 +435,7 @@ default_seek_rate 3000					# Feed rate for G0 rapid mode (mm/min)
 alpha_max_rate 3000.0					# Max feed rate for X axis (mm/min)
 beta_max_rate 3000.0					# Max feed rate for Y axis (mm/min)
 gamma_max_rate 2000.0					# Max feed rate for Z axis (mm/min)
-delta_max_rate 3000.0 					# Max rotation speed rate for A axis (degree/min)
+delta_max_rate 1800.0 					# Max rotation speed rate for A axis (degree/min)
 epsilon_max_rate 100.0					# Max feed rate for auto tool changer (mm/min)
 
 acceleration 150						# Acceleration for X/Y/Z axis (mm/second/second)

@@ -43,6 +43,8 @@ class Robot : public Module {
         float get_default_acceleration() const { return default_acceleration; }
         void loadToolOffset(const float offset[N_PRIMARY_AXIS]);
         void saveToolOffset(const float offset[N_PRIMARY_AXIS], const float cur_tool_mz);
+        void set_probe_tool_not_calibrated(bool value);
+        bool get_probe_tool_not_calibrated();
         float get_feed_rate() const;
         float get_s_value() const { return s_value; }
         void set_s_value(float s) { s_value= s; }
@@ -68,6 +70,9 @@ class Robot : public Module {
         uint8_t get_current_motion_mode() const {return current_motion_mode; }
         void clearLaserOffset();
 
+        bool is_homed_all_axes();
+        void override_homed_check(bool home_override_value);
+
         BaseSolution* arm_solution;                           // Selected Arm solution ( millimeters to step calculation )
 
         // gets accessed by Panel, Endstops, ZProbe
@@ -79,8 +84,10 @@ class Robot : public Module {
         std::function<float(void)> get_e_scale_fnc;
 
         // Workspace coordinate systems
-        wcs_t mcs2wcs(const wcs_t &pos) const;
+        wcs_t mcs2wcs(const wcs_t &pos) const { return mcs2selected_wcs(pos, current_wcs); }
+        wcs_t mcs2selected_wcs(const wcs_t &pos, const size_t n) const;
         wcs_t mcs2wcs(const float *pos) const { return mcs2wcs(wcs_t(pos[X_AXIS], pos[Y_AXIS], pos[Z_AXIS], pos[A_AXIS], pos[B_AXIS])); }
+        wcs_t mcs2selected_wcs(const float *pos, const size_t n) const { return mcs2selected_wcs(wcs_t(pos[X_AXIS], pos[Y_AXIS], pos[Z_AXIS], pos[A_AXIS], pos[B_AXIS]), n); }
         wcs_t wcs2mcs(const wcs_t &pos) const;
         wcs_t wcs2mcs(const float *pos) const { return wcs2mcs(wcs_t(pos[X_AXIS], pos[Y_AXIS], pos[Z_AXIS], pos[A_AXIS], pos[B_AXIS])); }
 
@@ -105,6 +112,7 @@ class Robot : public Module {
         };
 
     private:
+        bool home_override = false;
         enum MOTION_MODE_T {
             NONE,
             SEEK, // G0
@@ -169,7 +177,7 @@ class Robot : public Module {
         int arc_correction;                                  // Setting : how often to rectify arc computation
         float max_speeds[3];                                 // Setting : max allowable speed in mm/s for each axis
         float max_speed;                                     // Setting : maximum feedrate in mm/s as specified by F parameter
-
+        bool probe_tool_not_calibrated;
         float soft_endstop_min[3], soft_endstop_max[3];
 
         uint8_t n_motors;                                    //count of the motors/axis registered

@@ -148,6 +148,7 @@ void Robot::on_module_loaded()
     // load tlo data from eeprom
     float tlo[3] = {0, 0, THEKERNEL->eeprom_data->TLO};
     this->loadToolOffset(tlo);
+    this->probe_tool_not_calibrated = THEKERNEL->eeprom_data->probe_tool_not_calibrated;
 
     // load wcs data from eeprom
 	float x = THEKERNEL->eeprom_data->G54[0];
@@ -291,8 +292,23 @@ void Robot::load_config()
             return;
         }
 
-        actuators[a]->change_steps_per_mm(THEKERNEL->config->value(motor_checksums[a][3])->by_default(a == 2 ? 2560.0F : 80.0F)->as_number());
-        actuators[a]->set_max_rate(THEKERNEL->config->value(motor_checksums[a][4])->by_default(3000.0F)->as_number()/60.0F); // it is in mm/min and converted to mm/sec
+        if((THEKERNEL->factory_set->FuncSetting & (1<<0)) && (a == 3))
+		{
+			uint16_t s = THEKERNEL->config->value(motor_checksums[a][4])->by_default(3000.0F)->as_number();
+			if(s > 1800) s=1800;
+        	actuators[a]->set_max_rate( s/60.0F); // it is in mm/min and converted to mm/sec
+        	float steps = THEKERNEL->config->value(motor_checksums[a][3])->by_default(a == 2 ? 2560.0F : 80.0F)->as_number();
+        	if(CARVERA == THEKERNEL->factory_set->MachineModel)
+        	{
+        		steps = steps * 16.666666;
+        	}
+        	actuators[a]->change_steps_per_mm(steps);
+        }
+        else
+        {
+        	actuators[a]->change_steps_per_mm(THEKERNEL->config->value(motor_checksums[a][3])->by_default(a == 2 ? 2560.0F : 80.0F)->as_number());
+        	actuators[a]->set_max_rate(THEKERNEL->config->value(motor_checksums[a][4])->by_default(3000.0F)->as_number()/60.0F); // it is in mm/min and converted to mm/sec
+        }
         actuators[a]->set_acceleration(THEKERNEL->config->value(motor_checksums[a][5])->by_default(NAN)->as_number()); // mm/secs²
     }
 
@@ -468,14 +484,14 @@ void Robot::print_position(uint8_t subcode, std::string& res, bool ignore_extrud
 }
 
 // converts current last milestone (machine position without compensation transform) to work coordinate system (inverse transform)
-Robot::wcs_t Robot::mcs2wcs(const Robot::wcs_t& pos) const
+Robot::wcs_t Robot::mcs2selected_wcs(const wcs_t &pos, size_t n) const
 {
     return std::make_tuple(
-        std::get<X_AXIS>(pos) - std::get<X_AXIS>(wcs_offsets[current_wcs]) + std::get<X_AXIS>(g92_offset) - std::get<X_AXIS>(tool_offset),
-        std::get<Y_AXIS>(pos) - std::get<Y_AXIS>(wcs_offsets[current_wcs]) + std::get<Y_AXIS>(g92_offset) - std::get<Y_AXIS>(tool_offset),
-        std::get<Z_AXIS>(pos) - std::get<Z_AXIS>(wcs_offsets[current_wcs]) + std::get<Z_AXIS>(g92_offset) - std::get<Z_AXIS>(tool_offset),
-        std::get<A_AXIS>(pos) - std::get<A_AXIS>(wcs_offsets[current_wcs]) + std::get<A_AXIS>(g92_offset) - std::get<A_AXIS>(tool_offset),
-        std::get<B_AXIS>(pos) - std::get<B_AXIS>(wcs_offsets[current_wcs]) + std::get<B_AXIS>(g92_offset) - std::get<B_AXIS>(tool_offset)
+        std::get<X_AXIS>(pos) - std::get<X_AXIS>(wcs_offsets[n]) + std::get<X_AXIS>(g92_offset) - std::get<X_AXIS>(tool_offset),
+        std::get<Y_AXIS>(pos) - std::get<Y_AXIS>(wcs_offsets[n]) + std::get<Y_AXIS>(g92_offset) - std::get<Y_AXIS>(tool_offset),
+        std::get<Z_AXIS>(pos) - std::get<Z_AXIS>(wcs_offsets[n]) + std::get<Z_AXIS>(g92_offset) - std::get<Z_AXIS>(tool_offset),
+        std::get<A_AXIS>(pos) - std::get<A_AXIS>(wcs_offsets[n]) + std::get<A_AXIS>(g92_offset) - std::get<A_AXIS>(tool_offset),
+        std::get<B_AXIS>(pos) - std::get<B_AXIS>(wcs_offsets[n]) + std::get<B_AXIS>(g92_offset) - std::get<B_AXIS>(tool_offset)
     );
 }
 
@@ -516,6 +532,9 @@ void Robot::set_current_wcs_by_mpos(float x, float y, float z, float a, float b)
     }
     if(isnan(z)){
         z = std::get<Z_AXIS>(wcs_offsets[current_wcs]);
+    }else{
+        PublicData::set_value(atc_handler_checksum, set_ref_tool_mz_checksum, nullptr);
+        this->clearToolOffset();
     }
     if(isnan(a)){
         a = std::get<A_AXIS>(wcs_offsets[current_wcs]);
@@ -588,40 +607,50 @@ void Robot::on_gcode_received(void *argument)
                         std::tie(x, y, z, a, b) = wcs_offsets[n];
                         // notify atc module to change ref tool mcs if Z wcs offset is chaned
                         if (gcode->has_letter('Z')) {
+                            if (probe_tool_not_calibrated && (THEKERNEL->eeprom_data->TOOL = 0 || THEKERNEL->eeprom_data->TOOL >= 999990)){
+                                THEKERNEL->streams->printf("ALARM: Probe not calibrated. Please calibrate probe before probing.\n");
+                                THEKERNEL->call_event(ON_HALT, nullptr);
+                                THEKERNEL->set_halt_reason(CALIBRATE_FAIL);
+                                return;
+                            }
                         	PublicData::set_value(atc_handler_checksum, set_ref_tool_mz_checksum, nullptr);
                         	this->clearToolOffset();
                         }
                         if(gcode->get_int('L') == 20) {
                             // this makes the current machine position (less compensation transform) the offset
                             // get current position in WCS
-                            wcs_t pos= mcs2wcs(machine_position);
+                            wcs_t pos= mcs2selected_wcs(machine_position, n);
 
                             if(gcode->has_letter('X')){
-                                x -= to_millimeters(gcode->get_value('X')) - std::get<X_AXIS>(pos);
+                                x = machine_position[X_AXIS] - to_millimeters(gcode->get_value('X'));
                             }
 
                             if(gcode->has_letter('Y')){
-                                y -= to_millimeters(gcode->get_value('Y')) - std::get<Y_AXIS>(pos);
+                                y = machine_position[Y_AXIS] - to_millimeters(gcode->get_value('Y'));
                             }
                             
                             if(gcode->has_letter('Z')) {
-                                z -= to_millimeters(gcode->get_value('Z')) - std::get<Z_AXIS>(pos);
+                                z = machine_position[Z_AXIS] - to_millimeters(gcode->get_value('Z'));
                             }
                             
                             if(gcode->has_letter('A')) {
-                                a -= to_millimeters(gcode->get_value('A')) - std::get<A_AXIS>(pos);
+                                //a -= to_millimeters(gcode->get_value('A')) - std::get<A_AXIS>(pos);
+                                a -= gcode->get_value('A') - std::get<A_AXIS>(pos);
                             }
                             
                             if(gcode->has_letter('B')) {
-                                b -= to_millimeters(gcode->get_value('B')) - std::get<B_AXIS>(pos);
+                                //b -= to_millimeters(gcode->get_value('B')) - std::get<B_AXIS>(pos);
+                                b -= gcode->get_value('B') - std::get<B_AXIS>(pos);
                             }
 
                         } else {
                             if(gcode->has_letter('X')) x = to_millimeters(gcode->get_value('X'));
                             if(gcode->has_letter('Y')) y = to_millimeters(gcode->get_value('Y'));
                             if(gcode->has_letter('Z')) z = to_millimeters(gcode->get_value('Z'));
-                            if(gcode->has_letter('A')) a = to_millimeters(gcode->get_value('A'));
-                            if(gcode->has_letter('B')) b = to_millimeters(gcode->get_value('B'));
+                            //if(gcode->has_letter('A')) a = to_millimeters(gcode->get_value('A'));
+                            //if(gcode->has_letter('B')) b = to_millimeters(gcode->get_value('B'));
+                            if(gcode->has_letter('A')) a = gcode->get_value('A');
+                            if(gcode->has_letter('B')) b = gcode->get_value('B');
                             /*
                             if(absolute_mode) {
                                 // the value is the offset from machine zero
@@ -674,6 +703,7 @@ void Robot::on_gcode_received(void *argument)
 
                 } else if (gcode->subcode == 4) {
                     // G92.4 is a smoothie special it sets manual homing for X,Y,Z
+					THECONVEYOR->wait_for_idle();
                     // do a manual homing based on given coordinates, no endstops required
                     if(gcode->has_letter('X')){ THEROBOT->reset_axis_position(gcode->get_value('X'), X_AXIS); }
                     if(gcode->has_letter('Y')){ THEROBOT->reset_axis_position(gcode->get_value('Y'), Y_AXIS); }
@@ -751,10 +781,12 @@ void Robot::on_gcode_received(void *argument)
                         z += to_millimeters(gcode->get_value('Z')) - std::get<Z_AXIS>(pos);
                     }
                     if(gcode->has_letter('A')) {
-                        a += to_millimeters(gcode->get_value('A')) - std::get<A_AXIS>(pos);
+                        //a += to_millimeters(gcode->get_value('A')) - std::get<A_AXIS>(pos);
+                        a += gcode->get_value('A') - std::get<A_AXIS>(pos);
                     }
                     if(gcode->has_letter('B')) {
-                        b += to_millimeters(gcode->get_value('B')) - std::get<B_AXIS>(pos);
+                        //b += to_millimeters(gcode->get_value('B')) - std::get<B_AXIS>(pos);
+                        b += gcode->get_value('B') - std::get<B_AXIS>(pos);
                     }
                     g92_offset = wcs_t(x, y, z, a, b);
                 }
@@ -841,7 +873,14 @@ void Robot::on_gcode_received(void *argument)
                     if(actuators[i]->is_extruder()) continue; //extruders handle this themselves
                     char axis= (i <= Z_AXIS ? 'X'+i : 'A'+(i-A_AXIS));
                     if(gcode->has_letter(axis)) {
-                        actuators[i]->change_steps_per_mm(this->to_millimeters(gcode->get_value(axis)));
+	                    if(i <= Z_AXIS)
+	                    {
+	                        actuators[i]->change_steps_per_mm(this->to_millimeters(gcode->get_value(axis)));
+	                    }
+	                    else
+	                    {
+	                    	actuators[i]->change_steps_per_mm(gcode->get_value(axis));
+	                    }
                     }
                     gcode->stream->printf("%c:%f ", axis, actuators[i]->get_steps_per_mm());
                 }
@@ -1223,7 +1262,8 @@ void Robot::process_move(Gcode *gcode, enum MOTION_MODE_T motion_mode)
 	for (int i = A_AXIS; i < n_motors; ++i) {
         char letter = 'A' + i - A_AXIS;
         if( gcode->has_letter(letter) ) {
-            param[i] = this->to_millimeters(gcode->get_value(letter));
+            //param[i] = this->to_millimeters(gcode->get_value(letter));
+            param[i] = gcode->get_value(letter);
         }
     }
     if(!next_command_is_MCS) {
@@ -1744,7 +1784,7 @@ bool Robot::append_line(Gcode *gcode, const float target[], float rate_mm_s, flo
     if(rate_mm_s <= 0.0F) {
         gcode->is_error= true;
         gcode->txt_after_ok= (rate_mm_s == 0 ? "Undefined feed rate\n" : "feed rate < 0\n");
-        THEKERNEL->streams->printf(rate_mm_s == 0 ? "Undefined feed rate\n" : "feed rate < 0\n");
+        THEKERNEL->streams->printf(rate_mm_s == 0 ? "Alarm:Undefined feed rate\n" : "Alarm:feed rate < 0\n");
         return false;
     }
 
@@ -1838,6 +1878,7 @@ bool Robot::append_arc(Gcode * gcode, const float target[], const float offset[]
     if(rate_mm_s <= 0.0F) {
         gcode->is_error= true;
         gcode->txt_after_ok= (rate_mm_s == 0 ? "Undefined feed rate" : "feed rate < 0");
+        THEKERNEL->streams->printf(rate_mm_s == 0 ? "Alarm:Undefined feed rate\n" : "Alarm:feed rate < 0\n");
         return false;
     }
 
@@ -2073,4 +2114,37 @@ bool Robot::is_homed(uint8_t i) const
     ok = PublicData::get_value(endstops_checksum, get_homed_status_checksum, 0, homed);
     if(!ok) return false;
     return homed[i];
+}
+
+bool Robot::is_homed_all_axes()
+{
+    if (this->home_override){
+        return true;
+    }
+    for (int i = X_AXIS; i <= Z_AXIS; ++i) {
+        if (!this->is_homed(i)){
+            THEKERNEL->streams->printf("Machine has not been homed\nUse M888 To disable homed check temporarily\n");
+            THEKERNEL->set_halt_reason(HOME_FAIL);
+            THEKERNEL->call_event(ON_HALT, nullptr);
+            return false;
+        }
+    }
+    return true;
+}
+
+void Robot::override_homed_check(bool home_override_value) {
+    this->home_override = home_override_value;
+    return;
+}
+
+void Robot::set_probe_tool_not_calibrated(bool value)
+{
+    probe_tool_not_calibrated = value;
+    THEKERNEL->eeprom_data->probe_tool_not_calibrated = value;
+    THEKERNEL->write_eeprom_data();
+}
+
+bool Robot::get_probe_tool_not_calibrated()
+{
+    return probe_tool_not_calibrated;
 }

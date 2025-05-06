@@ -6,6 +6,7 @@ using namespace std;
 #include <vector>
 #include <queue>
 #include "Pin.h"
+#include "Gcode.h"
 
 class ATCHandler : public Module
 {
@@ -105,6 +106,14 @@ private:
     void fill_autolevel_scripts(float x_pos, float y_pos, float x_size, float y_size, int x_grids, int y_grids, float height);
     void fill_goto_origin_scripts(float x_pos, float y_pos);
 
+    void fill_calibrate_probe_anchor_scripts(bool invert_probe);
+    void calibrate_anchor1(Gcode *gcode);
+    void calibrate_anchor2(Gcode *gcode);
+    void calibrate_a_axis_headstock(Gcode *gcode);
+    void calibrate_a_axis_height(Gcode *gcode);
+    void home_machine_with_pin(Gcode *gcode);
+    void calibrate_set_value(Gcode *gcode);
+
     void clear_script_queue();
 
     void rapid_move(bool mc, float x, float y, float z, float a, float b);
@@ -170,10 +179,12 @@ private:
     float anchor1_y;
     float anchor2_offset_x;
     float anchor2_offset_y;
+    float anchor_width;
 
     float rotation_offset_x;
     float rotation_offset_y;
     float rotation_offset_z;
+    float rotation_width = 45;
 
     float toolrack_offset_x;
     float toolrack_offset_y;
