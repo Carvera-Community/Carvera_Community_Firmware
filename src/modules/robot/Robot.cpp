@@ -305,7 +305,6 @@ void Robot::load_config()
 		{
 			uint16_t s = THEKERNEL->config->value(motor_checksums[a][4])->by_default(3000.0F)->as_number();
 			if(s > 1800) s=1800;
-			if(s > 1800) s=1800;
         	actuators[a]->set_max_rate( s/60.0F); // it is in mm/min and converted to mm/sec
         	float steps = THEKERNEL->config->value(motor_checksums[a][3])->by_default(a == 2 ? 2560.0F : 80.0F)->as_number();
         	if(CARVERA == THEKERNEL->factory_set->MachineModel)
@@ -822,12 +821,8 @@ void Robot::on_gcode_received(void *argument)
                     if(gcode->has_letter('A')) {
                         //a += to_millimeters(gcode->get_value('A')) - std::get<A_AXIS>(pos);
                         a += gcode->get_value('A') - std::get<A_AXIS>(pos);
-                        //a += to_millimeters(gcode->get_value('A')) - std::get<A_AXIS>(pos);
-                        a += gcode->get_value('A') - std::get<A_AXIS>(pos);
                     }
                     if(gcode->has_letter('B')) {
-                        //b += to_millimeters(gcode->get_value('B')) - std::get<B_AXIS>(pos);
-                        b += gcode->get_value('B') - std::get<B_AXIS>(pos);
                         //b += to_millimeters(gcode->get_value('B')) - std::get<B_AXIS>(pos);
                         b += gcode->get_value('B') - std::get<B_AXIS>(pos);
                     }
@@ -916,14 +911,6 @@ void Robot::on_gcode_received(void *argument)
                     if(actuators[i]->is_extruder()) continue; //extruders handle this themselves
                     char axis= (i <= Z_AXIS ? 'X'+i : 'A'+(i-A_AXIS));
                     if(gcode->has_letter(axis)) {
-	                    if(i <= Z_AXIS)
-	                    {
-	                        actuators[i]->change_steps_per_mm(this->to_millimeters(gcode->get_value(axis)));
-	                    }
-	                    else
-	                    {
-	                    	actuators[i]->change_steps_per_mm(gcode->get_value(axis));
-	                    }
 	                    if(i <= Z_AXIS)
 	                    {
 	                        actuators[i]->change_steps_per_mm(this->to_millimeters(gcode->get_value(axis)));
@@ -1345,8 +1332,6 @@ void Robot::process_move(Gcode *gcode, enum MOTION_MODE_T motion_mode)
 	for (int i = A_AXIS; i < n_motors; ++i) {
         char letter = 'A' + i - A_AXIS;
         if( gcode->has_letter(letter) ) {
-            //param[i] = this->to_millimeters(gcode->get_value(letter));
-            param[i] = gcode->get_value(letter);
             //param[i] = this->to_millimeters(gcode->get_value(letter));
             param[i] = gcode->get_value(letter);
         }

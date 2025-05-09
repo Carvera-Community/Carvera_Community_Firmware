@@ -33,7 +33,7 @@
 
 *.DS_Store
 
-/gcc-arm-none-eabi
+/gcc-arm-none-eabi*
 /LPC1768
 /mbed/drop
 /mbed/src/Debug
