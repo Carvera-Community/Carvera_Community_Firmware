@@ -1,6 +1,8 @@
 Notice: 
 To let the Carvera work perfectly, please make sure both your controller software and firmware are up to date. For firmware, download the new firmware first, then use the 'update' function to upgrade the firmware, and reset the machine after the update is complete.
-
+[1.0.3c1.0.6]
+- properly update to makera 1.0.3, something went wrong in 1.0.5 where not all the code came over
+[1.0.3c1.0.5]
 - added support for touch probe on carvera air
 - refactor of probing sequences code to combine repeated code
 - added S2 parameter for M462, M464, M466 that also saves Z offset if an H parameter is given
@@ -9,6 +11,14 @@ To let the Carvera work perfectly, please make sure both your controller softwar
 - Tools 999990-999999 are for 3 axis probes. Tools outside this range cannot be used for M46X commands
 - added config setting config-set sd zprobe.tool_zero_is_3axis true allows the user to choose if tool 0 is also considered a 3 axis probe
 - added config setting config-set sd zprobe.calibration_safety_margin 0.1, during calibration of probe TLO, max distance to move after calibrate pin but before probe pin detected
+
+[1.0.2]
+1. Carvera Support  the new 4th Axis Module (Harmonic Drive Version).
+2. Bug fixing: Fix the command to query the MAC address of the machine.
+3. Optimizing: Improve the stability of file transfer and reduce the problem of machine movement when uploading files abnormally.
+4. Optimizing:Change external output to hardware PWM mode.
+5. Optimizing:The command to query diagnostic information has been changed from the character '*' to 'diagnose'
+6. Bug fixing: Fix the issue of incorrect 4-axis rotation angle in Inch mode
 
 [1.0.1c1.0.3]
 1. added front button manual tool change behavior
@@ -46,6 +56,21 @@ controller. Use the community controller for the most up to date features.
 4. Optimizing:when the feed rates in Gcode are not greater than zero, then will print Alarm info to the MDI
 5. Optimizing: Add motor alarm detection during machine home operation
 6. Firmware compatible with Carvera and Carvera Air
+
+[1.0.0]
+1. Optimizing: Add data feedback on tabletop exploration ： 'Max deviation between high and low'
+2. Optimizing: Add motor alarm detection during machine home operation
+
+[0.9.9]
+Firmware compatible with Carvera and Carvera Air
+
+[1.0.3]
+1. Bug fixing: When the distance between the start and end points of an arc is less than 0.00025, the actual machining process results in a full circle instead of the intended arc.
+2. Bug fixing: Resolved the issue where Carvera AIR triggers a manual alarm when the tool number exceeds 255.
+3. Bug fixing: Addressed the issue where the Carvera AIR's lighting does not turn off during sleep mode.
+4. Optimizing: Enhanced the check_4th command.
+5. Optimizing: Improved the return path for Z-probe detection when configuring the hd 4th axis on Carvera.
+6. Optimizing: Added a prompt that appears when performing tool calibration, tool change, or Z-probe if the machine has not been homed: "Machine has not been homed, Please home first!"
 
 [1.0.2]
 1. Carvera Support  the new 4th Axis Module (Harmonic Drive Version).

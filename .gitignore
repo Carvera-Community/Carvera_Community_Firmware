@@ -31,6 +31,7 @@
 *.out
 *.app
 
+*.DS_Store
 
 /gcc-arm-none-eabi
 /LPC1768
