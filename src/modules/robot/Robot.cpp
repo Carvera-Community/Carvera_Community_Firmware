@@ -304,12 +304,6 @@ void Robot::load_config()
         		steps = steps * 16.666666;
         	}
         	actuators[a]->change_steps_per_mm(steps);
-        	float steps = THEKERNEL->config->value(motor_checksums[a][3])->by_default(a == 2 ? 2560.0F : 80.0F)->as_number();
-        	if(CARVERA == THEKERNEL->factory_set->MachineModel)
-        	{
-        		steps = steps * 16.666666;
-        	}
-        	actuators[a]->change_steps_per_mm(steps);
         }
         else
         {
