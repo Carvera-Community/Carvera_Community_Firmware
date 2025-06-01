@@ -1537,14 +1537,15 @@ void SimpleShell::grblDP_command( string parameters, StreamOutput *stream)
 
     int n= std::get<1>(v[0]);
     for (int i = 1; i <= n; ++i) {
-        stream->printf("[%s:%1.4f,%1.4f,%1.4f,%1.4f,%1.4f]\n", wcs2gcode(i-1).c_str(),
+        stream->printf("[%s:%1.4f,%1.4f,%1.4f,%1.4f,%1.4f,%1.4f]\n", wcs2gcode(i-1).c_str(),
             THEROBOT->from_millimeters(std::get<0>(v[i])),
             THEROBOT->from_millimeters(std::get<1>(v[i])),
             THEROBOT->from_millimeters(std::get<2>(v[i])),
             //THEROBOT->from_millimeters(std::get<3>(v[i])),
             //THEROBOT->from_millimeters(std::get<4>(v[i])));
             std::get<3>(v[i]),
-            std::get<4>(v[i]));
+            std::get<4>(v[i]),
+            THEROBOT->r[i-1]);
     }
 
     float *rd;
