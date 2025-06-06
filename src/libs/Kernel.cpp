@@ -827,6 +827,108 @@ void Kernel::check_eeprom_data()
 		this->eeprom_data->G54[2] = 0;
 		needrewtite = true;
 	}
+    
+    if(isnan(this->eeprom_data->G55[0]))
+	{
+		this->eeprom_data->G55[0] = 0;
+		needrewtite = true;
+	}
+	if(isnan(this->eeprom_data->G55[1]))
+	{
+		this->eeprom_data->G55[1] = 0;
+		needrewtite = true;
+	}
+	if(isnan(this->eeprom_data->G55[2]))
+	{
+		this->eeprom_data->G55[2] = 0;
+		needrewtite = true;
+	}
+    if(isnan(this->eeprom_data->G55[3]))
+	{
+		this->eeprom_data->G55[3] = 0;
+		needrewtite = true;
+	}
+    if(isnan(this->eeprom_data->G56[0]))
+	{
+		this->eeprom_data->G56[0] = 0;
+		needrewtite = true;
+	}
+	if(isnan(this->eeprom_data->G56[1]))
+	{
+		this->eeprom_data->G56[1] = 0;
+		needrewtite = true;
+	}
+	if(isnan(this->eeprom_data->G56[2]))
+	{
+		this->eeprom_data->G56[2] = 0;
+		needrewtite = true;
+	}
+    if(isnan(this->eeprom_data->G56[3]))
+	{
+		this->eeprom_data->G56[3] = 0;
+		needrewtite = true;
+	}
+    if(isnan(this->eeprom_data->G57[0]))
+	{
+		this->eeprom_data->G57[0] = 0;
+		needrewtite = true;
+	}
+	if(isnan(this->eeprom_data->G57[1]))
+	{
+		this->eeprom_data->G57[1] = 0;
+		needrewtite = true;
+	}
+	if(isnan(this->eeprom_data->G57[2]))
+	{
+		this->eeprom_data->G57[2] = 0;
+		needrewtite = true;
+	}
+    if(isnan(this->eeprom_data->G57[3]))
+	{
+		this->eeprom_data->G57[3] = 0;
+		needrewtite = true;
+	}
+    if(isnan(this->eeprom_data->G58[0]))
+	{
+		this->eeprom_data->G58[0] = 0;
+		needrewtite = true;
+	}
+	if(isnan(this->eeprom_data->G58[1]))
+	{
+		this->eeprom_data->G58[1] = 0;
+		needrewtite = true;
+	}
+	if(isnan(this->eeprom_data->G58[2]))
+	{
+		this->eeprom_data->G58[2] = 0;
+		needrewtite = true;
+	}
+    if(isnan(this->eeprom_data->G58[3]))
+	{
+		this->eeprom_data->G58[3] = 0;
+		needrewtite = true;
+	}
+    if(isnan(this->eeprom_data->G59[0]))
+	{
+		this->eeprom_data->G59[0] = 0;
+		needrewtite = true;
+	}
+	if(isnan(this->eeprom_data->G59[1]))
+	{
+		this->eeprom_data->G59[1] = 0;
+		needrewtite = true;
+	}
+	if(isnan(this->eeprom_data->G59[2]))
+	{
+		this->eeprom_data->G59[2] = 0;
+		needrewtite = true;
+	}
+    if(isnan(this->eeprom_data->G59[3]))
+	{
+		this->eeprom_data->G59[3] = 0;
+		needrewtite = true;
+	}
+
 	if(isnan(this->eeprom_data->G54AB[0]))
 	{
 		this->eeprom_data->G54AB[0] = 0;

@@ -101,6 +101,11 @@ typedef struct {
 	float G54AB[2];
     float perm_vars[20];
     bool probe_tool_not_calibrated;
+    float G55[4];
+    float G56[4];
+    float G57[4];
+    float G58[4];
+    float G59[4];
 } EEPROM_data;
 
 typedef struct {

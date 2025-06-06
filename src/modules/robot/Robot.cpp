@@ -158,6 +158,11 @@ void Robot::on_module_loaded()
 	float a = THEKERNEL->eeprom_data->G54AB[0];
 	float b = THEKERNEL->eeprom_data->G54AB[1];
     wcs_offsets[0] = wcs_t(x, y, z, a, b);
+    wcs_offsets[1] = wcs_t(THEKERNEL->eeprom_data->G55[0] , THEKERNEL->eeprom_data->G55[1] , THEKERNEL->eeprom_data->G55[2] , THEKERNEL->eeprom_data->G55[3]);
+    wcs_offsets[2] = wcs_t(THEKERNEL->eeprom_data->G56[0] , THEKERNEL->eeprom_data->G56[1] , THEKERNEL->eeprom_data->G56[2] , THEKERNEL->eeprom_data->G56[3]);
+    wcs_offsets[3] = wcs_t(THEKERNEL->eeprom_data->G57[0] , THEKERNEL->eeprom_data->G57[1] , THEKERNEL->eeprom_data->G57[2] , THEKERNEL->eeprom_data->G57[3]);
+    wcs_offsets[4] = wcs_t(THEKERNEL->eeprom_data->G58[0] , THEKERNEL->eeprom_data->G58[1] , THEKERNEL->eeprom_data->G58[2] , THEKERNEL->eeprom_data->G58[3]);
+    wcs_offsets[5] = wcs_t(THEKERNEL->eeprom_data->G59[0] , THEKERNEL->eeprom_data->G59[1] , THEKERNEL->eeprom_data->G59[2] , THEKERNEL->eeprom_data->G59[3]);
 }
 
 #define ACTUATOR_CHECKSUMS(X) {     \
@@ -553,7 +558,38 @@ void Robot::set_current_wcs_by_mpos(float x, float y, float z, float a, float b)
         THEKERNEL->eeprom_data->G54AB[0] = a;
         THEKERNEL->eeprom_data->G54AB[1] = b;
         THEKERNEL->write_eeprom_data();
+    } else if (current_wcs == 1) {
+        THEKERNEL->eeprom_data->G55[0] = x;
+        THEKERNEL->eeprom_data->G55[1] = y;
+        THEKERNEL->eeprom_data->G55[2] = z;
+        THEKERNEL->eeprom_data->G55[3] = a;
+        THEKERNEL->write_eeprom_data();
+    } else if (current_wcs == 2) {
+        THEKERNEL->eeprom_data->G56[0] = x;
+        THEKERNEL->eeprom_data->G56[1] = y;
+        THEKERNEL->eeprom_data->G56[2] = z;
+        THEKERNEL->eeprom_data->G56[3] = a;
+        THEKERNEL->write_eeprom_data();
+    } else if (current_wcs == 3) {
+        THEKERNEL->eeprom_data->G57[0] = x;
+        THEKERNEL->eeprom_data->G57[1] = y;
+        THEKERNEL->eeprom_data->G57[2] = z;
+        THEKERNEL->eeprom_data->G57[3] = a;
+        THEKERNEL->write_eeprom_data();
+    } else if (current_wcs == 4) {
+        THEKERNEL->eeprom_data->G58[0] = x;
+        THEKERNEL->eeprom_data->G58[1] = y;
+        THEKERNEL->eeprom_data->G58[2] = z;
+        THEKERNEL->eeprom_data->G58[3] = a;
+        THEKERNEL->write_eeprom_data();
+    } else if (current_wcs == 5) {
+        THEKERNEL->eeprom_data->G59[0] = x;
+        THEKERNEL->eeprom_data->G59[1] = y;
+        THEKERNEL->eeprom_data->G59[2] = z;
+        THEKERNEL->eeprom_data->G59[3] = a;
+        THEKERNEL->write_eeprom_data();
     }
+
 }
 
 //A GCode has been received
@@ -675,6 +711,36 @@ void Robot::on_gcode_received(void *argument)
                     	    THEKERNEL->eeprom_data->G54AB[0] = a;
                     	    THEKERNEL->eeprom_data->G54AB[1] = b;
                     	    THEKERNEL->write_eeprom_data();
+                        }  else if (n == 1) {
+                            THEKERNEL->eeprom_data->G55[0] = x;
+                            THEKERNEL->eeprom_data->G55[1] = y;
+                            THEKERNEL->eeprom_data->G55[2] = z;
+                            THEKERNEL->eeprom_data->G55[3] = a;
+                            THEKERNEL->write_eeprom_data();
+                        } else if (n == 2) {
+                            THEKERNEL->eeprom_data->G56[0] = x;
+                            THEKERNEL->eeprom_data->G56[1] = y;
+                            THEKERNEL->eeprom_data->G56[2] = z;
+                            THEKERNEL->eeprom_data->G56[3] = a;
+                            THEKERNEL->write_eeprom_data();
+                        } else if (n == 3) {
+                            THEKERNEL->eeprom_data->G57[0] = x;
+                            THEKERNEL->eeprom_data->G57[1] = y;
+                            THEKERNEL->eeprom_data->G57[2] = z;
+                            THEKERNEL->eeprom_data->G57[3] = a;
+                            THEKERNEL->write_eeprom_data();
+                        } else if (n == 4) {
+                            THEKERNEL->eeprom_data->G58[0] = x;
+                            THEKERNEL->eeprom_data->G58[1] = y;
+                            THEKERNEL->eeprom_data->G58[2] = z;
+                            THEKERNEL->eeprom_data->G58[3] = a;
+                            THEKERNEL->write_eeprom_data();
+                        } else if (n == 5) {
+                            THEKERNEL->eeprom_data->G59[0] = x;
+                            THEKERNEL->eeprom_data->G59[1] = y;
+                            THEKERNEL->eeprom_data->G59[2] = z;
+                            THEKERNEL->eeprom_data->G59[3] = a;
+                            THEKERNEL->write_eeprom_data();
                         }
                     }
                 }
@@ -739,13 +805,43 @@ void Robot::on_gcode_received(void *argument)
                     		// third
                     		THEROBOT->reset_axis_position(gcode->get_value('A')+a, A_AXIS);  
                     		if (current_wcs == 0) {
-                    	    THEKERNEL->eeprom_data->G54[0] = x;
-                    	    THEKERNEL->eeprom_data->G54[1] = y;
-                    	    THEKERNEL->eeprom_data->G54[2] = z;
-                    	    THEKERNEL->eeprom_data->G54AB[0] = a;
-                    	    THEKERNEL->eeprom_data->G54AB[1] = b;
-                    	    THEKERNEL->write_eeprom_data();
-                        }
+                                THEKERNEL->eeprom_data->G54[0] = x;
+                                THEKERNEL->eeprom_data->G54[1] = y;
+                                THEKERNEL->eeprom_data->G54[2] = z;
+                                THEKERNEL->eeprom_data->G54AB[0] = a;
+                                THEKERNEL->eeprom_data->G54AB[1] = b;
+                                THEKERNEL->write_eeprom_data();
+                            }  else if (current_wcs == 1) {
+                                THEKERNEL->eeprom_data->G55[0] = x;
+                                THEKERNEL->eeprom_data->G55[1] = y;
+                                THEKERNEL->eeprom_data->G55[2] = z;
+                                THEKERNEL->eeprom_data->G55[3] = a;
+                                THEKERNEL->write_eeprom_data();
+                            } else if (current_wcs == 2) {
+                                THEKERNEL->eeprom_data->G56[0] = x;
+                                THEKERNEL->eeprom_data->G56[1] = y;
+                                THEKERNEL->eeprom_data->G56[2] = z;
+                                THEKERNEL->eeprom_data->G56[3] = a;
+                                THEKERNEL->write_eeprom_data();
+                            } else if (current_wcs == 3) {
+                                THEKERNEL->eeprom_data->G57[0] = x;
+                                THEKERNEL->eeprom_data->G57[1] = y;
+                                THEKERNEL->eeprom_data->G57[2] = z;
+                                THEKERNEL->eeprom_data->G57[3] = a;
+                                THEKERNEL->write_eeprom_data();
+                            } else if (current_wcs == 4) {
+                                THEKERNEL->eeprom_data->G58[0] = x;
+                                THEKERNEL->eeprom_data->G58[1] = y;
+                                THEKERNEL->eeprom_data->G58[2] = z;
+                                THEKERNEL->eeprom_data->G58[3] = a;
+                                THEKERNEL->write_eeprom_data();
+                            } else if (current_wcs == 5) {
+                                THEKERNEL->eeprom_data->G59[0] = x;
+                                THEKERNEL->eeprom_data->G59[1] = y;
+                                THEKERNEL->eeprom_data->G59[2] = z;
+                                THEKERNEL->eeprom_data->G59[3] = a;
+                                THEKERNEL->write_eeprom_data();
+                            }
                     		
                     	} else {
                         	THEROBOT->reset_axis_position(gcode->get_value('A'), A_AXIS);
