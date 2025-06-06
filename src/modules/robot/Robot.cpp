@@ -152,8 +152,8 @@ void Robot::on_module_loaded()
     this->probe_tool_not_calibrated = THEKERNEL->eeprom_data->probe_tool_not_calibrated;
 
     // load wcs data from eeprom
-    for (int row = 0; row <2;row++){
-        wcs_offsets[row] = wcs_t(THEKERNEL->eeprom_data->WCScoord[row][0] , THEKERNEL->eeprom_data->WCScoord[row][1] , THEKERNEL->eeprom_data->WCScoord[row][2] , THEKERNEL->eeprom_data->WCScoord[row][3],0);
+    for (int wcs_index = 0; wcs_index < 6; wcs_index++){
+        wcs_offsets[wcs_index] = wcs_t(THEKERNEL->eeprom_data->WCScoord[wcs_index][0] , THEKERNEL->eeprom_data->WCScoord[wcs_index][1] , THEKERNEL->eeprom_data->WCScoord[wcs_index][2] , THEKERNEL->eeprom_data->WCScoord[wcs_index][3],0);
     }
 }
 

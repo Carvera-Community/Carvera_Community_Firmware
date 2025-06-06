@@ -812,10 +812,10 @@ void Kernel::check_eeprom_data()
 		needrewtite = true;
 	}
 	
-	for (int row = 0; row < 2; row ++){
-		for (int col=0;col<6;col++) {
-			if (isnan(this->eeprom_data->WCScoord[row][col])){
-				this->eeprom_data->WCScoord[row][col] = 0;
+	for (int wcs_index = 0; wcs_index < 6; wcs_index++){
+		for (int axis = 0; axis < 2; axis++) {
+			if (isnan(this->eeprom_data->WCScoord[wcs_index][axis])){
+				this->eeprom_data->WCScoord[wcs_index][axis] = 0;
 				needrewtite = true;
 			}
 		}
