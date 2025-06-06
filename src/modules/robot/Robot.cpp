@@ -152,21 +152,9 @@ void Robot::on_module_loaded()
     this->probe_tool_not_calibrated = THEKERNEL->eeprom_data->probe_tool_not_calibrated;
 
     // load wcs data from eeprom
-	float x = THEKERNEL->eeprom_data->G54[0];
-	float y = THEKERNEL->eeprom_data->G54[1];
-	float z = THEKERNEL->eeprom_data->G54[2];
-	float a = THEKERNEL->eeprom_data->G54AB[0];
-	float b = THEKERNEL->eeprom_data->G54AB[1];
-    wcs_offsets[0] = wcs_t(x, y, z, a, b);
-    x = THEKERNEL->eeprom_data->G55[0];
-    y = THEKERNEL->eeprom_data->G55[1];
-    z = THEKERNEL->eeprom_data->G55[2];
-    a = THEKERNEL->eeprom_data->G55[3];
-    wcs_offsets[1] = wcs_t(x , y , z , a , b);
-    wcs_offsets[2] = wcs_t(THEKERNEL->eeprom_data->G56[0] , THEKERNEL->eeprom_data->G56[1] , THEKERNEL->eeprom_data->G56[2] , THEKERNEL->eeprom_data->G56[3],b);
-    wcs_offsets[3] = wcs_t(THEKERNEL->eeprom_data->G57[0] , THEKERNEL->eeprom_data->G57[1] , THEKERNEL->eeprom_data->G57[2] , THEKERNEL->eeprom_data->G57[3],b);
-    wcs_offsets[4] = wcs_t(THEKERNEL->eeprom_data->G58[0] , THEKERNEL->eeprom_data->G58[1] , THEKERNEL->eeprom_data->G58[2] , THEKERNEL->eeprom_data->G58[3],b);
-    wcs_offsets[5] = wcs_t(THEKERNEL->eeprom_data->G59[0] , THEKERNEL->eeprom_data->G59[1] , THEKERNEL->eeprom_data->G59[2] , THEKERNEL->eeprom_data->G59[3],b);
+    for (int row = 0; row <2;row++){
+        wcs_offsets[row] = wcs_t(THEKERNEL->eeprom_data->WCScoord[row][0] , THEKERNEL->eeprom_data->WCScoord[row][1] , THEKERNEL->eeprom_data->WCScoord[row][2] , THEKERNEL->eeprom_data->WCScoord[row][3],0);
+    }
 }
 
 #define ACTUATOR_CHECKSUMS(X) {     \
@@ -555,42 +543,11 @@ void Robot::set_current_wcs_by_mpos(float x, float y, float z, float a, float b)
     }
     THEROBOT->wcs_offsets[current_wcs] = Robot::wcs_t(x, y, z , a , b);
     // save wcs data to eeprom if current wcs = G54
-    if (current_wcs == 0) {
-        THEKERNEL->eeprom_data->G54[0] = x;
-        THEKERNEL->eeprom_data->G54[1] = y;
-        THEKERNEL->eeprom_data->G54[2] = z;
-        THEKERNEL->eeprom_data->G54AB[0] = a;
-        THEKERNEL->eeprom_data->G54AB[1] = b;
-        THEKERNEL->write_eeprom_data();
-    } else if (current_wcs == 1) {
-        THEKERNEL->eeprom_data->G55[0] = x;
-        THEKERNEL->eeprom_data->G55[1] = y;
-        THEKERNEL->eeprom_data->G55[2] = z;
-        THEKERNEL->eeprom_data->G55[3] = a;
-        THEKERNEL->write_eeprom_data();
-    } else if (current_wcs == 2) {
-        THEKERNEL->eeprom_data->G56[0] = x;
-        THEKERNEL->eeprom_data->G56[1] = y;
-        THEKERNEL->eeprom_data->G56[2] = z;
-        THEKERNEL->eeprom_data->G56[3] = a;
-        THEKERNEL->write_eeprom_data();
-    } else if (current_wcs == 3) {
-        THEKERNEL->eeprom_data->G57[0] = x;
-        THEKERNEL->eeprom_data->G57[1] = y;
-        THEKERNEL->eeprom_data->G57[2] = z;
-        THEKERNEL->eeprom_data->G57[3] = a;
-        THEKERNEL->write_eeprom_data();
-    } else if (current_wcs == 4) {
-        THEKERNEL->eeprom_data->G58[0] = x;
-        THEKERNEL->eeprom_data->G58[1] = y;
-        THEKERNEL->eeprom_data->G58[2] = z;
-        THEKERNEL->eeprom_data->G58[3] = a;
-        THEKERNEL->write_eeprom_data();
-    } else if (current_wcs == 5) {
-        THEKERNEL->eeprom_data->G59[0] = x;
-        THEKERNEL->eeprom_data->G59[1] = y;
-        THEKERNEL->eeprom_data->G59[2] = z;
-        THEKERNEL->eeprom_data->G59[3] = a;
+    if (current_wcs <= 5) {
+        THEKERNEL->eeprom_data->WCScoord[current_wcs][0] = x;
+        THEKERNEL->eeprom_data->WCScoord[current_wcs][1] = y;
+        THEKERNEL->eeprom_data->WCScoord[current_wcs][2] = z;
+        THEKERNEL->eeprom_data->WCScoord[current_wcs][3] = a;
         THEKERNEL->write_eeprom_data();
     }
 
@@ -708,42 +665,11 @@ void Robot::on_gcode_received(void *argument)
                         wcs_offsets[n] = wcs_t(x, y, z, a, b);
                         
                 		// save wcs data to eeprom
-                        if (n == 0) {
-                    	    THEKERNEL->eeprom_data->G54[0] = x;
-                    	    THEKERNEL->eeprom_data->G54[1] = y;
-                    	    THEKERNEL->eeprom_data->G54[2] = z;
-                    	    THEKERNEL->eeprom_data->G54AB[0] = a;
-                    	    THEKERNEL->eeprom_data->G54AB[1] = b;
-                    	    THEKERNEL->write_eeprom_data();
-                        }  else if (n == 1) {
-                            THEKERNEL->eeprom_data->G55[0] = x;
-                            THEKERNEL->eeprom_data->G55[1] = y;
-                            THEKERNEL->eeprom_data->G55[2] = z;
-                            THEKERNEL->eeprom_data->G55[3] = a;
-                            THEKERNEL->write_eeprom_data();
-                        } else if (n == 2) {
-                            THEKERNEL->eeprom_data->G56[0] = x;
-                            THEKERNEL->eeprom_data->G56[1] = y;
-                            THEKERNEL->eeprom_data->G56[2] = z;
-                            THEKERNEL->eeprom_data->G56[3] = a;
-                            THEKERNEL->write_eeprom_data();
-                        } else if (n == 3) {
-                            THEKERNEL->eeprom_data->G57[0] = x;
-                            THEKERNEL->eeprom_data->G57[1] = y;
-                            THEKERNEL->eeprom_data->G57[2] = z;
-                            THEKERNEL->eeprom_data->G57[3] = a;
-                            THEKERNEL->write_eeprom_data();
-                        } else if (n == 4) {
-                            THEKERNEL->eeprom_data->G58[0] = x;
-                            THEKERNEL->eeprom_data->G58[1] = y;
-                            THEKERNEL->eeprom_data->G58[2] = z;
-                            THEKERNEL->eeprom_data->G58[3] = a;
-                            THEKERNEL->write_eeprom_data();
-                        } else if (n == 5) {
-                            THEKERNEL->eeprom_data->G59[0] = x;
-                            THEKERNEL->eeprom_data->G59[1] = y;
-                            THEKERNEL->eeprom_data->G59[2] = z;
-                            THEKERNEL->eeprom_data->G59[3] = a;
+                        if (n <= 5) {
+                            THEKERNEL->eeprom_data->WCScoord[n][0] = x;
+                            THEKERNEL->eeprom_data->WCScoord[n][1] = y;
+                            THEKERNEL->eeprom_data->WCScoord[n][2] = z;
+                            THEKERNEL->eeprom_data->WCScoord[n][3] = a;
                             THEKERNEL->write_eeprom_data();
                         }
                     }
@@ -808,42 +734,11 @@ void Robot::on_gcode_received(void *argument)
         					THECONVEYOR->wait_for_idle();
                     		// third
                     		THEROBOT->reset_axis_position(gcode->get_value('A')+a, A_AXIS);  
-                    		if (current_wcs == 0) {
-                                THEKERNEL->eeprom_data->G54[0] = x;
-                                THEKERNEL->eeprom_data->G54[1] = y;
-                                THEKERNEL->eeprom_data->G54[2] = z;
-                                THEKERNEL->eeprom_data->G54AB[0] = a;
-                                THEKERNEL->eeprom_data->G54AB[1] = b;
-                                THEKERNEL->write_eeprom_data();
-                            }  else if (current_wcs == 1) {
-                                THEKERNEL->eeprom_data->G55[0] = x;
-                                THEKERNEL->eeprom_data->G55[1] = y;
-                                THEKERNEL->eeprom_data->G55[2] = z;
-                                THEKERNEL->eeprom_data->G55[3] = a;
-                                THEKERNEL->write_eeprom_data();
-                            } else if (current_wcs == 2) {
-                                THEKERNEL->eeprom_data->G56[0] = x;
-                                THEKERNEL->eeprom_data->G56[1] = y;
-                                THEKERNEL->eeprom_data->G56[2] = z;
-                                THEKERNEL->eeprom_data->G56[3] = a;
-                                THEKERNEL->write_eeprom_data();
-                            } else if (current_wcs == 3) {
-                                THEKERNEL->eeprom_data->G57[0] = x;
-                                THEKERNEL->eeprom_data->G57[1] = y;
-                                THEKERNEL->eeprom_data->G57[2] = z;
-                                THEKERNEL->eeprom_data->G57[3] = a;
-                                THEKERNEL->write_eeprom_data();
-                            } else if (current_wcs == 4) {
-                                THEKERNEL->eeprom_data->G58[0] = x;
-                                THEKERNEL->eeprom_data->G58[1] = y;
-                                THEKERNEL->eeprom_data->G58[2] = z;
-                                THEKERNEL->eeprom_data->G58[3] = a;
-                                THEKERNEL->write_eeprom_data();
-                            } else if (current_wcs == 5) {
-                                THEKERNEL->eeprom_data->G59[0] = x;
-                                THEKERNEL->eeprom_data->G59[1] = y;
-                                THEKERNEL->eeprom_data->G59[2] = z;
-                                THEKERNEL->eeprom_data->G59[3] = a;
+                            if (current_wcs <= 5) {
+                                THEKERNEL->eeprom_data->WCScoord[current_wcs][0] = x;
+                                THEKERNEL->eeprom_data->WCScoord[current_wcs][1] = y;
+                                THEKERNEL->eeprom_data->WCScoord[current_wcs][2] = z;
+                                THEKERNEL->eeprom_data->WCScoord[current_wcs][3] = a;
                                 THEKERNEL->write_eeprom_data();
                             }
                     		

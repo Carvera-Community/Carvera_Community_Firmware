@@ -2227,7 +2227,9 @@ void ATCHandler::on_gcode_received(void *argument)
 				THEKERNEL->streams->printf("EEPRROM Data: TLO:%1.3f\n", THEKERNEL->eeprom_data->TLO);
 				THEKERNEL->streams->printf("EEPRROM Data: TOOLMZ:%1.3f\n", THEKERNEL->eeprom_data->TOOLMZ);
 				THEKERNEL->streams->printf("EEPRROM Data: REFMZ:%1.3f\n", THEKERNEL->eeprom_data->REFMZ);
-				THEKERNEL->streams->printf("EEPRROM Data: G54: %1.3f, %1.3f, %1.3f\n", THEKERNEL->eeprom_data->G54[0], THEKERNEL->eeprom_data->G54[1], THEKERNEL->eeprom_data->G54[2]);
+				for (int row = 0; row <2;row++){
+					THEKERNEL->streams->printf("EEPRROM Data: G5%d: %1.3f, %1.3f, %1.3f, %1.3f\n", row , THEKERNEL->eeprom_data->WCScoord[row][0] , THEKERNEL->eeprom_data->WCScoord[row][1] , THEKERNEL->eeprom_data->WCScoord[row][2] , THEKERNEL->eeprom_data->WCScoord[row][3]);
+				}
 			} else if (gcode->subcode == 2) {
 				// Show EEPROM DATA
 				THEKERNEL->erase_eeprom_data();
