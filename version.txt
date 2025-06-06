@@ -3,6 +3,7 @@ To let the Carvera work perfectly, please make sure both your controller softwar
 [1.0.3c1.0.6]
 - properly update to makera 1.0.3, something went wrong in 1.0.5 where not all the code came over
 - update to save G55-59 to EEPROM so they save when the machine is powered off
+- save value to variable #150 when config-set sd zprobe.probe_tip_diameter is run
 [1.0.3c1.0.5]
 - added support for touch probe on carvera air
 - refactor of probing sequences code to combine repeated code

@@ -88,6 +88,14 @@ void Configurator::config_set_command( string parameters, StreamOutput *stream )
     }
     stream->printf( "%s source does not exist\r\n", source.c_str());
 
+
+    
+    if (setting == "zprobe.probe_tip_diameter"){
+        float fvalue = strtof(value.c_str(),nullptr);
+        if (fvalue){ THEKERNEL->probe_tip_diameter = fvalue;} //will fail if the tip diameter is set to 0, but it should not be anyway
+    }
+
+
     /* Live setting not really supported anymore as the cache is never left loaded
         if (value == "") {
             if(!THEKERNEL->config->config_cache_loaded) {
