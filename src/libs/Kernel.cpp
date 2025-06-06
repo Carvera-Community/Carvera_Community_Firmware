@@ -361,6 +361,9 @@ std::string Kernel::get_query_string()
     n = snprintf(buf, sizeof(buf), "|R:%1.4f", robot->r[robot->get_current_wcs()]);
     if(n > sizeof(buf)) n= sizeof(buf);
     str.append(buf, n);
+    n = snprintf(buf, sizeof(buf), "|G:%d", robot->get_current_wcs());
+    if(n > sizeof(buf)) n= sizeof(buf);
+    str.append(buf, n);
     
     // current feedrate and requested fr and override
     float fr= running ? robot->from_millimeters(conveyor->get_current_feedrate()*60.0F) : 0;
