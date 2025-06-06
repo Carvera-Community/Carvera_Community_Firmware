@@ -158,11 +158,15 @@ void Robot::on_module_loaded()
 	float a = THEKERNEL->eeprom_data->G54AB[0];
 	float b = THEKERNEL->eeprom_data->G54AB[1];
     wcs_offsets[0] = wcs_t(x, y, z, a, b);
-    wcs_offsets[1] = wcs_t(THEKERNEL->eeprom_data->G55[0] , THEKERNEL->eeprom_data->G55[1] , THEKERNEL->eeprom_data->G55[2] , THEKERNEL->eeprom_data->G55[3]);
-    wcs_offsets[2] = wcs_t(THEKERNEL->eeprom_data->G56[0] , THEKERNEL->eeprom_data->G56[1] , THEKERNEL->eeprom_data->G56[2] , THEKERNEL->eeprom_data->G56[3]);
-    wcs_offsets[3] = wcs_t(THEKERNEL->eeprom_data->G57[0] , THEKERNEL->eeprom_data->G57[1] , THEKERNEL->eeprom_data->G57[2] , THEKERNEL->eeprom_data->G57[3]);
-    wcs_offsets[4] = wcs_t(THEKERNEL->eeprom_data->G58[0] , THEKERNEL->eeprom_data->G58[1] , THEKERNEL->eeprom_data->G58[2] , THEKERNEL->eeprom_data->G58[3]);
-    wcs_offsets[5] = wcs_t(THEKERNEL->eeprom_data->G59[0] , THEKERNEL->eeprom_data->G59[1] , THEKERNEL->eeprom_data->G59[2] , THEKERNEL->eeprom_data->G59[3]);
+    x = THEKERNEL->eeprom_data->G55[0];
+    y = THEKERNEL->eeprom_data->G55[1];
+    z = THEKERNEL->eeprom_data->G55[2];
+    a = THEKERNEL->eeprom_data->G55[3];
+    wcs_offsets[1] = wcs_t(x , y , z , a , b);
+    wcs_offsets[2] = wcs_t(THEKERNEL->eeprom_data->G56[0] , THEKERNEL->eeprom_data->G56[1] , THEKERNEL->eeprom_data->G56[2] , THEKERNEL->eeprom_data->G56[3],b);
+    wcs_offsets[3] = wcs_t(THEKERNEL->eeprom_data->G57[0] , THEKERNEL->eeprom_data->G57[1] , THEKERNEL->eeprom_data->G57[2] , THEKERNEL->eeprom_data->G57[3],b);
+    wcs_offsets[4] = wcs_t(THEKERNEL->eeprom_data->G58[0] , THEKERNEL->eeprom_data->G58[1] , THEKERNEL->eeprom_data->G58[2] , THEKERNEL->eeprom_data->G58[3],b);
+    wcs_offsets[5] = wcs_t(THEKERNEL->eeprom_data->G59[0] , THEKERNEL->eeprom_data->G59[1] , THEKERNEL->eeprom_data->G59[2] , THEKERNEL->eeprom_data->G59[3],b);
 }
 
 #define ACTUATOR_CHECKSUMS(X) {     \
