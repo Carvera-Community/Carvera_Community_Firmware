@@ -92,18 +92,17 @@ enum ATC_STATE {
 typedef struct {
 	float TLO;
 	// int TOOL;
-	float G54[3];
 //	float G54[5*MAX_WCS];
 	float REFMZ;
 	float TOOLMZ;
 	float reserve;
 	int TOOL;
-	float G54AB[2];
     float perm_vars[20];
     float cos_r_G54;
     float sin_r_G54;
     float r_G54;
     bool probe_tool_not_calibrated;
+    float WCScoord[6][4];
 } EEPROM_data;
 
 typedef struct {
