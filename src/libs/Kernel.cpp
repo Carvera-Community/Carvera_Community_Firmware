@@ -812,30 +812,13 @@ void Kernel::check_eeprom_data()
 		needrewtite = true;
 	}
 	
-	if(isnan(this->eeprom_data->G54[0]))
-	{
-		this->eeprom_data->G54[0] = 0;
-		needrewtite = true;
-	}
-	if(isnan(this->eeprom_data->G54[1]))
-	{
-		this->eeprom_data->G54[1] = 0;
-		needrewtite = true;
-	}
-	if(isnan(this->eeprom_data->G54[2]))
-	{
-		this->eeprom_data->G54[2] = 0;
-		needrewtite = true;
-	}
-	if(isnan(this->eeprom_data->G54AB[0]))
-	{
-		this->eeprom_data->G54AB[0] = 0;
-		needrewtite = true;
-	}
-	if(isnan(this->eeprom_data->G54AB[1]))
-	{
-		this->eeprom_data->G54AB[1] = 0;
-		needrewtite = true;
+	for (int wcs_index = 0; wcs_index < 6; wcs_index++){
+		for (int axis = 0; axis < 2; axis++) {
+			if (isnan(this->eeprom_data->WCScoord[wcs_index][axis])){
+				this->eeprom_data->WCScoord[wcs_index][axis] = 0;
+				needrewtite = true;
+			}
+		}
 	}
     if(!((this->eeprom_data->probe_tool_not_calibrated & ~1) == 0))
 	{
