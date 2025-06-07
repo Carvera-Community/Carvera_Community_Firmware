@@ -2228,7 +2228,7 @@ void ATCHandler::on_gcode_received(void *argument)
 				THEKERNEL->streams->printf("EEPRROM Data: TOOLMZ:%1.3f\n", THEKERNEL->eeprom_data->TOOLMZ);
 				THEKERNEL->streams->printf("EEPRROM Data: REFMZ:%1.3f\n", THEKERNEL->eeprom_data->REFMZ);
 				for (int wcs_index = 0; wcs_index < 6; wcs_index++){
-					THEKERNEL->streams->printf("EEPRROM Data: G5%d: %1.3f, %1.3f, %1.3f, %1.3f\n", wcs_index + 4, THEKERNEL->eeprom_data->WCScoord[wcs_index][0] , THEKERNEL->eeprom_data->WCScoord[wcs_index][1] , THEKERNEL->eeprom_data->WCScoord[wcs_index][2] , THEKERNEL->eeprom_data->WCScoord[wcs_index][3]);
+					THEKERNEL->streams->printf("EEPRROM Data: G5%d: %1.3f, %1.3f, %1.3f, %1.3f | R:%1.3f\n", wcs_index + 4, THEKERNEL->eeprom_data->WCScoord[wcs_index][0] , THEKERNEL->eeprom_data->WCScoord[wcs_index][1] , THEKERNEL->eeprom_data->WCScoord[wcs_index][2] , THEKERNEL->eeprom_data->WCScoord[wcs_index][3], THEKERNEL->eeprom_data->WCSrotation[wcs_index]);
 				}
 			} else if (gcode->subcode == 2) {
 				// Show EEPROM DATA

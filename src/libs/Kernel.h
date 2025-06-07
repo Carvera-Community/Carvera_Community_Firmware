@@ -98,11 +98,9 @@ typedef struct {
 	float reserve;
 	int TOOL;
     float perm_vars[20];
-    float cos_r_G54;
-    float sin_r_G54;
-    float r_G54;
     bool probe_tool_not_calibrated;
     float WCScoord[6][4];
+    float WCSrotation[6];
 } EEPROM_data;
 
 typedef struct {

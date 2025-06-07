@@ -820,27 +820,16 @@ void Kernel::check_eeprom_data()
 	}
 	
 	for (int wcs_index = 0; wcs_index < 6; wcs_index++){
+        if (isnan(this->eeprom_data->WCSrotation[wcs_index])){
+            this->eeprom_data->WCSrotation[wcs_index] = 0;
+            needrewtite = true;
+        }
 		for (int axis = 0; axis < 2; axis++) {
 			if (isnan(this->eeprom_data->WCScoord[wcs_index][axis])){
 				this->eeprom_data->WCScoord[wcs_index][axis] = 0;
 				needrewtite = true;
 			}
 		}
-	}
-    if(isnan(this->eeprom_data->cos_r_G54))
-	{
-		this->eeprom_data->cos_r_G54 = 1;
-		needrewtite = true;
-	}
-    if(isnan(this->eeprom_data->sin_r_G54))
-	{
-		this->eeprom_data->sin_r_G54 = 0;
-		needrewtite = true;
-	}
-    if(isnan(this->eeprom_data->r_G54))
-	{
-		this->eeprom_data->r_G54 = 0;
-		needrewtite = true;
 	}
     if(!((this->eeprom_data->probe_tool_not_calibrated & ~1) == 0))
 	{

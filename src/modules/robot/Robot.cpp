@@ -153,16 +153,18 @@ void Robot::on_module_loaded()
     this->loadToolOffset(tlo);
     this->probe_tool_not_calibrated = THEKERNEL->eeprom_data->probe_tool_not_calibrated;
 
-    // load wcs data from eeprom
-    for (int wcs_index = 0; wcs_index < 6; wcs_index++){
-        wcs_offsets[wcs_index] = wcs_t(THEKERNEL->eeprom_data->WCScoord[wcs_index][0] , THEKERNEL->eeprom_data->WCScoord[wcs_index][1] , THEKERNEL->eeprom_data->WCScoord[wcs_index][2] , THEKERNEL->eeprom_data->WCScoord[wcs_index][3],0);
-    }
+    // init
     for (int i = 0; i < 9UL; i++){
         this->cos_r[i] = 1;
     }
-    this->cos_r[0] = THEKERNEL->eeprom_data->cos_r_G54;
-    this->sin_r[0] = THEKERNEL->eeprom_data->sin_r_G54;
-    this->r[0] = THEKERNEL->eeprom_data->r_G54;
+   
+    // load wcs data from eeprom
+    for (int wcs_index = 0; wcs_index < 6; wcs_index++){
+        wcs_offsets[wcs_index] = wcs_t(THEKERNEL->eeprom_data->WCScoord[wcs_index][0] , THEKERNEL->eeprom_data->WCScoord[wcs_index][1] , THEKERNEL->eeprom_data->WCScoord[wcs_index][2] , THEKERNEL->eeprom_data->WCScoord[wcs_index][3],0);
+        this->r[wcs_index] = THEKERNEL->eeprom_data->WCSrotation[wcs_index];
+        this->cos_r[wcs_index] = cos(this->r[wcs_index] * PI / 180.0);
+        this->sin_r[wcs_index] = sin(this->r[wcs_index] * PI / 180.0);
+    }
 }
 
 #define ACTUATOR_CHECKSUMS(X) {     \
@@ -561,9 +563,7 @@ void Robot::set_current_wcs_by_mpos(float x, float y, float z, float a, float b,
         THEKERNEL->eeprom_data->WCScoord[current_wcs][1] = y;
         THEKERNEL->eeprom_data->WCScoord[current_wcs][2] = z;
         THEKERNEL->eeprom_data->WCScoord[current_wcs][3] = a;
-        THEKERNEL->eeprom_data->cos_r_G54 = this->cos_r[0];
-        THEKERNEL->eeprom_data->sin_r_G54 = this->sin_r[0];
-        THEKERNEL->eeprom_data->r_G54 = this->r[0];
+        THEKERNEL->eeprom_data->WCSrotation[current_wcs] = this->r[current_wcs];
         THEKERNEL->write_eeprom_data();
     }
 
@@ -697,9 +697,7 @@ void Robot::on_gcode_received(void *argument)
                             THEKERNEL->eeprom_data->WCScoord[n][1] = y;
                             THEKERNEL->eeprom_data->WCScoord[n][2] = z;
                             THEKERNEL->eeprom_data->WCScoord[n][3] = a;
-                            THEKERNEL->eeprom_data->cos_r_G54 = this->cos_r[0];
-                            THEKERNEL->eeprom_data->sin_r_G54 = this->sin_r[0];
-                            THEKERNEL->eeprom_data->r_G54 = this->r[0];
+                            THEKERNEL->eeprom_data->WCSrotation[n] = this->r[n];
                             THEKERNEL->write_eeprom_data();
                         }
                     }
