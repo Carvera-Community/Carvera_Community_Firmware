@@ -100,6 +100,7 @@ typedef struct {
     float perm_vars[20];
     bool probe_tool_not_calibrated;
     float WCScoord[6][4];
+    float WCSrotation[6];
 } EEPROM_data;
 
 typedef struct {

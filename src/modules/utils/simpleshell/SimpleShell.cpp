@@ -75,7 +75,7 @@ extern "C" uint32_t  _sbrk(int size);
 // support upload file type definition
 #define FILETYPE	"lz"		//compressed by quicklz
 // version definition
-#define VERSION "1.0.3c1.0.6"
+#define VERSION "1.0.3c1.0.7alpha1"
 
 // command lookup table
 const SimpleShell::ptentry_t SimpleShell::commands_table[] = {
@@ -1537,14 +1537,15 @@ void SimpleShell::grblDP_command( string parameters, StreamOutput *stream)
 
     int n= std::get<1>(v[0]);
     for (int i = 1; i <= n; ++i) {
-        stream->printf("[%s:%1.4f,%1.4f,%1.4f,%1.4f,%1.4f]\n", wcs2gcode(i-1).c_str(),
+        stream->printf("[%s:%1.4f,%1.4f,%1.4f,%1.4f,%1.4f,%1.4f]\n", wcs2gcode(i-1).c_str(),
             THEROBOT->from_millimeters(std::get<0>(v[i])),
             THEROBOT->from_millimeters(std::get<1>(v[i])),
             THEROBOT->from_millimeters(std::get<2>(v[i])),
             //THEROBOT->from_millimeters(std::get<3>(v[i])),
             //THEROBOT->from_millimeters(std::get<4>(v[i])));
             std::get<3>(v[i]),
-            std::get<4>(v[i]));
+            std::get<4>(v[i]),
+            THEROBOT->r[i-1]);
     }
 
     float *rd;
