@@ -79,6 +79,10 @@ void Configurator::config_set_command( string parameters, StreamOutput *stream )
     for(unsigned int i = 0; i < THEKERNEL->config->config_sources.size(); i++) {
         if( THEKERNEL->config->config_sources[i]->is_named(source_checksum) ) {
             if(THEKERNEL->config->config_sources[i]->write(setting, value)) {
+                if (setting == "zprobe.probe_tip_diameter"){
+                    float fvalue = strtof(value.c_str(),nullptr);
+                    if (fvalue){ THEKERNEL->probe_tip_diameter = fvalue;} //will fail if the tip diameter is set to 0, but it should not be anyway
+                }
                 stream->printf( "%s: %s has been set to %s\r\n", source.c_str(), setting.c_str(), value.c_str() );
             } else {
                 stream->printf( "%s: %s not enough space to overwrite existing key/value\r\n", source.c_str(), setting.c_str() );
@@ -87,6 +91,7 @@ void Configurator::config_set_command( string parameters, StreamOutput *stream )
         }
     }
     stream->printf( "%s source does not exist\r\n", source.c_str());
+
 
     /* Live setting not really supported anymore as the cache is never left loaded
         if (value == "") {

@@ -114,7 +114,8 @@
 // It takes care of cutting arcs into segments, same thing for line that are too long
 
 float ROUND_NEAR_HALF(float x) {
-	return roundf(x * 200.0) / 200.0;
+	//return roundf(x * 200.0) / 200.0;	2025.02.05
+	return x;
 }
 
 Robot::Robot()
@@ -151,12 +152,9 @@ void Robot::on_module_loaded()
     this->probe_tool_not_calibrated = THEKERNEL->eeprom_data->probe_tool_not_calibrated;
 
     // load wcs data from eeprom
-	float x = THEKERNEL->eeprom_data->G54[0];
-	float y = THEKERNEL->eeprom_data->G54[1];
-	float z = THEKERNEL->eeprom_data->G54[2];
-	float a = THEKERNEL->eeprom_data->G54AB[0];
-	float b = THEKERNEL->eeprom_data->G54AB[1];
-    wcs_offsets[0] = wcs_t(x, y, z, a, b);
+    for (int wcs_index = 0; wcs_index < 6; wcs_index++){
+        wcs_offsets[wcs_index] = wcs_t(THEKERNEL->eeprom_data->WCScoord[wcs_index][0] , THEKERNEL->eeprom_data->WCScoord[wcs_index][1] , THEKERNEL->eeprom_data->WCScoord[wcs_index][2] , THEKERNEL->eeprom_data->WCScoord[wcs_index][3],0);
+    }
 }
 
 #define ACTUATOR_CHECKSUMS(X) {     \
@@ -306,6 +304,7 @@ void Robot::load_config()
         }
         else
         {
+        	actuators[a]->change_steps_per_mm(THEKERNEL->config->value(motor_checksums[a][3])->by_default(a == 2 ? 2560.0F : 80.0F)->as_number());
         	actuators[a]->change_steps_per_mm(THEKERNEL->config->value(motor_checksums[a][3])->by_default(a == 2 ? 2560.0F : 80.0F)->as_number());
         	actuators[a]->set_max_rate(THEKERNEL->config->value(motor_checksums[a][4])->by_default(3000.0F)->as_number()/60.0F); // it is in mm/min and converted to mm/sec
         }
@@ -544,14 +543,14 @@ void Robot::set_current_wcs_by_mpos(float x, float y, float z, float a, float b)
     }
     THEROBOT->wcs_offsets[current_wcs] = Robot::wcs_t(x, y, z , a , b);
     // save wcs data to eeprom if current wcs = G54
-    if (current_wcs == 0) {
-        THEKERNEL->eeprom_data->G54[0] = x;
-        THEKERNEL->eeprom_data->G54[1] = y;
-        THEKERNEL->eeprom_data->G54[2] = z;
-        THEKERNEL->eeprom_data->G54AB[0] = a;
-        THEKERNEL->eeprom_data->G54AB[1] = b;
+    if (current_wcs <= 5) {
+        THEKERNEL->eeprom_data->WCScoord[current_wcs][0] = x;
+        THEKERNEL->eeprom_data->WCScoord[current_wcs][1] = y;
+        THEKERNEL->eeprom_data->WCScoord[current_wcs][2] = z;
+        THEKERNEL->eeprom_data->WCScoord[current_wcs][3] = a;
         THEKERNEL->write_eeprom_data();
     }
+
 }
 
 //A GCode has been received
@@ -666,13 +665,12 @@ void Robot::on_gcode_received(void *argument)
                         wcs_offsets[n] = wcs_t(x, y, z, a, b);
                         
                 		// save wcs data to eeprom
-                        if (n == 0) {
-                    	    THEKERNEL->eeprom_data->G54[0] = x;
-                    	    THEKERNEL->eeprom_data->G54[1] = y;
-                    	    THEKERNEL->eeprom_data->G54[2] = z;
-                    	    THEKERNEL->eeprom_data->G54AB[0] = a;
-                    	    THEKERNEL->eeprom_data->G54AB[1] = b;
-                    	    THEKERNEL->write_eeprom_data();
+                        if (n <= 5) {
+                            THEKERNEL->eeprom_data->WCScoord[n][0] = x;
+                            THEKERNEL->eeprom_data->WCScoord[n][1] = y;
+                            THEKERNEL->eeprom_data->WCScoord[n][2] = z;
+                            THEKERNEL->eeprom_data->WCScoord[n][3] = a;
+                            THEKERNEL->write_eeprom_data();
                         }
                     }
                 }
@@ -736,14 +734,13 @@ void Robot::on_gcode_received(void *argument)
         					THECONVEYOR->wait_for_idle();
                     		// third
                     		THEROBOT->reset_axis_position(gcode->get_value('A')+a, A_AXIS);  
-                    		if (current_wcs == 0) {
-                    	    THEKERNEL->eeprom_data->G54[0] = x;
-                    	    THEKERNEL->eeprom_data->G54[1] = y;
-                    	    THEKERNEL->eeprom_data->G54[2] = z;
-                    	    THEKERNEL->eeprom_data->G54AB[0] = a;
-                    	    THEKERNEL->eeprom_data->G54AB[1] = b;
-                    	    THEKERNEL->write_eeprom_data();
-                        }
+                            if (current_wcs <= 5) {
+                                THEKERNEL->eeprom_data->WCScoord[current_wcs][0] = x;
+                                THEKERNEL->eeprom_data->WCScoord[current_wcs][1] = y;
+                                THEKERNEL->eeprom_data->WCScoord[current_wcs][2] = z;
+                                THEKERNEL->eeprom_data->WCScoord[current_wcs][3] = a;
+                                THEKERNEL->write_eeprom_data();
+                            }
                     		
                     	} else {
                         	THEROBOT->reset_axis_position(gcode->get_value('A'), A_AXIS);

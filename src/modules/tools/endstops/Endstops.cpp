@@ -105,7 +105,8 @@ enum STATES {
     NOT_HOMING,
     BACK_OFF_HOME,
     MOVE_TO_ORIGIN,
-    LIMIT_TRIGGERED
+    LIMIT_TRIGGERED,
+    A_LIMITE_CHECK
 };
 
 Endstops::Endstops()
@@ -720,7 +721,7 @@ void Endstops::move_to_origin(axis_bitmap_t axis)
 // Called every millisecond in an ISR
 uint32_t Endstops::read_endstops(uint32_t dummy)
 {
-    if(this->status != MOVING_TO_ENDSTOP_SLOW && this->status != MOVING_TO_ENDSTOP_FAST) return 0; // not doing anything we need to monitor for
+    if(this->status != MOVING_TO_ENDSTOP_SLOW && this->status != MOVING_TO_ENDSTOP_FAST && this->status != A_LIMITE_CHECK) return 0; // not doing anything we need to monitor for
 
     // check each homing endstop
     for(auto& e : homing_axis) { // check all axis homing endstops
@@ -733,25 +734,29 @@ uint32_t Endstops::read_endstops(uint32_t dummy)
         if(STEPPER[m]->is_moving()) {
             // if it is moving then we check the associated endstop, and debounce it
             if(e.pin_info->pin.get()) {
-                if(e.pin_info->debounce < debounce_ms) {
-                    e.pin_info->debounce++;
-
-                } else {
-                    if(is_corexy && (m == X_AXIS || m == Y_AXIS)) {
-                        // corexy when moving in X or Y we need to stop both the X and Y motors
-                        STEPPER[X_AXIS]->stop_moving();
-                        STEPPER[Y_AXIS]->stop_moving();
-
-                    }else{
-                        // we signal the motor to stop, which will preempt any moves on that axis
-                        STEPPER[m]->stop_moving();
-                    }
-                    e.pin_info->triggered= true;
-                }
-
+            	if(this->status != A_LIMITE_CHECK)
+                {
+	                if(e.pin_info->debounce < debounce_ms) {
+	                    e.pin_info->debounce++;
+	
+	                } else {
+	            	
+	                    if(is_corexy && (m == X_AXIS || m == Y_AXIS)) {
+	                        // corexy when moving in X or Y we need to stop both the X and Y motors
+	                        STEPPER[X_AXIS]->stop_moving();
+	                        STEPPER[Y_AXIS]->stop_moving();
+	
+	                    }else{
+	                        // we signal the motor to stop, which will preempt any moves on that axis
+	                        STEPPER[m]->stop_moving();
+	                    }
+	                	e.pin_info->triggered= true;
+	                }
+				}
             } else {
                 // The endstop was not hit yet
                 e.pin_info->debounce= 0;
+                e.pin_info->Nontriggered = true;
             }
         }
     }
@@ -785,7 +790,69 @@ void Endstops::home_xy()
     // Wait for axis to have homed
     THECONVEYOR->wait_for_idle();
 }
-
+void Endstops::check_4th(char *data)
+{
+	bool btriggered = true;
+	bool Nontriggered = true;
+	char status = this->status;
+	
+	if(axis_to_home[A_AXIS]) 
+	{		
+		homing_axis[A_AXIS].pin_info->debounce= 0;
+		homing_axis[A_AXIS].pin_info->triggered = false;
+		homing_axis[A_AXIS].pin_info->Nontriggered = false;
+		
+		// Start moving the axes to the origin
+    	this->status = MOVING_TO_ENDSTOP_SLOW;
+    	float delta[A_AXIS+1];
+	    for (size_t j = 0; j <= A_AXIS; ++j) delta[j]= 0;
+	    delta[A_AXIS]= 380; // we go the max
+	    
+	    THEROBOT->delta_move(delta, homing_axis[A_AXIS].fast_rate, A_AXIS+1);
+        // wait for it
+        THECONVEYOR->wait_for_idle();
+        
+        btriggered = homing_axis[A_AXIS].pin_info->triggered;
+		
+		if(btriggered)
+		{			
+    		this->status = A_LIMITE_CHECK;
+    	
+			homing_axis[A_AXIS].pin_info->debounce= 0;
+			homing_axis[A_AXIS].pin_info->triggered = false;
+			homing_axis[A_AXIS].pin_info->Nontriggered = false;
+			for (size_t j = 0; j <= A_AXIS; ++j) delta[j]= 0;
+			delta[A_AXIS]= -380; // we go the negative max
+	    
+		    THEROBOT->delta_move(delta, homing_axis[A_AXIS].fast_rate, A_AXIS+1);
+	        // wait for it
+        	THECONVEYOR->wait_for_idle();
+		}
+		
+    	Nontriggered = homing_axis[A_AXIS].pin_info->Nontriggered;
+		
+		if(btriggered)
+			data[0] = 1;
+		else
+			data[0] = 0;
+			
+		if(Nontriggered)
+			data[1] = 1;
+		else
+			data[1] = 0;
+	
+		axis_bitmap_t bs;
+        bs.set(3);
+        home(bs);
+        // NOTE a rotary delta usually has optical or hall-effect endstops so it is safe to go past them a little bit
+        move_to_origin(bs);
+        // if limit switches are enabled we must back off endstop after setting home
+        back_off_home(bs);
+        THEROBOT->reset_axis_position(0, homing_axis[A_AXIS].axis_index);
+        
+		this->status = status;
+	}
+}
 void Endstops::home(axis_bitmap_t a)
 {
 	bool axis_is_on[homing_axis.size()];
@@ -1487,7 +1554,13 @@ void Endstops::on_get_public_data(void* argument)
         data[1] = motor_alarm_pin.get();
         
         pdr->set_taken();
+    }else if (pdr->second_element_is(get_check_4th_checksum)) {
+    	int index = 0;
+        char *data = static_cast<char *>(pdr->get_data_ptr());
+        check_4th(data);
+        pdr->set_taken();
     }
+    
 }
 
 void Endstops::on_set_public_data(void* argument)

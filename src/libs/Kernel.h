@@ -66,6 +66,7 @@ enum HALT_REASON {
 	PROBE_INVALID			= 12,
 	E_STOP					= 13,
 	POWER_OVERHEATED		= 14,
+	NON_HOME				= 15,
 	// Need to reset when triggered
 	HARD_LIMIT				= 21,
 	MOTOR_ERROR_X			= 22,
@@ -91,15 +92,14 @@ enum ATC_STATE {
 typedef struct {
 	float TLO;
 	// int TOOL;
-	float G54[3];
 //	float G54[5*MAX_WCS];
 	float REFMZ;
 	float TOOLMZ;
 	float reserve;
 	int TOOL;
-	float G54AB[2];
     float perm_vars[20];
     bool probe_tool_not_calibrated;
+    float WCScoord[6][4];
 } EEPROM_data;
 
 typedef struct {
