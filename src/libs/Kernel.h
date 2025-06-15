@@ -144,6 +144,9 @@ class Kernel {
         void set_bad_mcu(bool b) { bad_mcu= b; }
         bool is_bad_mcu() const { return bad_mcu; }
 
+        bool get_stop_request() const { return stop_request; }
+        void set_stop_request(bool f) { stop_request= f; }
+
         void set_uploading(bool f) { uploading = f; }
         bool is_uploading() const { return uploading; }
 
@@ -251,6 +254,7 @@ class Kernel {
             bool ok_per_line:1;
             volatile bool enable_feed_hold:1;
             bool bad_mcu:1;
+            bool stop_request:1;
             volatile bool uploading:1;
             bool laser_mode:1;
             bool vacuum_mode:1;

@@ -63,6 +63,8 @@ Conveyor::Conveyor()
     running = false;
     allow_fetch = false;
     flush= false;
+    continuous_mode = 0;
+    hold_queue= false;
 }
 
 void Conveyor::on_module_loaded()
@@ -88,6 +90,8 @@ void Conveyor::on_halt(void* argument)
 {
     if(argument == nullptr) {
         flush_queue();
+        hold_queue= false;
+        continuous_mode= 0;
     }
 }
 
@@ -191,9 +195,41 @@ void Conveyor::check_queue(bool force)
     }
 }
 
+bool Conveyor::set_continuous_mode(bool f)
+{
+    if(f) {
+        if(queue.is_empty() || !hold_queue) return false;
+
+        // copy the tickinfo of the second block on the queue
+        auto n_actuators= THEROBOT->get_number_registered_motors();
+        Block* b= queue.item_ref(queue.next(queue.tail_i));
+        Block::tickinfo_t *saved= new Block::tickinfo_t[n_actuators];
+        if(saved == nullptr) return false;
+        for(int i = 0; i < n_actuators; ++i) {
+            saved[i]= b->tick_info[i];
+        }
+
+        saved_block= saved;
+        continuous_mode= 1;
+
+    }else{
+        continuous_mode= 0;
+        if(saved_block != nullptr) {
+            Block::tickinfo_t *saved= static_cast<Block::tickinfo_t *>(saved_block);
+            delete [] saved;
+            saved_block= nullptr;
+        }
+    }
+    return true;
+}
+
 // called from step ticker ISR
 bool Conveyor::get_next_block(Block **block)
 {
+    // this is used to allow us to put blocks onto an empty queue and not start until we say so
+    // do not use to hold the queue when it is running otherwise it will stop with zero deceleration
+    if(hold_queue) return false;
+
     // mark entire queue for GC if flush flag is asserted
     if (flush){
         while (queue.isr_tail_i != queue.head_i) {
@@ -205,6 +241,18 @@ bool Conveyor::get_next_block(Block **block)
     this->current_feedrate= 0;
 
     if(THEKERNEL->is_halted() || queue.isr_tail_i == queue.head_i) return false; // we do not have anything to give
+
+    if(continuous_mode > 1){
+            // keep feeding the second in the queue
+            Block *b= queue.item_ref(queue.isr_tail_i);
+            // reset variable parts of the block
+            b->reset(static_cast<Block::tickinfo_t*>(saved_block));
+            b->is_ticking= true;
+            b->recalculate_flag= false;
+            this->current_feedrate= b->nominal_speed;
+            *block= b;
+            return true;
+        }
 
     // wait for queue to fill up, optimizes planning
     if(!allow_fetch) return false;
@@ -227,8 +275,11 @@ bool Conveyor::get_next_block(Block **block)
 // called from step ticker ISR when block is finished, do not do anything slow here
 void Conveyor::block_finished()
 {
-    // we increment the isr_tail_i so we can get the next block
-    queue.isr_tail_i= queue.next(queue.isr_tail_i);
+   if(continuous_mode <= 1){
+        // we increment the isr_tail_i so we can get the next block
+        queue.isr_tail_i= queue.next(queue.isr_tail_i);
+        if(continuous_mode == 1) continuous_mode= 2;
+    }
 }
 
 /*
