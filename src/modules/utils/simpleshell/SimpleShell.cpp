@@ -2171,6 +2171,38 @@ void SimpleShell::jog(string parameters, StreamOutput *stream)
         while(!THEKERNEL->get_stop_request()) {
             THEKERNEL->call_event(ON_IDLE);
             if(THEKERNEL->is_halted()) break;
+
+            // Check soft limits during continuous jogging
+            if(THEROBOT->is_soft_endstop_enabled()) {
+                float current_pos[n_motors];
+                THEROBOT->get_current_machine_position(current_pos);
+                
+                // Calculate brake distance based on current speed and acceleration
+                float brake_distance = (fr * fr) / (2.0F * acc); // v²/(2a)
+                
+                // Check each axis that is homed
+                for (int i = 0; i <= Z_AXIS; ++i) {
+                    if(!THEROBOT->is_homed(i)) continue;
+                    
+                    // Calculate distance to soft limits
+                    float dist_to_min = current_pos[i] - THEROBOT->get_soft_endstop_min(i);
+                    float dist_to_max = THEROBOT->get_soft_endstop_max(i) - current_pos[i];
+                    
+                    // If moving towards a limit and brake distance is greater than distance to limit
+                    if(delta[i] < 0 && !isnan(THEROBOT->get_soft_endstop_min(i)) && 
+                       fabsf(dist_to_min) <= brake_distance) {
+                        // Emergency stop
+                        stream->printf("error:Soft Endstop %c would be exceeded - emergency stop\n", i+'X');
+                        break;
+                    }
+                    if(delta[i] > 0 && !isnan(THEROBOT->get_soft_endstop_max(i)) && 
+                       fabsf(dist_to_max) <= brake_distance) {
+                        // Emergency stop
+                        stream->printf("error:Soft Endstop %c would be exceeded - emergency stop\n", i+'X');
+                        break;
+                    }
+                }
+            }
         }
         THECONVEYOR->set_continuous_mode(false);
         THEKERNEL->set_stop_request(false);
