@@ -88,6 +88,10 @@ void SerialConsole::on_serial_char_received() {
 			halt_flag = true;
 			continue;
 		}
+        if(received == 'Y' - 'A' + 1) { // ^Y
+            THEKERNEL->set_stop_request(true); // generic stop what you are doing request
+            continue;
+        }
         if(THEKERNEL->is_feed_hold_enabled()) {
             if(received == '!') { // safe pause
                 THEKERNEL->set_feed_hold(true);

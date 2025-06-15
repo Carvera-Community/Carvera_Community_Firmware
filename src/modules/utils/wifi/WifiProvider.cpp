@@ -140,6 +140,11 @@ void WifiProvider::receive_wifi_data() {
 	            halt_flag = true;
 	            continue;
 	        }
+			if(WifiData[i] == 'Y' - 'A' + 1) { // ^Y
+	            THEKERNEL->set_stop_request(true); // generic stop what you are doing request
+				THEKERNEL->streams->printf("^Y\n");
+	            continue;
+	        }
 	        if(THEKERNEL->is_feed_hold_enabled()) {
 	            if(WifiData[i] == '!') { // safe pause
 	                THEKERNEL->set_feed_hold(true);
