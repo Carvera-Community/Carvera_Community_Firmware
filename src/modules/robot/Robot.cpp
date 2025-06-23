@@ -1500,7 +1500,11 @@ void Robot::process_move(Gcode *gcode, enum MOTION_MODE_T motion_mode)
         case NONE: break;
 
         case SEEK:
+            // rapid moves are always in mm/min
+            this->push_state();
+            this->inverse_time_mode = false;
             moved = this->append_line(gcode, target, this->seek_rate, delta_e );
+            this->pop_state();
             break;
 
         case LINEAR:
@@ -1906,14 +1910,14 @@ bool Robot::delta_move(const float *delta, float rate_mm_s, uint8_t naxis)
 
     is_g123= false; // we don't want the laser to fire
 
-    bool tmp_itm = inverse_time_mode; // save the current G93/G94 mode
+    this->push_state(); // save the current state
     this->inverse_time_mode = false; // force G94 since delta feedrates are always in mm/sec
     // submit for planning and if moved update machine_position
     bool moved = append_milestone(target, rate_mm_s * seconds_per_minute, 0);
     if(moved) {
         memcpy(machine_position, target, n_motors*sizeof(float));
     }
-    this->inverse_time_mode = tmp_itm; // restore G93/G94
+    this->pop_state(); // restore G93/G94
 
     return moved;
 }
