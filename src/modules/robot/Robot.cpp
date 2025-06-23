@@ -2140,6 +2140,12 @@ bool Robot::append_arc(Gcode * gcode, const float target[], const float offset[]
         // init array for all axis
         memcpy(arc_target, machine_position, n_motors*sizeof(float));
 
+        // for extra axes, calculate per-segment deltas
+        float extra_axis_deltas[n_motors - A_AXIS];
+        for (i = A_AXIS; i < n_motors; i++) {
+            extra_axis_deltas[i - A_AXIS] = (target[i] - machine_position[i]) / segments;
+        }
+
         // Initialize the linear axis
         arc_target[this->plane_axis_2] = this->machine_position[this->plane_axis_2];
 
@@ -2166,6 +2172,11 @@ bool Robot::append_arc(Gcode * gcode, const float target[], const float offset[]
             arc_target[this->plane_axis_0] = center_axis0 + r_axis0;
             arc_target[this->plane_axis_1] = center_axis1 + r_axis1;
             arc_target[this->plane_axis_2] += linear_per_segment;
+
+            // deal with extra axes
+            for (int j = A_AXIS; j < n_motors; j++) {
+                arc_target[j] += extra_axis_deltas[j - A_AXIS];
+            }
 
             // Append this segment to the queue
             bool b= this->append_milestone(arc_target, rate_mm_s, gcode->line);
