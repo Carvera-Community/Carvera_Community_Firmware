@@ -1361,6 +1361,11 @@ void Robot::process_move(Gcode *gcode, enum MOTION_MODE_T motion_mode)
             this->seek_rate = this->to_millimeters( gcode->get_value('F') );
         else
             this->feed_rate = this->to_millimeters( gcode->get_value('F') );
+    } else if (this->inverse_time_mode && motion_mode != SEEK) {
+        THEKERNEL->set_halt_reason(MANUAL);
+        THEKERNEL->call_event(ON_HALT, nullptr);
+        THEKERNEL->streams->printf("Inverse-time feed mode requires F parameter on every G01/G02/G03 line.\n");
+        return;
     }
 
     if(gcode->has_letter('S')) {
