@@ -824,7 +824,7 @@ void Kernel::check_eeprom_data()
             this->eeprom_data->WCSrotation[wcs_index] = 0;
             needrewtite = true;
         }
-		for (int axis = 0; axis < 2; axis++) {
+		for (int axis = 0; axis < 4; axis++) {
 			if (isnan(this->eeprom_data->WCScoord[wcs_index][axis])){
 				this->eeprom_data->WCScoord[wcs_index][axis] = 0;
 				needrewtite = true;
