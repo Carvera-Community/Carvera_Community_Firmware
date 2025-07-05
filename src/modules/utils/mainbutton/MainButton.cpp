@@ -674,43 +674,42 @@ uint32_t MainButton::led_tick(uint32_t dummy)
 	if(state == RUN && p.percent_complete > 0 && p.percent_complete <= 100 && this->main_button_led_progress){
 		if (p.percent_complete > 0 && p.percent_complete <= 20 && this->progress_state == 0){
 			this->progress_state = 1;
-			this->set_progress(0,104,0,1);
+			this->set_progress(0,104,0,0);
 		}else if (p.percent_complete > 20 && p.percent_complete <= 40 && this->progress_state == 1){
 			this->progress_state = 2;
-			this->set_progress(0,104,0,2);
+			this->set_progress(0,104,0,1);
 		}else if (p.percent_complete > 40 && p.percent_complete <= 60 && this->progress_state == 2){
 			this->progress_state = 3;
-			this->set_progress(0,104,0,3);
+			this->set_progress(0,104,0,2);
 		}else if (p.percent_complete > 60 && p.percent_complete <= 80 && this->progress_state == 3){
 			this->progress_state = 4;
-			this->set_progress(0,104,0,4);
-		}else if (p.percent_complete > 80 && p.percent_complete <= 100 && this->progress_state == 4){
+			this->set_progress(0,104,0,3);
+		}else if (p.percent_complete > 80 && p.percent_complete <= 98  && this->progress_state == 4){
 			this->progress_state = 5;
+			this->set_progress(0,104,0,4);
+		}else if (p.percent_complete > 98 && p.percent_complete <= 100 && this->progress_state == 5){
+			this->progress_state = 6;
 			this->set_progress(0,104,0,5);
 		}
 	}
 	else if (state != old_state) 
 	{
+		this->progress_state = 0;
 		old_state = state;
 		switch (state) {
 			case IDLE:
-				this->progress_state = 0;
 				this->set_led_colors(0, 0, 104);
 				break;
 			case RUN:
-				this->progress_state = 0;
 				this->set_led_colors(0, 104, 0);
 				break;
 			case HOME:
-				this->progress_state = 0;
 				this->set_led_colors(104, 24, 0);
 				break;
 			case ALARM:
-				this->progress_state = 0;
 				this->set_led_colors(104, 0, 0);
 			    break;
 			case SLEEP:
-				this->progress_state = 0;
 				this->set_led_colors(104, 104, 104);
 				break;
 		}
