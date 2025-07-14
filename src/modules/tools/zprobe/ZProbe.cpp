@@ -247,7 +247,7 @@ uint32_t ZProbe::read_calibrate(uint32_t dummy)
                 // We have a probe tool; we must make sure we don't move too far.
                 // Store the current Z position for later reporting if necessary.
                 calibrate_current_z = STEPPER[Z_AXIS]->get_current_position();
-                float distance_moved = fabs(calibrate_current_z - calibrate_pin_position);
+                distance_moved = fabs(calibrate_current_z - calibrate_pin_position);
                 // If we've exceeded the calibration distance, set PROBE_FAIL.
                 // The error will be reported in calibrate_Z.
                 if (distance_moved > probe_calibration_safety_margin) {
@@ -755,7 +755,6 @@ bool ZProbe::is_probe_tool() {
 // just probe / calibrate Z using calibrate pin
 void ZProbe::calibrate_Z(Gcode *gcode)
 {
-    THEKERNEL->streams->printf("Start calibrate_Z method \n");
     float z= 0;
     if(gcode->has_letter('Z')) {
         z= gcode->get_value('Z');
@@ -794,7 +793,6 @@ void ZProbe::calibrate_Z(Gcode *gcode)
     // do a delta move which will stop as soon as the probe is triggered, or the distance is reached
     float delta[3]= {0, 0, z};
     THEKERNEL->set_zprobing(true);
-    THEKERNEL->streams->printf("Before delta move \n");
     if(!THEROBOT->delta_move(delta, rate, 3)) {
         gcode->stream->printf("ERROR: Move too small,  %1.3f\n", z);
         THEKERNEL->set_halt_reason(PROBE_FAIL);
@@ -804,7 +802,6 @@ void ZProbe::calibrate_Z(Gcode *gcode)
         return;
     }
     THEKERNEL->set_zprobing(false);
-    THEKERNEL->streams->printf("After delta move\n");
 
     THEKERNEL->conveyor->wait_for_idle();
 
@@ -824,7 +821,7 @@ void ZProbe::calibrate_Z(Gcode *gcode)
         THEKERNEL->call_event(ON_HALT, nullptr);
         gcode->stream->printf("ALARM: Probe failed to trigger within safety margin (%.2fmm)\n", 
                              this->probe_calibration_safety_margin);
-        gcode->stream->printf("Distance moved: %.3f\n", distance_moved, calibrate_current_z, calibrate_pin_position, safety_margin_exceeded);
+        gcode->stream->printf("Distance moved: %.3f\n", distance_moved);
         gcode->stream->printf("Probe pin triggered: %d, position: %.3f\n", probe_detected, probe_pin_position);
         gcode->stream->printf("Calibrate pin triggered: %d, position: %.3f\n", calibrate_detected, calibrate_pin_position);
         gcode->stream->printf("Current position: %.3f\n", THEKERNEL->robot->from_millimeters(pos[Z_AXIS]));
