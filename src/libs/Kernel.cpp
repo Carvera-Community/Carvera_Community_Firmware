@@ -818,6 +818,12 @@ void Kernel::check_eeprom_data()
 		this->eeprom_data->TOOL = 0;
 		needrewtite = true;
 	}
+
+    if(this->eeprom_data->current_wcs > 5 || this->eeprom_data->current_wcs < 0)
+    {
+        this->eeprom_data->current_wcs = 0;
+        needrewtite = true;
+    }
 	
 	for (int wcs_index = 0; wcs_index < 6; wcs_index++){
         if (isnan(this->eeprom_data->WCSrotation[wcs_index])){
