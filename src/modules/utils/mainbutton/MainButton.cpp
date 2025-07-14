@@ -556,11 +556,19 @@ void MainButton::on_set_public_data(void* argument)
 uint32_t MainButton::led_tick(uint32_t dummy)
 {
 	// current running file info
+	void *return_value;
 	void *returned_data;
-	bool ok = PublicData::get_value( player_checksum, get_progress_checksum, &returned_data );
 	struct pad_progress p;
+	bool playing = false;
+	bool ok = PublicData::get_value( player_checksum, is_playing_checksum, &return_value );
 	if (ok) {
-		p =  *static_cast<struct pad_progress *>(returned_data);
+		playing = *static_cast<bool *>(return_value);
+	}
+	if(playing){
+		bool ok = PublicData::get_value( player_checksum, get_progress_checksum, &returned_data );
+		if(ok){
+			p =  *static_cast<struct pad_progress *>(returned_data);
+		}
 	}
 	uint8_t state = THEKERNEL->get_state();
 	switch (state) {
@@ -671,7 +679,7 @@ uint32_t MainButton::led_tick(uint32_t dummy)
 			
 			break;
 	}
-	if(state == RUN && p.percent_complete > 0 && p.percent_complete <= 100 && this->main_button_led_progress){
+	if(state == RUN && playing && this->main_button_led_progress){
 		if (p.percent_complete > 0 && p.percent_complete <= 20 && this->progress_state == 0){
 			this->progress_state = 1;
 			this->set_progress(0,104,0,0);
