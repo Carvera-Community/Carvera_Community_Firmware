@@ -821,7 +821,7 @@ void ZProbe::calibrate_Z(Gcode *gcode)
         THEKERNEL->call_event(ON_HALT, nullptr);
         gcode->stream->printf("ALARM: Probe failed to trigger within safety margin (%.2fmm)\n", 
                              this->probe_calibration_safety_margin);
-        gcode->stream->printf("Distance moved: %.3f\n", distance_moved, calibrate_current_z, calibrate_pin_position, safety_margin_exceeded);
+        gcode->stream->printf("Distance moved: %.3f\n", distance_moved);
         gcode->stream->printf("Probe pin triggered: %d, position: %.3f\n", probe_detected, probe_pin_position);
         gcode->stream->printf("Calibrate pin triggered: %d, position: %.3f\n", calibrate_detected, calibrate_pin_position);
         gcode->stream->printf("Current position: %.3f\n", THEKERNEL->robot->from_millimeters(pos[Z_AXIS]));
