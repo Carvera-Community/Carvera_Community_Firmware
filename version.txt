@@ -1,5 +1,9 @@
 Notice: 
 To let the Carvera work perfectly, please make sure both your controller software and firmware are up to date. For firmware, download the new firmware first, then use the 'update' function to upgrade the firmware, and reset the machine after the update is complete.
+[unreleased]
+- Carvera AIR: Show the file progress with the LED bar (setting: main_button_led_progress)
+- The last active WCS (G54 - G59) can be loaded when "load_last_wcs" is true
+
 [1.0.8c_beta]
 - New firmware version format. The base makera firmware no longer is part of the community version string.
 - Bugfix: After switching to the community firmware the offsets of G54 to G59 are now properly checked for corruption
