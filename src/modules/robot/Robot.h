@@ -182,6 +182,7 @@ class Robot : public Module {
         float max_speeds[3];                                 // Setting : max allowable speed in mm/s for each axis
         float max_speed;                                     // Setting : maximum feedrate in mm/s as specified by F parameter
         bool probe_tool_not_calibrated;
+        bool load_last_wcs;
         float soft_endstop_min[3], soft_endstop_max[3];
 
         uint8_t n_motors;                                    //count of the motors/axis registered
