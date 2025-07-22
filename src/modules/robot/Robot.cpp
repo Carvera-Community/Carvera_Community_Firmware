@@ -105,6 +105,8 @@
 #define ymin_checksum                      CHECKSUM("y_min")
 #define zmin_checksum                      CHECKSUM("z_min")
 
+#define load_last_wcs_checksum             CHECKSUM("load_last_wcs")
+
 #define PI 3.14159265358979323846F // force to be float, do not use M_PI
 
 //#define DEBUG_PRINTF THEKERNEL->streams->printf
@@ -152,6 +154,15 @@ void Robot::on_module_loaded()
     float tlo[3] = {0, 0, THEKERNEL->eeprom_data->TLO};
     this->loadToolOffset(tlo);
     this->probe_tool_not_calibrated = THEKERNEL->eeprom_data->probe_tool_not_calibrated;
+    this->load_last_wcs = THEKERNEL->config->value(load_last_wcs_checksum)->by_default(false)->as_bool();
+    if (this->load_last_wcs)
+    {
+        this->current_wcs = THEKERNEL->eeprom_data->current_wcs;
+    }
+    else
+    {
+        this->current_wcs = 0;  
+    }
 
     // init
     for (int i = 0; i < 9UL; i++){
@@ -717,6 +728,13 @@ void Robot::on_gcode_received(void *argument)
                     current_wcs += gcode->subcode;
                     if(current_wcs >= MAX_WCS) current_wcs = MAX_WCS - 1;
                 }
+                if (current_wcs > 0 && current_wcs < 6) {
+                    THEKERNEL->eeprom_data->current_wcs = current_wcs;
+                    THEKERNEL->write_eeprom_data();
+                }else{
+                    THEKERNEL->eeprom_data->current_wcs = 0;
+                    THEKERNEL->write_eeprom_data();
+                }
                 break;
 
             case 90: this->absolute_mode = true; this->e_absolute_mode = true; break;
@@ -854,7 +872,7 @@ void Robot::on_gcode_received(void *argument)
                 if(!THEKERNEL->is_grbl_mode()) break;
                 // fall through to M2
             case 2: // M2 end of program
-                current_wcs = 0;
+                //current_wcs = 0;
                 absolute_mode = true;
                 seconds_per_minute= 60;
                 break;

@@ -429,6 +429,7 @@ soft_endstop.x_min	-302.0				# Soft Limit X Min Machine Coordinate
 soft_endstop.y_min	-212.0				# Soft Limit Y Min Machine Coordinate
 soft_endstop.z_min	-121.0				# Soft Limit Z Min Machine Coordinate
 
+load_last_wcs false
 
 # Motion
 default_feed_rate 1000					# Feed rate when F parameter is not set (mm/min)
