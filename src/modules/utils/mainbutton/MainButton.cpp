@@ -556,13 +556,12 @@ void MainButton::on_set_public_data(void* argument)
 uint32_t MainButton::led_tick(uint32_t dummy)
 {
 	// current running file info
-	void *return_value;
 	void *returned_data;
 	struct pad_progress p;
 	bool playing = false;
-	bool ok = PublicData::get_value( player_checksum, is_playing_checksum, &return_value );
+	bool ok = PublicData::get_value( player_checksum, is_playing_checksum, &returned_data );
 	if (ok) {
-		playing = *static_cast<bool *>(return_value);
+		playing = *static_cast<bool *>(returned_data);
 	}
 	if(playing){
 		bool ok = PublicData::get_value( player_checksum, get_progress_checksum, &returned_data );
@@ -679,23 +678,23 @@ uint32_t MainButton::led_tick(uint32_t dummy)
 			
 			break;
 	}
-	if(state == RUN && playing && this->main_button_led_progress){
+	if(playing && this->main_button_led_progress && !THEKERNEL->checkled){
 		if (p.percent_complete > 0 && p.percent_complete <= 20 && this->progress_state == 0){
 			this->progress_state = 1;
 			this->set_progress(0,104,0,0);
-		}else if (p.percent_complete > 20 && p.percent_complete <= 40 && this->progress_state == 1){
+		}else if (p.percent_complete > 20 && p.percent_complete <= 40 && (this->progress_state == 1 || this->progress_state == 0)){
 			this->progress_state = 2;
 			this->set_progress(0,104,0,1);
-		}else if (p.percent_complete > 40 && p.percent_complete <= 60 && this->progress_state == 2){
+		}else if (p.percent_complete > 40 && p.percent_complete <= 60 && (this->progress_state == 2 || this->progress_state == 0)){
 			this->progress_state = 3;
 			this->set_progress(0,104,0,2);
-		}else if (p.percent_complete > 60 && p.percent_complete <= 80 && this->progress_state == 3){
+		}else if (p.percent_complete > 60 && p.percent_complete <= 80 && (this->progress_state == 3 || this->progress_state == 0)){
 			this->progress_state = 4;
 			this->set_progress(0,104,0,3);
-		}else if (p.percent_complete > 80 && p.percent_complete <= 98  && this->progress_state == 4){
+		}else if (p.percent_complete > 80 && p.percent_complete <= 98  && (this->progress_state == 4 || this->progress_state == 0)){
 			this->progress_state = 5;
 			this->set_progress(0,104,0,4);
-		}else if (p.percent_complete > 98 && p.percent_complete <= 100 && this->progress_state == 5){
+		}else if (p.percent_complete > 98 && p.percent_complete <= 100 && (this->progress_state == 5 || this->progress_state == 0)){
 			this->progress_state = 6;
 			this->set_progress(0,104,0,5);
 		}
