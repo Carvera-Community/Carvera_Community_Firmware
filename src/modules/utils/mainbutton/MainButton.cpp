@@ -563,12 +563,16 @@ uint32_t MainButton::led_tick(uint32_t dummy)
 	if (ok) {
 		playing = *static_cast<bool *>(returned_data);
 	}
+	// when playing, get the progress
 	if(playing){
 		bool ok = PublicData::get_value( player_checksum, get_progress_checksum, &returned_data );
 		if(ok){
 			p =  *static_cast<struct pad_progress *>(returned_data);
 		}
 	}
+	// get the tool status
+	struct tool_status tool;
+    PublicData::get_value( atc_handler_checksum, get_tool_status_checksum, &tool );
 	uint8_t state = THEKERNEL->get_state();
 	switch (state) {
 		case HOLD:
@@ -585,8 +589,6 @@ uint32_t MainButton::led_tick(uint32_t dummy)
 			break;
 		case TOOL:
 			this->hold_toggle ++;
-			struct tool_status tool;
-    		PublicData::get_value( atc_handler_checksum, get_tool_status_checksum, &tool );
     		switch(tool.target_tool)
     		{
     			case 1:
@@ -678,7 +680,7 @@ uint32_t MainButton::led_tick(uint32_t dummy)
 			
 			break;
 	}
-	if(playing && this->main_button_led_progress && !THEKERNEL->checkled){
+	if(playing && this->main_button_led_progress && !THEKERNEL->checkled && (tool.active_tool == tool.target_tool || tool.target_tool == -1)){
 		if (p.percent_complete > 0 && p.percent_complete <= 20 && this->progress_state == 0){
 			this->progress_state = 1;
 			this->set_progress(0,104,0,0);
