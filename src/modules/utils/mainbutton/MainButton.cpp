@@ -680,7 +680,13 @@ uint32_t MainButton::led_tick(uint32_t dummy)
 			
 			break;
 	}
-	if(playing && this->main_button_led_progress && !THEKERNEL->checkled && (tool.active_tool == tool.target_tool || tool.target_tool == -1)){
+	if(playing 
+		&& p.percent_complete > 0 
+		&& this->main_button_led_progress 
+		&& !THEKERNEL->checkled 
+		&& state == RUN
+	){
+		old_state = RUN;
 		if (p.percent_complete > 0 && p.percent_complete <= 20 && this->progress_state == 0){
 			this->progress_state = 1;
 			this->set_progress(0,104,0,0);
