@@ -1324,6 +1324,9 @@ void ZProbe::probe_boss(bool calibration) //M462
     float mpos[3];
     float old_mpos[3];
 
+    param.x_axis_distance = param.x_axis_distance/2 + param.extra_probe_distance;
+    param.y_axis_distance = param.y_axis_distance/2 + param.extra_probe_distance;
+
     if (calibration){
         param.tool_dia = 0;
     }
@@ -1879,11 +1882,9 @@ void ZProbe::calibrate_probe_boss() //M460.2
     float knownDiameter = 0;
     if (param.x_axis_distance != 0){
         knownDiameter = param.x_axis_distance;
-        param.x_axis_distance = param.x_axis_distance/2 + param.extra_probe_distance;
     }
     if (param.y_axis_distance != 0){
         knownDiameter = param.y_axis_distance;
-        param.y_axis_distance = param.y_axis_distance/2 + param.extra_probe_distance;
     }
 
     if (param.repeat < 1){
