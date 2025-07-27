@@ -1694,8 +1694,14 @@ void ZProbe::probe_axisangle() //M465
 
     if (param.x_axis_distance != 0) {
         probe_x = true;
+        if (param.visualize_path_distance != 0){
+            param.visualize_path_distance = fabs(param.visualize_path_distance) * (param.x_axis_distance / fabs(param.x_axis_distance));
+        }
         param.y_axis_distance = param.side_depth;
     }else{
+        if (param.visualize_path_distance != 0){
+                param.visualize_path_distance = fabs(param.visualize_path_distance) * (param.y_axis_distance / fabs(param.y_axis_distance));
+        }
         param.x_axis_distance = param.side_depth;
     }
 
@@ -1796,20 +1802,20 @@ void ZProbe::probe_axisangle() //M465
 	}
 
     if (param.visualize_path_distance != 0) {
-        //distance between two points:
-        if (param.visualize_path_distance < 0){
-            param.visualize_path_distance = sqrt(  (out_coords.x_positive_x_out - out_coords.y_positive_x_out)
-                                                 * (out_coords.x_positive_x_out - out_coords.y_positive_x_out) 
-                                                 + (out_coords.x_positive_y_out - out_coords.y_positive_y_out)
-                                                 * (out_coords.x_positive_y_out - out_coords.y_positive_y_out));
-        }
         //probe to second position
-        xy_probe_move_alarm_when_hit(POS, 
+        if (probe_x){
+            xy_probe_move_alarm_when_hit(POS, 
+                                        param.probe_g38_subcode, 
+                                        THEROBOT->from_millimeters(param.visualize_path_distance * cos(THEKERNEL->probe_outputs[2] * pi/180)), 
+                                        THEROBOT->from_millimeters(param.visualize_path_distance * sin(THEKERNEL->probe_outputs[2] * pi/180 )), 
+                                        param.feed_rate);
+        }else{
+            xy_probe_move_alarm_when_hit(POS, 
                                     param.probe_g38_subcode, 
-                                    THEROBOT->from_millimeters(param.visualize_path_distance * cos(THEKERNEL->probe_outputs[2] * pi/180)), 
-                                    THEROBOT->from_millimeters(param.visualize_path_distance * sin(THEKERNEL->probe_outputs[2] * pi/180 )), 
+                                    THEROBOT->from_millimeters(param.visualize_path_distance * cos((THEKERNEL->probe_outputs[2] + 90) * pi/180)), 
+                                    THEROBOT->from_millimeters(param.visualize_path_distance * sin((THEKERNEL->probe_outputs[2] + 90) * pi/180 )), 
                                     param.feed_rate);
-
+        }
         //return to center position
         THECONVEYOR->wait_for_idle();
         coordinated_move(out_coords.origin_x, out_coords.origin_y, NAN, param.rapid_rate );
