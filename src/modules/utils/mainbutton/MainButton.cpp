@@ -96,7 +96,7 @@ void MainButton::on_module_loaded()
 	else if(CARVERA_AIR == THEKERNEL->factory_set->MachineModel)
     {
 		//this->main_button_led_progress = THEKERNEL->config->value( main_button_led_progress_checksum )->by_default(false)->as_bool();
-		this->main_button_led_progress = false
+		this->main_button_led_progress = false;
     	this->e_stop.from_string( THEKERNEL->config->value( e_stop_pin_checksum )->by_default("0.20^")->as_string())->as_input();
     }
     this->PS12.from_string( THEKERNEL->config->value( ps12_pin_checksum )->by_default("0.22")->as_string())->as_output();
