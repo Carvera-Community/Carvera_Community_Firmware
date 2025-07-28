@@ -1,5 +1,26 @@
 Notice: 
 To let the Carvera work perfectly, please make sure both your controller software and firmware are up to date. For firmware, download the new firmware first, then use the 'update' function to upgrade the firmware, and reset the machine after the update is complete.
+[unreleased]
+- Carvera AIR: Show the file progress with the LED bar (setting: main_button_led_progress)
+- The last active WCS (G54 - G59) can be loaded when "load_last_wcs" is true
+
+[1.0.8c_beta]
+- New firmware version format. The base makera firmware no longer is part of the community version string.
+- Bugfix: After switching to the community firmware the offsets of G54 to G59 are now properly checked for corruption
+- Includes the WCS rotation support
+
+[1.0.3c1.0.7alpha1]
+- Added WCS (Work Coordinate System) rotation support
+- Alpha release - test thoroughly before production use
+- G54-G59 coordinate system rotations are stored in EEPROM
+- G59.1-G59.3 coordinate systems have temporary rotation storage
+- G10 L20 R<angle in degrees> P0 rotates the current coordinate system
+- G10 L20 R<angle in degrees> P3 rotates G56 regardless of current WCS (P1 is G54, P2 is G55...)
+- Arc moves (G2/G3) now properly apply rotation transforms to I, J, K parameters
+- Relative moves (G91) support rotation for both individual and combined X/Y movements
+- Enhanced DP diagnostic command ("$#") displays rotation angle as 6th parameter in WCS display
+- Enhanced M498 command displays rotation angle of stored work coordinate systems
+- Probe system now considers WCS rotation: Probing sequences are run in the rotated coordinate system
 [1.0.3c1.0.6]
 - properly update to makera 1.0.3, something went wrong in 1.0.5 where not all the code came over
 - update to save G55-59 to EEPROM so they save when the machine is powered off

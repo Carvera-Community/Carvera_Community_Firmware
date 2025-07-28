@@ -329,6 +329,8 @@ main_button_poll_frequency					20				# Main button pool frequency
 main_button_long_press_time					3000			# Long press time
 # Main Button Special Function when long pressed
 main_button_long_press_enable    			None  			#When the Main button long press,Enalbe the special function
+# Main Button LED Special Functions
+main_button_led_progress					false
 
 # Power control
 #ps12_pin									0.22				# 12V power pin
@@ -427,6 +429,7 @@ soft_endstop.x_min	-302.0				# Soft Limit X Min Machine Coordinate
 soft_endstop.y_min	-212.0				# Soft Limit Y Min Machine Coordinate
 soft_endstop.z_min	-121.0				# Soft Limit Z Min Machine Coordinate
 
+load_last_wcs false
 
 # Motion
 default_feed_rate 1000					# Feed rate when F parameter is not set (mm/min)

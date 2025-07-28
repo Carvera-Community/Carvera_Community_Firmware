@@ -358,6 +358,13 @@ std::string Kernel::get_query_string()
         str.append(buf, n);
     }
 
+    n = snprintf(buf, sizeof(buf), "|R:%1.4f", robot->r[robot->get_current_wcs()]);
+    if(n > sizeof(buf)) n= sizeof(buf);
+    str.append(buf, n);
+    n = snprintf(buf, sizeof(buf), "|G:%d", robot->get_current_wcs());
+    if(n > sizeof(buf)) n= sizeof(buf);
+    str.append(buf, n);
+    
     // current feedrate and requested fr and override
     float fr= running ? robot->from_millimeters(conveyor->get_current_feedrate()*60.0F) : 0;
     float frr= robot->from_millimeters(robot->get_feed_rate());
@@ -811,9 +818,19 @@ void Kernel::check_eeprom_data()
 		this->eeprom_data->TOOL = 0;
 		needrewtite = true;
 	}
+
+    if(this->eeprom_data->current_wcs > 5 || this->eeprom_data->current_wcs < 0)
+    {
+        this->eeprom_data->current_wcs = 0;
+        needrewtite = true;
+    }
 	
 	for (int wcs_index = 0; wcs_index < 6; wcs_index++){
-		for (int axis = 0; axis < 2; axis++) {
+        if (isnan(this->eeprom_data->WCSrotation[wcs_index])){
+            this->eeprom_data->WCSrotation[wcs_index] = 0;
+            needrewtite = true;
+        }
+		for (int axis = 0; axis < 4; axis++) {
 			if (isnan(this->eeprom_data->WCScoord[wcs_index][axis])){
 				this->eeprom_data->WCScoord[wcs_index][axis] = 0;
 				needrewtite = true;

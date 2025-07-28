@@ -405,6 +405,7 @@ soft_endstop.x_min	-371.0				# Soft Limit X Min Machine Coordinate
 soft_endstop.y_min	-250.0				# Soft Limit Y Min Machine Coordinate
 soft_endstop.z_min	-135.0				# Soft Limit Z Min Machine Coordinate
 
+load_last_wcs false
 
 # Motion
 default_feed_rate 1000					# Feed rate when F parameter is not set (mm/min)
@@ -471,4 +472,6 @@ wp.max_voltage								4.1			# Wireless probe charge cut-off voltage
 
 
 # Other settings for future use
+
+
 

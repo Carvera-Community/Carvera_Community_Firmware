@@ -32,6 +32,7 @@ struct probe_parameters{
     float y_rotated_x;
     float y_rotated_y;
     float rotation_angle;
+    float rotation_angle_mcs;
     float tool_dia;
     float half_tool_dia_rotated_x_x;
     float half_tool_dia_rotated_x_y;
