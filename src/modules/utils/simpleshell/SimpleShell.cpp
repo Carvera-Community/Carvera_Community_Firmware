@@ -2108,8 +2108,19 @@ void SimpleShell::jog(string parameters, StreamOutput *stream)
     // this would result in continuous movement, not a good thing.
     // so check if stop request is true and abort if it is, this means we must leave stop request false after this
     if(THEKERNEL->get_stop_request()) {
-        THEKERNEL->set_stop_request(false);
-        stream->printf("ok\n");
+        if((us_ticker_read() / 1000) - THEKERNEL->get_stop_request_time() > 500) {
+            stream->printf("Stop request timeout\n");
+            THEKERNEL->set_stop_request(false);
+        }else{
+            THEKERNEL->set_stop_request(false);
+            stream->printf("ok\n");
+            return;
+        }
+    }
+
+    if(THEKERNEL->get_internal_stop_request()) {
+        THEKERNEL->set_internal_stop_request(false);
+        stream->printf("Internal stop request reset\n");
         return;
     }
 
@@ -2168,7 +2179,7 @@ void SimpleShell::jog(string parameters, StreamOutput *stream)
         THECONVEYOR->set_hold(false);
         THECONVEYOR->force_queue();
 
-        while(!THEKERNEL->get_stop_request()) {
+        while(!THEKERNEL->get_stop_request() && !THEKERNEL->get_internal_stop_request()) {
             THEKERNEL->call_event(ON_IDLE);
             if(THEKERNEL->is_halted()) break;
 
@@ -2190,15 +2201,13 @@ void SimpleShell::jog(string parameters, StreamOutput *stream)
                     
                     // If moving towards a limit and brake distance is greater than distance to limit
                     if(delta[i] < 0 && !isnan(THEROBOT->get_soft_endstop_min(i)) && 
-                       fabsf(dist_to_min) <= brake_distance) {
-                        // Emergency stop
-                        stream->printf("error:Soft Endstop %c would be exceeded - emergency stop\n", i+'X');
+                       fabsf(dist_to_min) <= 2 * brake_distance) {
+                        THEKERNEL->set_internal_stop_request(true);
                         break;
                     }
                     if(delta[i] > 0 && !isnan(THEROBOT->get_soft_endstop_max(i)) && 
-                       fabsf(dist_to_max) <= brake_distance) {
-                        // Emergency stop
-                        stream->printf("error:Soft Endstop %c would be exceeded - emergency stop\n", i+'X');
+                       fabsf(dist_to_max) <= 2 * brake_distance) {
+                        THEKERNEL->set_internal_stop_request(true);
                         break;
                     }
                 }
