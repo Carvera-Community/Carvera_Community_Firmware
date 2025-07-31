@@ -8,6 +8,7 @@
 #include <string>
 #include <stdarg.h>
 using std::string;
+#include "mbed.h" // for us_ticker_read()
 #include "libs/Module.h"
 #include "libs/Kernel.h"
 #include "libs/nuts_bolts.h"
@@ -89,7 +90,12 @@ void SerialConsole::on_serial_char_received() {
 			continue;
 		}
         if(received == 'Y' - 'A' + 1) { // ^Y
-            THEKERNEL->set_stop_request(true); // generic stop what you are doing request
+            if(THEKERNEL->get_internal_stop_request()) {
+                THEKERNEL->set_internal_stop_request(false);
+            } else {
+                THEKERNEL->set_stop_request(true); // generic stop what you are doing request
+                THEKERNEL->set_stop_request_time(us_ticker_read() / 1000);
+            }
             continue;
         }
         if(THEKERNEL->is_feed_hold_enabled()) {
