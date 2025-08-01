@@ -544,6 +544,9 @@ void Robot::check_max_actuator_speeds()
 
 void Robot::set_current_wcs_by_mpos(float x, float y, float z, float a, float b, float r)
 {
+    bool recalculate_z_offset = false;
+    float delta_ref_mz = 0;
+
     if(isnan(x)){
         x = std::get<X_AXIS>(wcs_offsets[current_wcs]);
     }
@@ -553,6 +556,10 @@ void Robot::set_current_wcs_by_mpos(float x, float y, float z, float a, float b,
     if(isnan(z)){
         z = std::get<Z_AXIS>(wcs_offsets[current_wcs]);
     }else{
+        if (THEKERNEL->eeprom_data->REFMZ != THEKERNEL->eeprom_data->TOOLMZ) {
+            delta_ref_mz = THEKERNEL->eeprom_data->TOOLMZ - THEKERNEL->eeprom_data->REFMZ;
+            recalculate_z_offset = true;
+        }
         PublicData::set_value(atc_handler_checksum, set_ref_tool_mz_checksum, nullptr);
         this->clearToolOffset();
     }
@@ -575,6 +582,23 @@ void Robot::set_current_wcs_by_mpos(float x, float y, float z, float a, float b,
         THEKERNEL->eeprom_data->WCScoord[current_wcs][2] = z;
         THEKERNEL->eeprom_data->WCScoord[current_wcs][3] = a;
         THEKERNEL->eeprom_data->WCSrotation[current_wcs] = this->r[current_wcs];
+    }
+
+    // recalculate z offset for all WCS other than the current one if a different tool is selected
+    if (recalculate_z_offset) {
+        for (int i = 0; i < MAX_WCS; i++) {
+            if (i != current_wcs) {
+                std::tie(x, y, z, a, b) = wcs_offsets[i];
+                z += delta_ref_mz;
+                wcs_offsets[i] = wcs_t(x, y, z, a, b);
+                if (i <= 5) {
+                    THEKERNEL->eeprom_data->WCScoord[i][2] = z;
+                }
+            }
+        }
+    }
+    // save eeprom data if the current WCS is 0-5 or the Z offset is recalculated
+    if (current_wcs <= 5 || recalculate_z_offset) {
         THEKERNEL->write_eeprom_data();
     }
 
@@ -629,8 +653,9 @@ void Robot::on_gcode_received(void *argument)
                     if(n == 0) n = current_wcs; // set current coordinate system
                     else --n;
                     if(n < MAX_WCS) {
+                        bool recalculate_z_offset = false;
+                        float delta_ref_mz = 0;
                         float x, y, z, a, b;
-                        float r;
                         std::tie(x, y, z, a, b) = wcs_offsets[n];
                         wcs_t pos= mcs2selected_wcs(machine_position, n);
                         // notify atc module to change ref tool mcs if Z wcs offset is chaned
@@ -641,8 +666,13 @@ void Robot::on_gcode_received(void *argument)
                                 THEKERNEL->set_halt_reason(CALIBRATE_FAIL);
                                 return;
                             }
+                            if (THEKERNEL->eeprom_data->REFMZ != THEKERNEL->eeprom_data->TOOLMZ) {
+                                delta_ref_mz = THEKERNEL->eeprom_data->TOOLMZ - THEKERNEL->eeprom_data->REFMZ;
+                                recalculate_z_offset = true;
+                            }
                         	PublicData::set_value(atc_handler_checksum, set_ref_tool_mz_checksum, nullptr);
                         	this->clearToolOffset();
+                            
                         }
                         if(gcode->has_letter('R')){
                             this->r[n] = gcode->get_value('R');
@@ -709,6 +739,23 @@ void Robot::on_gcode_received(void *argument)
                             THEKERNEL->eeprom_data->WCScoord[n][2] = z;
                             THEKERNEL->eeprom_data->WCScoord[n][3] = a;
                             THEKERNEL->eeprom_data->WCSrotation[n] = this->r[n];
+                        }
+
+                        // recalculate z offset for all WCS other than the current one if a different tool is selected
+                        if (recalculate_z_offset) {
+                            for (int i = 0; i < MAX_WCS; i++) {
+                                if (i != n) {
+                                    std::tie(x, y, z, a, b) = wcs_offsets[i];
+                                    z += delta_ref_mz;
+                                    wcs_offsets[i] = wcs_t(x, y, z, a, b);
+                                    if (i <= 5) {
+                                        THEKERNEL->eeprom_data->WCScoord[i][2] = z;
+                                    }
+                                }
+                            }
+                        }
+                        // save eeprom data if the current WCS is 0-5 or the Z offset is recalculated
+                        if (n <= 5 || recalculate_z_offset) {
                             THEKERNEL->write_eeprom_data();
                         }
                     }
