@@ -1649,12 +1649,26 @@ bool Robot::append_milestone(const float target[], float rate_mm_s, unsigned int
         compensationTransform(transformed_target, false, false);
     }
 
+    bool move= false;
+    float sos= 0; // sum of squares for just primary axis (XYZ usually)
+
+    // find distance moved by each axis, use transformed target from the current compensated machine position
+    for (size_t i = 0; i < n_motors; i++) {
+        deltas[i] = transformed_target[i] - compensated_machine_position[i];
+        if(fabsf(deltas[i]) < 0.00001F) continue;
+        // at least one non zero delta
+        move = true;
+        if(i < N_PRIMARY_AXIS) {
+            sos += powf(deltas[i], 2);
+        }
+    }
+
     // check soft endstops only for homed axis that are enabled
     if(soft_endstop_enabled && !THEKERNEL->is_zprobing()) {
         for (int i = 0; i <= Z_AXIS; ++i) {
             if(!is_homed(i)) continue;
-            if( (!isnan(soft_endstop_min[i]) && transformed_target[i] < soft_endstop_min[i]) || (!isnan(soft_endstop_max[i]) && transformed_target[i] > soft_endstop_max[i]) ) {
-                if(soft_endstop_halt) {
+            if( (!isnan(soft_endstop_min[i]) && transformed_target[i] < soft_endstop_min[i]) && deltas[i] < 0 || (!isnan(soft_endstop_max[i]) && transformed_target[i] > soft_endstop_max[i]) && deltas[i] > 0) {
+                if(soft_endstop_halt && !THECONVEYOR->is_continuous_mode()) {
                     if(THEKERNEL->is_grbl_mode()) {
                         THEKERNEL->streams->printf("error:");
                     }else{
@@ -1670,7 +1684,7 @@ bool Robot::append_milestone(const float target[], float rate_mm_s, unsigned int
                     // TODO VERY hard to do need to go back and change the target, and calculate intercept with the edge
                     // and store all preceding vectors that have on eor more points ourtside of bounds so we can create a propper clip against the boundaries
 
-                } else {
+                } else if (!THECONVEYOR->is_continuous_mode()) {
                     // ignore it
                     if(THEKERNEL->is_grbl_mode()) {
                         THEKERNEL->streams->printf("error:");
@@ -1681,21 +1695,6 @@ bool Robot::append_milestone(const float target[], float rate_mm_s, unsigned int
                     return false;
                 }
             }
-        }
-    }
-
-
-    bool move= false;
-    float sos= 0; // sum of squares for just primary axis (XYZ usually)
-
-    // find distance moved by each axis, use transformed target from the current compensated machine position
-    for (size_t i = 0; i < n_motors; i++) {
-        deltas[i] = transformed_target[i] - compensated_machine_position[i];
-        if(fabsf(deltas[i]) < 0.00001F) continue;
-        // at least one non zero delta
-        move = true;
-        if(i < N_PRIMARY_AXIS) {
-            sos += powf(deltas[i], 2);
         }
     }
 
