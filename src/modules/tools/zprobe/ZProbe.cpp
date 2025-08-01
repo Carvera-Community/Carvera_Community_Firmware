@@ -1323,6 +1323,11 @@ void ZProbe::probe_boss(bool calibration) //M462
     
     float mpos[3];
     float old_mpos[3];
+    bool probe_x_axis = false;
+
+    if (param.x_axis_distance != 0){
+        probe_x_axis = true;
+    }
 
     param.x_axis_distance = param.x_axis_distance/2 + param.extra_probe_distance;
     param.y_axis_distance = param.y_axis_distance/2 + param.extra_probe_distance;
@@ -1364,7 +1369,7 @@ void ZProbe::probe_boss(bool calibration) //M462
         //goto clearance height
         coordinated_move(NAN, NAN, param.clearance_world_pos, param.rapid_rate);
         THECONVEYOR->wait_for_idle();
-        if (param.x_axis_distance != 0) {
+        if (probe_x_axis) {
             // return if probe touches wall during outside move
             if (xy_probe_move_alarm_when_hit(POS, param.probe_g38_subcode, param.x_rotated_x, param.x_rotated_y, param.feed_rate) == 1){
                 return;

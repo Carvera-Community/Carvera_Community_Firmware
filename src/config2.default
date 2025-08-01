@@ -329,8 +329,6 @@ main_button_poll_frequency					20				# Main button pool frequency
 main_button_long_press_time					3000			# Long press time
 # Main Button Special Function when long pressed
 main_button_long_press_enable    			None  			#When the Main button long press,Enalbe the special function
-# Main Button LED Special Functions
-main_button_led_progress					false
 
 # Power control
 #ps12_pin									0.22				# 12V power pin

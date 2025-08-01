@@ -31,7 +31,6 @@ using namespace std;
 #define main_button_LED_G_pin_checksum    			CHECKSUM("main_button_LED_G_pin")
 #define main_button_LED_B_pin_checksum    			CHECKSUM("main_button_LED_B_pin")
 #define main_button_poll_frequency_checksum			CHECKSUM("main_button_poll_frequency")
-#define main_button_led_progress_checksum			CHECKSUM("main_button_led_progress")
 #define main_long_press_time_ms_checksum			CHECKSUM("main_button_long_press_time")
 #define main_button_long_press_checksum				CHECKSUM("main_button_long_press_enable")
 
@@ -62,8 +61,6 @@ MainButton::MainButton()
     this->light_countdown_us = us_ticker_read();
     this->power_fan_countdown_us = us_ticker_read();
     this->old_state = IDLE;
-	this->progress_state = 0;
-	this->main_button_led_progress = false;
 }
 
 void MainButton::on_module_loaded()
@@ -95,8 +92,6 @@ void MainButton::on_module_loaded()
     }
 	else if(CARVERA_AIR == THEKERNEL->factory_set->MachineModel)
     {
-		//this->main_button_led_progress = THEKERNEL->config->value( main_button_led_progress_checksum )->by_default(false)->as_bool();
-		this->main_button_led_progress = false;
     	this->e_stop.from_string( THEKERNEL->config->value( e_stop_pin_checksum )->by_default("0.20^")->as_string())->as_input();
     }
     this->PS12.from_string( THEKERNEL->config->value( ps12_pin_checksum )->by_default("0.22")->as_string())->as_output();
@@ -556,24 +551,6 @@ void MainButton::on_set_public_data(void* argument)
 }
 uint32_t MainButton::led_tick(uint32_t dummy)
 {
-	// current running file info
-	void *returned_data;
-	struct pad_progress p;
-	bool playing = false;
-	bool ok = PublicData::get_value( player_checksum, is_playing_checksum, &returned_data );
-	if (ok) {
-		playing = *static_cast<bool *>(returned_data);
-	}
-	// when playing, get the progress
-	if(playing){
-		bool ok = PublicData::get_value( player_checksum, get_progress_checksum, &returned_data );
-		if(ok){
-			p =  *static_cast<struct pad_progress *>(returned_data);
-		}
-	}
-	// get the tool status
-	struct tool_status tool;
-    PublicData::get_value( atc_handler_checksum, get_tool_status_checksum, &tool );
 	uint8_t state = THEKERNEL->get_state();
 	switch (state) {
 		case HOLD:
@@ -590,6 +567,8 @@ uint32_t MainButton::led_tick(uint32_t dummy)
 			break;
 		case TOOL:
 			this->hold_toggle ++;
+			struct tool_status tool;
+    		PublicData::get_value( atc_handler_checksum, get_tool_status_checksum, &tool );
     		switch(tool.target_tool)
     		{
     			case 1:
@@ -681,36 +660,8 @@ uint32_t MainButton::led_tick(uint32_t dummy)
 			
 			break;
 	}
-	if(playing 
-		&& p.percent_complete > 0 
-		&& this->main_button_led_progress 
-		&& !THEKERNEL->checkled 
-		&& state == RUN
-	){
-		old_state = RUN;
-		if (p.percent_complete > 0 && p.percent_complete <= 20 && this->progress_state == 0){
-			this->progress_state = 1;
-			this->set_progress(0,104,0,0);
-		}else if (p.percent_complete > 20 && p.percent_complete <= 40 && (this->progress_state == 1 || this->progress_state == 0)){
-			this->progress_state = 2;
-			this->set_progress(0,104,0,1);
-		}else if (p.percent_complete > 40 && p.percent_complete <= 60 && (this->progress_state == 2 || this->progress_state == 0)){
-			this->progress_state = 3;
-			this->set_progress(0,104,0,2);
-		}else if (p.percent_complete > 60 && p.percent_complete <= 80 && (this->progress_state == 3 || this->progress_state == 0)){
-			this->progress_state = 4;
-			this->set_progress(0,104,0,3);
-		}else if (p.percent_complete > 80 && p.percent_complete <= 98  && (this->progress_state == 4 || this->progress_state == 0)){
-			this->progress_state = 5;
-			this->set_progress(0,104,0,4);
-		}else if (p.percent_complete > 98 && p.percent_complete <= 100 && (this->progress_state == 5 || this->progress_state == 0)){
-			this->progress_state = 6;
-			this->set_progress(0,104,0,5);
-		}
-	}
-	else if (state != old_state) 
+	if (state != old_state) 
 	{
-		this->progress_state = 0;
 		old_state = state;
 		switch (state) {
 			case IDLE:
@@ -741,30 +692,6 @@ uint32_t MainButton::led_tick(uint32_t dummy)
 	return 0;
 }
 
-void MainButton::set_progress(unsigned char R, unsigned char G, unsigned char B, unsigned char num){
-	__disable_irq();
-	switch(num){
-		case 0:
-			this->set_led_color(0,0,0,0,0,0,0,0,0,0,0,0,0,0,0);
-			break;
-		case 1:
-			this->set_led_color(R,G,B,0,0,0,0,0,0,0,0,0,0,0,0);
-			break;
-		case 2:
-			this->set_led_color(R,G,B,R,G,B,0,0,0,0,0,0,0,0,0);
-			break;
-		case 3:
-			this->set_led_color(R,G,B,R,G,B,R,G,B,0,0,0,0,0,0);
-			break;
-		case 4:
-				this->set_led_color(R,G,B,R,G,B,R,G,B,R,G,B,0,0,0);
-			break;
-		case 5:
-			this->set_led_color(R,G,B,R,G,B,R,G,B,R,G,B,R,G,B);
-			break;
-	}
-	__enable_irq();
-}
 void MainButton::set_led_color(unsigned char R1, unsigned char G1, unsigned char B1,unsigned char R2, unsigned char G2, unsigned char B2,unsigned char R3, unsigned char G3, unsigned char B3,unsigned char R4, unsigned char G4, unsigned char B4,unsigned char R5, unsigned char G5, unsigned char B5)
 {
 	unsigned char temp, j;
