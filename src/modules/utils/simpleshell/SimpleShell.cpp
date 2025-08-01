@@ -2121,7 +2121,6 @@ void SimpleShell::jog(string parameters, StreamOutput *stream)
     if(THEKERNEL->get_internal_stop_request()) {
         THEKERNEL->set_internal_stop_request(false);
         stream->printf("Internal stop request reset\n");
-        return;
     }
 
     // set feedrate, either scale of max or actual feedrate
