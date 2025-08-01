@@ -2230,6 +2230,8 @@ void ATCHandler::on_gcode_received(void *argument)
 				for (int wcs_index = 0; wcs_index < 6; wcs_index++){
 					THEKERNEL->streams->printf("EEPRROM Data: G5%d: %1.3f, %1.3f, %1.3f, %1.3f | R:%1.3f\n", wcs_index + 4, THEKERNEL->eeprom_data->WCScoord[wcs_index][0] , THEKERNEL->eeprom_data->WCScoord[wcs_index][1] , THEKERNEL->eeprom_data->WCScoord[wcs_index][2] , THEKERNEL->eeprom_data->WCScoord[wcs_index][3], THEKERNEL->eeprom_data->WCSrotation[wcs_index]);
 				}
+				THEKERNEL->streams->printf("EEPRROM Data: Probe Tool Not Calibrated:%d\n", THEKERNEL->eeprom_data->probe_tool_not_calibrated);
+				THEKERNEL->streams->printf("EEPRROM Data: Last Active WCS:%d\n", THEKERNEL->eeprom_data->current_wcs);
 			} else if (gcode->subcode == 2) {
 				// Show EEPROM DATA
 				THEKERNEL->erase_eeprom_data();
