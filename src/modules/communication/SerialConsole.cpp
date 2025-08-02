@@ -98,6 +98,10 @@ void SerialConsole::on_serial_char_received() {
             }
             continue;
         }
+        if(received == 'Z' - 'A' + 1) { // ^Z
+            THEKERNEL->set_keep_alive_request(true);
+            continue;
+        }
         if(THEKERNEL->is_feed_hold_enabled()) {
             if(received == '!') { // safe pause
                 THEKERNEL->set_feed_hold(true);

@@ -145,6 +145,10 @@ void WifiProvider::receive_wifi_data() {
 				THEKERNEL->streams->printf("^Y\n");
 	            continue;
 	        }
+			if(WifiData[i] == 'Z' - 'A' + 1) { // ^Z
+				THEKERNEL->set_keep_alive_request(true);
+				continue;
+			}
 	        if(THEKERNEL->is_feed_hold_enabled()) {
 	            if(WifiData[i] == '!') { // safe pause
 	                THEKERNEL->set_feed_hold(true);
