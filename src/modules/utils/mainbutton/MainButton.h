@@ -39,8 +39,6 @@ class MainButton : public Module {
         uint32_t button_press_time;
         uint32_t long_press_time_ms;
         std::string long_press_enable;
-        uint8_t progress_state;
-        bool main_button_led_progress;
 
         bool auto_sleep;
         uint8_t auto_sleep_min;
