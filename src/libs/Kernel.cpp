@@ -90,6 +90,7 @@ Kernel::Kernel()
     checkled = false;
     spindleon = false;
     cachewait = false;
+    keep_alive_request = false;
 
     instance = this; // setup the Singleton instance of the kernel    
     

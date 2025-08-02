@@ -2178,9 +2178,18 @@ void SimpleShell::jog(string parameters, StreamOutput *stream)
         THECONVEYOR->set_hold(false);
         THECONVEYOR->force_queue();
 
+        keep_alive_time = us_ticker_read() / 1000;
+
         while(!THEKERNEL->get_stop_request() && !THEKERNEL->get_internal_stop_request()) {
             THEKERNEL->call_event(ON_IDLE);
             if(THEKERNEL->is_halted()) break;
+
+            if(THEKERNEL->get_keep_alive_request()) {
+                THEKERNEL->set_keep_alive_request(false);
+                keep_alive_time = us_ticker_read() / 1000;
+            }else if (us_ticker_read() / 1000 - keep_alive_time > 500) {
+                THEKERNEL->set_internal_stop_request(true);
+            }
 
             // Check soft limits during continuous jogging
             if(THEROBOT->is_soft_endstop_enabled()) {
