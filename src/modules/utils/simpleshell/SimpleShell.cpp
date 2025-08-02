@@ -2187,7 +2187,7 @@ void SimpleShell::jog(string parameters, StreamOutput *stream)
             if(THEKERNEL->get_keep_alive_request()) {
                 THEKERNEL->set_keep_alive_request(false);
                 keep_alive_time = us_ticker_read() / 1000;
-            }else if (us_ticker_read() / 1000 - keep_alive_time > 500) {
+            }else if (us_ticker_read() / 1000 - keep_alive_time > 400) {
                 THEKERNEL->set_internal_stop_request(true);
             }
 
