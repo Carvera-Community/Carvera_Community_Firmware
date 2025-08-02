@@ -75,7 +75,7 @@ extern "C" uint32_t  _sbrk(int size);
 // support upload file type definition
 #define FILETYPE	"lz"		//compressed by quicklz
 // version definition
-#define VERSION "1.0.9c"
+#define VERSION "1.0.10c"
 
 // command lookup table
 const SimpleShell::ptentry_t SimpleShell::commands_table[] = {

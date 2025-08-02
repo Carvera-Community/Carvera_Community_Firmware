@@ -1679,12 +1679,17 @@ void ZProbe::probe_outsideCorner() //M464
     
     if (param.save_position > 0 && check_last_probe_ok()){
         THEROBOT->set_current_wcs_by_mpos(THEKERNEL->probe_outputs[3], THEKERNEL->probe_outputs[4], NAN);
-        if (param.save_position == 2){
-            coordinated_move(NAN, NAN, out_coords.z_negative_z_out + 2, param.rapid_rate);
-            THECONVEYOR->wait_for_idle();
-            coordinated_move(THEKERNEL->probe_outputs[3], THEKERNEL->probe_outputs[4], out_coords.z_negative_z_out + 2, param.rapid_rate);
-            THECONVEYOR->wait_for_idle();
-        }
+    }
+    if (param.save_position == 2){
+        coordinated_move(NAN, NAN, out_coords.z_negative_z_out + 2, param.rapid_rate);
+        THECONVEYOR->wait_for_idle();
+        coordinated_move(THEKERNEL->probe_outputs[3], THEKERNEL->probe_outputs[4], out_coords.z_negative_z_out + 2, param.rapid_rate);
+        THECONVEYOR->wait_for_idle();
+    }else{
+        coordinated_move(NAN, NAN, param.clearance_world_pos, param.rapid_rate);
+        THECONVEYOR->wait_for_idle();
+        coordinated_move(THEKERNEL->probe_outputs[3], THEKERNEL->probe_outputs[4], param.clearance_world_pos, param.rapid_rate);
+        THECONVEYOR->wait_for_idle();
     }
 }
 
