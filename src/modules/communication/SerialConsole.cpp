@@ -28,6 +28,7 @@ using std::string;
 SerialConsole::SerialConsole( PinName rx_pin, PinName tx_pin, int baud_rate ){
     this->serial = new mbed::Serial( rx_pin, tx_pin );
     this->serial->baud(baud_rate);
+    this->previous_char = 0;
 }
 
 // Called when the module has just been loaded
@@ -79,8 +80,19 @@ void SerialConsole::on_serial_char_received() {
 		
 		if (received == '?') {
 			query_flag = true;
+            this->previous_char = received;
+			continue;
+		} else if (this->previous_char == '?' && received == '1') {
+			// Found ?1 pattern
+			query_flag = true;
+			THEKERNEL->set_keep_alive_request(true);
+			this->previous_char = 0; // Reset
 			continue;
 		}
+		
+		// Reset previous_char for any other character
+		this->previous_char = received;
+		
 		//if (received == '*') {
 		//	diagnose_flag = true;
 		//	continue;

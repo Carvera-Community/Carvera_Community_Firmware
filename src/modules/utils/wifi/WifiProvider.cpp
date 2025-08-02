@@ -128,10 +128,19 @@ void WifiProvider::receive_wifi_data() {
 			if(THEKERNEL->is_cachewait()) {
 				continue;
 			}
-	        if(WifiData[i] == '?') {
-	            query_flag = true;
-	            continue;
-	        }
+	        // Check for "?1" pattern
+			if (i < received - 1 && WifiData[i] == '?' && WifiData[i + 1] == '1') {
+				query_flag = true;
+				THEKERNEL->set_keep_alive_request(true);
+				i++; // Skip both characters
+				continue;
+			}
+
+			// Check for single "?" pattern
+			if(WifiData[i] == '?') {
+				query_flag = true;
+				continue;
+			}
 			//if (WifiData[i] == '*') {
 			//	diagnose_flag = true;
 			//	continue;
