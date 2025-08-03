@@ -2153,6 +2153,48 @@ void SimpleShell::jog(string parameters, StreamOutput *stream)
         }
         // stream->printf("distance: %f, time:%f, X%f Y%f Z%f, speed:%f\n", d, t, delta[0], delta[1], delta[2], fr);
 
+        // Check soft limits during continuous jogging
+        if(THEROBOT->is_soft_endstop_enabled()) {
+            float current_pos[n_motors];
+            THEROBOT->get_current_machine_position(current_pos);
+            bool move_to_min_limit = false;
+            bool move_to_max_limit = false;
+            // Check each axis that is homed
+            for (int i = 0; i <= Z_AXIS; ++i) {
+                if(!THEROBOT->is_homed(i)) continue;
+                
+                // Calculate distance to soft limits
+                float dist_to_min = current_pos[i] - THEROBOT->get_soft_endstop_min(i);
+                float dist_to_max = THEROBOT->get_soft_endstop_max(i) - current_pos[i];
+                
+                // If moving towards a limit and brake distance is greater than distance to limit
+                if(delta[i] < 0 && !isnan(THEROBOT->get_soft_endstop_min(i)) && 
+                    dist_to_min <= 3 * d ) {
+                    if (dist_to_min > 0) {
+                        delta[i] = -(dist_to_min);
+                    } else {
+                        stream->printf("error:Soft Endstop %c would be exceeded - ignore jog command\n", i+'X');
+                        return;
+                    }
+                    move_to_min_limit = true;
+                }
+                if(delta[i] > 0 && !isnan(THEROBOT->get_soft_endstop_max(i)) && 
+                    dist_to_max <= 3 * d) {
+                    if (dist_to_max > 0) {
+                        delta[i] = dist_to_max;
+                    } else {
+                        stream->printf("error:Soft Endstop %c would be exceeded - ignore jog command\n", i+'X');
+                        return;
+                    }
+                    move_to_max_limit = true;
+                }
+            }
+            if(move_to_min_limit || move_to_max_limit) {
+                THEROBOT->delta_move(delta, fr, n_motors);
+                return;
+            }
+        }
+
         THECONVEYOR->wait_for_idle();
         // turn off any compensation transform so Z does not move as we jog
         auto savect= THEROBOT->compensationTransform;
@@ -2195,10 +2237,7 @@ void SimpleShell::jog(string parameters, StreamOutput *stream)
             if(THEROBOT->is_soft_endstop_enabled()) {
                 float current_pos[n_motors];
                 THEROBOT->get_current_machine_position(current_pos);
-                
-                // Calculate brake distance based on current speed and acceleration
-                float brake_distance = (fr * fr) / (2.0F * acc); // v²/(2a)
-                
+
                 // Check each axis that is homed
                 for (int i = 0; i <= Z_AXIS; ++i) {
                     if(!THEROBOT->is_homed(i)) continue;
@@ -2209,12 +2248,12 @@ void SimpleShell::jog(string parameters, StreamOutput *stream)
                     
                     // If moving towards a limit and brake distance is greater than distance to limit
                     if(delta[i] < 0 && !isnan(THEROBOT->get_soft_endstop_min(i)) && 
-                       fabsf(dist_to_min) <= 2 * brake_distance) {
+                        dist_to_min <= 2 * d) {
                         THEKERNEL->set_internal_stop_request(true);
                         break;
                     }
-                    if(delta[i] > 0 && !isnan(THEROBOT->get_soft_endstop_max(i)) && 
-                       fabsf(dist_to_max) <= 2 * brake_distance) {
+                    if(delta[i] > 0 && !isnan(THEROBOT->get_soft_endstop_max(i)) &&     
+                        dist_to_max <= 2 * d) {
                         THEKERNEL->set_internal_stop_request(true);
                         break;
                     }
