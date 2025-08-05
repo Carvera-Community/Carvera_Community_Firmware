@@ -101,13 +101,19 @@ public:
     float getProbeHeight() const { return probe_height; }
     float getMaxZ() const { return max_z; }
 
+    // Public methods for external access
+    void set_probe_parameters(const probe_parameters& params) { param = params; }
+    probe_parameters& get_probe_parameters() { return param; }
+    xy_output_coordinates& get_output_coordinates() { return out_coords; }
+    bool fast_slow_probe_sequence_public(int axis, int direction);
+
 private:
     void config_load();
     bool probe_XYZ(Gcode *gcode);
     void rotate(int axis, float axis_distance, float *y_x, float *y_y, float rotation_angle);
     void rotateXY(float x_in = NAN, float y_in = NAN, float *x_out = nullptr, float *y_out = nullptr, float rotation_angle = 0);
     float get_xyz_move_length(float x, float y, float z);
-    void fast_slow_probe_sequence( int axis, int direction);
+    bool fast_slow_probe_sequence( int axis, int direction);
     int xy_probe_move_alarm_when_hit(int direction, int probe_g38_subcode, float x, float y, float feed_rate);
     void z_probe_move_with_retract(int probe_g38_subcode, float z, float clearance_height, float feed_rate);
     bool parse_parameters(Gcode *gcode, bool override_probe_check = false);
