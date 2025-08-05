@@ -34,6 +34,7 @@
 #include "ThreePointStrategy.h"
 #include "DeltaGridStrategy.h"
 #include "CartGridStrategy.h"
+#include "FlexCompensationStrategy.h"
 
 #include <vector>
 
@@ -137,6 +138,12 @@ void ZProbe::config_load()
 
                 case cart_grid_leveling_strategy_checksum:
                     ls= new CartGridStrategy(this);
+                    found= true;
+                    break;
+
+                case flex_compensation_strategy_checksum:
+                    THEKERNEL->streams->printf("FlexCompensationStrategy loaded\n");
+                    ls= new FlexCompensationStrategy(this);
                     found= true;
                     break;
             }
@@ -401,7 +408,7 @@ void ZProbe::on_gcode_received(void *argument)
 {
     Gcode *gcode = static_cast<Gcode *>(argument);
 
-    if( gcode->has_g && gcode->g >= 29 && gcode->g <= 32) {
+    if( gcode->has_g && gcode->g >= 29 && gcode->g <= 33) {
 
         invert_probe = false;
         // make sure the probe is defined and not already triggered before moving motors
@@ -957,7 +964,7 @@ float ZProbe::get_xyz_move_length(float x, float y, float z){
     return sqrt(pow(x, 2) + pow(y, 2) + pow(z, 2));
 }
 
-void ZProbe::fast_slow_probe_sequence(int axis, int direction){
+bool ZProbe::fast_slow_probe_sequence(int axis, int direction){
     float moveBuffer[3];
     float mpos[3];
     float old_mpos[3];
@@ -1071,7 +1078,7 @@ void ZProbe::fast_slow_probe_sequence(int axis, int direction){
     THEROBOT->delta_move(moveBuffer, param.feed_rate, 3);
     // always wait for idle before getting the machine pos
     THECONVEYOR->wait_for_idle();
-    return;
+    return probe_detected;
 }
 
 int ZProbe::xy_probe_move_alarm_when_hit(int direction, int probe_g38_subcode, float x, float y, float feed_rate){
@@ -2034,4 +2041,9 @@ void ZProbe::single_axis_probe_double_tap(){
             THEROBOT->set_current_wcs_by_mpos( NAN, NAN, THEKERNEL->probe_outputs[5]);
         }
     }
+}
+
+bool ZProbe::fast_slow_probe_sequence_public(int axis, int direction)
+{
+    return(fast_slow_probe_sequence(axis, direction));
 }
