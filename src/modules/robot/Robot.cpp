@@ -1991,6 +1991,7 @@ bool Robot::append_line(Gcode *gcode, const float target[], float feed_rate, flo
 
     if (this->inverse_time_mode) {
         // in inverse-time G93 mode, we need to divide the total time between segments
+        // the feed_rate is an inverse of time, so we multiply to divide
         feed_rate *= segments;
     }
 
@@ -2100,6 +2101,7 @@ bool Robot::append_arc(Gcode * gcode, const float target[], const float offset[]
     float rate_mm_s = this->feed_rate;
     if (this->inverse_time_mode) {
         // in inverse-time/G93 mode, we need to divide the total time between segments
+        // the rate_mm_s is an inverse of time, so we multiply to divide
         rate_mm_s *= segments;
     }
 
