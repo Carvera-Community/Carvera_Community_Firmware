@@ -196,10 +196,12 @@ void FlexCompensationStrategy::setAdjustFunction(bool on)
         using std::placeholders::_3;
         THEROBOT->compensationTransform = std::bind(&FlexCompensationStrategy::doCompensation, this, _1, _2, _3);
         compensation_active = true;
+        THEKERNEL->streams->printf("Compensation enabled\n");
     } else {
         // Clear it
         THEROBOT->compensationTransform = nullptr;
         compensation_active = false;
+        THEKERNEL->streams->printf("Compensation disabled\n");
     }
 }
 
@@ -228,6 +230,7 @@ bool FlexCompensationStrategy::doMeasurement(Gcode *gc)
 
     if(gc->has_letter('I')) {
         num_points = gc->get_value('I');
+        current_grid_x_size = num_points;
     } else {
         gc->stream->printf("ERROR: I parameter required for G33\n");
         return false;
@@ -238,10 +241,18 @@ bool FlexCompensationStrategy::doMeasurement(Gcode *gc)
         return false;
     }
 
+    // Validate that num_points matches grid_x_size
+    if(num_points > grid_x_size) {
+        gc->stream->printf("ERROR: I parameter (%d) must not be greater than grid_x_size (%d)\n", num_points, grid_x_size);
+        return false;
+    }
+
     // Get current machine position
     float current_x = THEROBOT->get_axis_position(X_AXIS);
     float current_y = THEROBOT->get_axis_position(Y_AXIS);
     float current_z = THEROBOT->get_axis_position(Z_AXIS);
+
+    this->x_start = current_x;
 
     gc->stream->printf("Starting measurement at current position: X%1.3f Y%1.3f Z%1.3f\n", current_x, current_y, current_z);
     gc->stream->printf("Parameters: Y coordinate=%1.3f, X distance=%1.3f, Points=%d\n", y_coordinate, x_distance, num_points);
@@ -306,23 +317,59 @@ bool FlexCompensationStrategy::doMeasurement(Gcode *gc)
         gc->stream->printf("Point %d: measured=%1.3f, delta=%1.3f\n", i, measured_y, delta);
     }
 
+    for (int i = 0; i < grid_x_size; i++) {
+        if (i < current_grid_x_size) {
+            compensation_data[i] = delta_array[i];
+        } else {
+            compensation_data[i] = 0.0;
+        }
+        gc->stream->printf("Stored compensation_data[%d] = %1.6f\n", i, compensation_data[i]);
+    }
+
+    AHB0.dealloc(delta_array);
+
     // Store the delta array for later use
     // TODO: You can implement the rest of the logic here
     gc->stream->printf("Measurement completed. Delta array stored.\n");
-    
-    // Clean up
-    AHB0.dealloc(delta_array);
 
     return true;
 }
 
 void FlexCompensationStrategy::doCompensation(float *target, bool inverse, bool debug)
 {
+    float triangle_y = 90.0;
+    float machine_offset_z = 51.0;
+    float sensor_machine_z = -115.36;
+    float refmz = -69;
+    float TLO = 0.0;
+    float interpolated_delta = 0.0;
+
+    float triangle_z = fabs(target[Z_AXIS]) + machine_offset_z + TLO + refmz - sensor_machine_z;
+
+    if (target[X_AXIS] < x_start) {
+        return;
+    }
+    THEKERNEL->streams->printf("Target Y before: %1.3f\n", target[Y_AXIS]);
+    THEKERNEL->streams->printf("Target Z before: %1.3f\n", target[Z_AXIS]);
+    for (int i = 1; i < current_grid_x_size; i++) {
+        if (target[X_AXIS] > i * (x_size / (current_grid_x_size - 1)) + x_start) {
+            continue;
+        }else{
+            interpolated_delta = (compensation_data[i] - compensation_data[i-1]) * (1 - (i * (x_size/(current_grid_x_size - 1)) + x_start - target[X_AXIS]) / (x_size/(current_grid_x_size - 1))) + compensation_data[i];
+            target[Y_AXIS] += interpolated_delta;
+            target[Z_AXIS] -= triangle_y / triangle_z * interpolated_delta;
+            break;
+        }
+    }
+    THEKERNEL->streams->printf("Target Y after: %1.3f\n", target[Y_AXIS]);
+    THEKERNEL->streams->printf("Target Z after: %1.3f\n", target[Z_AXIS]);
     // TODO: Implement your custom compensation algorithm here
     // This is a skeleton - you need to implement the actual compensation logic
     
     // Example: Simple linear interpolation (similar to CartGridStrategy)
     // You can replace this with your own algorithm
+
+
     
     return;
 }

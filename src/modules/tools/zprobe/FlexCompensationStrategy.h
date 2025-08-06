@@ -43,6 +43,7 @@ private:
     float x_start;
     float x_size;
     uint8_t grid_x_size;
+    uint8_t current_grid_x_size;
     
     // Configuration flags
     struct {
