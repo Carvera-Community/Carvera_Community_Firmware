@@ -34,7 +34,6 @@
 #include "ThreePointStrategy.h"
 #include "DeltaGridStrategy.h"
 #include "CartGridStrategy.h"
-#include "FlexCompensationStrategy.h"
 
 #include <vector>
 
@@ -138,12 +137,6 @@ void ZProbe::config_load()
 
                 case cart_grid_leveling_strategy_checksum:
                     ls= new CartGridStrategy(this);
-                    found= true;
-                    break;
-
-                case flex_compensation_strategy_checksum:
-                    THEKERNEL->streams->printf("FlexCompensationStrategy loaded\n");
-                    ls= new FlexCompensationStrategy(this);
                     found= true;
                     break;
             }
