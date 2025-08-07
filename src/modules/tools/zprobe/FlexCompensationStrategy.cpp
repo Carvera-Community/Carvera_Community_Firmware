@@ -168,7 +168,9 @@ bool FlexCompensationStrategy::handleGcode(Gcode *gcode)
                 print_compensation_data(gcode->stream);
             } else if(gcode->subcode == 2) {
                 // Save compensation data
+                __disable_irq();
                 save_compensation_data(gcode->stream);
+                __enable_irq();
             } else if(gcode->subcode == 3) {
                 // Load compensation data
                 if (load_compensation_data(gcode->stream)) {
@@ -213,6 +215,7 @@ bool FlexCompensationStrategy::doMeasurement(Gcode *gc)
     float y_coordinate = 0.0F;
     float x_distance = 0.0F;
     int num_points = 0;
+    float max_delta = 0.0F;
 
     if(gc->has_letter('Y')) {
         y_coordinate = gc->get_value('Y');
@@ -253,6 +256,7 @@ bool FlexCompensationStrategy::doMeasurement(Gcode *gc)
     float current_z = THEROBOT->get_axis_position(Z_AXIS);
 
     this->x_start = current_x;
+    this->x_size = x_distance;
 
     gc->stream->printf("Starting measurement at current position: X%1.3f Y%1.3f Z%1.3f\n", current_x, current_y, current_z);
     gc->stream->printf("Parameters: Y coordinate=%1.3f, X distance=%1.3f, Points=%d\n", y_coordinate, x_distance, num_points);
@@ -274,20 +278,20 @@ bool FlexCompensationStrategy::doMeasurement(Gcode *gc)
 
     // Calculate X step size
     float x_step = x_distance / (num_points - 1);
+
+    zprobe->init_parameters_and_out_coords();
+    // Set up probe parameters for Y-axis probing
+    probe_parameters& params = zprobe->get_probe_parameters();
+    params.y_axis_distance = y_coordinate;
+    params.feed_rate = (gc->has_letter('F')) ? gc->get_value('F') : 600;
+    params.rapid_rate = (gc->has_letter('R')) ? gc->get_value('R') : 800;
+
     // Probe at each point along X-axis
     for(int i = 0; i < num_points; i++) {
         float probe_x = current_x + (i * x_step);
-
-        // Set up probe parameters for Y-axis probing
-        probe_parameters& params = zprobe->get_probe_parameters();
-        params.y_axis_distance = y_coordinate;
-        params.feed_rate = (gc->has_letter('F')) ? gc->get_value('F') : 600;
-        params.rapid_rate = (gc->has_letter('R')) ? gc->get_value('R') : 800;
         
         gc->stream->printf("Probing point %d: X%1.3f\n", i, probe_x);
         zprobe->coordinated_move(probe_x, NAN, NAN, params.rapid_rate / 60);
-        
-        
         
         // Use ZProbe's internal fast_slow_probe_sequence for Y-axis
         zprobe->fast_slow_probe_sequence_public(Y_AXIS, POS); // Probe in positive Y direction
@@ -313,6 +317,9 @@ bool FlexCompensationStrategy::doMeasurement(Gcode *gc)
         // Calculate delta from reference
         float delta = measured_y - reference_y;
         delta_array[i] = delta;
+        if (fabs(delta) > fabs(max_delta)) {
+            max_delta = delta;
+        }
         
         gc->stream->printf("Point %d: measured=%1.3f, delta=%1.3f\n", i, measured_y, delta);
     }
@@ -332,58 +339,110 @@ bool FlexCompensationStrategy::doMeasurement(Gcode *gc)
     // TODO: You can implement the rest of the logic here
     gc->stream->printf("Measurement completed. Delta array stored.\n");
 
+    setAdjustFunction(true);
+
+    THEROBOT->set_max_delta(max_delta);
+
     return true;
 }
 
 void FlexCompensationStrategy::doCompensation(float *target, bool inverse, bool debug)
 {
-    float triangle_y = 90.0;
-    float machine_offset_z = 51.0;
-    float sensor_machine_z = -115.36;
-    float refmz = -69;
-    float TLO = 0.0;
+    float triangle_y = 90.0;            // Y distance between the plane through both rods to the center of the spindle
+    float machine_offset_z = 51.0;      // Z distance between the centerplane between the rods and the end of the spindle (AIR specific)
+    float sensor_machine_z = -115.36;   // Z machine coordinate if the tool length would be 0
+    float refmz = THEKERNEL->eeprom_data->REFMZ;                  
+    float TLO = THEKERNEL->eeprom_data->TLO;
     float interpolated_delta = 0.0;
 
     float triangle_z = fabs(target[Z_AXIS]) + machine_offset_z + TLO + refmz - sensor_machine_z;
+    THEKERNEL->streams->printf("x_size: %1.3f\n", x_size);
 
-    if (target[X_AXIS] < x_start) {
+    // Check if target is within compensation range
+    if (target[X_AXIS] < x_start || target[X_AXIS] > x_start + x_size) {
         return;
     }
-    THEKERNEL->streams->printf("Target Y before: %1.3f\n", target[Y_AXIS]);
-    THEKERNEL->streams->printf("Target Z before: %1.3f\n", target[Z_AXIS]);
-    for (int i = 1; i < current_grid_x_size; i++) {
-        if (target[X_AXIS] > i * (x_size / (current_grid_x_size - 1)) + x_start) {
-            continue;
-        }else{
-            interpolated_delta = (compensation_data[i] - compensation_data[i-1]) * (1 - (i * (x_size/(current_grid_x_size - 1)) + x_start - target[X_AXIS]) / (x_size/(current_grid_x_size - 1))) + compensation_data[i];
-            target[Y_AXIS] += interpolated_delta;
-            target[Z_AXIS] -= triangle_y / triangle_z * interpolated_delta;
-            break;
-        }
-    }
-    THEKERNEL->streams->printf("Target Y after: %1.3f\n", target[Y_AXIS]);
-    THEKERNEL->streams->printf("Target Z after: %1.3f\n", target[Z_AXIS]);
-    // TODO: Implement your custom compensation algorithm here
-    // This is a skeleton - you need to implement the actual compensation logic
+
+    // Calculate grid spacing
+    float grid_spacing = x_size / (current_grid_x_size - 1);
     
-    // Example: Simple linear interpolation (similar to CartGridStrategy)
-    // You can replace this with your own algorithm
-
-
+    // Find which grid segment the target falls into
+    float relative_x = target[X_AXIS] - x_start;
+    int grid_index = (int)(relative_x / grid_spacing);
+    
+    // Clamp grid_index to valid range
+    if (grid_index >= current_grid_x_size - 1) {
+        grid_index = current_grid_x_size - 2;  // Use last segment
+    }
+    if (grid_index < 0) {
+        grid_index = 0;  // Use first segment
+    }
+    
+    // Calculate interpolation factor (0.0 to 1.0)
+    float grid_x_low = x_start + grid_index * grid_spacing;
+    float grid_x_high = x_start + (grid_index + 1) * grid_spacing;
+    float t = (target[X_AXIS] - grid_x_low) / (grid_x_high - grid_x_low);
+    
+    // Clamp t to [0, 1] range
+    if (t < 0.0f) t = 0.0f;
+    if (t > 1.0f) t = 1.0f;
+    
+    // Linear interpolation between two grid points
+    float delta_low = compensation_data[grid_index];
+    float delta_high = compensation_data[grid_index + 1];
+    interpolated_delta = delta_low + t * (delta_high - delta_low);
+    
+    if (inverse) {
+        // Inverse operation: subtract the compensation instead of adding it
+        target[Y_AXIS] -= interpolated_delta;
+        // Inverse Z compensation: add back the compensation instead of subtracting
+        target[Z_AXIS] += triangle_y / triangle_z * interpolated_delta + 0.5 * interpolated_delta;
+    } else {
+        // Normal operation: add the compensation
+        target[Y_AXIS] += interpolated_delta;
+        // rotational component + translation component
+        target[Z_AXIS] -= triangle_y / triangle_z * interpolated_delta + 0.5 * interpolated_delta;
+    }
     
     return;
 }
 
 void FlexCompensationStrategy::print_compensation_data(StreamOutput *stream)
 {
+    for (int i = 0; i < current_grid_x_size; i++) {
+        stream->printf("%1.3f ", (i * (x_size / (current_grid_x_size - 1)) + x_start));
+    }
+    stream->printf("\n");
+    for (int i = 0; i < current_grid_x_size; i++) {
+        stream->printf("%1.3f ", compensation_data[i]);
+    }
+    stream->printf("\n");
     return;
 }
 
 void FlexCompensationStrategy::save_compensation_data(StreamOutput *stream)
 {
-    /*
-    if(isnan(compensation_data[0])) {
+    // Check if we have valid compensation data to save
+    if(compensation_data == nullptr || current_grid_x_size == 0) {
         stream->printf("error: No compensation data to save\n");
+        return;
+    }
+
+    if(current_grid_x_size > grid_x_size) {
+        stream->printf("error: Invalid size\n");
+        return;
+    }
+
+    bool has_valid_data = false;
+    for(int i = 0; i < current_grid_x_size; i++) {
+        if(!isnan(compensation_data[i])) {
+            has_valid_data = true;
+            break;
+        }
+    }
+    
+    if(!has_valid_data) {
+        stream->printf("error: No valid compensation data to save\n");
         return;
     }
 
@@ -393,112 +452,106 @@ void FlexCompensationStrategy::save_compensation_data(StreamOutput *stream)
         return;
     }
 
-    if(fwrite(&grid_x_size, sizeof(uint8_t), 1, fp) != 1) {
-        stream->printf("error: Failed to write grid x size\n");
+    // Write x_start (float)
+    if(fwrite(&x_start, sizeof(float), 1, fp) != 1) {
+        stream->printf("error: Failed to write x_start\n");
         fclose(fp);
         return;
     }
 
-    if(fwrite(&grid_y_size, sizeof(uint8_t), 1, fp) != 1) {
-        stream->printf("error: Failed to write grid y size\n");
+    // Write current_grid_x_size (uint8_t)
+    if(fwrite(&current_grid_x_size, sizeof(uint8_t), 1, fp) != 1) {
+        stream->printf("error: Failed to write current_grid_x_size\n");
         fclose(fp);
         return;
     }
 
+    // Write x_size (float)
     if(fwrite(&x_size, sizeof(float), 1, fp) != 1) {
         stream->printf("error: Failed to write x_size\n");
         fclose(fp);
         return;
     }
 
-    if(fwrite(&y_size, sizeof(float), 1, fp) != 1) {
-        stream->printf("error: Failed to write y_size\n");
-        fclose(fp);
-        return;
-    }
-
-    for (int y = 0; y < grid_y_size; y++) {
-        for (int x = 0; x < grid_x_size; x++) {
-            if(fwrite(&compensation_data[x + (grid_x_size * y)], sizeof(float), 1, fp) != 1) {
-                stream->printf("error: Failed to write compensation data\n");
-                fclose(fp);
-                return;
-            }
+    // Write compensation data for the actual grid size used
+    for(int i = 0; i < current_grid_x_size; i++) {
+        if(fwrite(&compensation_data[i], sizeof(float), 1, fp) != 1) {
+            stream->printf("error: Failed to write compensation data at index %d\n", i);
+            fclose(fp);
+            return;
         }
     }
+
     stream->printf("Compensation data saved to %s\n", COMPENSATION_FILE);
+    stream->printf("Saved: x_start=%.3f, grid_size=%d, x_size=%.3f\n", 
+                   x_start, current_grid_x_size, x_size);
     fclose(fp);
-    */
 }
 
 bool FlexCompensationStrategy::load_compensation_data(StreamOutput *stream)
 {
-    return true;
-    /*
     FILE *fp = fopen(COMPENSATION_FILE, "r");
     if(fp == NULL) {
         stream->printf("error: Failed to open compensation file %s\n", COMPENSATION_FILE);
         return false;
     }
 
-    uint8_t load_grid_x_size, load_grid_y_size;
-    float x, y;
+    float load_x_start;
+    uint8_t load_current_grid_x_size;
+    float load_x_size;
 
-    if(fread(&load_grid_x_size, sizeof(uint8_t), 1, fp) != 1) {
-        stream->printf("error: Failed to read grid x size\n");
+    // Read x_start (float)
+    if(fread(&load_x_start, sizeof(float), 1, fp) != 1) {
+        stream->printf("error: Failed to read x_start\n");
         fclose(fp);
         return false;
     }
 
-    if(load_grid_x_size != grid_x_size) {
-        stream->printf("error: grid size x is different read %d - config %d\n", load_grid_x_size, grid_x_size);
+    // Read current_grid_x_size (uint8_t)
+    if(fread(&load_current_grid_x_size, sizeof(uint8_t), 1, fp) != 1) {
+        stream->printf("error: Failed to read current_grid_x_size\n");
         fclose(fp);
         return false;
     }
 
-    if(fread(&load_grid_y_size, sizeof(uint8_t), 1, fp) != 1) {
-        stream->printf("error: Failed to read grid y size\n");
+    // Validate grid size
+    if(load_current_grid_x_size > grid_x_size) {
+        stream->printf("error: Loaded grid size %d exceeds maximum configured size %d\n", 
+                      load_current_grid_x_size, grid_x_size);
         fclose(fp);
         return false;
     }
 
-    if(load_grid_y_size != grid_y_size) {
-        stream->printf("error: grid size y is different read %d - config %d\n", load_grid_y_size, grid_y_size);
-        fclose(fp);
-        return false;
-    }
-
-    if(fread(&x, sizeof(float), 1, fp) != 1) {
+    // Read x_size (float)
+    if(fread(&load_x_size, sizeof(float), 1, fp) != 1) {
         stream->printf("error: Failed to read x_size\n");
         fclose(fp);
         return false;
     }
 
-    if(fread(&y, sizeof(float), 1, fp) != 1) {
-        stream->printf("error: Failed to read y_size\n");
-        fclose(fp);
-        return false;
-    }
 
-    if(x != x_size || y != y_size) {
-        stream->printf("error: bed dimensions changed read (%f, %f) - config (%f,%f)\n", x, y, x_size, y_size);
-        fclose(fp);
-        return false;
-    }
+    // Reset compensation data to NAN
+    reset_compensation();
 
-    for (int y = 0; y < grid_y_size; y++) {
-        for (int x = 0; x < grid_x_size; x++) {
-            if(fread(&compensation_data[x + (grid_x_size * y)], sizeof(float), 1, fp) != 1) {
-                stream->printf("error: Failed to read compensation data\n");
-                fclose(fp);
-                return false;
-            }
+    // Load compensation data for the actual grid size used
+    for(int i = 0; i < load_current_grid_x_size; i++) {
+        if(fread(&compensation_data[i], sizeof(float), 1, fp) != 1) {
+            stream->printf("error: Failed to read compensation data at index %d\n", i);
+            fclose(fp);
+            return false;
         }
     }
-    stream->printf("Compensation data loaded, bed: (%f, %f), size: %d x %d\n", x_size, y_size, load_grid_x_size, load_grid_y_size);
+
+    // Set the loaded values
+    x_start = load_x_start;
+    current_grid_x_size = load_current_grid_x_size;
+    x_size = load_x_size;
+
+    stream->printf("Compensation data loaded from %s\n", COMPENSATION_FILE);
+    stream->printf("Loaded: x_start=%.3f, grid_size=%d, x_size=%.3f\n", 
+                   x_start, current_grid_x_size, x_size);
     fclose(fp);
     return true;
-    */
 }
 
 void FlexCompensationStrategy::reset_compensation()

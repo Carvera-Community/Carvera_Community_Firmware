@@ -1022,6 +1022,8 @@ bool ZProbe::fast_slow_probe_sequence(int axis, int direction){
         rotateXY(retractx, retracty, &retractx, &retracty, THEROBOT->r[THEROBOT->get_current_wcs()]);
     }
     
+    THEKERNEL->streams->printf("x: %.3f, y: %.3f, z: %.3f, retractx: %.3f, retracty: %.3f, retractz: %.3f\n", x, y, z, retractx, retracty, retractz);
+
     // do positive probe
     memset(&this->buff, 0 , sizeof(this->buff));
     std::sprintf(this->buff, "G38.%i X%.3f Y%.3f Z%.3f F%.3f", 2 + param.probe_g38_subcode, THEROBOT->from_millimeters(x), THEROBOT->from_millimeters(y), THEROBOT->from_millimeters(z), param.feed_rate);
