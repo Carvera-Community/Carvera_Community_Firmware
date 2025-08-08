@@ -197,6 +197,9 @@ void Conveyor::check_queue(bool force)
 
 bool Conveyor::set_continuous_mode(bool f)
 {
+    continuous_mode= 1;
+    return true;
+    /*
     if(f) {
         if(queue.is_empty() || !hold_queue) return false;
 
@@ -221,6 +224,7 @@ bool Conveyor::set_continuous_mode(bool f)
         }
     }
     return true;
+    */
 }
 
 // called from step ticker ISR
@@ -278,7 +282,7 @@ void Conveyor::block_finished()
    if(continuous_mode <= 1){
         // we increment the isr_tail_i so we can get the next block
         queue.isr_tail_i= queue.next(queue.isr_tail_i);
-        if(continuous_mode == 1) continuous_mode= 2;
+        //if(continuous_mode == 1) continuous_mode= 2;
     }
 }
 

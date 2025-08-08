@@ -2026,8 +2026,10 @@ void SimpleShell::jog(string parameters, StreamOutput *stream)
     float scale= 1.0F;
     float fr= NAN;
     float delta[n_motors];
+    float delta_const[n_motors];
     for (int i = 0; i < n_motors; ++i) {
         delta[i]= 0;
+        delta_const[i]= 0;
     }
 
     // $J is first parameter
@@ -2096,7 +2098,6 @@ void SimpleShell::jog(string parameters, StreamOutput *stream)
             }else{
                 rate_mm_s = std::min(rate_mm_s, THEROBOT->actuators[i]->get_max_rate());
             }
-            //hstream->printf("%d %f F%f\n", i, delta[i], rate_mm_s);
         }
     }
     if(!ok) {
@@ -2130,25 +2131,32 @@ void SimpleShell::jog(string parameters, StreamOutput *stream)
         // make sure we do not exceed maximum
         if(fr > rate_mm_s) fr= rate_mm_s;
     }
-
+    float min_time= 0.05;
     if(cont_mode) {
         // continuous jog mode
         // calculate minimum distance to travel to accomodate acceleration and feedrate
         float acc= THEROBOT->get_default_acceleration();
-        float t= fr/acc; // time to reach feed rate
-        float d= 0.5F * acc * powf(t, 2); // distance required to accelerate (or decelerate)
-        d = std::max(d, 0.3333F); // take minimum being 1mm overall so 0.3333mm
-        // we need to check if the feedrate is too slow, for continuous jog if it takes over 5 seconds it is too slow
-        t= d*3 / fr; // time it will take to do all three blocks
-        if(t > 5) {
-            // increase feedrate so it will not take more than 5 seconds
-            fr= (d*3)/5;
+        
+        // Validate acceleration value
+        if(acc <= 0 || isnan(acc)) {
+            stream->printf("error: Invalid acceleration value: %f\n", acc);
+            return;
         }
+        
+        float ta= fr/acc; // time to reach feed rate
+        float da= 0.5F * acc * powf(ta, 2); // distance required to accelerate (or decelerate)
+        float dc = min_time * fr;
+        if((da + dc)/ fr > 5) {
+            // increase feedrate so it will not take more than 5 seconds
+            fr= (da*3)/5;
+        }
+        
 
         // we need to move at least this distance to reach full speed
         for (int i = 0; i < n_motors; ++i) {
             if(delta[i] != 0) {
-                delta[i]= d * (delta[i]<0?-1:1);
+                delta[i]= da * (delta[i]<0?-1:1);
+                delta_const[i]= dc * (delta[i]<0?-1:1);
             }
         }
         // stream->printf("distance: %f, time:%f, X%f Y%f Z%f, speed:%f\n", d, t, delta[0], delta[1], delta[2], fr);
@@ -2169,7 +2177,7 @@ void SimpleShell::jog(string parameters, StreamOutput *stream)
                 
                 // If moving towards a limit and brake distance is greater than distance to limit
                 if(delta[i] < 0 && !isnan(THEROBOT->get_soft_endstop_min(i)) && 
-                    dist_to_min <= 3 * d ) {
+                    dist_to_min <= 2 * da + 2* dc) {
                     if (dist_to_min > 0) {
                         delta[i] = -(dist_to_min);
                     } else {
@@ -2179,7 +2187,7 @@ void SimpleShell::jog(string parameters, StreamOutput *stream)
                     move_to_min_limit = true;
                 }
                 if(delta[i] > 0 && !isnan(THEROBOT->get_soft_endstop_max(i)) && 
-                    dist_to_max <= 3 * d) {
+                    dist_to_max <= 2 * da + 2 * dc) {
                     if (dist_to_max > 0) {
                         delta[i] = dist_to_max;
                     } else {
@@ -2203,7 +2211,8 @@ void SimpleShell::jog(string parameters, StreamOutput *stream)
         // feed three blocks that allow full acceleration, full speed and full deceleration
         THECONVEYOR->set_hold(true);
         THEROBOT->delta_move(delta, fr, n_motors); // accelerates upto speed
-        THEROBOT->delta_move(delta, fr, n_motors); // continues at full speed
+        THEROBOT->delta_move(delta_const, fr, n_motors); // continues at full speed
+        THEROBOT->delta_move(delta_const, fr, n_motors); // continues at full speed
         THEROBOT->delta_move(delta, fr, n_motors); // decelerates to zero
 
         // DEBUG
@@ -2220,19 +2229,16 @@ void SimpleShell::jog(string parameters, StreamOutput *stream)
         THECONVEYOR->set_hold(false);
         THECONVEYOR->force_queue();
 
+        uint32_t last_block_time = us_ticker_read() / 1000;
+
         keep_alive_time = us_ticker_read() / 1000;
+        uint32_t block_interval_ms = (uint32_t)((ta + 0.5 *min_time) * 1000.0f);
+        float time_start_to_end_block = 0;
+        int stage = 0;
+        THECONVEYOR->set_continuous_mode(true);
 
         while(!THEKERNEL->get_stop_request() && !THEKERNEL->get_internal_stop_request()) {
-            THEKERNEL->call_event(ON_IDLE);
-            if(THEKERNEL->is_halted()) break;
-
-            if(THEKERNEL->get_keep_alive_request()) {
-                THEKERNEL->set_keep_alive_request(false);
-                keep_alive_time = us_ticker_read() / 1000;
-            }else if (us_ticker_read() / 1000 - keep_alive_time > 400) {
-                THEKERNEL->set_internal_stop_request(true);
-            }
-
+            
             // Check soft limits during continuous jogging
             if(THEROBOT->is_soft_endstop_enabled()) {
                 float current_pos[n_motors];
@@ -2248,16 +2254,39 @@ void SimpleShell::jog(string parameters, StreamOutput *stream)
                     
                     // If moving towards a limit and brake distance is greater than distance to limit
                     if(delta[i] < 0 && !isnan(THEROBOT->get_soft_endstop_min(i)) && 
-                        dist_to_min <= 2 * d) {
+                        dist_to_min <= (2 * dc + da + 1)) {
                         THEKERNEL->set_internal_stop_request(true);
                         break;
                     }
                     if(delta[i] > 0 && !isnan(THEROBOT->get_soft_endstop_max(i)) &&     
-                        dist_to_max <= 2 * d) {
+                        dist_to_max <= (2 * dc + da + 1)) {
                         THEKERNEL->set_internal_stop_request(true);
                         break;
                     }
                 }
+            }
+            // Add another coasting block every block_interval_ms milliseconds
+            uint32_t current_time = us_ticker_read() / 1000;
+            if(current_time - last_block_time >= block_interval_ms && !THEKERNEL->get_internal_stop_request()) {
+                // Calculate time for this block before updating last_block_time
+                
+                THEROBOT->delta_move(delta_const, fr, n_motors);
+                if(stage == 0) {
+                    time_start_to_end_block = current_time - last_block_time;
+                    block_interval_ms = (uint32_t)((min_time) * 1000.0f);
+                    stage++;
+                }
+                last_block_time = current_time;
+            }
+            
+            THEKERNEL->call_event(ON_IDLE);
+            if(THEKERNEL->is_halted()) break;
+
+            if(THEKERNEL->get_keep_alive_request()) {
+                THEKERNEL->set_keep_alive_request(false);
+                keep_alive_time = us_ticker_read() / 1000;
+            }else if (us_ticker_read() / 1000 - keep_alive_time > 400) {
+                THEKERNEL->set_internal_stop_request(true);
             }
         }
         THECONVEYOR->set_continuous_mode(false);

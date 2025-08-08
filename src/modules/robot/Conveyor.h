@@ -36,7 +36,7 @@ public:
     float get_current_feedrate() const { return current_feedrate; }
     void force_queue() { check_queue(true); }
     bool set_continuous_mode(bool f);
-    bool is_continuous_mode() const { return continuous_mode == 2; }
+    bool is_continuous_mode() const { return continuous_mode == 1; }
     void set_hold(bool f) { hold_queue= f; }
 
     friend class Planner; // for queue
