@@ -72,6 +72,7 @@ Kernel::Kernel()
     feed_hold = false;
     enable_feed_hold = false;
     bad_mcu= true;
+    stop_request = false;
     uploading = false;
     laser_mode = false;
     vacuum_mode = false;
@@ -89,6 +90,7 @@ Kernel::Kernel()
     checkled = false;
     spindleon = false;
     cachewait = false;
+    keep_alive_request = false;
 
     instance = this; // setup the Singleton instance of the kernel    
     

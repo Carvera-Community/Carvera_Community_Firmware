@@ -144,6 +144,18 @@ class Kernel {
         void set_bad_mcu(bool b) { bad_mcu= b; }
         bool is_bad_mcu() const { return bad_mcu; }
 
+        bool get_stop_request() const { return stop_request; }
+        void set_stop_request(bool f) { stop_request= f; }
+
+        uint32_t get_stop_request_time() const { return stop_request_time; }
+        void set_stop_request_time(uint32_t t) { stop_request_time = t; }
+
+        void set_keep_alive_request(bool f) { keep_alive_request = f; }
+        bool get_keep_alive_request() const { return keep_alive_request; }
+
+        bool get_internal_stop_request() const { return internal_stop_request; }
+        void set_internal_stop_request(bool f) { internal_stop_request = f; }
+
         void set_uploading(bool f) { uploading = f; }
         bool is_uploading() const { return uploading; }
 
@@ -243,6 +255,7 @@ class Kernel {
         // When a module asks to be called for a specific event ( a hook ), this is where that request is remembered
         mbed::I2C* i2c;
         std::array<std::vector<Module*>, NUMBER_OF_DEFINED_EVENTS> hooks;
+        uint32_t stop_request_time;
         struct {
             bool use_leds:1;
             bool halted:1;
@@ -251,6 +264,9 @@ class Kernel {
             bool ok_per_line:1;
             volatile bool enable_feed_hold:1;
             bool bad_mcu:1;
+            bool stop_request:1;
+            bool internal_stop_request:1;
+            bool keep_alive_request:1;
             volatile bool uploading:1;
             bool laser_mode:1;
             bool vacuum_mode:1;

@@ -8,6 +8,7 @@
 #include <string>
 #include <stdarg.h>
 using std::string;
+#include "mbed.h" // for us_ticker_read()
 #include "libs/Module.h"
 #include "libs/Kernel.h"
 #include "libs/nuts_bolts.h"
@@ -27,6 +28,7 @@ using std::string;
 SerialConsole::SerialConsole( PinName rx_pin, PinName tx_pin, int baud_rate ){
     this->serial = new mbed::Serial( rx_pin, tx_pin );
     this->serial->baud(baud_rate);
+    this->previous_char = 0;
 }
 
 // Called when the module has just been loaded
@@ -78,8 +80,19 @@ void SerialConsole::on_serial_char_received() {
 		
 		if (received == '?') {
 			query_flag = true;
+            this->previous_char = received;
+			continue;
+		} else if (this->previous_char == '?' && received == '1') {
+			// Found ?1 pattern
+			query_flag = true;
+			THEKERNEL->set_keep_alive_request(true);
+			this->previous_char = 0; // Reset
 			continue;
 		}
+		
+		// Reset previous_char for any other character
+		this->previous_char = received;
+		
 		//if (received == '*') {
 		//	diagnose_flag = true;
 		//	continue;
@@ -88,6 +101,19 @@ void SerialConsole::on_serial_char_received() {
 			halt_flag = true;
 			continue;
 		}
+        if(received == 'Y' - 'A' + 1) { // ^Y
+            if(THEKERNEL->get_internal_stop_request()) {
+                THEKERNEL->set_internal_stop_request(false);
+            } else {
+                THEKERNEL->set_stop_request(true); // generic stop what you are doing request
+                THEKERNEL->set_stop_request_time(us_ticker_read() / 1000);
+            }
+            continue;
+        }
+        if(received == 'Z' - 'A' + 1) { // ^Z
+            THEKERNEL->set_keep_alive_request(true);
+            continue;
+        }
         if(THEKERNEL->is_feed_hold_enabled()) {
             if(received == '!') { // safe pause
                 THEKERNEL->set_feed_hold(true);
