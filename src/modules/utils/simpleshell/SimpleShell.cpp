@@ -2194,7 +2194,6 @@ void SimpleShell::jog(string parameters, StreamOutput *stream)
                         stream->printf("error:Soft Endstop %c would be exceeded - ignore jog command\n", i+'X');
                         return;
                     }
-                    THEKERNEL->streams->printf("dist_to_min[%d]: %f, scale: %f, delta[%d]: %f\n", i, dist_to_min[i], scale, i, delta[i]);
                     move_to_min_limit = true;
                 }
                 if(delta[i] > 0 && !isnan(THEROBOT->get_soft_endstop_max(i)) && 
@@ -2206,7 +2205,6 @@ void SimpleShell::jog(string parameters, StreamOutput *stream)
                         stream->printf("error:Soft Endstop %c would be exceeded - ignore jog command\n", i+'X');
                         return;
                     }
-                    THEKERNEL->streams->printf("dist_to_max[%d]: %f, scale: %f, delta[%d]: %f\n", i, dist_to_max[i], scale, i, delta[i]);
                     move_to_max_limit = true;
                 }
             }
@@ -2214,11 +2212,6 @@ void SimpleShell::jog(string parameters, StreamOutput *stream)
                 for (int j = X_AXIS; j <= Z_AXIS; ++j) {
                     delta[j] = delta[j] * scale;
                 }
-                
-                THEKERNEL->streams->printf("delta[%d]: %f, delta_const[%d]: %f\n", 0, delta[0], 0, delta_const[0]);
-                THEKERNEL->streams->printf("delta[%d]: %f, delta_const[%d]: %f\n", 1, delta[1], 1, delta_const[1]);
-                THEKERNEL->streams->printf("delta[%d]: %f, delta_const[%d]: %f\n", 2, delta[2], 2, delta_const[2]);
-                THEKERNEL->streams->printf("scale: %f\n", scale);
                 THEROBOT->delta_move(delta, fr, n_motors);
                 return;
             }
@@ -2277,15 +2270,11 @@ void SimpleShell::jog(string parameters, StreamOutput *stream)
                     if(delta[i] < 0 && !isnan(THEROBOT->get_soft_endstop_min(i)) && 
                         dist_to_min <= fabs(2 * delta_const[i] + delta[i]) + 1) {
                         THEKERNEL->set_internal_stop_request(true);
-                        THEKERNEL->streams->printf("dist_to_min: %f, delta_const[%d]: %f, delta[%d]: %f\n", dist_to_min, i, delta_const[i], i, delta[i]);
-                        THEKERNEL->streams->printf("current_pos[%d]: %f, soft_endstop_min[%d]: %f\n", i, current_pos[i], i, THEROBOT->get_soft_endstop_min(i));
                         break;
                     }
                     if(delta[i] > 0 && !isnan(THEROBOT->get_soft_endstop_max(i)) &&     
                         dist_to_max <= fabs(2 * delta_const[i] + delta[i]) + 1) {
                         THEKERNEL->set_internal_stop_request(true);
-                        THEKERNEL->streams->printf("dist_to_max: %f, delta_const[%d]: %f, delta[%d]: %f\n", dist_to_max, i, delta_const[i], i, delta[i]);
-                        THEKERNEL->streams->printf("current_pos[%d]: %f, soft_endstop_max[%d]: %f\n", i, current_pos[i], i, THEROBOT->get_soft_endstop_max(i));
                         break;
                     }
                 }
