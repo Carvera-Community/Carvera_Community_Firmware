@@ -2159,45 +2159,66 @@ void SimpleShell::jog(string parameters, StreamOutput *stream)
                 delta_const[i]= dc * (delta[i]<0?-1:1);
             }
         }
+        THEROBOT->rotate(&delta[0], &delta[1], &delta[2]);
+        THEROBOT->rotate(&delta_const[0], &delta_const[1], &delta_const[2]);
         // stream->printf("distance: %f, time:%f, X%f Y%f Z%f, speed:%f\n", d, t, delta[0], delta[1], delta[2], fr);
+        float current_pos[n_motors];
+        THEROBOT->get_current_machine_position(current_pos);
+        if (THEROBOT->compensationTransform) {
+            THEROBOT->compensationTransform(current_pos, true, false);
+        }
 
+        float dist_to_min[3] ={0,0,0};
+        float dist_to_max[3] ={0,0,0};
+        int min_axis = 0;
+        int max_axis = 0;
         // Check soft limits during continuous jogging
         if(THEROBOT->is_soft_endstop_enabled()) {
-            float current_pos[n_motors];
-            THEROBOT->get_current_machine_position(current_pos);
             bool move_to_min_limit = false;
             bool move_to_max_limit = false;
+            float scale = 10000.0F;
             // Check each axis that is homed
             for (int i = 0; i <= Z_AXIS; ++i) {
                 if(!THEROBOT->is_homed(i)) continue;
                 
                 // Calculate distance to soft limits
-                float dist_to_min = current_pos[i] - THEROBOT->get_soft_endstop_min(i);
-                float dist_to_max = THEROBOT->get_soft_endstop_max(i) - current_pos[i];
-                
+                dist_to_min[i] = (current_pos[i] - THEROBOT->get_soft_endstop_min(i));
+                dist_to_max[i] = (THEROBOT->get_soft_endstop_max(i) - current_pos[i]);
                 // If moving towards a limit and brake distance is greater than distance to limit
                 if(delta[i] < 0 && !isnan(THEROBOT->get_soft_endstop_min(i)) && 
-                    dist_to_min <= 2 * da + 2* dc) {
-                    if (dist_to_min > 0) {
-                        delta[i] = -(dist_to_min);
-                    } else {
+                    dist_to_min[i] <= fabs(2 * delta[i] + 2* delta_const[i])){
+                    if (scale > dist_to_min[i]/fabs(delta[i])) {
+                        scale = dist_to_min[i]/fabs(delta[i]);
+                    }
+                    if (dist_to_min[i] <= 0) {
                         stream->printf("error:Soft Endstop %c would be exceeded - ignore jog command\n", i+'X');
                         return;
                     }
+                    THEKERNEL->streams->printf("dist_to_min[%d]: %f, scale: %f, delta[%d]: %f\n", i, dist_to_min[i], scale, i, delta[i]);
                     move_to_min_limit = true;
                 }
                 if(delta[i] > 0 && !isnan(THEROBOT->get_soft_endstop_max(i)) && 
-                    dist_to_max <= 2 * da + 2 * dc) {
-                    if (dist_to_max > 0) {
-                        delta[i] = dist_to_max;
-                    } else {
+                    dist_to_max[i] <= fabs(2 * delta[i] + 2 * delta_const[i])) {
+                    if (scale > dist_to_max[i]/fabs(delta[i])) {
+                        scale = dist_to_max[i]/fabs(delta[i]);
+                    }
+                    if (dist_to_max[i] <= 0) {
                         stream->printf("error:Soft Endstop %c would be exceeded - ignore jog command\n", i+'X');
                         return;
                     }
+                    THEKERNEL->streams->printf("dist_to_max[%d]: %f, scale: %f, delta[%d]: %f\n", i, dist_to_max[i], scale, i, delta[i]);
                     move_to_max_limit = true;
                 }
             }
             if(move_to_min_limit || move_to_max_limit) {
+                for (int j = X_AXIS; j <= Z_AXIS; ++j) {
+                    delta[j] = delta[j] * scale;
+                }
+                
+                THEKERNEL->streams->printf("delta[%d]: %f, delta_const[%d]: %f\n", 0, delta[0], 0, delta_const[0]);
+                THEKERNEL->streams->printf("delta[%d]: %f, delta_const[%d]: %f\n", 1, delta[1], 1, delta_const[1]);
+                THEKERNEL->streams->printf("delta[%d]: %f, delta_const[%d]: %f\n", 2, delta[2], 2, delta_const[2]);
+                THEKERNEL->streams->printf("scale: %f\n", scale);
                 THEROBOT->delta_move(delta, fr, n_motors);
                 return;
             }
@@ -2254,13 +2275,17 @@ void SimpleShell::jog(string parameters, StreamOutput *stream)
                     
                     // If moving towards a limit and brake distance is greater than distance to limit
                     if(delta[i] < 0 && !isnan(THEROBOT->get_soft_endstop_min(i)) && 
-                        dist_to_min <= (2 * dc + da + 1)) {
+                        dist_to_min <= fabs(2 * delta_const[i] + delta[i]) + 1) {
                         THEKERNEL->set_internal_stop_request(true);
+                        THEKERNEL->streams->printf("dist_to_min: %f, delta_const[%d]: %f, delta[%d]: %f\n", dist_to_min, i, delta_const[i], i, delta[i]);
+                        THEKERNEL->streams->printf("current_pos[%d]: %f, soft_endstop_min[%d]: %f\n", i, current_pos[i], i, THEROBOT->get_soft_endstop_min(i));
                         break;
                     }
                     if(delta[i] > 0 && !isnan(THEROBOT->get_soft_endstop_max(i)) &&     
-                        dist_to_max <= (2 * dc + da + 1)) {
+                        dist_to_max <= fabs(2 * delta_const[i] + delta[i]) + 1) {
                         THEKERNEL->set_internal_stop_request(true);
+                        THEKERNEL->streams->printf("dist_to_max: %f, delta_const[%d]: %f, delta[%d]: %f\n", dist_to_max, i, delta_const[i], i, delta[i]);
+                        THEKERNEL->streams->printf("current_pos[%d]: %f, soft_endstop_max[%d]: %f\n", i, current_pos[i], i, THEROBOT->get_soft_endstop_max(i));
                         break;
                     }
                 }
