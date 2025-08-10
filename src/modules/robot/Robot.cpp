@@ -1337,9 +1337,6 @@ void Robot::process_move(Gcode *gcode, enum MOTION_MODE_T motion_mode)
             arc_target_unrotated[Y_AXIS] = ROUND_NEAR_HALF(arc_target_unrotated[Y_AXIS] + machine_position[Y_AXIS]);
             arc_target_unrotated[Z_AXIS] = ROUND_NEAR_HALF(arc_target_unrotated[Z_AXIS] + machine_position[Z_AXIS]);
 
-            THEKERNEL->streams->printf("arc_target_unrotated: %1.3f, %1.3f, %1.3f\n", arc_target_unrotated[0], arc_target_unrotated[1], arc_target_unrotated[2]);
-            THEKERNEL->streams->printf("target: %1.3f, %1.3f, %1.3f\n", target[0], target[1], target[2]);
-
         } else {
             // prepare the parameters for rotation, if they are not set, set them to 0 -> no movement on that axis
             for(int i= X_AXIS; i <= Z_AXIS; ++i) {
@@ -2116,6 +2113,8 @@ bool Robot::append_arc(Gcode * gcode, const float target[], const float rotated_
 
     if(segments > 1) {
         float theta_per_segment = angular_travel / segments;
+        linear_vector[this->plane_axis_0] = linear_vector[this->plane_axis_0] / segments;
+        linear_vector[this->plane_axis_1] = linear_vector[this->plane_axis_1] / segments;
         linear_vector[this->plane_axis_2] = linear_vector[this->plane_axis_2] / segments;
 
         /* Vector rotation by transformation matrix: r is the original vector, r_T is the rotated vector,
@@ -2180,9 +2179,9 @@ bool Robot::append_arc(Gcode * gcode, const float target[], const float rotated_
             
             memcpy(arc_target_vector, arc_start_vector, 3*sizeof(float));
             rotate(&arc_target_vector[0], &arc_target_vector[1], &arc_target_vector[2]);
-            arc_target[this->plane_axis_0] = arc_center[this->plane_axis_0] + arc_target_vector[this->plane_axis_0] + linear_vector[this->plane_axis_0];
-            arc_target[this->plane_axis_1] = arc_center[this->plane_axis_1] + arc_target_vector[this->plane_axis_1] + linear_vector[this->plane_axis_1];
-            arc_target[this->plane_axis_2] = arc_center[this->plane_axis_2] + arc_target_vector[this->plane_axis_2] + linear_vector[this->plane_axis_2];
+            arc_target[this->plane_axis_0] = arc_center[this->plane_axis_0] + arc_target_vector[this->plane_axis_0] + i * linear_vector[this->plane_axis_0];
+            arc_target[this->plane_axis_1] = arc_center[this->plane_axis_1] + arc_target_vector[this->plane_axis_1] + i * linear_vector[this->plane_axis_1];
+            arc_target[this->plane_axis_2] = arc_center[this->plane_axis_2] + arc_target_vector[this->plane_axis_2] + i * linear_vector[this->plane_axis_2];
             // Append this segment to the queue
             bool b= this->append_milestone(arc_target, rate_mm_s, gcode->line);
             moved= moved || b;
