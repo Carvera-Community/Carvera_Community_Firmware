@@ -1,5 +1,9 @@
 Notice: 
 To let the Carvera work perfectly, please make sure both your controller software and firmware are up to date. For firmware, download the new firmware first, then use the 'update' function to upgrade the firmware, and reset the machine after the update is complete.
+[1.0.11c]
+- fixed issue with rotated WCS and arc movements
+- fixed issue with probing bosses in the Y axis
+
 [1.0.10c]
 - Bugfix: Firmware crashs associated with the LED bar problem fixed
 - Bugfix: issue with changing Z heights when changing WCS offset
