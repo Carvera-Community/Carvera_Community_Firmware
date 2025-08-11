@@ -1324,9 +1324,13 @@ void ZProbe::probe_boss(bool calibration) //M462
     float mpos[3];
     float old_mpos[3];
     bool probe_x_axis = false;
+    bool probe_y_axis = false;
 
     if (param.x_axis_distance != 0){
         probe_x_axis = true;
+    }
+    if (param.y_axis_distance != 0){
+        probe_y_axis = true;
     }
 
     param.x_axis_distance = param.x_axis_distance/2 + param.extra_probe_distance;
@@ -1417,7 +1421,7 @@ void ZProbe::probe_boss(bool calibration) //M462
             THEKERNEL->streams->printf("Distance Betweeen 2 X surfaces (Diameter) is: %.3f and is stored at variable #151\n" , THEKERNEL->probe_outputs[0] );
         }
 
-        if (param.y_axis_distance != 0) {
+        if (probe_y_axis) {
             // return if probe touches wall during outside move
             if (xy_probe_move_alarm_when_hit(POS, param.probe_g38_subcode, param.y_rotated_x, param.y_rotated_y, param.feed_rate) == 1){
                 return;
