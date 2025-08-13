@@ -2314,6 +2314,7 @@ void SimpleShell::jog(string parameters, StreamOutput *stream)
         stream->printf("ok\n");
 
     }else{
+        THEROBOT->rotate(&delta[0], &delta[1], &delta[2]);
         THEROBOT->delta_move(delta, fr, n_motors);
         // turn off queue delay and run it now
         THECONVEYOR->force_queue();
