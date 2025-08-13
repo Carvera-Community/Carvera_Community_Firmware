@@ -2219,8 +2219,8 @@ void SimpleShell::jog(string parameters, StreamOutput *stream)
 
         THECONVEYOR->wait_for_idle();
         // turn off any compensation transform so Z does not move as we jog
-        auto savect= THEROBOT->compensationTransform;
-        THEROBOT->reset_compensated_machine_position();
+        //auto savect= THEROBOT->compensationTransform;
+        //THEROBOT->reset_compensated_machine_position();
 
         // feed three blocks that allow full acceleration, full speed and full deceleration
         THECONVEYOR->set_hold(true);
@@ -2310,7 +2310,7 @@ void SimpleShell::jog(string parameters, StreamOutput *stream)
         // reset the position based on current actuator position
         THEROBOT->reset_position_from_current_actuator_position();
         // restore compensationTransform
-        THEROBOT->compensationTransform= savect;
+        //THEROBOT->compensationTransform= savect;
         stream->printf("ok\n");
 
     }else{
