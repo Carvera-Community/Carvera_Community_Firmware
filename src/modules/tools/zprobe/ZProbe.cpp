@@ -1097,8 +1097,6 @@ bool ZProbe::fast_slow_probe_sequence(int axis, int direction){
         // rotate the retraction again, because the delta move is in mcs and not wcs
         rotateXY(retractx, retracty, &retractx, &retracty, THEROBOT->r[THEROBOT->get_current_wcs()]);
     }
-    
-    THEKERNEL->streams->printf("x: %.3f, y: %.3f, z: %.3f, retractx: %.3f, retracty: %.3f, retractz: %.3f\n", x, y, z, retractx, retracty, retractz);
 
     // do positive probe
     memset(&this->buff, 0 , sizeof(this->buff));
