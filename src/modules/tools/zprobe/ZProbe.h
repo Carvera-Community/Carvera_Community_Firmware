@@ -11,6 +11,7 @@
 #include "Module.h"
 #include "Pin.h"
 #include <fastmath.h>
+#include "atchandlerpublicaccess.h"
 
 #include <vector>
 
@@ -22,6 +23,21 @@ class StepperMotor;
 class Gcode;
 class StreamOutput;
 class LevelingStrategy;
+
+// Homing States
+enum PROBING_CYCLES {
+    CALIBRATE_PROBE_BORE = 0, // M460
+    CALIBRATE_PROBE_BOSS = 1, // M460.3
+    PROBE_BORE = 10, // M461
+    PROBE_BOSS = 20, // M462
+    PROBE_INSIDE_CORNER = 30, // M463
+    PROBE_OUTSIDE_CORNER = 40, // M464
+    PROBE_AXIS_ANGLE = 50, // M465
+    PROBE_A_AXIS = 51, // M465.1
+    PROBE_A_AXIS_WITH_OFFSET = 52, // M465.2
+    PROBE_SINGLE_AXIS_DOUBLE_TAP = 60, // M466
+    NONE = 255, // Default
+};
 
 struct probe_parameters{
     float x_axis_distance;
@@ -86,6 +102,7 @@ public:
 
     void on_module_loaded();
     void on_gcode_received(void *argument);
+    void on_main_loop(void *argument);
 
     bool check_last_probe_ok();
     bool run_probe(float& mm, float feedrate, float max_dist= -1, bool reverse= false);
@@ -116,7 +133,7 @@ private:
     void probe_boss(bool calibration = false);
     void probe_insideCorner();
     void probe_outsideCorner();
-    void probe_axisangle();
+    void probe_axisangle(bool probe_a_axis = false, bool probe_with_offset = false);
     void calibrate_probe_bore();
     void calibrate_probe_boss();
     void single_axis_probe_double_tap();
@@ -140,6 +157,7 @@ private:
     char buff[100];
     probe_parameters param;
     xy_output_coordinates out_coords;
+    machine_offsets machine_offset;
 
     Pin pin;
     Pin calibrate_pin;
@@ -153,6 +171,8 @@ private:
     volatile bool calibrating;
     volatile bool probe_detected;
     volatile bool calibrate_detected;
+
+    PROBING_CYCLES probing_cycle;
 
 
     bool bfirstHitDetected  = false;
