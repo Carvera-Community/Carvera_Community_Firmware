@@ -11,7 +11,7 @@
 #include "Module.h"
 #include "Pin.h"
 #include <fastmath.h>
-#include "atchandlerpublicaccess.h"
+#include "ATChandlerPublicAccess.h"
 
 #include <vector>
 
