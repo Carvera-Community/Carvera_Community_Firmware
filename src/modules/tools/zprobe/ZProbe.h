@@ -143,7 +143,7 @@ private:
     void on_get_public_data(void* argument);
     uint32_t probe_doubleHit(uint32_t dummy);
     void reset_probe_tracking();
-    bool is_probe_tool();
+    uint8_t check_probe_tool();
 
     float slow_feedrate;
     float fast_feedrate;
@@ -152,6 +152,7 @@ private:
     float max_z;
     bool tool_0_3axis;
     float dwell_before_probing;
+    bool is_3dprobe_active;
 
     Gcode* gcodeBuffer;
     char buff[100];

@@ -183,6 +183,12 @@ void ZProbe::config_load()
 
 void ZProbe::on_main_loop(void *argument)
 {
+    if (check_probe_tool() == 2){
+        is_3dprobe_active = true;
+    }else{
+        is_3dprobe_active = false;    
+    }
+
     switch(probing_cycle)
     {
         case CALIBRATE_PROBE_BORE:
@@ -232,8 +238,7 @@ void ZProbe::on_main_loop(void *argument)
 
 uint32_t ZProbe::read_probe(uint32_t dummy)
 {
-    if (CARVERA_AIR == THEKERNEL->factory_set->MachineModel /*&& !THEKERNEL->is_probeLaserOn()*/ && (probing || calibrating)){
-        THEKERNEL->set_probeLaser(true);
+    if (CARVERA_AIR == THEKERNEL->factory_set->MachineModel && is_3dprobe_active){
         bool b = true;
 		PublicData::set_value( switch_checksum, detector_switch_checksum, state_checksum, &b );
     }
@@ -812,13 +817,21 @@ bool ZProbe::probe_XYZ(Gcode *gcode)
     return true; //probe was activated
 }
 
-bool ZProbe::is_probe_tool() {
+uint8_t ZProbe::check_probe_tool() {
     struct tool_status tool;
     bool ok = PublicData::get_value( atc_handler_checksum, get_tool_status_checksum, &tool );
     if (!ok) {
-        return false;
+        return 0;
     }
-    return (tool.active_tool == 0 || tool.active_tool >= 999990);
+    
+    // 3d probe tool
+    if ((tool.active_tool == 0 && this->tool_0_3axis) || tool.active_tool >= 999990){
+        return 2;
+    // probe tool in general
+    }else if (tool.active_tool == 0 || tool.active_tool >= 999990){
+        return 1;
+    }
+    return 0;
 }
 
 // just probe / calibrate Z using calibrate pin
@@ -855,7 +868,7 @@ void ZProbe::calibrate_Z(Gcode *gcode)
     reset_probe_tracking();
 
     // If calibration is happening with a probe tool, enable tracking of probe position in the read_probe ISR.
-    if (is_probe_tool()) {
+    if (check_probe_tool() > 0) {
         probing = true;
     }
 
@@ -998,7 +1011,7 @@ void ZProbe::on_get_public_data(void* argument)
     } else if (pdr->second_element_is(get_zprobe_time_checksum)) {
     	uint32_t *probe_time = static_cast<uint32_t *>(pdr->get_data_ptr());
     	*probe_time = this->probe_trigger_time;
-    	pdr->set_taken();
+        pdr->set_taken();
     }
 }
 
