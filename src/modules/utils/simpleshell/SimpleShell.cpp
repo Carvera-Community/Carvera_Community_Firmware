@@ -75,7 +75,7 @@ extern "C" uint32_t  _sbrk(int size);
 // support upload file type definition
 #define FILETYPE	"lz"		//compressed by quicklz
 // version definition
-#define VERSION "2.0.0cPR125alpha"
+#define VERSION "2.0.0cPR126alpha"
 
 // command lookup table
 const SimpleShell::ptentry_t SimpleShell::commands_table[] = {
@@ -2164,9 +2164,6 @@ void SimpleShell::jog(string parameters, StreamOutput *stream)
         // stream->printf("distance: %f, time:%f, X%f Y%f Z%f, speed:%f\n", d, t, delta[0], delta[1], delta[2], fr);
         float current_pos[n_motors];
         THEROBOT->get_current_machine_position(current_pos);
-        if (THEROBOT->compensationTransform) {
-            THEROBOT->compensationTransform(current_pos, true, false);
-        }
 
         float dist_to_min[3] ={0,0,0};
         float dist_to_max[3] ={0,0,0};

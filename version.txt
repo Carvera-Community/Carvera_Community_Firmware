@@ -2,10 +2,11 @@ Notice:
 To let the Carvera work perfectly, please make sure both your controller software and firmware are up to date. For firmware, download the new firmware first, then use the 'update' function to upgrade the firmware, and reset the machine after the update is complete.
 
 
-[2.0.0cPR125alpha]
+[2.0.0cPR126alpha]
 - Enhancement: Continous Jog Mode
 - Enhancement: 3D probe is now always powered on the Carvera AIR
 - Enhancement: Added M465.1 and M465.2 to probe 4th axis stock
+- Enhancement: Added a sag compensation fort the Carvera AIR that compensates for rotational and gravitational sag of the x axis carriage
 - Bugfix: Machine crashes during probing cycles should be fixed
 
 
