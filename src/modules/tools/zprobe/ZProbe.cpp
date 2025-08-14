@@ -89,6 +89,9 @@ void ZProbe::on_module_loaded()
     // register event-handlers
     register_for_event(ON_GCODE_RECEIVED);
     register_for_event(ON_GET_PUBLIC_DATA);
+    register_for_event(ON_MAIN_LOOP);
+
+    this->probing_cycle = NONE;
 
     // we read the probe in this timer
     probing = false;
@@ -178,10 +181,64 @@ void ZProbe::config_load()
 
 }
 
+void ZProbe::on_main_loop(void *argument)
+{
+    if (check_probe_tool() == 2){
+        is_3dprobe_active = true;
+    }else{
+        is_3dprobe_active = false;    
+    }
+
+    switch(probing_cycle)
+    {
+        case CALIBRATE_PROBE_BORE:
+            calibrate_probe_bore();
+            probing_cycle = NONE;
+            break;
+        case CALIBRATE_PROBE_BOSS:
+            calibrate_probe_boss();
+            probing_cycle = NONE;
+            break;
+        case PROBE_BORE:
+            probe_bore();
+            probing_cycle = NONE;
+            break;
+        case PROBE_BOSS:
+            probe_boss();
+            probing_cycle = NONE;
+            break;
+        case PROBE_INSIDE_CORNER:
+            probe_insideCorner();
+            probing_cycle = NONE;
+            break;
+        case PROBE_OUTSIDE_CORNER:
+            probe_outsideCorner();
+            probing_cycle = NONE;
+            break;
+        case PROBE_AXIS_ANGLE:
+            probe_axisangle();
+            probing_cycle = NONE;
+            break;
+        case PROBE_A_AXIS:
+            probe_axisangle(true, false);
+            probing_cycle = NONE;
+            break;
+        case PROBE_A_AXIS_WITH_OFFSET:
+            probe_axisangle(true, true);
+            probing_cycle = NONE;
+            break;
+        case PROBE_SINGLE_AXIS_DOUBLE_TAP:
+            single_axis_probe_double_tap();
+            probing_cycle = NONE;
+            break;
+        default:
+            break;
+    }
+}
+
 uint32_t ZProbe::read_probe(uint32_t dummy)
 {
-    if (CARVERA_AIR == THEKERNEL->factory_set->MachineModel /*&& !THEKERNEL->is_probeLaserOn()*/ && (probing || calibrating)){
-        THEKERNEL->set_probeLaser(true);
+    if (CARVERA_AIR == THEKERNEL->factory_set->MachineModel && is_3dprobe_active){
         bool b = true;
 		PublicData::set_value( switch_checksum, detector_switch_checksum, state_checksum, &b );
     }
@@ -528,7 +585,7 @@ void ZProbe::on_gcode_received(void *argument)
                         return;
                     }
                     if (parse_parameters(gcode)){
-                        calibrate_probe_boss();
+                        probing_cycle = CALIBRATE_PROBE_BOSS;
                     }
                 }else {
                     if (!gcode->has_letter('X') && !gcode->has_letter('Y') ) { //error if there is a problem
@@ -538,7 +595,7 @@ void ZProbe::on_gcode_received(void *argument)
                         return;
                     }
                     if (parse_parameters(gcode)){
-                        calibrate_probe_bore();
+                        probing_cycle = CALIBRATE_PROBE_BORE;
                     }
                 }
                 
@@ -551,7 +608,7 @@ void ZProbe::on_gcode_received(void *argument)
                     return;
                 }
                 if (parse_parameters(gcode)){
-                    probe_bore();
+                    probing_cycle = PROBE_BORE;
                 }
                 break;
             case 462:
@@ -562,7 +619,7 @@ void ZProbe::on_gcode_received(void *argument)
                     return;
                 }
                 if (parse_parameters(gcode)){
-                    probe_boss();
+                    probing_cycle = PROBE_BOSS;
                 }
                 break;
             case 463:
@@ -573,7 +630,7 @@ void ZProbe::on_gcode_received(void *argument)
                     return;
                 }
                 if (parse_parameters(gcode)){
-                    probe_insideCorner();
+                    probing_cycle = PROBE_INSIDE_CORNER;
                 }
                 break;
             case 464:
@@ -584,24 +641,41 @@ void ZProbe::on_gcode_received(void *argument)
                     return;
                 }
                 if (parse_parameters(gcode)){
-                    probe_outsideCorner();
+                    probing_cycle = PROBE_OUTSIDE_CORNER;
                 }
                 break;
             case 465:
-                if (!gcode->has_letter('X') && !gcode->has_letter('Y')){
-                    gcode->stream->printf("ALARM: Probe fail: No Axis Set\n");
-                    THEKERNEL->call_event(ON_HALT, nullptr);
-                    THEKERNEL->set_halt_reason(PROBE_FAIL);
-                    return;
-                }
-                if (gcode->has_letter('X') && gcode->has_letter('Y')){
-                    gcode->stream->printf("ALARM: Probe fail: Axis Probing Only Supports 1 Axis Input\n");
-                    THEKERNEL->call_event(ON_HALT, nullptr);
-                    THEKERNEL->set_halt_reason(PROBE_FAIL);
-                    return;
-                }
-                if (parse_parameters(gcode)){
-                    probe_axisangle();
+                parse_parameters(gcode, true);
+                if (gcode->subcode == 1){
+                    if (!gcode->has_letter('Y') || !gcode->has_letter('H')){
+                        gcode->stream->printf("ALARM: Probe fail: No distance or height set\n");
+                        THEKERNEL->call_event(ON_HALT, nullptr);
+                        THEKERNEL->set_halt_reason(PROBE_FAIL);
+                        return;
+                    }
+                    probing_cycle = PROBE_A_AXIS;
+                }else if (gcode->subcode == 2){
+                    if (!gcode->has_letter('X') || !gcode->has_letter('Y') || !gcode->has_letter('R')){
+                        gcode->stream->printf("ALARM: Probe fail: No offset, distance or height set\n");
+                        THEKERNEL->call_event(ON_HALT, nullptr);
+                        THEKERNEL->set_halt_reason(PROBE_FAIL);
+                        return;
+                    }
+                    probing_cycle = PROBE_A_AXIS_WITH_OFFSET;
+                }else{
+                    if (!gcode->has_letter('X') && !gcode->has_letter('Y')){
+                            gcode->stream->printf("ALARM: Probe fail: No axis set\n");
+                        THEKERNEL->call_event(ON_HALT, nullptr);
+                        THEKERNEL->set_halt_reason(PROBE_FAIL);
+                        return;
+                    }
+                    if (gcode->has_letter('X') && gcode->has_letter('Y')){
+                        gcode->stream->printf("ALARM: Probe fail: Axis probing only supports 1 axis input\n");
+                        THEKERNEL->call_event(ON_HALT, nullptr);
+                        THEKERNEL->set_halt_reason(PROBE_FAIL);
+                        return;
+                    }
+                    probing_cycle = PROBE_AXIS_ANGLE;
                 }
                 break;
             case 466:
@@ -612,7 +686,7 @@ void ZProbe::on_gcode_received(void *argument)
                     return;
                 }
                 if (parse_parameters(gcode, (gcode->has_letter('Z') && !gcode->has_letter('X') && !gcode->has_letter('Y')))){
-                    single_axis_probe_double_tap();
+                    probing_cycle = PROBE_SINGLE_AXIS_DOUBLE_TAP;
                 }
                 break;
             case 670:
@@ -743,13 +817,21 @@ bool ZProbe::probe_XYZ(Gcode *gcode)
     return true; //probe was activated
 }
 
-bool ZProbe::is_probe_tool() {
+uint8_t ZProbe::check_probe_tool() {
     struct tool_status tool;
     bool ok = PublicData::get_value( atc_handler_checksum, get_tool_status_checksum, &tool );
     if (!ok) {
-        return false;
+        return 0;
     }
-    return (tool.active_tool == 0 || tool.active_tool >= 999990);
+    
+    // 3d probe tool
+    if ((tool.active_tool == 0 && this->tool_0_3axis) || tool.active_tool >= 999990){
+        return 2;
+    // probe tool in general
+    }else if (tool.active_tool == 0 || tool.active_tool >= 999990){
+        return 1;
+    }
+    return 0;
 }
 
 // just probe / calibrate Z using calibrate pin
@@ -786,7 +868,7 @@ void ZProbe::calibrate_Z(Gcode *gcode)
     reset_probe_tracking();
 
     // If calibration is happening with a probe tool, enable tracking of probe position in the read_probe ISR.
-    if (is_probe_tool()) {
+    if (check_probe_tool() > 0) {
         probing = true;
     }
 
@@ -901,6 +983,7 @@ void ZProbe::coordinated_move(float x, float y, float z, float feedrate, bool re
     delete [] cmd;
 
     message.stream = &(StreamOutput::NullStream);
+    message.line = 0;
     THEKERNEL->call_event(ON_CONSOLE_LINE_RECEIVED, &message );
     THEKERNEL->conveyor->wait_for_idle();
     THEROBOT->pop_state();
@@ -928,7 +1011,7 @@ void ZProbe::on_get_public_data(void* argument)
     } else if (pdr->second_element_is(get_zprobe_time_checksum)) {
     	uint32_t *probe_time = static_cast<uint32_t *>(pdr->get_data_ptr());
     	*probe_time = this->probe_trigger_time;
-    	pdr->set_taken();
+        pdr->set_taken();
     }
 }
 
@@ -1699,37 +1782,70 @@ void ZProbe::probe_outsideCorner() //M464
     }
 }
 
-void ZProbe::probe_axisangle() //M465
+void ZProbe::probe_axisangle(bool probe_a_axis, bool probe_with_offset) //M465
 {
     THECONVEYOR->wait_for_idle();
     THEKERNEL->streams->printf("Probing 2 points to find an angle\n");
 
     float mpos[3];
-    float old_mpos[3];
+    float a_axis_pos;
     bool probe_x = false;
 
-    if (param.x_axis_distance != 0) {
-        probe_x = true;
-        if (param.visualize_path_distance != 0){
-            param.visualize_path_distance = fabs(param.visualize_path_distance) * (param.x_axis_distance / fabs(param.x_axis_distance));
+    if (probe_with_offset){
+        probe_x = PublicData::get_value(atc_handler_checksum, get_machine_offsets_checksum, &machine_offset );
+        // Validate the values before using them
+        if (isnan(machine_offset.anchor1_x) || isnan(machine_offset.anchor1_y) || 
+            isnan(machine_offset.rotation_offset_x) || isnan(machine_offset.rotation_offset_y)) {
+            THEKERNEL->streams->printf("ALARM: Invalid machine offset values\n");
+            THEKERNEL->call_event(ON_HALT, nullptr);
+            THEKERNEL->set_halt_reason(PROBE_FAIL);
+            return;
         }
-        param.y_axis_distance = param.side_depth;
-    }else{
-        if (param.visualize_path_distance != 0){
-                param.visualize_path_distance = fabs(param.visualize_path_distance) * (param.y_axis_distance / fabs(param.y_axis_distance));
+        coordinated_move(NAN, NAN, machine_offset.clearance_z, param.rapid_rate / 60, false);
+        THECONVEYOR->wait_for_idle();
+
+        // Calculate target coordinates with validation
+        float target_x = machine_offset.anchor1_x + machine_offset.rotation_offset_x + param.x_axis_distance;
+        float target_y = machine_offset.anchor1_y + machine_offset.rotation_offset_y;
+
+        if (isnan(target_x) || isnan(target_y)) {
+            THEKERNEL->streams->printf("ALARM: Invalid target coordinates\n");
+            THEKERNEL->call_event(ON_HALT, nullptr);
+            THEKERNEL->set_halt_reason(PROBE_FAIL);
+            return;
         }
-        param.x_axis_distance = param.side_depth;
+        coordinated_move(target_x, target_y, NAN, param.rapid_rate / 60, false);
+        THECONVEYOR->wait_for_idle();
+        param.probe_height = 300;
     }
 
-    if (param.repeat < 1){
-        THEKERNEL->streams->printf("ALARM: Probe fail: repeat value cannot be less than 1\n");
-        THEKERNEL->call_event(ON_HALT, nullptr);
-        THEKERNEL->set_halt_reason(PROBE_FAIL);
-        return;
+    if (!probe_a_axis){
+        if (param.x_axis_distance != 0) {
+            probe_x = true;
+            if (param.visualize_path_distance != 0){
+                param.visualize_path_distance = fabs(param.visualize_path_distance) * (param.x_axis_distance / fabs(param.x_axis_distance));
+            }
+            param.y_axis_distance = param.side_depth;
+        }else{
+            if (param.visualize_path_distance != 0){
+                    param.visualize_path_distance = fabs(param.visualize_path_distance) * (param.y_axis_distance / fabs(param.y_axis_distance));
+            }
+            param.x_axis_distance = param.side_depth;
+        }
+
+        if (param.repeat < 1){
+            THEKERNEL->streams->printf("ALARM: Probe fail: repeat value cannot be less than 1\n");
+            THEKERNEL->call_event(ON_HALT, nullptr);
+            THEKERNEL->set_halt_reason(PROBE_FAIL);
+            return;
+        }
+    }else{
+        param.rotation_angle = 0;
+        param.y_axis_distance = param.y_axis_distance / 2.0;
+        param.z_axis_distance = param.probe_height;
     }
-    
 	//slow zprobe without alarm to probe_height. Skip if probe height is 0
-	if (param.probe_height != 0){
+	if (param.probe_height != 0 && !probe_a_axis){
 		// do z probe with slow speed
         z_probe_move_with_retract(param.probe_g38_subcode, -param.probe_height, param.clearance_height, param.feed_rate);
     }
@@ -1739,12 +1855,12 @@ void ZProbe::probe_axisangle() //M465
     // always wait for idle before getting the machine pos
     THECONVEYOR->wait_for_idle();
     //save center position to use later
-    THEROBOT->get_current_machine_position(mpos);
-    memcpy(old_mpos, mpos, sizeof(mpos));
-    // current_position/mpos includes the compensation transform so we need to get the inverse to get actual position
+    THEROBOT->get_current_machine_position(mpos);    // current_position/mpos includes the compensation transform so we need to get the inverse to get actual position
+    a_axis_pos = THEROBOT->actuators[3]->get_current_position();
     if(THEROBOT->compensationTransform) THEROBOT->compensationTransform(mpos, true, true); // get inverse compensation transform
-    out_coords.origin_x = old_mpos[0];
-    out_coords.origin_y = old_mpos[1];
+    out_coords.origin_x = mpos[0];
+    out_coords.origin_y = mpos[1];
+    param.clearance_world_pos = mpos[2];
 
 
 	//setup repeat
@@ -1753,7 +1869,41 @@ void ZProbe::probe_axisangle() //M465
         //goto clearance height
         //coordinated_move(NAN, NAN, clearance_world_pos, rapid_rate);
 
-        if (probe_x) {
+        if (probe_a_axis){
+            // goto start point for repeated probing
+            coordinated_move(NAN, NAN, param.clearance_world_pos, param.rapid_rate );
+            coordinated_move(out_coords.origin_x, out_coords.origin_y, NAN, param.rapid_rate );
+
+            // probe along x axis to second position, alarm if hit
+            xy_probe_move_alarm_when_hit(POS, param.probe_g38_subcode, 0.0, param.y_rotated_y, param.feed_rate);
+            
+            fast_slow_probe_sequence(Z_AXIS, NEG);
+            if (check_last_probe_ok()){
+                out_coords.y_positive_y_out = out_coords.z_negative_z_out;
+            }else{
+                THEKERNEL->streams->printf("ALARM: Probe fail: first point not found\n");
+                THEKERNEL->call_event(ON_HALT, nullptr);
+                THEKERNEL->set_halt_reason(PROBE_FAIL);
+                return;
+            }
+            
+            xy_probe_move_alarm_when_hit(NEG, param.probe_g38_subcode, 0.0, 2 * param.y_rotated_y, param.feed_rate);
+            fast_slow_probe_sequence(Z_AXIS, NEG);
+            if (check_last_probe_ok()){
+                out_coords.y_negative_y_out = out_coords.z_negative_z_out;
+            }
+            else{
+                THEKERNEL->streams->printf("ALARM: Probe fail: second point not found\n");
+                THEKERNEL->call_event(ON_HALT, nullptr);
+                THEKERNEL->set_halt_reason(PROBE_FAIL);
+                return;
+            }
+
+            THEKERNEL->probe_outputs[2] = atan (  (out_coords.y_positive_y_out - out_coords.y_negative_y_out) 
+                                                / (2 * param.y_axis_distance)) * 180 /pi;
+            THEKERNEL->streams->printf("Angle from A Axis is: %.3f degrees or %.3f radians and is stored in radians at variable #153\n" , THEKERNEL->probe_outputs[2] , THEKERNEL->probe_outputs[2] * pi / 180 );
+
+        }else if (probe_x) {
             
             fast_slow_probe_sequence(Y_AXIS, POS);
             THECONVEYOR->wait_for_idle();
@@ -1818,6 +1968,16 @@ void ZProbe::probe_axisangle() //M465
 	}
 
     if (param.visualize_path_distance != 0) {
+        if (probe_a_axis){
+            THECONVEYOR->wait_for_idle();
+            coordinated_move(NAN, NAN, param.clearance_world_pos, param.rapid_rate );
+            coordinated_move(out_coords.origin_x, out_coords.origin_y, NAN, param.rapid_rate );
+            float delta[5];
+            memset(delta, 0, sizeof(delta));
+            delta[A_AXIS] = - THEKERNEL->probe_outputs[2];
+            THEROBOT->delta_move(delta, param.rapid_rate, A_AXIS + 1);
+            THECONVEYOR->wait_for_idle();
+        }else{
         //probe to second position
         if (probe_x){
             xy_probe_move_alarm_when_hit(POS, 
@@ -1835,9 +1995,14 @@ void ZProbe::probe_axisangle() //M465
         //return to center position
         THECONVEYOR->wait_for_idle();
         coordinated_move(out_coords.origin_x, out_coords.origin_y, NAN, param.rapid_rate );
+        }   
     }
     if (param.save_position == 1){
+        if (probe_a_axis){
+            THEROBOT->set_current_wcs_by_mpos(NAN,NAN,NAN,a_axis_pos - THEKERNEL->probe_outputs[2],NAN,NAN);
+        }else{
         THEROBOT->set_current_wcs_by_mpos(NAN,NAN,NAN,NAN,NAN,THEKERNEL->probe_outputs[2]);
+        }
     }
 }
 
