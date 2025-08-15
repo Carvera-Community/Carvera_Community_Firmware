@@ -1,0 +1,50 @@
+{
+  "compilation": {
+    "compilers_to_recognize": [
+      {
+        "executable": "__ARM_NONE_EABI_GCC_PATH__",
+				"flags_to_add": ["--target=arm-none-eabi", "-I__GCC_INCLUDE_DIR__"],
+        "flags_to_remove": [
+          "-mthumb-interwork",
+					"-mthumb",
+          "-mcpu=cortex-m3",
+          "-mfix-cortex-m3-ldrd",
+          "-fanalyzer",
+          "-floop-unroll-and-jam"
+        ]
+      },
+      {
+        "executable": "__ARM_NONE_EABI_GPP_PATH__",
+				"flags_to_add": ["--target=arm-none-eabi", "-std=gnu++11",
+				                 "-isystem__GPP_SYS_INCLUDE_DIR_1__",
+                         "-isystem__GPP_SYS_INCLUDE_DIR_2__",
+                         "-isystem__GPP_SYS_INCLUDE_DIR_3__",
+                         "-isystem__GPP_SYS_INCLUDE_DIR_4__",
+                         "-isystem__GPP_SYS_INCLUDE_DIR_5__",
+                         "-isystem__GPP_SYS_INCLUDE_DIR_6__"],
+        "flags_to_remove": [
+          "-mthumb-interwork",
+          "-mcpu=cortex-m3",
+          "-mcpu=cortex-m4",
+					"-mthumb",
+          "-mfix-cortex-m3-ldrd",
+          "-fanalyzer",
+          "-floop-unroll-and-jam"
+        ]
+      }
+    ],
+    "compilers_to_exclude": []
+  },
+  "output": {
+    "content": {
+      "include_only_existing_source": true,
+      "paths_to_include": [],
+      "paths_to_exclude": [],
+      "duplicate_filter_fields": "file"
+    },
+    "format": {
+      "command_as_array": false,
+      "drop_output_field": false
+    }
+  }
+} 

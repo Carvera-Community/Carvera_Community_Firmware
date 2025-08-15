@@ -2,8 +2,9 @@
 
 #include "LevelingStrategy.h"
 
-#include <string.h>
+#include <string>
 #include <tuple>
+#include <cstdint>
 
 #define cart_grid_leveling_strategy_checksum CHECKSUM("rectangular-grid")
 

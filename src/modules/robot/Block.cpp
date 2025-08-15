@@ -35,7 +35,6 @@ double Block::fp_scale= 0;
 
 Block::Block()
 {
-    tick_info= nullptr;
     line = 0;
     clear();
 }
@@ -86,14 +85,6 @@ void Block::clear()
     */
 
     total_move_ticks= 0;
-    if(tick_info == nullptr) {
-        // we create this once for this block
-        tick_info= new tickinfo_t[n_actuators]; //(tickinfo_t *)malloc(sizeof(tickinfo_t) * n_actuators);
-        if(tick_info == nullptr) {
-            // if we ran out of memory in AHB0 just stop here
-            __debugbreak();
-        }
-    }
 
     for(int i = 0; i < n_actuators; ++i) {
         tick_info[i].steps_per_tick= 0;

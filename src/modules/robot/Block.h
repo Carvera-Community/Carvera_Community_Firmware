@@ -9,6 +9,7 @@
 
 #include <bitset>
 #include "ActuatorCoordinates.h"
+#include <cstdint>
 
 class Block {
     public:
@@ -67,7 +68,7 @@ class Block {
         void reset(tickinfo_t *saved);
 
         // need info for each active motor
-        tickinfo_t *tick_info;
+        std::array<tickinfo_t, k_max_actuators> tick_info;
 
         static uint8_t n_actuators;
 

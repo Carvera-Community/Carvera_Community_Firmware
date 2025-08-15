@@ -103,7 +103,7 @@ DeltaGridStrategy::DeltaGridStrategy(ZProbe *zprobe) : LevelingStrategy(zprobe)
 
 DeltaGridStrategy::~DeltaGridStrategy()
 {
-    if(grid != nullptr) AHB0.dealloc(grid);
+    if(grid != nullptr) AHB.dealloc(grid);
 }
 
 bool DeltaGridStrategy::handleConfig()
@@ -128,8 +128,8 @@ bool DeltaGridStrategy::handleConfig()
         }
     }
 
-    // allocate in AHB0
-    grid = (float *)AHB0.alloc(grid_size * grid_size * sizeof(float));
+    // allocate in AHB
+    grid = (float *)AHB.alloc(grid_size * grid_size * sizeof(float));
 
     if(grid == nullptr) {
         THEKERNEL->streams->printf("Error: Not enough memory\n");

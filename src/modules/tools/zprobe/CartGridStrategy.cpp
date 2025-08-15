@@ -146,8 +146,8 @@ CartGridStrategy::CartGridStrategy(ZProbe *zprobe) : LevelingStrategy(zprobe)
 
 CartGridStrategy::~CartGridStrategy()
 {
-    if(grid != nullptr) AHB0.dealloc(grid);
-    if(flex_compensation_data != nullptr) AHB0.dealloc(flex_compensation_data);
+    if(grid != nullptr) AHB.dealloc(grid);
+    if(flex_compensation_data != nullptr) AHB.dealloc(flex_compensation_data);
 }
 
 bool CartGridStrategy::handleConfig()
@@ -225,8 +225,8 @@ bool CartGridStrategy::handleConfig()
     std::replace(before_probe.begin(), before_probe.end(), '_', ' '); // replace _ with space
     std::replace(after_probe.begin(), after_probe.end(), '_', ' '); // replace _ with space
 
-    // allocate in AHB0
-    grid = (float *)AHB0.alloc(configured_grid_x_size * configured_grid_y_size * sizeof(float));
+    // allocate in AHB
+    grid = (float *)AHB.alloc(configured_grid_x_size * configured_grid_y_size * sizeof(float));
 
     if(grid == nullptr) {
         THEKERNEL->streams->printf("Error: Not enough memory\n");
@@ -245,7 +245,7 @@ bool CartGridStrategy::handleConfig()
 
     // Allocate memory for flex compensation data
     flex_data_size = flex_grid_x_size * sizeof(float);
-    flex_compensation_data = (float *)AHB0.alloc(flex_data_size);
+    flex_compensation_data = (float *)AHB.alloc(flex_data_size);
 
     if(flex_compensation_data == nullptr) {
         THEKERNEL->streams->printf("Error: Not enough memory for flex compensation data\n");
@@ -1086,7 +1086,7 @@ bool CartGridStrategy::doFlexMeasurement(Gcode *gc)
     gc->stream->printf("Parameters: Y coordinate=%1.3f, X distance=%1.3f, Points=%d\n", y_coordinate, x_distance, num_points);
 
     // Allocate array for storing delta values
-    float *delta_array = (float *)AHB0.alloc(num_points * sizeof(float));
+    float *delta_array = (float *)AHB.alloc(num_points * sizeof(float));
     if(delta_array == nullptr) {
         gc->stream->printf("ERROR: Not enough memory for delta array\n");
         return false;
@@ -1125,8 +1125,9 @@ bool CartGridStrategy::doFlexMeasurement(Gcode *gc)
         float measured_y = coords.y_positive_y_out;
         
         if(isnan(measured_y)) {
+            
             gc->stream->printf("ERROR: Failed to probe at point %d\n", i);
-            AHB0.dealloc(delta_array);
+            AHB.dealloc(delta_array);
             return false;
         }
         
@@ -1153,7 +1154,7 @@ bool CartGridStrategy::doFlexMeasurement(Gcode *gc)
         gc->stream->printf("Stored flex_compensation_data[%d] = %1.6f\n", i, flex_compensation_data[i]);
     }
 
-    AHB0.dealloc(delta_array);
+    AHB.dealloc(delta_array);
 
     gc->stream->printf("Flex measurement completed. Delta array stored.\n");
 
