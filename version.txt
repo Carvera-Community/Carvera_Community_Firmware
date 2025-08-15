@@ -5,12 +5,12 @@ To let the Carvera work perfectly, please make sure both your controller softwar
 1. developer quality-of-life enhancements, no user-visible features. See DEVELOPER.md for details. USB-C GDB debugging support, improved memory management with validation and bug fixes, and seamless GCC 14.2.1 toolchain integration on Linux, macOS, and Windows.
 
 
-[2.0.0cPR126alpha]
+[2.0.0cPR127alpha]
 - Enhancement: Continous Jog Mode
 - Enhancement: 3D probe is now always powered on the Carvera AIR
 - Enhancement: Added M465.1 and M465.2 to probe 4th axis stock
 - Enhancement: Added a sag compensation fort the Carvera AIR that compensates for rotational and gravitational sag of the x axis carriage
-- Bugfix: Machine crashes during probing cycles should be fixed
+- Bugfix: Machine crashes during probing cycles should be fixe
 
 
 [1.0.11c]
