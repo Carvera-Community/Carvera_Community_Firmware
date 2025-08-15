@@ -71,8 +71,8 @@ private:
 
     // Flex compensation data
     float *flex_compensation_data;
-    uint8_t flex_grid_x_size;
-    uint8_t flex_current_grid_x_size;
+    uint8_t flex_x_points;
+    uint8_t flex_current_x_points;
     float flex_x_start;
     float flex_x_size;
     bool flex_compensation_active;
