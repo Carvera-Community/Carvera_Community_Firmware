@@ -266,6 +266,7 @@ zprobe.debounce_ms							1				# Set if noisy
 # zprobe.max_z								100				# max z
 zprobe.calibrate_pin						0.5^			# calibrate_pin
 zprobe.probe_tip_diameter					1.6				#3 axis probe tip diamter
+zprobe.calibration_safety_margin              0.1             # max distance to move after calibrate pin but before probe pin detected
 
 # Leveling strategy
 leveling-strategy.rectangular-grid.enable					true
@@ -405,6 +406,7 @@ soft_endstop.x_min	-371.0				# Soft Limit X Min Machine Coordinate
 soft_endstop.y_min	-250.0				# Soft Limit Y Min Machine Coordinate
 soft_endstop.z_min	-135.0				# Soft Limit Z Min Machine Coordinate
 
+load_last_wcs false
 
 # Motion
 default_feed_rate 1000					# Feed rate when F parameter is not set (mm/min)
@@ -471,4 +473,6 @@ wp.max_voltage								4.1			# Wireless probe charge cut-off voltage
 
 
 # Other settings for future use
+
+
 

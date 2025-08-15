@@ -43,6 +43,7 @@ class SerialConsole : public Module, public StreamOutput {
         //vector<std::string> received_lines;    // Received lines are stored here until they are requested
         RingBuffer<char,256> buffer;             // Receive buffer
         mbed::Serial* serial;
+        char previous_char;                       // Track previous character for ?1 detection
         struct {
           bool query_flag:1;
           bool halt_flag:1;

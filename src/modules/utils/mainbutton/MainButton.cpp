@@ -86,7 +86,6 @@ void MainButton::on_module_loaded()
     this->poll_frequency = THEKERNEL->config->value( main_button_poll_frequency_checksum )->by_default(20)->as_number();
     this->long_press_time_ms = THEKERNEL->config->value( main_long_press_time_ms_checksum )->by_default(3000)->as_number();
     this->long_press_enable = THEKERNEL->config->value( main_button_long_press_checksum )->by_default(false)->as_string();
-	
 	if(CARVERA == THEKERNEL->factory_set->MachineModel)
     {
     	this->e_stop.from_string( THEKERNEL->config->value( e_stop_pin_checksum )->by_default("0.26^")->as_string())->as_input();
@@ -220,7 +219,9 @@ void MainButton::on_idle(void *argument)
         		if (us_ticker_read() - sleep_countdown_us > (uint32_t)auto_sleep_min * 60 * 1000000) {
     				// turn off 12V/24V power supply
 					this->switch_power_12(0);
-					this->switch_power_24(0);
+					this->switch_power_24(0);// turn off light
+					bool b = false;
+					PublicData::set_value( switch_checksum, light_checksum, state_checksum, &b );
         			// go to sleep
     				THEKERNEL->set_sleeping(true);
     				THEKERNEL->call_event(ON_HALT, nullptr);
@@ -233,15 +234,24 @@ void MainButton::on_idle(void *argument)
         	if (state == IDLE) {
         		// turn off light timer
         		if (us_ticker_read() - light_countdown_us > (uint32_t)turn_off_light_min * 60 * 1000000) {
+        			light_countdown_us = us_ticker_read();
         			// turn off light
 					bool b = false;
 					PublicData::set_value( switch_checksum, light_checksum, state_checksum, &b );
         		}
-        	} else {
+        	} else if (state != SLEEP) {
         		light_countdown_us = us_ticker_read();
         		// turn on the light
-				bool b = true;
-				PublicData::set_value( switch_checksum, light_checksum, state_checksum, &b );
+        		struct pad_switch pad;
+        		bool ok = false;
+        		ok = PublicData::get_value(switch_checksum, light_checksum, state_checksum, &pad);
+        		if (ok) {
+        			if(!(bool)pad.value)
+        			{
+						bool b = true;
+						PublicData::set_value( switch_checksum, light_checksum, state_checksum, &b );
+        			}
+        		}
         	}
     	}
     	uint8_t halt_reason;
@@ -650,7 +660,6 @@ uint32_t MainButton::led_tick(uint32_t dummy)
 			
 			break;
 	}
-	
 	if (state != old_state) 
 	{
 		old_state = state;
@@ -682,6 +691,7 @@ uint32_t MainButton::led_tick(uint32_t dummy)
 	}
 	return 0;
 }
+
 void MainButton::set_led_color(unsigned char R1, unsigned char G1, unsigned char B1,unsigned char R2, unsigned char G2, unsigned char B2,unsigned char R3, unsigned char G3, unsigned char B3,unsigned char R4, unsigned char G4, unsigned char B4,unsigned char R5, unsigned char G5, unsigned char B5)
 {
 	unsigned char temp, j;

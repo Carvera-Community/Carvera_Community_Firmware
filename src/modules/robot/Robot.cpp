@@ -105,6 +105,8 @@
 #define ymin_checksum                      CHECKSUM("y_min")
 #define zmin_checksum                      CHECKSUM("z_min")
 
+#define load_last_wcs_checksum             CHECKSUM("load_last_wcs")
+
 #define PI 3.14159265358979323846F // force to be float, do not use M_PI
 
 //#define DEBUG_PRINTF THEKERNEL->streams->printf
@@ -114,7 +116,8 @@
 // It takes care of cutting arcs into segments, same thing for line that are too long
 
 float ROUND_NEAR_HALF(float x) {
-	return roundf(x * 200.0) / 200.0;
+	//return roundf(x * 200.0) / 200.0;	2025.02.05
+	return x;
 }
 
 Robot::Robot()
@@ -135,6 +138,8 @@ Robot::Robot()
     this->disable_segmentation= false;
     this->disable_arm_solution= false;
     this->n_motors= 0;
+    memset(this->sin_r, 0, sizeof sin_r);
+    memset(this->r, 0, sizeof r);
 }
 
 //Called when the module has just been loaded
@@ -148,14 +153,29 @@ void Robot::on_module_loaded()
     // load tlo data from eeprom
     float tlo[3] = {0, 0, THEKERNEL->eeprom_data->TLO};
     this->loadToolOffset(tlo);
+    this->probe_tool_not_calibrated = THEKERNEL->eeprom_data->probe_tool_not_calibrated;
+    this->load_last_wcs = THEKERNEL->config->value(load_last_wcs_checksum)->by_default(false)->as_bool();
+    if (this->load_last_wcs)
+    {
+        this->current_wcs = THEKERNEL->eeprom_data->current_wcs;
+    }
+    else
+    {
+        this->current_wcs = 0;  
+    }
 
+    // init
+    for (int i = 0; i < 9UL; i++){
+        this->cos_r[i] = 1;
+    }
+   
     // load wcs data from eeprom
-	float x = THEKERNEL->eeprom_data->G54[0];
-	float y = THEKERNEL->eeprom_data->G54[1];
-	float z = THEKERNEL->eeprom_data->G54[2];
-	float a = THEKERNEL->eeprom_data->G54AB[0];
-	float b = THEKERNEL->eeprom_data->G54AB[1];
-    wcs_offsets[0] = wcs_t(x, y, z, a, b);
+    for (int wcs_index = 0; wcs_index < 6; wcs_index++){
+        wcs_offsets[wcs_index] = wcs_t(THEKERNEL->eeprom_data->WCScoord[wcs_index][0] , THEKERNEL->eeprom_data->WCScoord[wcs_index][1] , THEKERNEL->eeprom_data->WCScoord[wcs_index][2] , THEKERNEL->eeprom_data->WCScoord[wcs_index][3],0);
+        this->r[wcs_index] = THEKERNEL->eeprom_data->WCSrotation[wcs_index];
+        this->cos_r[wcs_index] = cos(this->r[wcs_index] * PI / 180.0);
+        this->sin_r[wcs_index] = sin(this->r[wcs_index] * PI / 180.0);
+    }
 }
 
 #define ACTUATOR_CHECKSUMS(X) {     \
@@ -305,6 +325,7 @@ void Robot::load_config()
         }
         else
         {
+        	actuators[a]->change_steps_per_mm(THEKERNEL->config->value(motor_checksums[a][3])->by_default(a == 2 ? 2560.0F : 80.0F)->as_number());
         	actuators[a]->change_steps_per_mm(THEKERNEL->config->value(motor_checksums[a][3])->by_default(a == 2 ? 2560.0F : 80.0F)->as_number());
         	actuators[a]->set_max_rate(THEKERNEL->config->value(motor_checksums[a][4])->by_default(3000.0F)->as_number()/60.0F); // it is in mm/min and converted to mm/sec
         }
@@ -483,14 +504,14 @@ void Robot::print_position(uint8_t subcode, std::string& res, bool ignore_extrud
 }
 
 // converts current last milestone (machine position without compensation transform) to work coordinate system (inverse transform)
-Robot::wcs_t Robot::mcs2wcs(const Robot::wcs_t& pos) const
+Robot::wcs_t Robot::mcs2selected_wcs(const wcs_t &pos, size_t n) const
 {
     return std::make_tuple(
-        std::get<X_AXIS>(pos) - std::get<X_AXIS>(wcs_offsets[current_wcs]) + std::get<X_AXIS>(g92_offset) - std::get<X_AXIS>(tool_offset),
-        std::get<Y_AXIS>(pos) - std::get<Y_AXIS>(wcs_offsets[current_wcs]) + std::get<Y_AXIS>(g92_offset) - std::get<Y_AXIS>(tool_offset),
-        std::get<Z_AXIS>(pos) - std::get<Z_AXIS>(wcs_offsets[current_wcs]) + std::get<Z_AXIS>(g92_offset) - std::get<Z_AXIS>(tool_offset),
-        std::get<A_AXIS>(pos) - std::get<A_AXIS>(wcs_offsets[current_wcs]) + std::get<A_AXIS>(g92_offset) - std::get<A_AXIS>(tool_offset),
-        std::get<B_AXIS>(pos) - std::get<B_AXIS>(wcs_offsets[current_wcs]) + std::get<B_AXIS>(g92_offset) - std::get<B_AXIS>(tool_offset)
+        this->cos_r[n] * (std::get<X_AXIS>(pos) - std::get<X_AXIS>(wcs_offsets[n])) + this->sin_r[n] * (std::get<Y_AXIS>(pos) - std::get<Y_AXIS>(wcs_offsets[n])) + std::get<X_AXIS>(g92_offset) - std::get<X_AXIS>(tool_offset),
+        this->cos_r[n] * (std::get<Y_AXIS>(pos) - std::get<Y_AXIS>(wcs_offsets[n])) - this->sin_r[n] * (std::get<X_AXIS>(pos) - std::get<X_AXIS>(wcs_offsets[n])) + std::get<Y_AXIS>(g92_offset) - std::get<Y_AXIS>(tool_offset),
+        std::get<Z_AXIS>(pos) - std::get<Z_AXIS>(wcs_offsets[n]) + std::get<Z_AXIS>(g92_offset) - std::get<Z_AXIS>(tool_offset),
+        std::get<A_AXIS>(pos) - std::get<A_AXIS>(wcs_offsets[n]) + std::get<A_AXIS>(g92_offset) - std::get<A_AXIS>(tool_offset),
+        std::get<B_AXIS>(pos) - std::get<B_AXIS>(wcs_offsets[n]) + std::get<B_AXIS>(g92_offset) - std::get<B_AXIS>(tool_offset)
     );
 }
 
@@ -498,8 +519,8 @@ Robot::wcs_t Robot::mcs2wcs(const Robot::wcs_t& pos) const
 Robot::wcs_t Robot::wcs2mcs(const Robot::wcs_t& pos) const
 {
     return std::make_tuple(
-        std::get<X_AXIS>(pos) + std::get<X_AXIS>(wcs_offsets[current_wcs]) - std::get<X_AXIS>(g92_offset) + std::get<X_AXIS>(tool_offset),
-        std::get<Y_AXIS>(pos) + std::get<Y_AXIS>(wcs_offsets[current_wcs]) - std::get<Y_AXIS>(g92_offset) + std::get<Y_AXIS>(tool_offset),
+        std::get<X_AXIS>(wcs_offsets[current_wcs]) + this->cos_r[current_wcs] * (std::get<X_AXIS>(pos) - std::get<X_AXIS>(g92_offset) + std::get<X_AXIS>(tool_offset)) - this->sin_r[current_wcs] * (std::get<Y_AXIS>(pos) - std::get<Y_AXIS>(g92_offset) + std::get<Y_AXIS>(tool_offset)),
+        std::get<Y_AXIS>(wcs_offsets[current_wcs]) + this->cos_r[current_wcs] * (std::get<Y_AXIS>(pos) - std::get<Y_AXIS>(g92_offset) + std::get<Y_AXIS>(tool_offset)) + this->sin_r[current_wcs] * (std::get<X_AXIS>(pos) - std::get<X_AXIS>(g92_offset) + std::get<X_AXIS>(tool_offset)),
         std::get<Z_AXIS>(pos) + std::get<Z_AXIS>(wcs_offsets[current_wcs]) - std::get<Z_AXIS>(g92_offset) + std::get<Z_AXIS>(tool_offset),
         std::get<A_AXIS>(pos) + std::get<A_AXIS>(wcs_offsets[current_wcs]) - std::get<A_AXIS>(g92_offset) + std::get<A_AXIS>(tool_offset),
         std::get<B_AXIS>(pos) + std::get<B_AXIS>(wcs_offsets[current_wcs]) - std::get<B_AXIS>(g92_offset) + std::get<B_AXIS>(tool_offset)
@@ -521,8 +542,11 @@ void Robot::check_max_actuator_speeds()
     }
 }
 
-void Robot::set_current_wcs_by_mpos(float x, float y, float z, float a, float b)
+void Robot::set_current_wcs_by_mpos(float x, float y, float z, float a, float b, float r)
 {
+    bool recalculate_z_offset = false;
+    float delta_ref_mz = 0;
+
     if(isnan(x)){
         x = std::get<X_AXIS>(wcs_offsets[current_wcs]);
     }
@@ -531,6 +555,13 @@ void Robot::set_current_wcs_by_mpos(float x, float y, float z, float a, float b)
     }
     if(isnan(z)){
         z = std::get<Z_AXIS>(wcs_offsets[current_wcs]);
+    }else{
+        if (THEKERNEL->eeprom_data->REFMZ != THEKERNEL->eeprom_data->TOOLMZ) {
+            delta_ref_mz = THEKERNEL->eeprom_data->TOOLMZ - THEKERNEL->eeprom_data->REFMZ;
+            recalculate_z_offset = true;
+        }
+        PublicData::set_value(atc_handler_checksum, set_ref_tool_mz_checksum, nullptr);
+        this->clearToolOffset();
     }
     if(isnan(a)){
         a = std::get<A_AXIS>(wcs_offsets[current_wcs]);
@@ -538,16 +569,39 @@ void Robot::set_current_wcs_by_mpos(float x, float y, float z, float a, float b)
     if(isnan(b)){
         b = std::get<B_AXIS>(wcs_offsets[current_wcs]);
     }
+    if(!isnan(r)){
+        this->r[current_wcs] = r;
+        this->cos_r[current_wcs] = cos(r * (PI / 180.0));
+        this->sin_r[current_wcs] = sin(r * (PI / 180.0));
+    }
     THEROBOT->wcs_offsets[current_wcs] = Robot::wcs_t(x, y, z , a , b);
     // save wcs data to eeprom if current wcs = G54
-    if (current_wcs == 0) {
-        THEKERNEL->eeprom_data->G54[0] = x;
-        THEKERNEL->eeprom_data->G54[1] = y;
-        THEKERNEL->eeprom_data->G54[2] = z;
-        THEKERNEL->eeprom_data->G54AB[0] = a;
-        THEKERNEL->eeprom_data->G54AB[1] = b;
+    if (current_wcs <= 5) {
+        THEKERNEL->eeprom_data->WCScoord[current_wcs][0] = x;
+        THEKERNEL->eeprom_data->WCScoord[current_wcs][1] = y;
+        THEKERNEL->eeprom_data->WCScoord[current_wcs][2] = z;
+        THEKERNEL->eeprom_data->WCScoord[current_wcs][3] = a;
+        THEKERNEL->eeprom_data->WCSrotation[current_wcs] = this->r[current_wcs];
+    }
+
+    // recalculate z offset for all WCS other than the current one if a different tool is selected
+    if (recalculate_z_offset) {
+        for (int i = 0; i < MAX_WCS; i++) {
+            if (i != current_wcs) {
+                std::tie(x, y, z, a, b) = wcs_offsets[i];
+                z += delta_ref_mz;
+                wcs_offsets[i] = wcs_t(x, y, z, a, b);
+                if (i <= 5) {
+                    THEKERNEL->eeprom_data->WCScoord[i][2] = z;
+                }
+            }
+        }
+    }
+    // save eeprom data if the current WCS is 0-5 or the Z offset is recalculated
+    if (current_wcs <= 5 || recalculate_z_offset) {
         THEKERNEL->write_eeprom_data();
     }
+
 }
 
 //A GCode has been received
@@ -599,28 +653,51 @@ void Robot::on_gcode_received(void *argument)
                     if(n == 0) n = current_wcs; // set current coordinate system
                     else --n;
                     if(n < MAX_WCS) {
+                        bool recalculate_z_offset = false;
+                        float delta_ref_mz = 0;
                         float x, y, z, a, b;
                         std::tie(x, y, z, a, b) = wcs_offsets[n];
+                        wcs_t pos= mcs2selected_wcs(machine_position, n);
                         // notify atc module to change ref tool mcs if Z wcs offset is chaned
                         if (gcode->has_letter('Z')) {
+                            if (probe_tool_not_calibrated && (THEKERNEL->eeprom_data->TOOL = 0 || THEKERNEL->eeprom_data->TOOL >= 999990)){
+                                THEKERNEL->streams->printf("ALARM: Probe not calibrated. Please calibrate probe before probing.\n");
+                                THEKERNEL->call_event(ON_HALT, nullptr);
+                                THEKERNEL->set_halt_reason(CALIBRATE_FAIL);
+                                return;
+                            }
+                            if (THEKERNEL->eeprom_data->REFMZ != THEKERNEL->eeprom_data->TOOLMZ) {
+                                delta_ref_mz = THEKERNEL->eeprom_data->TOOLMZ - THEKERNEL->eeprom_data->REFMZ;
+                                recalculate_z_offset = true;
+                            }
                         	PublicData::set_value(atc_handler_checksum, set_ref_tool_mz_checksum, nullptr);
                         	this->clearToolOffset();
+                            
                         }
+                        if(gcode->has_letter('R')){
+                            this->r[n] = gcode->get_value('R');
+                            this->cos_r[n] = cos(this->r[n] * (PI / 180.0));
+                            this->sin_r[n] = sin(this->r[n] * (PI / 180.0));
+                        } 
                         if(gcode->get_int('L') == 20) {
                             // this makes the current machine position (less compensation transform) the offset
-                            // get current position in WCS
-                            wcs_t pos= mcs2wcs(machine_position);
+                            // get current position in WC
 
-                            if(gcode->has_letter('X')){
-                                x -= to_millimeters(gcode->get_value('X')) - std::get<X_AXIS>(pos);
-                            }
-
-                            if(gcode->has_letter('Y')){
-                                y -= to_millimeters(gcode->get_value('Y')) - std::get<Y_AXIS>(pos);
+                            if((gcode->has_letter('X')) && (gcode->has_letter('Y'))){
+                                x = machine_position[X_AXIS] - this->cos_r[n] * to_millimeters(gcode->get_value('X')) + this->sin_r[n] * to_millimeters(gcode->get_value('Y'));
+                                y = machine_position[Y_AXIS] - this->cos_r[n] * to_millimeters(gcode->get_value('Y')) - this->sin_r[n] * to_millimeters(gcode->get_value('X'));
+                                //x = std::get<X_AXIS>(machine_position) - this->cos_r[n] * to_millimeters(gcode->get_value('X')) + this->sin_r[n] * to_millimeters(gcode->get_value('Y'));
+                                //y = std::get<Y_AXIS>(machine_position) - this->cos_r[n] * to_millimeters(gcode->get_value('Y')) - this->sin_r[n] * to_millimeters(gcode->get_value('X'));
+                            }else if(gcode->has_letter('X')){
+                                x = machine_position[X_AXIS] - this->cos_r[n] * to_millimeters(gcode->get_value('X')) + this->sin_r[n] * std::get<Y_AXIS>(pos);
+                                y = machine_position[Y_AXIS] - this->cos_r[n] * std::get<Y_AXIS>(pos) - this->sin_r[n] * to_millimeters(gcode->get_value('X'));
+                            }else if(gcode->has_letter('Y')){
+                                x = machine_position[X_AXIS] - this->cos_r[n] * std::get<X_AXIS>(pos) + this->sin_r[n] * to_millimeters(gcode->get_value('Y'));
+                                y = machine_position[Y_AXIS] - this->cos_r[n] * to_millimeters(gcode->get_value('Y')) - this->sin_r[n] * std::get<X_AXIS>(pos);
                             }
                             
                             if(gcode->has_letter('Z')) {
-                                z -= to_millimeters(gcode->get_value('Z')) - std::get<Z_AXIS>(pos);
+                                z = machine_position[Z_AXIS] - to_millimeters(gcode->get_value('Z'));
                             }
                             
                             if(gcode->has_letter('A')) {
@@ -656,13 +733,30 @@ void Robot::on_gcode_received(void *argument)
                         wcs_offsets[n] = wcs_t(x, y, z, a, b);
                         
                 		// save wcs data to eeprom
-                        if (n == 0) {
-                    	    THEKERNEL->eeprom_data->G54[0] = x;
-                    	    THEKERNEL->eeprom_data->G54[1] = y;
-                    	    THEKERNEL->eeprom_data->G54[2] = z;
-                    	    THEKERNEL->eeprom_data->G54AB[0] = a;
-                    	    THEKERNEL->eeprom_data->G54AB[1] = b;
-                    	    THEKERNEL->write_eeprom_data();
+                        if (n <= 5) {
+                            THEKERNEL->eeprom_data->WCScoord[n][0] = x;
+                            THEKERNEL->eeprom_data->WCScoord[n][1] = y;
+                            THEKERNEL->eeprom_data->WCScoord[n][2] = z;
+                            THEKERNEL->eeprom_data->WCScoord[n][3] = a;
+                            THEKERNEL->eeprom_data->WCSrotation[n] = this->r[n];
+                        }
+
+                        // recalculate z offset for all WCS other than the current one if a different tool is selected
+                        if (recalculate_z_offset) {
+                            for (int i = 0; i < MAX_WCS; i++) {
+                                if (i != n) {
+                                    std::tie(x, y, z, a, b) = wcs_offsets[i];
+                                    z += delta_ref_mz;
+                                    wcs_offsets[i] = wcs_t(x, y, z, a, b);
+                                    if (i <= 5) {
+                                        THEKERNEL->eeprom_data->WCScoord[i][2] = z;
+                                    }
+                                }
+                            }
+                        }
+                        // save eeprom data if the current WCS is 0-5 or the Z offset is recalculated
+                        if (n <= 5 || recalculate_z_offset) {
+                            THEKERNEL->write_eeprom_data();
                         }
                     }
                 }
@@ -680,6 +774,13 @@ void Robot::on_gcode_received(void *argument)
                 if(gcode->g == 59 && gcode->subcode > 0) {
                     current_wcs += gcode->subcode;
                     if(current_wcs >= MAX_WCS) current_wcs = MAX_WCS - 1;
+                }
+                if (current_wcs > 0 && current_wcs < 6) {
+                    THEKERNEL->eeprom_data->current_wcs = current_wcs;
+                    THEKERNEL->write_eeprom_data();
+                }else{
+                    THEKERNEL->eeprom_data->current_wcs = 0;
+                    THEKERNEL->write_eeprom_data();
                 }
                 break;
 
@@ -726,14 +827,13 @@ void Robot::on_gcode_received(void *argument)
         					THECONVEYOR->wait_for_idle();
                     		// third
                     		THEROBOT->reset_axis_position(gcode->get_value('A')+a, A_AXIS);  
-                    		if (current_wcs == 0) {
-                    	    THEKERNEL->eeprom_data->G54[0] = x;
-                    	    THEKERNEL->eeprom_data->G54[1] = y;
-                    	    THEKERNEL->eeprom_data->G54[2] = z;
-                    	    THEKERNEL->eeprom_data->G54AB[0] = a;
-                    	    THEKERNEL->eeprom_data->G54AB[1] = b;
-                    	    THEKERNEL->write_eeprom_data();
-                        }
+                            if (current_wcs <= 5) {
+                                THEKERNEL->eeprom_data->WCScoord[current_wcs][0] = x;
+                                THEKERNEL->eeprom_data->WCScoord[current_wcs][1] = y;
+                                THEKERNEL->eeprom_data->WCScoord[current_wcs][2] = z;
+                                THEKERNEL->eeprom_data->WCScoord[current_wcs][3] = a;
+                                THEKERNEL->write_eeprom_data();
+                            }
                     		
                     	} else {
                         	THEROBOT->reset_axis_position(gcode->get_value('A'), A_AXIS);
@@ -819,7 +919,7 @@ void Robot::on_gcode_received(void *argument)
                 if(!THEKERNEL->is_grbl_mode()) break;
                 // fall through to M2
             case 2: // M2 end of program
-                current_wcs = 0;
+                //current_wcs = 0;
                 absolute_mode = true;
                 seconds_per_minute= 60;
                 break;
@@ -1159,12 +1259,29 @@ int Robot::get_active_extruder() const
     return 0;
 }
 
+void Robot::rotate(float *x, float *y, float *z)
+{
+    float x_old = *x;
+    float y_old = *y;
+    *x = x_old * cos_r[current_wcs] - y_old * sin_r[current_wcs];
+    *y = x_old * sin_r[current_wcs] + y_old * cos_r[current_wcs];
+}   
+
+void Robot::unrotate(float *x, float *y, float *z)
+{
+    float x_old = *x;
+    float y_old = *y;
+    *x = x_old * cos_r[current_wcs] + y_old * sin_r[current_wcs];
+    *y = -x_old * sin_r[current_wcs] + y_old * cos_r[current_wcs];
+}
+
 // process a G0/G1/G2/G3
 void Robot::process_move(Gcode *gcode, enum MOTION_MODE_T motion_mode)
 {
     // we have a G0/G1/G2/G3 so extract parameters and apply offsets to get machine coordinate target
     // get XYZ and one E (which goes to the selected extruder)/A and B
     float param[5]{NAN, NAN, NAN, NAN, NAN};
+    wcs_t pos= mcs2wcs(machine_position);
 
     // process primary axis
     for(int i= X_AXIS; i <= Z_AXIS; ++i) {
@@ -1180,31 +1297,65 @@ void Robot::process_move(Gcode *gcode, enum MOTION_MODE_T motion_mode)
             offset[letter - 'I'] = this->to_millimeters(gcode->get_value(letter));
         }
     }
-
     // calculate target in machine coordinates (less compensation transform which needs to be done after segmentation)
     float target[n_motors];
+    float arc_target_unrotated[n_motors];
     memcpy(target, machine_position, n_motors*sizeof(float));
+    memcpy(arc_target_unrotated, machine_position, n_motors*sizeof(float));
 
     if(!next_command_is_MCS) {
         if (this->absolute_mode) {
-            // apply wcs offsets and g92 offset and tool offset
-            if(!isnan(param[X_AXIS])) {
-                target[X_AXIS]= ROUND_NEAR_HALF(param[X_AXIS] + std::get<X_AXIS>(wcs_offsets[current_wcs]) - std::get<X_AXIS>(g92_offset) + std::get<X_AXIS>(tool_offset));
+            // fill in the missing parameters with the current position in absolute mode
+            if (isnan(param[X_AXIS])) {
+                param[X_AXIS] = std::get<X_AXIS>(pos);
             }
+            if (isnan(param[Y_AXIS])) {
+                param[Y_AXIS] = std::get<Y_AXIS>(pos);
+            }
+            if (isnan(param[Z_AXIS])) {
+                param[Z_AXIS] = std::get<Z_AXIS>(pos);
+            }
+            // apply g92 offset and tool offset
+            param[X_AXIS] = param[X_AXIS] - std::get<X_AXIS>(g92_offset) + std::get<X_AXIS>(tool_offset);
+            param[Y_AXIS] = param[Y_AXIS] - std::get<Y_AXIS>(g92_offset) + std::get<Y_AXIS>(tool_offset);
+            param[Z_AXIS] = param[Z_AXIS] - std::get<Z_AXIS>(g92_offset) + std::get<Z_AXIS>(tool_offset);
 
-            if(!isnan(param[Y_AXIS])) {
-                target[Y_AXIS]= ROUND_NEAR_HALF(param[Y_AXIS] + std::get<Y_AXIS>(wcs_offsets[current_wcs]) - std::get<Y_AXIS>(g92_offset) + std::get<Y_AXIS>(tool_offset));
-            }
+            // rotate the parameters
+            // param[x-z] after rotation is the vector from wcs origin to target in the machine coordinate system
+            rotate(&param[X_AXIS], &param[Y_AXIS], &param[Z_AXIS]);
+            
+            target[X_AXIS] = ROUND_NEAR_HALF(std::get<X_AXIS>(wcs_offsets[current_wcs]) + param[X_AXIS]);
+            target[Y_AXIS] = ROUND_NEAR_HALF(std::get<Y_AXIS>(wcs_offsets[current_wcs]) + param[Y_AXIS]);
+            target[Z_AXIS] = ROUND_NEAR_HALF(std::get<Z_AXIS>(wcs_offsets[current_wcs]) + param[Z_AXIS]);
 
-            if(!isnan(param[Z_AXIS])) {
-                target[Z_AXIS]= ROUND_NEAR_HALF(param[Z_AXIS] + std::get<Z_AXIS>(wcs_offsets[current_wcs]) - std::get<Z_AXIS>(g92_offset) + std::get<Z_AXIS>(tool_offset));
-            }
+                        
+            arc_target_unrotated[X_AXIS] = target[X_AXIS] - machine_position[X_AXIS];
+            arc_target_unrotated[Y_AXIS] = target[Y_AXIS] - machine_position[Y_AXIS];
+            arc_target_unrotated[Z_AXIS] = target[Z_AXIS] - machine_position[Z_AXIS];            
+            unrotate(&arc_target_unrotated[X_AXIS], &arc_target_unrotated[Y_AXIS], &arc_target_unrotated[Z_AXIS]);
+            arc_target_unrotated[X_AXIS] = ROUND_NEAR_HALF(arc_target_unrotated[X_AXIS] + machine_position[X_AXIS]);
+            arc_target_unrotated[Y_AXIS] = ROUND_NEAR_HALF(arc_target_unrotated[Y_AXIS] + machine_position[Y_AXIS]);
+            arc_target_unrotated[Z_AXIS] = ROUND_NEAR_HALF(arc_target_unrotated[Z_AXIS] + machine_position[Z_AXIS]);
 
         } else {
-            // they are deltas from the machine_position if specified
+            // prepare the parameters for rotation, if they are not set, set them to 0 -> no movement on that axis
             for(int i= X_AXIS; i <= Z_AXIS; ++i) {
-                if(!isnan(param[i])) target[i] = ROUND_NEAR_HALF(param[i] + machine_position[i]);
+                if (isnan(param[i])) {
+                    param[i] = 0.0;
+                }
             }
+
+            arc_target_unrotated[X_AXIS] = ROUND_NEAR_HALF(param[X_AXIS] + machine_position[X_AXIS]);
+            arc_target_unrotated[Y_AXIS] = ROUND_NEAR_HALF(param[Y_AXIS] + machine_position[Y_AXIS]);
+            arc_target_unrotated[Z_AXIS] = ROUND_NEAR_HALF(param[Z_AXIS] + machine_position[Z_AXIS]);
+
+            // rotate the relative vector from the current position to the target
+            // param[x-z] after rotation is the vector from the current position to the target in the machine coordinate system
+            rotate(&param[X_AXIS], &param[Y_AXIS], &param[Z_AXIS]);
+
+            target[X_AXIS] = ROUND_NEAR_HALF(param[X_AXIS] + machine_position[X_AXIS]);
+            target[Y_AXIS] = ROUND_NEAR_HALF(param[Y_AXIS] + machine_position[Y_AXIS]);
+            target[Z_AXIS] = ROUND_NEAR_HALF(param[Z_AXIS] + machine_position[Z_AXIS]);
         }
 
     }else{
@@ -1348,6 +1499,9 @@ void Robot::process_move(Gcode *gcode, enum MOTION_MODE_T motion_mode)
 		}
 	}*/
 
+    // fill
+    arc_target_unrotated[A_AXIS] = target[A_AXIS];
+    arc_target_unrotated[B_AXIS] = target[B_AXIS];
 
     // S is modal When specified on a G0/1/2/3 command
     // if(gcode->has_letter('S')) {
@@ -1371,7 +1525,7 @@ void Robot::process_move(Gcode *gcode, enum MOTION_MODE_T motion_mode)
         case CW_ARC:
         case CCW_ARC:
             // Note arcs are not currently supported by extruder based machines, as 3D slicers do not use arcs (G2/G3)
-            moved = this->compute_arc(gcode, offset, target, motion_mode);
+            moved = this->compute_arc(gcode, offset, arc_target_unrotated, target, motion_mode);
             break;
     }
 
@@ -1485,6 +1639,20 @@ void Robot::reset_position_from_current_actuator_position()
     #endif
 }
 
+// this needs to be done if compensation is turned off for continuous jog
+void Robot::reset_compensated_machine_position()
+{
+    if(compensationTransform) {
+        compensationTransform = nullptr;
+        // we want to leave it where we have set Z, not where it ended up AFTER compensation so
+        // this should correct the Z position to the machine_position
+        is_g123 = false; // we don't want the laser to fire
+        if(!append_milestone(machine_position, this->seek_rate / 60.0F, 0)) {
+            reset_axis_position(machine_position[X_AXIS], machine_position[Y_AXIS], machine_position[Z_AXIS]);
+        }
+    }
+}
+
 // Convert target (in machine coordinates) to machine_position, then convert to actuator position and append this to the planner
 // target is in machine coordinates without the compensation transform, however we save a compensated_machine_position that includes
 // all transforms and is what we actually convert to actuator positions
@@ -1503,12 +1671,26 @@ bool Robot::append_milestone(const float target[], float rate_mm_s, unsigned int
         compensationTransform(transformed_target, false, false);
     }
 
+    bool move= false;
+    float sos= 0; // sum of squares for just primary axis (XYZ usually)
+
+    // find distance moved by each axis, use transformed target from the current compensated machine position
+    for (size_t i = 0; i < n_motors; i++) {
+        deltas[i] = transformed_target[i] - compensated_machine_position[i];
+        if(fabsf(deltas[i]) < 0.00001F) continue;
+        // at least one non zero delta
+        move = true;
+        if(i < N_PRIMARY_AXIS) {
+            sos += powf(deltas[i], 2);
+        }
+    }
+
     // check soft endstops only for homed axis that are enabled
     if(soft_endstop_enabled && !THEKERNEL->is_zprobing()) {
         for (int i = 0; i <= Z_AXIS; ++i) {
             if(!is_homed(i)) continue;
-            if( (!isnan(soft_endstop_min[i]) && transformed_target[i] < soft_endstop_min[i]) || (!isnan(soft_endstop_max[i]) && transformed_target[i] > soft_endstop_max[i]) ) {
-                if(soft_endstop_halt) {
+            if( (!isnan(soft_endstop_min[i]) && transformed_target[i] < soft_endstop_min[i]) && deltas[i] < 0 || (!isnan(soft_endstop_max[i]) && transformed_target[i] > soft_endstop_max[i]) && deltas[i] > 0) {
+                if(soft_endstop_halt && !THECONVEYOR->is_continuous_mode()) {
                     if(THEKERNEL->is_grbl_mode()) {
                         THEKERNEL->streams->printf("error:");
                     }else{
@@ -1524,7 +1706,7 @@ bool Robot::append_milestone(const float target[], float rate_mm_s, unsigned int
                     // TODO VERY hard to do need to go back and change the target, and calculate intercept with the edge
                     // and store all preceding vectors that have on eor more points ourtside of bounds so we can create a propper clip against the boundaries
 
-                } else {
+                } else if (!THECONVEYOR->is_continuous_mode()) {
                     // ignore it
                     if(THEKERNEL->is_grbl_mode()) {
                         THEKERNEL->streams->printf("error:");
@@ -1535,21 +1717,6 @@ bool Robot::append_milestone(const float target[], float rate_mm_s, unsigned int
                     return false;
                 }
             }
-        }
-    }
-
-
-    bool move= false;
-    float sos= 0; // sum of squares for just primary axis (XYZ usually)
-
-    // find distance moved by each axis, use transformed target from the current compensated machine position
-    for (size_t i = 0; i < n_motors; i++) {
-        deltas[i] = transformed_target[i] - compensated_machine_position[i];
-        if(fabsf(deltas[i]) < 0.00001F) continue;
-        // at least one non zero delta
-        move = true;
-        if(i < N_PRIMARY_AXIS) {
-            sos += powf(deltas[i], 2);
         }
     }
 
@@ -1861,7 +2028,7 @@ bool Robot::append_line(Gcode *gcode, const float target[], float rate_mm_s, flo
 
 // Append an arc to the queue ( cutting it into segments as needed )
 // TODO does not support any E parameters so cannot be used for 3D printing.
-bool Robot::append_arc(Gcode * gcode, const float target[], const float offset[], float radius, bool is_clockwise )
+bool Robot::append_arc(Gcode * gcode, const float target[], const float rotated_target[], const float offset[], float radius, bool is_clockwise )
 {
     float rate_mm_s= this->feed_rate / seconds_per_minute;
     // catch negative or zero feed rates and return the same error as GRBL does
@@ -1871,16 +2038,31 @@ bool Robot::append_arc(Gcode * gcode, const float target[], const float offset[]
         THEKERNEL->streams->printf(rate_mm_s == 0 ? "Alarm:Undefined feed rate\n" : "Alarm:feed rate < 0\n");
         return false;
     }
+    float offset_rotated[3]{0, 0, 0};
+    memcpy(offset_rotated, offset, 3*sizeof(float));
+    rotate(&offset_rotated[0], &offset_rotated[1], &offset_rotated[2]);
+    float arc_center[3]{0, 0, 0};
+    float arc_start_vector[3]{0, 0, 0};
+    float linear_vector[3]{0, 0, 0};
+    float arc_target_vector[3]{0, 0, 0};
 
     // Scary math.
     // We need to use arc_milestone here to get accurate arcs as previous machine_position may have been skipped due to small movements
-    float center_axis0 = this->arc_milestone[this->plane_axis_0] + offset[this->plane_axis_0];
-    float center_axis1 = this->arc_milestone[this->plane_axis_1] + offset[this->plane_axis_1];
-    float linear_travel = target[this->plane_axis_2] - this->arc_milestone[this->plane_axis_2];
-    float r_axis0 = -offset[this->plane_axis_0]; // Radius vector from center to start position
-    float r_axis1 = -offset[this->plane_axis_1];
-    float rt_axis0 = target[this->plane_axis_0] - this->arc_milestone[this->plane_axis_0] - offset[this->plane_axis_0]; // Radius vector from center to target position
-    float rt_axis1 = target[this->plane_axis_1] - this->arc_milestone[this->plane_axis_1] - offset[this->plane_axis_1];
+    // Center of the arc
+    arc_center[this->plane_axis_0] = this->arc_milestone[this->plane_axis_0] + offset_rotated[this->plane_axis_0]; 
+    arc_center[this->plane_axis_1] = this->arc_milestone[this->plane_axis_1] + offset_rotated[this->plane_axis_1];
+    arc_center[this->plane_axis_2] = this->arc_milestone[this->plane_axis_2] + offset_rotated[this->plane_axis_2];
+    // Linear vector from start to target
+    linear_vector[this->plane_axis_2] = target[this->plane_axis_2] - this->arc_milestone[this->plane_axis_2];
+    // Rotate the linear vector here already
+    rotate(&linear_vector[0], &linear_vector[1], &linear_vector[2]);
+    // Radius vector from center to start position
+    arc_start_vector[this->plane_axis_0] = -offset[this->plane_axis_0]; 
+    arc_start_vector[this->plane_axis_1] = -offset[this->plane_axis_1];
+    // Radius vector from center to target position
+    arc_target_vector[this->plane_axis_0] = target[this->plane_axis_0] - this->arc_milestone[this->plane_axis_0] - offset[this->plane_axis_0]; 
+    arc_target_vector[this->plane_axis_1] = target[this->plane_axis_1] - this->arc_milestone[this->plane_axis_1] - offset[this->plane_axis_1];
+
     float angular_travel = 0;
     //check for condition where atan2 formula will fail due to everything canceling out exactly
     if((this->arc_milestone[this->plane_axis_0]==target[this->plane_axis_0]) && (this->arc_milestone[this->plane_axis_1]==target[this->plane_axis_1])) {
@@ -1893,7 +2075,8 @@ bool Robot::append_arc(Gcode * gcode, const float target[], const float offset[]
         // Patch from GRBL Firmware - Christoph Baumann 04072015
         // CCW angle between position and target from circle center. Only one atan2() trig computation required.
         // Only run if not a full circle or angular travel will incorrectly result in 0.0f
-        angular_travel = atan2f(r_axis0 * rt_axis1 - r_axis1 * rt_axis0, r_axis0 * rt_axis0 + r_axis1 * rt_axis1);
+        angular_travel = atan2f(arc_start_vector[this->plane_axis_0] * arc_target_vector[this->plane_axis_1] - arc_start_vector[this->plane_axis_1] * arc_target_vector[this->plane_axis_0], arc_start_vector[this->plane_axis_0] * arc_target_vector[this->plane_axis_0] + arc_start_vector[this->plane_axis_1] * arc_target_vector[this->plane_axis_1]);
+        
         if (plane_axis_2 == Y_AXIS) { is_clockwise = !is_clockwise; }  //Math for XZ plane is reverse of other 2 planes
         if (is_clockwise) { // adjust angular_travel to be in the range of -2pi to 0 for clockwise arcs
            if (angular_travel > 0) { angular_travel -= (2 * PI); }
@@ -1901,9 +2084,8 @@ bool Robot::append_arc(Gcode * gcode, const float target[], const float offset[]
            if (angular_travel < 0) { angular_travel += (2 * PI); }
         }
     }
-
     // Find the distance for this gcode
-    float millimeters_of_travel = hypotf(angular_travel * radius, fabsf(linear_travel));
+    float millimeters_of_travel = hypotf(angular_travel * radius, fabsf(linear_vector[this->plane_axis_2]));
 
     // We don't care about non-XYZ moves ( for example the extruder produces some of those )
     if( millimeters_of_travel < 0.000001F ) {
@@ -1931,7 +2113,9 @@ bool Robot::append_arc(Gcode * gcode, const float target[], const float offset[]
 
     if(segments > 1) {
         float theta_per_segment = angular_travel / segments;
-        float linear_per_segment = linear_travel / segments;
+        linear_vector[this->plane_axis_0] = linear_vector[this->plane_axis_0] / segments;
+        linear_vector[this->plane_axis_1] = linear_vector[this->plane_axis_1] / segments;
+        linear_vector[this->plane_axis_2] = linear_vector[this->plane_axis_2] / segments;
 
         /* Vector rotation by transformation matrix: r is the original vector, r_T is the rotated vector,
         and phi is the angle of rotation. Based on the solution approach by Jens Geisler.
@@ -1979,25 +2163,25 @@ bool Robot::append_arc(Gcode * gcode, const float target[], const float offset[]
 
             if (count < this->arc_correction ) {
                 // Apply vector rotation matrix
-                r_axisi = r_axis0 * sin_T + r_axis1 * cos_T;
-                r_axis0 = r_axis0 * cos_T - r_axis1 * sin_T;
-                r_axis1 = r_axisi;
+                r_axisi = arc_start_vector[this->plane_axis_0] * sin_T + arc_start_vector[this->plane_axis_1] * cos_T;
+                arc_start_vector[this->plane_axis_0] = arc_start_vector[this->plane_axis_0] * cos_T - arc_start_vector[this->plane_axis_1] * sin_T;
+                arc_start_vector[this->plane_axis_1] = r_axisi;
                 count++;
             } else {
                 // Arc correction to radius vector. Computed only every N_ARC_CORRECTION increments.
                 // Compute exact location by applying transformation matrix from initial radius vector(=-offset).
                 cos_Ti = cosf(i * theta_per_segment);
                 sin_Ti = sinf(i * theta_per_segment);
-                r_axis0 = -offset[this->plane_axis_0] * cos_Ti + offset[this->plane_axis_1] * sin_Ti;
-                r_axis1 = -offset[this->plane_axis_0] * sin_Ti - offset[this->plane_axis_1] * cos_Ti;
+                arc_start_vector[this->plane_axis_0] = -offset[this->plane_axis_0] * cos_Ti + offset[this->plane_axis_1] * sin_Ti;
+                arc_start_vector[this->plane_axis_1] = -offset[this->plane_axis_0] * sin_Ti - offset[this->plane_axis_1] * cos_Ti;
                 count = 0;
             }
-
-            // Update arc_target location
-            arc_target[this->plane_axis_0] = center_axis0 + r_axis0;
-            arc_target[this->plane_axis_1] = center_axis1 + r_axis1;
-            arc_target[this->plane_axis_2] += linear_per_segment;
-
+            
+            memcpy(arc_target_vector, arc_start_vector, 3*sizeof(float));
+            rotate(&arc_target_vector[0], &arc_target_vector[1], &arc_target_vector[2]);
+            arc_target[this->plane_axis_0] = arc_center[this->plane_axis_0] + arc_target_vector[this->plane_axis_0] + i * linear_vector[this->plane_axis_0];
+            arc_target[this->plane_axis_1] = arc_center[this->plane_axis_1] + arc_target_vector[this->plane_axis_1] + i * linear_vector[this->plane_axis_1];
+            arc_target[this->plane_axis_2] = arc_center[this->plane_axis_2] + arc_target_vector[this->plane_axis_2] + i * linear_vector[this->plane_axis_2];
             // Append this segment to the queue
             bool b= this->append_milestone(arc_target, rate_mm_s, gcode->line);
             moved= moved || b;
@@ -2005,13 +2189,13 @@ bool Robot::append_arc(Gcode * gcode, const float target[], const float offset[]
     }
 
     // Ensure last segment arrives at target location.
-    if(this->append_milestone(target, rate_mm_s, gcode->line)) moved= true;
+    if(this->append_milestone(rotated_target, rate_mm_s, gcode->line)) moved= true;
 
     return moved;
 }
 
 // Do the math for an arc and add it to the queue
-bool Robot::compute_arc(Gcode * gcode, const float offset[], const float target[], enum MOTION_MODE_T motion_mode)
+bool Robot::compute_arc(Gcode * gcode, const float offset[], const float target[], const float rotated_target[], enum MOTION_MODE_T motion_mode)
 {
 
     // Find the radius
@@ -2024,7 +2208,7 @@ bool Robot::compute_arc(Gcode * gcode, const float offset[], const float target[
     }
 
     // Append arc
-    return this->append_arc(gcode, target, offset,  radius, is_clockwise );
+    return this->append_arc(gcode, target, rotated_target, offset, radius, is_clockwise );
 }
 
 
@@ -2125,4 +2309,16 @@ bool Robot::is_homed_all_axes()
 void Robot::override_homed_check(bool home_override_value) {
     this->home_override = home_override_value;
     return;
+}
+
+void Robot::set_probe_tool_not_calibrated(bool value)
+{
+    probe_tool_not_calibrated = value;
+    THEKERNEL->eeprom_data->probe_tool_not_calibrated = value;
+    THEKERNEL->write_eeprom_data();
+}
+
+bool Robot::get_probe_tool_not_calibrated()
+{
+    return probe_tool_not_calibrated;
 }

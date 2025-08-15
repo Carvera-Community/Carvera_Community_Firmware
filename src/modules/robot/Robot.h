@@ -38,11 +38,14 @@ class Robot : public Module {
         void reset_axis_position(float x, float y, float z);
         void reset_actuator_position(const ActuatorCoordinates &ac);
         void reset_position_from_current_actuator_position();
+        void reset_compensated_machine_position();
         float get_seconds_per_minute() const { return seconds_per_minute; }
         float get_z_maxfeedrate() const { return this->max_speeds[Z_AXIS]; }
         float get_default_acceleration() const { return default_acceleration; }
         void loadToolOffset(const float offset[N_PRIMARY_AXIS]);
         void saveToolOffset(const float offset[N_PRIMARY_AXIS], const float cur_tool_mz);
+        void set_probe_tool_not_calibrated(bool value);
+        bool get_probe_tool_not_calibrated();
         float get_feed_rate() const;
         float get_s_value() const { return s_value; }
         void set_s_value(float s) { s_value= s; }
@@ -63,6 +66,10 @@ class Robot : public Module {
         std::tuple<float, float, float, uint8_t> get_last_probe_position() const { return last_probe_position; }
         void set_last_probe_position(std::tuple<float, float, float, uint8_t> p) { last_probe_position = p; }
         bool delta_move(const float delta[], float rate_mm_s, uint8_t naxis);
+        void rotate(float pos[]){return rotate(&pos[0], &pos[1], &pos[2]);}
+        void rotate(float *x, float *y, float *z);
+        void unrotate(float *x, float *y, float *z);
+        void unrotate(float pos[]){return unrotate(&pos[0], &pos[1], &pos[2]);}
         uint8_t register_motor(StepperMotor*);
         uint8_t get_number_registered_motors() const {return n_motors; }
         uint8_t get_current_motion_mode() const {return current_motion_mode; }
@@ -82,12 +89,16 @@ class Robot : public Module {
         std::function<float(void)> get_e_scale_fnc;
 
         // Workspace coordinate systems
-        wcs_t mcs2wcs(const wcs_t &pos) const;
+        wcs_t mcs2wcs(const wcs_t &pos) const { return mcs2selected_wcs(pos, current_wcs); }
+        wcs_t mcs2selected_wcs(const wcs_t &pos, const size_t n) const;
         wcs_t mcs2wcs(const float *pos) const { return mcs2wcs(wcs_t(pos[X_AXIS], pos[Y_AXIS], pos[Z_AXIS], pos[A_AXIS], pos[B_AXIS])); }
+        wcs_t mcs2selected_wcs(const float *pos, const size_t n) const { return mcs2selected_wcs(wcs_t(pos[X_AXIS], pos[Y_AXIS], pos[Z_AXIS], pos[A_AXIS], pos[B_AXIS]), n); }
         wcs_t wcs2mcs(const wcs_t &pos) const;
         wcs_t wcs2mcs(const float *pos) const { return wcs2mcs(wcs_t(pos[X_AXIS], pos[Y_AXIS], pos[Z_AXIS], pos[A_AXIS], pos[B_AXIS])); }
 
-        void set_current_wcs_by_mpos(float x = NAN, float y = NAN, float z = NAN, float a = NAN, float b = NAN);
+        void set_current_wcs_by_mpos(float x = NAN, float y = NAN, float z = NAN, float a = NAN, float b = NAN, float r = NAN);
+
+        float r[MAX_WCS];
 
         struct {
             bool inch_mode:1;                                 // true for inch mode, false for millimeter mode ( default )
@@ -107,6 +118,15 @@ class Robot : public Module {
             uint8_t plane_axis_2:2;
         };
 
+        // Soft endstop accessors
+        float get_soft_endstop_min(int axis) const { return soft_endstop_min[axis]; }
+        float get_soft_endstop_max(int axis) const { return soft_endstop_max[axis]; }
+        bool is_soft_endstop_enabled() const { return soft_endstop_enabled; }
+        bool is_soft_endstop_halt() const { return soft_endstop_halt; }
+
+        // Homing status accessors
+        bool is_homed(uint8_t i) const;
+
     private:
         bool home_override = false;
         enum MOTION_MODE_T {
@@ -120,10 +140,9 @@ class Robot : public Module {
         void load_config();
         bool append_milestone(const float target[], float rate_mm_s, unsigned int line);
         bool append_line( Gcode* gcode, const float target[], float rate_mm_s, float delta_e);
-        bool append_arc( Gcode* gcode, const float target[], const float offset[], float radius, bool is_clockwise );
-        bool compute_arc(Gcode* gcode, const float offset[], const float target[], enum MOTION_MODE_T motion_mode);
+        bool append_arc( Gcode* gcode, const float target[], const float rotated_target[], const float offset[], float radius, bool is_clockwise );
+        bool compute_arc(Gcode* gcode, const float offset[], const float target[], const float rotated_target[], enum MOTION_MODE_T motion_mode);
         void process_move(Gcode *gcode, enum MOTION_MODE_T);
-        bool is_homed(uint8_t i) const;
 
         float theta(float x, float y);
         void select_plane(uint8_t axis_0, uint8_t axis_1, uint8_t axis_2);
@@ -135,6 +154,8 @@ class Robot : public Module {
         uint8_t current_wcs{0}; // 0 means G54 is enabled this is persistent once saved with M500
         wcs_t g92_offset;
         wcs_t tool_offset; // used for multiple extruders, sets the tool offset for the current extruder applied first
+        float cos_r[MAX_WCS];
+        float sin_r[MAX_WCS];
         std::tuple<float, float, float, uint8_t> last_probe_position{0,0,0,0};
 
         uint8_t current_motion_mode;
@@ -173,7 +194,8 @@ class Robot : public Module {
         int arc_correction;                                  // Setting : how often to rectify arc computation
         float max_speeds[3];                                 // Setting : max allowable speed in mm/s for each axis
         float max_speed;                                     // Setting : maximum feedrate in mm/s as specified by F parameter
-
+        bool probe_tool_not_calibrated;
+        bool load_last_wcs;
         float soft_endstop_min[3], soft_endstop_max[3];
 
         uint8_t n_motors;                                    //count of the motors/axis registered

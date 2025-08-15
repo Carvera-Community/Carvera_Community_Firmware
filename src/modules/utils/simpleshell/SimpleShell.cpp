@@ -1210,106 +1210,36 @@ void SimpleShell::model_command( string parameters, StreamOutput *stream )
 void SimpleShell::test_4th_command( string parameters, StreamOutput *stream )
 {	
 	bool btriggered = false;
-	bool bAlwaystrigger = true;
+	bool Nontriggered = false;
+	char data[2];
+	stream->printf("check_4th beginning......\n");
 	
-	GPIO *stepin, *dirpin, *enpin, *alarmin;
-	if(CARVERA == THEKERNEL->factory_set->MachineModel)
+	bool ok = PublicData::get_value(endstops_checksum, get_check_4th_checksum, 0, data);
+	if(ok)
 	{
-		stepin  = new GPIO(P1_18);
-		dirpin  = new GPIO(P1_20);
-		enpin   = new GPIO(P3_26);
-		alarmin = new GPIO(P0_21);
-	}
-	else
-	{
-		stepin  = new GPIO(P1_21);
-		dirpin  = new GPIO(P1_23);
-		enpin   = new GPIO(P1_30);
-		alarmin = new GPIO(P1_9);
-	}
-	stepin->output();
-	dirpin->output();
-	enpin->output();
-	alarmin->input();
-	
-	if(THEKERNEL->factory_set->FuncSetting & ((1<<0)|(1<<1)))
-	{
-		stream->printf("check_4th beginning......\n");
-		dirpin->write(1);
-		enpin->write(0);
-		
-		for(unsigned int i=0;i<380;i++)
-		{
-			for(unsigned int j=0; j<889; j++)
-			{
-				stepin->write(1);
-				safe_delay_us(2);
-				stepin->write(0);
-				safe_delay_us(2);
-				bool alarm = alarmin->get();
-				if(CARVERA == THEKERNEL->factory_set->MachineModel)
-					alarm = !alarm;
-				if(alarm)
-				{
-					btriggered = true;
-					break;
-				}
-				else
-				{
-					bAlwaystrigger = false;
-				}
-			}
-			if(btriggered)
-				break;
-		}
-		
-		if(btriggered)
-		{
-			dirpin->write(0);
-			
-			for(unsigned int i=0;i<380;i++)
-			{
-				for(unsigned int j=0; j<889; j++)
-				{
-					stepin->write(1);
-					safe_delay_us(2);
-					stepin->write(0);
-					safe_delay_us(2);
-					
-					bool alarm = alarmin->get();
-					if(CARVERA == THEKERNEL->factory_set->MachineModel)
-						alarm = !alarm;
-					if(alarm)
-					{
-						btriggered = true;
-					}
-					else
-					{
-						bAlwaystrigger = false;
-					}
-				}
-			}
-		}
-		
-		enpin->write(1);
-		
+		btriggered = data[0];
+		Nontriggered = data[1];
 		if( false == btriggered)
 		{
 			stream->printf("0: the 4th's Endstop hasn't been triggered yet.\n");
 		}
-		if( true == bAlwaystrigger)
+		if( false == Nontriggered)
 		{
 			stream->printf("1: the 4th's Endstop be always triggered.\n");
 		}
 					
 		stream->printf("check_4th end.\n");
 		
-		if( (false == btriggered) || (true == bAlwaystrigger))
+		if( (false == btriggered) || (false == Nontriggered))
 		{
             THEKERNEL->set_halt_reason(HOME_FAIL);
             THEKERNEL->call_event(ON_HALT, nullptr);
             THEROBOT->disable_segmentation= false;
         }
+	}
+	else
+	{
+		stream->printf("check_4th command failed\n");
 	}
 }
 
@@ -1498,7 +1428,7 @@ void SimpleShell::enable_4th_hd( string parameters, StreamOutput *stream)
 	    THEKERNEL->call_event(ON_CONSOLE_LINE_RECEIVED, &message2 );
 	    
 	    //rewrite delta_max_rate to sd
-	    snprintf(cmd, sizeof(cmd), "config-set sd delta_max_rate 2400");
+	    snprintf(cmd, sizeof(cmd), "config-set sd delta_max_rate 1800");
 	    stream->printf("%s\n", cmd);
 	    struct SerialMessage message3{&StreamOutput::NullStream, cmd, 0};
 	    THEKERNEL->call_event(ON_CONSOLE_LINE_RECEIVED, &message3 );
@@ -1613,14 +1543,15 @@ void SimpleShell::grblDP_command( string parameters, StreamOutput *stream)
 
     int n= std::get<1>(v[0]);
     for (int i = 1; i <= n; ++i) {
-        stream->printf("[%s:%1.4f,%1.4f,%1.4f,%1.4f,%1.4f]\n", wcs2gcode(i-1).c_str(),
+        stream->printf("[%s:%1.4f,%1.4f,%1.4f,%1.4f,%1.4f,%1.4f]\n", wcs2gcode(i-1).c_str(),
             THEROBOT->from_millimeters(std::get<0>(v[i])),
             THEROBOT->from_millimeters(std::get<1>(v[i])),
             THEROBOT->from_millimeters(std::get<2>(v[i])),
             //THEROBOT->from_millimeters(std::get<3>(v[i])),
             //THEROBOT->from_millimeters(std::get<4>(v[i])));
             std::get<3>(v[i]),
-            std::get<4>(v[i]));
+            std::get<4>(v[i]),
+            THEROBOT->r[i-1]);
     }
 
     float *rd;
@@ -2091,7 +2022,7 @@ void SimpleShell::test_command( string parameters, StreamOutput *stream)
 
 void SimpleShell::jog(string parameters, StreamOutput *stream)
 {
-    // $J X0.1 [Y0.2] [F0.5]
+    // $J X0.1 [Y0.2] [S0.5]
     int n_motors= THEROBOT->get_number_registered_motors();
 
     // get axis to move and amount (X0.1)
@@ -2099,25 +2030,53 @@ void SimpleShell::jog(string parameters, StreamOutput *stream)
 
     float rate_mm_s= NAN;
     float scale= 1.0F;
+    float fr= NAN;
     float delta[n_motors];
+    float delta_const[n_motors];
     for (int i = 0; i < n_motors; ++i) {
         delta[i]= 0;
+        delta_const[i]= 0;
     }
 
     // $J is first parameter
     shift_parameter(parameters);
     if(parameters.empty()) {
-        stream->printf("usage: $J X0.01 [F0.5] - axis can be XYZABC, optional speed is scale of max_rate\n");
+        stream->printf("usage: $J [-c] X0.01 [S0.5|Fnnn] - axis can be XYZABC, optional speed is scale of max_rate or feedrate. -c turns on continuous jog mode\n");
         return;
     }
 
+    bool cont_mode= false;
+    bool send_ok= false;
     while(!parameters.empty()) {
         string p= shift_parameter(parameters);
 
+        if(p.size() == 2 && p[0] == '-') {
+            // process option
+            switch(toupper(p[1])) {
+                case 'C':
+                    cont_mode= true;
+                    break;
+                case 'R': // send ok when done use this when sending $J in a gcode file
+                    send_ok= true;
+                    break;
+                default:
+                    stream->printf("error:illegal option %c\n", p[1]);
+                    return;
+            }
+            continue;
+        }
+
+
         char ax= toupper(p[0]);
-        if(ax == 'F') {
+        if(ax == 'S') {
             // get speed scale
             scale= strtof(p.substr(1).c_str(), NULL);
+            fr= NAN;
+            continue;
+        }else if(ax == 'F') {
+            // OR specify feedrate (last one wins)
+            scale= 1.0F;
+            fr= strtof(p.substr(1).c_str(), NULL) / 60.0F; // we want mm/sec but F is specified in mm/min
             continue;
         }
 
@@ -2145,7 +2104,6 @@ void SimpleShell::jog(string parameters, StreamOutput *stream)
             }else{
                 rate_mm_s = std::min(rate_mm_s, THEROBOT->actuators[i]->get_max_rate());
             }
-            //hstream->printf("%d %f F%f\n", i, delta[i], rate_mm_s);
         }
     }
     if(!ok) {
@@ -2153,11 +2111,217 @@ void SimpleShell::jog(string parameters, StreamOutput *stream)
         return;
     }
 
-    //stream->printf("F%f\n", rate_mm_s*scale);
+    // There is a race condition where a quick press/release could send the ^Y before the $J -c is executed
+    // this would result in continuous movement, not a good thing.
+    // so check if stop request is true and abort if it is, this means we must leave stop request false after this
+    if(THEKERNEL->get_stop_request()) {
+        if((us_ticker_read() / 1000) - THEKERNEL->get_stop_request_time() > 500) {
+            stream->printf("Stop request timeout\n");
+            THEKERNEL->set_stop_request(false);
+        }else{
+            THEKERNEL->set_stop_request(false);
+            stream->printf("ok\n");
+            return;
+        }
+    }
 
-    THEROBOT->delta_move(delta, rate_mm_s*scale, n_motors);
-    // turn off queue delay and run it now
-    THECONVEYOR->force_queue();
+    if(THEKERNEL->get_internal_stop_request()) {
+        THEKERNEL->set_internal_stop_request(false);
+        stream->printf("Internal stop request reset\n");
+    }
+
+    // set feedrate, either scale of max or actual feedrate
+    if(isnan(fr)) {
+        fr = rate_mm_s * scale;
+    }else{
+        // make sure we do not exceed maximum
+        if(fr > rate_mm_s) fr= rate_mm_s;
+    }
+    float min_time= 0.05;
+    if(cont_mode) {
+        // continuous jog mode
+        // calculate minimum distance to travel to accomodate acceleration and feedrate
+        float acc= THEROBOT->get_default_acceleration();
+        
+        // Validate acceleration value
+        if(acc <= 0 || isnan(acc)) {
+            stream->printf("error: Invalid acceleration value: %f\n", acc);
+            return;
+        }
+        
+        float ta= fr/acc; // time to reach feed rate
+        float da= 0.5F * acc * powf(ta, 2); // distance required to accelerate (or decelerate)
+        float dc = min_time * fr;
+        if((da + dc)/ fr > 5) {
+            // increase feedrate so it will not take more than 5 seconds
+            fr= (da*3)/5;
+        }
+        
+
+        // we need to move at least this distance to reach full speed
+        for (int i = 0; i < n_motors; ++i) {
+            if(delta[i] != 0) {
+                delta[i]= da * (delta[i]<0?-1:1);
+                delta_const[i]= dc * (delta[i]<0?-1:1);
+            }
+        }
+        THEROBOT->rotate(&delta[0], &delta[1], &delta[2]);
+        THEROBOT->rotate(&delta_const[0], &delta_const[1], &delta_const[2]);
+        // stream->printf("distance: %f, time:%f, X%f Y%f Z%f, speed:%f\n", d, t, delta[0], delta[1], delta[2], fr);
+        float current_pos[n_motors];
+        THEROBOT->get_current_machine_position(current_pos);
+
+        float dist_to_min[3] ={0,0,0};
+        float dist_to_max[3] ={0,0,0};
+        int min_axis = 0;
+        int max_axis = 0;
+        // Check soft limits during continuous jogging
+        if(THEROBOT->is_soft_endstop_enabled()) {
+            bool move_to_min_limit = false;
+            bool move_to_max_limit = false;
+            float scale = 10000.0F;
+            // Check each axis that is homed
+            for (int i = 0; i <= Z_AXIS; ++i) {
+                if(!THEROBOT->is_homed(i)) continue;
+                
+                // Calculate distance to soft limits
+                dist_to_min[i] = (current_pos[i] - THEROBOT->get_soft_endstop_min(i));
+                dist_to_max[i] = (THEROBOT->get_soft_endstop_max(i) - current_pos[i]);
+                // If moving towards a limit and brake distance is greater than distance to limit
+                if(delta[i] < 0 && !isnan(THEROBOT->get_soft_endstop_min(i)) && 
+                    dist_to_min[i] <= fabs(2 * delta[i] + 2* delta_const[i])){
+                    if (scale > dist_to_min[i]/fabs(delta[i])) {
+                        scale = dist_to_min[i]/fabs(delta[i]);
+                    }
+                    if (dist_to_min[i] <= 0) {
+                        stream->printf("error:Soft Endstop %c would be exceeded - ignore jog command\n", i+'X');
+                        return;
+                    }
+                    move_to_min_limit = true;
+                }
+                if(delta[i] > 0 && !isnan(THEROBOT->get_soft_endstop_max(i)) && 
+                    dist_to_max[i] <= fabs(2 * delta[i] + 2 * delta_const[i])) {
+                    if (scale > dist_to_max[i]/fabs(delta[i])) {
+                        scale = dist_to_max[i]/fabs(delta[i]);
+                    }
+                    if (dist_to_max[i] <= 0) {
+                        stream->printf("error:Soft Endstop %c would be exceeded - ignore jog command\n", i+'X');
+                        return;
+                    }
+                    move_to_max_limit = true;
+                }
+            }
+            if(move_to_min_limit || move_to_max_limit) {
+                for (int j = X_AXIS; j <= Z_AXIS; ++j) {
+                    delta[j] = delta[j] * scale;
+                }
+                THEROBOT->delta_move(delta, fr, n_motors);
+                return;
+            }
+        }
+
+        THECONVEYOR->wait_for_idle();
+        // turn off any compensation transform so Z does not move as we jog
+        //auto savect= THEROBOT->compensationTransform;
+        //THEROBOT->reset_compensated_machine_position();
+
+        // feed three blocks that allow full acceleration, full speed and full deceleration
+        THECONVEYOR->set_hold(true);
+        THEROBOT->delta_move(delta, fr, n_motors); // accelerates upto speed
+        THEROBOT->delta_move(delta_const, fr, n_motors); // continues at full speed
+        THEROBOT->delta_move(delta_const, fr, n_motors); // continues at full speed
+        THEROBOT->delta_move(delta, fr, n_motors); // decelerates to zero
+
+        // DEBUG
+        // THECONVEYOR->dump_queue();
+
+        // tell it to run the second block until told to stop
+        if(!THECONVEYOR->set_continuous_mode(true)) {
+            stream->printf("error:Not enough memory to run continuous mode\n");
+            THECONVEYOR->set_hold(false);
+            THECONVEYOR->flush_queue();
+            return;
+        }
+
+        THECONVEYOR->set_hold(false);
+        THECONVEYOR->force_queue();
+
+        uint32_t last_block_time = us_ticker_read() / 1000;
+
+        this->keep_alive_time = us_ticker_read() / 1000;
+        uint32_t block_interval_ms = (uint32_t)((ta + 0.5 *min_time) * 1000.0f);
+        float time_start_to_end_block = 0;
+        int stage = 0;
+        THECONVEYOR->set_continuous_mode(true);
+
+        while(!THEKERNEL->get_stop_request() && !THEKERNEL->get_internal_stop_request()) {
+            
+            // Check soft limits during continuous jogging
+            if(THEROBOT->is_soft_endstop_enabled()) {
+                float current_pos[n_motors];
+                THEROBOT->get_current_machine_position(current_pos);
+
+                // Check each axis that is homed
+                for (int i = 0; i <= Z_AXIS; ++i) {
+                    if(!THEROBOT->is_homed(i)) continue;
+                    
+                    // Calculate distance to soft limits
+                    float dist_to_min = current_pos[i] - THEROBOT->get_soft_endstop_min(i);
+                    float dist_to_max = THEROBOT->get_soft_endstop_max(i) - current_pos[i];
+                    
+                    // If moving towards a limit and brake distance is greater than distance to limit
+                    if(delta[i] < 0 && !isnan(THEROBOT->get_soft_endstop_min(i)) && 
+                        dist_to_min <= fabs(2 * delta_const[i] + delta[i]) + 1) {
+                        THEKERNEL->set_internal_stop_request(true);
+                        break;
+                    }
+                    if(delta[i] > 0 && !isnan(THEROBOT->get_soft_endstop_max(i)) &&     
+                        dist_to_max <= fabs(2 * delta_const[i] + delta[i]) + 1) {
+                        THEKERNEL->set_internal_stop_request(true);
+                        break;
+                    }
+                }
+            }
+            // Add another coasting block every block_interval_ms milliseconds
+            uint32_t current_time = us_ticker_read() / 1000;
+            if(current_time - last_block_time >= block_interval_ms && !THEKERNEL->get_internal_stop_request()) {
+                // Calculate time for this block before updating last_block_time
+                
+                THEROBOT->delta_move(delta_const, fr, n_motors);
+                if(stage == 0) {
+                    time_start_to_end_block = current_time - last_block_time;
+                    block_interval_ms = (uint32_t)((min_time) * 1000.0f);
+                    stage++;
+                }
+                last_block_time = current_time;
+            }
+            
+            THEKERNEL->call_event(ON_IDLE);
+            if(THEKERNEL->is_halted()) break;
+
+            if(THEKERNEL->get_keep_alive_request()) {
+                THEKERNEL->set_keep_alive_request(false);
+                keep_alive_time = us_ticker_read() / 1000;
+            }else if (us_ticker_read() / 1000 - keep_alive_time > 400) {
+                THEKERNEL->set_internal_stop_request(true);
+            }
+        }
+        THECONVEYOR->set_continuous_mode(false);
+        THEKERNEL->set_stop_request(false);
+        THECONVEYOR->wait_for_idle();
+
+        // reset the position based on current actuator position
+        THEROBOT->reset_position_from_current_actuator_position();
+        // restore compensationTransform
+        //THEROBOT->compensationTransform= savect;
+        stream->printf("ok\n");
+
+    }else{
+        THEROBOT->rotate(&delta[0], &delta[1], &delta[2]);
+        THEROBOT->delta_move(delta, fr, n_motors);
+        // turn off queue delay and run it now
+        THECONVEYOR->force_queue();
+    }
 }
 
 void SimpleShell::help_command( string parameters, StreamOutput *stream )

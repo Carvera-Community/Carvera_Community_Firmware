@@ -4,6 +4,68 @@ To let the Carvera work perfectly, please make sure both your controller softwar
 [dev improvements branch] 
 1. developer quality-of-life enhancements, no user-visible features. See DEVELOPER.md for details. USB-C GDB debugging support, improved memory management with validation and bug fixes, and seamless GCC 14.2.1 toolchain integration on Linux, macOS, and Windows.
 
+
+[2.0.0cPR126alpha]
+- Enhancement: Continous Jog Mode
+- Enhancement: 3D probe is now always powered on the Carvera AIR
+- Enhancement: Added M465.1 and M465.2 to probe 4th axis stock
+- Enhancement: Added a sag compensation fort the Carvera AIR that compensates for rotational and gravitational sag of the x axis carriage
+- Bugfix: Machine crashes during probing cycles should be fixed
+
+
+[1.0.11c]
+- fixed issue with rotated WCS and arc movements
+- fixed issue with probing bosses in the Y axis
+
+[1.0.10c]
+- Bugfix: Firmware crashs associated with the LED bar problem fixed
+- Bugfix: issue with changing Z heights when changing WCS offset
+- Added more verbose output to the print eeprom data
+- Enhancement: Always visualize the outside corner after probing
+
+[1.0.9c]
+- Carvera AIR: Show the file progress with the LED bar (setting: main_button_led_progress) - disabled for now
+- The last active WCS (G54 - G59) can be loaded when "load_last_wcs" is true
+
+[1.0.8c_beta]
+- New firmware version format. The base makera firmware no longer is part of the community version string.
+- Bugfix: After switching to the community firmware the offsets of G54 to G59 are now properly checked for corruption
+- Includes the WCS rotation support
+
+[1.0.3c1.0.7alpha1]
+- Added WCS (Work Coordinate System) rotation support
+- Alpha release - test thoroughly before production use
+- G54-G59 coordinate system rotations are stored in EEPROM
+- G59.1-G59.3 coordinate systems have temporary rotation storage
+- G10 L20 R<angle in degrees> P0 rotates the current coordinate system
+- G10 L20 R<angle in degrees> P3 rotates G56 regardless of current WCS (P1 is G54, P2 is G55...)
+- Arc moves (G2/G3) now properly apply rotation transforms to I, J, K parameters
+- Relative moves (G91) support rotation for both individual and combined X/Y movements
+- Enhanced DP diagnostic command ("$#") displays rotation angle as 6th parameter in WCS display
+- Enhanced M498 command displays rotation angle of stored work coordinate systems
+- Probe system now considers WCS rotation: Probing sequences are run in the rotated coordinate system
+[1.0.3c1.0.6]
+- properly update to makera 1.0.3, something went wrong in 1.0.5 where not all the code came over
+- update to save G55-59 to EEPROM so they save when the machine is powered off
+- save value to variable #150 when config-set sd zprobe.probe_tip_diameter is run
+[1.0.3c1.0.5]
+- added support for touch probe on carvera air
+- refactor of probing sequences code to combine repeated code
+- added S2 parameter for M462, M464, M466 that also saves Z offset if an H parameter is given
+- M466 added 3 axis simultanious move support for part inspections
+- TLO probe calibration modification to increase accuracy
+- Tools 999990-999999 are for 3 axis probes. Tools outside this range cannot be used for M46X commands
+- added config setting config-set sd zprobe.tool_zero_is_3axis true allows the user to choose if tool 0 is also considered a 3 axis probe
+- added config setting config-set sd zprobe.calibration_safety_margin 0.1, during calibration of probe TLO, max distance to move after calibrate pin but before probe pin detected
+
+[1.0.2]
+1. Carvera Support  the new 4th Axis Module (Harmonic Drive Version).
+2. Bug fixing: Fix the command to query the MAC address of the machine.
+3. Optimizing: Improve the stability of file transfer and reduce the problem of machine movement when uploading files abnormally.
+4. Optimizing:Change external output to hardware PWM mode.
+5. Optimizing:The command to query diagnostic information has been changed from the character '*' to 'diagnose'
+6. Bug fixing: Fix the issue of incorrect 4-axis rotation angle in Inch mode
+
 [1.0.1c1.0.3]
 1. added front button manual tool change behavior
 2. added multiple touchoffs to TLO calibration. M491 L5 will touch off 5 times and report. The default value for number of touchoffs is stored in the config as atc.num_atc_touchoff
@@ -40,6 +102,21 @@ controller. Use the community controller for the most up to date features.
 4. Optimizing:when the feed rates in Gcode are not greater than zero, then will print Alarm info to the MDI
 5. Optimizing: Add motor alarm detection during machine home operation
 6. Firmware compatible with Carvera and Carvera Air
+
+[1.0.0]
+1. Optimizing: Add data feedback on tabletop exploration ： 'Max deviation between high and low'
+2. Optimizing: Add motor alarm detection during machine home operation
+
+[0.9.9]
+Firmware compatible with Carvera and Carvera Air
+
+[1.0.3]
+1. Bug fixing: When the distance between the start and end points of an arc is less than 0.00025, the actual machining process results in a full circle instead of the intended arc.
+2. Bug fixing: Resolved the issue where Carvera AIR triggers a manual alarm when the tool number exceeds 255.
+3. Bug fixing: Addressed the issue where the Carvera AIR's lighting does not turn off during sleep mode.
+4. Optimizing: Enhanced the check_4th command.
+5. Optimizing: Improved the return path for Z-probe detection when configuring the hd 4th axis on Carvera.
+6. Optimizing: Added a prompt that appears when performing tool calibration, tool change, or Z-probe if the machine has not been homed: "Machine has not been homed, Please home first!"
 
 [1.0.2]
 1. Carvera Support  the new 4th Axis Module (Harmonic Drive Version).

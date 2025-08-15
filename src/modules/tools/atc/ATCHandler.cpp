@@ -113,7 +113,6 @@ ATCHandler::ATCHandler()
     }
 	max_manual_tool_number = 100000;
     g28_triggered = false;
-    blaserManual = false;
     goto_position = -1;
     position_x = 8888;
     position_y = 8888;
@@ -681,7 +680,7 @@ void ATCHandler::fill_manual_pickup_scripts(int new_tool, bool clear_z, bool aut
 		//pause
 		snprintf(buff, sizeof(buff), "M600.5");
 		this->script_queue.push(buff);
-		this->fill_cali_scripts(new_tool == 0,false);
+		this->fill_cali_scripts(new_tool == 0 || new_tool >= 999990,false);
 	}else if (!isnan(custom_TLO)) {
 		//print status
 		snprintf(buff, sizeof(buff), ";Tool is now installed and TLO set as %.3f.\n Resume will continue program\n" , custom_TLO );
@@ -1346,7 +1345,7 @@ uint32_t ATCHandler::countdown_probe_laser(uint32_t dummy)
 		} 
 		else
 		{
-			this->probe_laser_last = 30;
+			this->probe_laser_last = 300;
 		}
 	}
     return 0;
@@ -1665,7 +1664,7 @@ void ATCHandler::on_gcode_received(void *argument)
 						THEKERNEL->streams->printf("Start picking new tool: T%d\r\n", new_tool);
 						atc_status = PICK;
 						this->fill_pick_scripts(new_tool, true);
-						this->fill_cali_scripts(new_tool == 0, false);
+						this->fill_cali_scripts(new_tool == 0 || new_tool >= 999990, false);
 					} else if(new_tool == -1 && (THEKERNEL->get_laser_mode())) {
 						THEROBOT->push_state();
 						THEROBOT->get_axis_position(last_pos, 3);
@@ -1690,7 +1689,7 @@ void ATCHandler::on_gcode_received(void *argument)
 					atc_status = CHANGE;
 					this->target_tool = new_tool;
 					this->fill_change_scripts(new_tool, true);
-					this->fill_cali_scripts(new_tool == 0, true);
+					this->fill_cali_scripts((new_tool == 0 || new_tool >= 999990), true);
 				}
 	        }
 		} else if (gcode->m == 460){
@@ -1857,7 +1856,7 @@ void ATCHandler::on_gcode_received(void *argument)
 				this->script_queue.push(buff);
 
 				atc_status = CALI;
-				this->fill_cali_scripts(active_tool == 0, true);
+				this->fill_cali_scripts(active_tool == 0 || active_tool >= 999990, true);
 
 				THECONVEYOR->wait_for_idle();
 				// lift z to safe position with fast speed
@@ -1909,7 +1908,7 @@ void ATCHandler::on_gcode_received(void *argument)
 				set_inner_playing(true);
 				this->clear_script_queue();
 				atc_status = CALI;
-				this->fill_cali_scripts(active_tool == 0, true);
+				this->fill_cali_scripts(active_tool == 0 || active_tool >= 999990, true);
 
 			}
 		} else if (gcode->m == 492) {
@@ -1952,12 +1951,20 @@ void ATCHandler::on_gcode_received(void *argument)
 			}
 		} else if (gcode->m == 493) {
 			if (gcode->subcode == 0 || gcode->subcode == 1) {
+				if (this->active_tool == 0 || this->active_tool >= 999990){
+					THEROBOT->set_probe_tool_not_calibrated(false);
+				}
 				// set tooll offset
 				set_tool_offset();
 			} else if (gcode->subcode == 2) {
 				// set new tool
 				if (gcode->has_letter('T')) {
 		    		this->active_tool = gcode->get_value('T');
+					if (this->active_tool == 0 || this->active_tool >= 999990){
+						THEROBOT->set_probe_tool_not_calibrated(true);
+					}else{
+						THEROBOT->set_probe_tool_not_calibrated(false);
+					}
 		    		// save current tool data to eeprom
 		    		if (THEKERNEL->eeprom_data->TOOL != this->active_tool) {
 		        	    THEKERNEL->eeprom_data->TOOL = this->active_tool;
@@ -2017,10 +2024,10 @@ void ATCHandler::on_gcode_received(void *argument)
 			{
 				// control probe laser
 				if (gcode->subcode == 0 ){
-					blaserManual = true;
 					// open probe laser
 					bool b = true;
 	            	PublicData::set_value( switch_checksum, detector_switch_checksum, state_checksum, &b );
+	            	THEKERNEL->set_probeLaser(true);
 				}
 				else if( gcode->subcode == 1) {
 					// open probe laser
@@ -2061,6 +2068,13 @@ void ATCHandler::on_gcode_received(void *argument)
 	        			THEKERNEL->streams->printf("ALARM: Can not do Automatic work in laser mode!\n");
 	        			return;
 	        		}
+					if ((this->active_tool == 0 || this->active_tool >= 999990) && THEROBOT->get_probe_tool_not_calibrated()){
+						THEKERNEL->streams->printf("ALARM: Probe not calibrated. Please calibrate probe before probing.\n");
+						THEKERNEL->call_event(ON_HALT, nullptr);
+						THEKERNEL->set_halt_reason(CALIBRATE_FAIL);
+						return;
+					}
+					
 
 					bool margin = false;
 					bool zprobe = false;
@@ -2149,9 +2163,9 @@ void ATCHandler::on_gcode_received(void *argument)
 			            }
 			            if (gcode->has_letter('P')) {
 			            	gcode->stream->printf("goto x and y clearance first\r\n");
-			            	if(CARVERA_AIR == THEKERNEL->factory_set->MachineModel)
-    						{
-    							if (zprobe_abs) {
+			            	if(THEKERNEL->factory_set->FuncSetting & (1<<0) )
+			            	{
+			            		if (zprobe_abs) {
     								char buff[100];
     								// lift z to clearance position with fast speed
 									snprintf(buff, sizeof(buff), "G53 G0 Z%.3f", THEROBOT->from_millimeters(this->clearance_z));
@@ -2213,7 +2227,11 @@ void ATCHandler::on_gcode_received(void *argument)
 				THEKERNEL->streams->printf("EEPRROM Data: TLO:%1.3f\n", THEKERNEL->eeprom_data->TLO);
 				THEKERNEL->streams->printf("EEPRROM Data: TOOLMZ:%1.3f\n", THEKERNEL->eeprom_data->TOOLMZ);
 				THEKERNEL->streams->printf("EEPRROM Data: REFMZ:%1.3f\n", THEKERNEL->eeprom_data->REFMZ);
-				THEKERNEL->streams->printf("EEPRROM Data: G54: %1.3f, %1.3f, %1.3f\n", THEKERNEL->eeprom_data->G54[0], THEKERNEL->eeprom_data->G54[1], THEKERNEL->eeprom_data->G54[2]);
+				for (int wcs_index = 0; wcs_index < 6; wcs_index++){
+					THEKERNEL->streams->printf("EEPRROM Data: G5%d: %1.3f, %1.3f, %1.3f, %1.3f | R:%1.3f\n", wcs_index + 4, THEKERNEL->eeprom_data->WCScoord[wcs_index][0] , THEKERNEL->eeprom_data->WCScoord[wcs_index][1] , THEKERNEL->eeprom_data->WCScoord[wcs_index][2] , THEKERNEL->eeprom_data->WCScoord[wcs_index][3], THEKERNEL->eeprom_data->WCSrotation[wcs_index]);
+				}
+				THEKERNEL->streams->printf("EEPRROM Data: Probe Tool Not Calibrated:%d\n", THEKERNEL->eeprom_data->probe_tool_not_calibrated);
+				THEKERNEL->streams->printf("EEPRROM Data: Last Active WCS:%d\n", THEKERNEL->eeprom_data->current_wcs);
 			} else if (gcode->subcode == 2) {
 				// Show EEPROM DATA
 				THEKERNEL->erase_eeprom_data();
@@ -2313,13 +2331,6 @@ void ATCHandler::on_main_loop(void *argument)
 			// waits for the queue to have enough room
 			THEKERNEL->call_event(ON_CONSOLE_LINE_RECEIVED, &message);
             return;
-        }
-        if(blaserManual == true)
-        {
-        	blaserManual = false;
-        	// close probe laser
-			bool b = false;
-        	PublicData::set_value( switch_checksum, detector_switch_checksum, state_checksum, &b );        		
         }
 
 		if (this->atc_status != AUTOMATION) {
@@ -2631,6 +2642,19 @@ void ATCHandler::on_get_public_data(void* argument)
     } else if (pdr->second_element_is(get_atc_clamped_status_checksum)) {
 		uint8_t* data = static_cast<uint8_t*>(pdr->get_data_ptr());
 		*data = static_cast<uint8_t>(this->atc_home_info.clamp_status); //0 unhomed, 1 clamped, 2 unclamped
+	} else if (pdr->second_element_is(get_machine_offsets_checksum)) {
+		struct machine_offsets *m = static_cast<machine_offsets*>(pdr->get_data_ptr());
+		m->anchor1_x = this->anchor1_x;
+		m->anchor1_y = this->anchor1_y;
+		m->anchor2_offset_x = this->anchor2_offset_x;
+		m->anchor2_offset_y = this->anchor2_offset_y;
+		m->anchor_width = this->anchor_width;
+		m->rotation_offset_x = this->rotation_offset_x;
+		m->rotation_offset_y = this->rotation_offset_y;
+		m->rotation_offset_z = this->rotation_offset_z;
+		m->rotation_width = this->rotation_width;
+		m->clearance_z = this->clearance_z;
+		pdr->set_taken();
 	}
 }
 

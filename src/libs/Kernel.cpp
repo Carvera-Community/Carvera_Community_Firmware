@@ -73,6 +73,7 @@ Kernel::Kernel()
     feed_hold = false;
     enable_feed_hold = false;
     bad_mcu= true;
+    stop_request = false;
     uploading = false;
     laser_mode = false;
     vacuum_mode = false;
@@ -91,6 +92,7 @@ Kernel::Kernel()
     spindleon = false;
     cachewait = false;
     disable_serial_console = false;
+    keep_alive_request = false;
 
     instance = this; // setup the Singleton instance of the kernel    
     
@@ -333,6 +335,13 @@ std::string Kernel::get_query_string()
         str.append(buf, n);
     }
 
+    n = snprintf(buf, sizeof(buf), "|R:%1.4f", robot->r[robot->get_current_wcs()]);
+    if(n > sizeof(buf)) n= sizeof(buf);
+    str.append(buf, n);
+    n = snprintf(buf, sizeof(buf), "|G:%d", robot->get_current_wcs());
+    if(n > sizeof(buf)) n= sizeof(buf);
+    str.append(buf, n);
+    
     // current feedrate and requested fr and override
     float fr= running ? robot->from_millimeters(conveyor->get_current_feedrate()*60.0F) : 0;
     float frr= robot->from_millimeters(robot->get_feed_rate());
@@ -792,30 +801,28 @@ void Kernel::check_eeprom_data()
 		this->eeprom_data->TOOL = 0;
 		needrewtite = true;
 	}
+
+    if(this->eeprom_data->current_wcs > 5 || this->eeprom_data->current_wcs < 0)
+    {
+        this->eeprom_data->current_wcs = 0;
+        needrewtite = true;
+    }
 	
-	if(isnan(this->eeprom_data->G54[0]))
-	{
-		this->eeprom_data->G54[0] = 0;
-		needrewtite = true;
+	for (int wcs_index = 0; wcs_index < 6; wcs_index++){
+        if (isnan(this->eeprom_data->WCSrotation[wcs_index])){
+            this->eeprom_data->WCSrotation[wcs_index] = 0;
+            needrewtite = true;
+        }
+		for (int axis = 0; axis < 4; axis++) {
+			if (isnan(this->eeprom_data->WCScoord[wcs_index][axis])){
+				this->eeprom_data->WCScoord[wcs_index][axis] = 0;
+				needrewtite = true;
+			}
+		}
 	}
-	if(isnan(this->eeprom_data->G54[1]))
+    if(!((this->eeprom_data->probe_tool_not_calibrated & ~1) == 0))
 	{
-		this->eeprom_data->G54[1] = 0;
-		needrewtite = true;
-	}
-	if(isnan(this->eeprom_data->G54[2]))
-	{
-		this->eeprom_data->G54[2] = 0;
-		needrewtite = true;
-	}
-	if(isnan(this->eeprom_data->G54AB[0]))
-	{
-		this->eeprom_data->G54AB[0] = 0;
-		needrewtite = true;
-	}
-	if(isnan(this->eeprom_data->G54AB[1]))
-	{
-		this->eeprom_data->G54AB[1] = 0;
+		this->eeprom_data->probe_tool_not_calibrated = true;
 		needrewtite = true;
 	}
 	if(needrewtite)
@@ -849,7 +856,7 @@ void Kernel::read_Factory_data()
 	
 	if( Check_Factory_Data((unsigned char*)i2c_buffer, sizeof(FACTORY_SET)+2 ) )
 	{
-    	memcpy(this->factory_set, &i2c_buffer[2], size);
+    	memcpy(this->factory_set, &i2c_buffer[2], sizeof(FACTORY_SET));
     }
     else
     {

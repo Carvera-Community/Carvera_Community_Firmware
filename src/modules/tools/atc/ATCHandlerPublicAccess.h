@@ -6,6 +6,7 @@
 
 #define atc_handler_checksum   		CHECKSUM("atc_handler")
 #define get_tool_status_checksum    CHECKSUM("get_tool_status")
+#define get_machine_offsets_checksum CHECKSUM("get_machine_offsets")
 #define set_ref_tool_mz_checksum	CHECKSUM("set_ref_tool_mz")
 #define get_atc_pin_status_checksum	CHECKSUM("get_atc_pin_status")
 #define set_job_complete_checksum	CHECKSUM("set_job_complete")
@@ -23,6 +24,21 @@ struct tool_status {
 	float cur_tool_mz;
 	float ref_tool_mz;
 	float tool_offset;
+};
+
+struct machine_offsets {
+	float anchor1_x;
+    float anchor1_y;
+    float anchor2_offset_x;
+    float anchor2_offset_y;
+    float anchor_width;
+
+    float rotation_offset_x;
+    float rotation_offset_y;
+    float rotation_offset_z;
+    float rotation_width;
+
+	float clearance_z;
 };
 
 #endif
