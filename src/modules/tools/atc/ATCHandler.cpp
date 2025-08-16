@@ -2120,7 +2120,7 @@ void ATCHandler::on_gcode_received(void *argument)
 						set_inner_playing(true);
 						atc_status = AUTOMATION;
 			            this->clear_script_queue();
-			            if (active_tool != 0) {
+			            if (active_tool != 0 && active_tool < 999990) {
 			            	// need to change to probe tool first
 			        		gcode->stream->printf("Change to probe tool first!\r\n");
 			                // save current position
@@ -2128,7 +2128,7 @@ void ATCHandler::on_gcode_received(void *argument)
 									                
 							if(THEKERNEL->factory_set->FuncSetting & (1<<2))	//ATC 
 							{
-				        		if (active_tool > 0) {
+				        		if (active_tool > 0 && active_tool < 999990) {
 				        			// drop current tool
 				            		int old_tool = active_tool;
 				            		// change to probe tool
