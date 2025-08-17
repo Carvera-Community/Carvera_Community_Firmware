@@ -69,6 +69,7 @@ enum HALT_REASON {
 	E_STOP					= 13,
 	POWER_OVERHEATED		= 14,
 	NON_HOME				= 15,
+	CRASH_DETECTED			= 16,
 	// Need to reset when triggered
 	HARD_LIMIT				= 21,
 	MOTOR_ERROR_X			= 22,
@@ -195,6 +196,7 @@ class Kernel {
 
         void set_halt_reason(uint8_t reason) { halt_reason = reason; }
         uint8_t get_halt_reason() const { return halt_reason; }
+        void set_halted(bool h) { halted = h; }
 
         void set_atc_state(uint8_t state) { atc_state = state; }
         uint8_t get_atc_state() const { return atc_state; }        

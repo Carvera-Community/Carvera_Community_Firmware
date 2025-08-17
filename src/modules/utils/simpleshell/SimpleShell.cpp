@@ -2256,6 +2256,9 @@ void SimpleShell::jog(string parameters, StreamOutput *stream)
 
         while(!THEKERNEL->get_stop_request() && !THEKERNEL->get_internal_stop_request()) {
             
+            // Check halt state FIRST - this prevents the loop from continuing when halted
+            if(THEKERNEL->is_halted()) break;
+            
             // Check soft limits during continuous jogging
             if(THEROBOT->is_soft_endstop_enabled()) {
                 float current_pos[n_motors];
@@ -2297,7 +2300,6 @@ void SimpleShell::jog(string parameters, StreamOutput *stream)
             }
             
             THEKERNEL->call_event(ON_IDLE);
-            if(THEKERNEL->is_halted()) break;
 
             if(THEKERNEL->get_keep_alive_request()) {
                 THEKERNEL->set_keep_alive_request(false);
@@ -2308,7 +2310,9 @@ void SimpleShell::jog(string parameters, StreamOutput *stream)
         }
         THECONVEYOR->set_continuous_mode(false);
         THEKERNEL->set_stop_request(false);
-        THECONVEYOR->wait_for_idle();
+        if (!THEKERNEL->is_halted()) {
+            THECONVEYOR->wait_for_idle();
+        }
 
         // reset the position based on current actuator position
         THEROBOT->reset_position_from_current_actuator_position();

@@ -95,7 +95,7 @@ class ZProbe: public Module
 public:
     ZProbe() : invert_override(false),invert_probe(false) {
         probe_calibration_safety_margin = 0.1F;
-        reset_probe_tracking();  
+        reset_probe_tracking();
     };
 
     virtual ~ZProbe() {};
@@ -178,6 +178,8 @@ private:
     volatile bool calibrating;
     volatile bool probe_detected;
     volatile bool calibrate_detected;
+    volatile bool probe_triggered;
+    volatile bool halt_pending;
 
     PROBING_CYCLES probing_cycle;
 
