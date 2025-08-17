@@ -238,7 +238,7 @@ void ZProbe::on_main_loop(void *argument)
 
 uint32_t ZProbe::read_probe(uint32_t dummy)
 {
-    if (CARVERA_AIR == THEKERNEL->factory_set->MachineModel && is_3dprobe_active){
+    if (CARVERA_AIR == THEKERNEL->factory_set->MachineModel && (is_3dprobe_active || probing || calibrating)){
         bool b = true;
 		PublicData::set_value( switch_checksum, detector_switch_checksum, state_checksum, &b );
     }
