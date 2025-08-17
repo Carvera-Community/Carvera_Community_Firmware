@@ -158,7 +158,7 @@ bool CartGridStrategy::handleConfig()
     this->current_grid_y_size = this->configured_grid_y_size = THEKERNEL->config->value(leveling_strategy_checksum, cart_grid_leveling_strategy_checksum, grid_y_size_checksum)->by_default(grid_size)->as_number();
 
     // we use a different file format depending on whether it is square or not
-    this->new_file_format= (configured_grid_x_size != configured_grid_y_size);
+    this->new_file_format= true;
 
     tolerance = THEKERNEL->config->value(leveling_strategy_checksum, cart_grid_leveling_strategy_checksum, tolerance_checksum)->by_default(0.03F)->as_number();
     save = THEKERNEL->config->value(leveling_strategy_checksum, cart_grid_leveling_strategy_checksum, save_checksum)->by_default(false)->as_bool();
@@ -263,18 +263,8 @@ bool CartGridStrategy::handleConfig()
 
 void CartGridStrategy::save_grid(StreamOutput *stream)
 {
-    if(only_by_two_corners){
-        stream->printf("error:Unable to save grid in only_by_two_corners mode\n");
-        return;
-    }
-
     if(isnan(grid[0])) {
         stream->printf("error:No grid to save\n");
-        return;
-    }
-
-    if((current_grid_x_size != configured_grid_x_size) || (current_grid_y_size != configured_grid_y_size)) {
-        stream->printf("error:Unable to save grid with size different from configured\n");
         return;
     }
 
@@ -285,7 +275,7 @@ void CartGridStrategy::save_grid(StreamOutput *stream)
         stream->printf("error:Failed to open grid file %s\n", filename);
         return;
     }
-    uint8_t tmp_configured_grid_size = configured_grid_x_size;
+    uint8_t tmp_configured_grid_size = current_grid_x_size;
     if(fwrite(&tmp_configured_grid_size, sizeof(uint8_t), 1, fp) != 1) {
         stream->printf("error:Failed to write grid x size\n");
         fclose(fp);
@@ -293,12 +283,24 @@ void CartGridStrategy::save_grid(StreamOutput *stream)
     }
 
     if(this->new_file_format){
-        tmp_configured_grid_size = configured_grid_y_size;
+        tmp_configured_grid_size = current_grid_y_size;
         if(fwrite(&tmp_configured_grid_size, sizeof(uint8_t), 1, fp) != 1) {
             stream->printf("error:Failed to write grid y size\n");
             fclose(fp);
             return;
         }
+    }
+
+    if(fwrite(&x_start, sizeof(float), 1, fp) != 1)  {
+        stream->printf("error:Failed to write x_start\n");
+        fclose(fp);
+        return;
+    }
+    
+    if(fwrite(&y_start, sizeof(float), 1, fp) != 1)  {
+        stream->printf("error:Failed to write y_start\n");
+        fclose(fp);
+        return;
     }
 
     if(fwrite(&x_size, sizeof(float), 1, fp) != 1)  {
@@ -313,9 +315,9 @@ void CartGridStrategy::save_grid(StreamOutput *stream)
         return;
     }
 
-    for (int y = 0; y < configured_grid_y_size; y++) {
-        for (int x = 0; x < configured_grid_x_size; x++) {
-            if(fwrite(&grid[x + (configured_grid_x_size * y)], sizeof(float), 1, fp) != 1) {
+    for (int y = 0; y < current_grid_y_size; y++) {
+        for (int x = 0; x < current_grid_x_size; x++) {
+            if(fwrite(&grid[x + (current_grid_x_size * y)], sizeof(float), 1, fp) != 1) {
                 stream->printf("error:Failed to write grid\n");
                 fclose(fp);
                 return;
@@ -328,11 +330,6 @@ void CartGridStrategy::save_grid(StreamOutput *stream)
 
 bool CartGridStrategy::load_grid(StreamOutput *stream)
 {
-    if(only_by_two_corners){
-        stream->printf("error:Unable to load grid in only_by_two_corners mode\n");
-        return false;
-    }
-
     // we use a different file format depending on whether it is square or not
     const char *filename= (this->new_file_format) ? GRIDFILE_NM : GRIDFILE;
 
@@ -343,7 +340,7 @@ bool CartGridStrategy::load_grid(StreamOutput *stream)
     }
 
     uint8_t load_grid_x_size, load_grid_y_size;
-    float x, y;
+    float x, y, temp_x_start, temp_y_start;
 
     if(fread(&load_grid_x_size, sizeof(uint8_t), 1, fp) != 1) {
         stream->printf("error:Failed to read grid size\n");
@@ -351,8 +348,8 @@ bool CartGridStrategy::load_grid(StreamOutput *stream)
         return false;
     }
 
-    if(load_grid_x_size != configured_grid_x_size) {
-        stream->printf("error:grid size x is different read %d - config %d\n", load_grid_x_size, configured_grid_x_size);
+    if(load_grid_x_size > configured_grid_x_size) {
+        stream->printf("error:grid size x is greater than config - read %d - config %d\n", load_grid_x_size, configured_grid_x_size);
         fclose(fp);
         return false;
     }
@@ -366,12 +363,30 @@ bool CartGridStrategy::load_grid(StreamOutput *stream)
             return false;
         }
 
-        if(load_grid_y_size != configured_grid_y_size) {
-            stream->printf("error:grid size y is different read %d - config %d\n", load_grid_y_size, configured_grid_x_size);
+        if(load_grid_y_size > configured_grid_y_size) {
+            stream->printf("error:grid size y is greater than config - read %d - config %d\n", load_grid_y_size, configured_grid_y_size);
             fclose(fp);
             return false;
         }
     }
+
+    current_grid_x_size = load_grid_x_size;
+    current_grid_y_size = load_grid_y_size;
+
+    if(fread(&temp_x_start, sizeof(float), 1, fp) != 1) {
+        stream->printf("error:Failed to read x_start\n");
+        fclose(fp);
+        return false;
+    }
+
+    if(fread(&temp_y_start, sizeof(float), 1, fp) != 1) {
+        stream->printf("error:Failed to read y_start\n");
+        fclose(fp);
+        return false;
+    }
+
+    x_start = temp_x_start;
+    y_start = temp_y_start;
 
     if(fread(&x, sizeof(float), 1, fp) != 1) {
         stream->printf("error:Failed to read grid x size\n");
@@ -385,15 +400,12 @@ bool CartGridStrategy::load_grid(StreamOutput *stream)
         return false;
     }
 
-    if(x != x_size || y != y_size) {
-        stream->printf("error:bed dimensions changed read (%f, %f) - config (%f,%f)\n", x, y, x_size, y_size);
-        fclose(fp);
-        return false;
-    }
+    x_size = x;
+    y_size = y;
 
-    for (int y = 0; y < configured_grid_y_size; y++) {
-        for (int x = 0; x < configured_grid_x_size; x++) {
-            if(fread(&grid[x + (configured_grid_x_size * y)], sizeof(float), 1, fp) != 1) {
+    for (int y = 0; y < current_grid_y_size; y++) {
+        for (int x = 0; x < current_grid_x_size; x++) {
+            if(fread(&grid[x + (current_grid_x_size * y)], sizeof(float), 1, fp) != 1) {
                 stream->printf("error:Failed to read grid\n");
                 fclose(fp);
                 return false;
@@ -520,25 +532,6 @@ bool CartGridStrategy::handleGcode(Gcode *gcode)
                 }
             }
             return true;
-
-        } else if(gcode->m == 565) { // M565: Set Z probe offsets
-            float x = 0, y = 0, z = 0;
-            if(gcode->has_letter('X')) x = gcode->get_value('X');
-            if(gcode->has_letter('Y')) y = gcode->get_value('Y');
-            if(gcode->has_letter('Z')) z = gcode->get_value('Z');
-            probe_offsets = std::make_tuple(x, y, z);
-            return true;
-
-        } else if(gcode->m == 500 || gcode->m == 503) { // M500 save, M503 display
-            float x, y, z;
-            std::tie(x, y, z) = probe_offsets;
-            gcode->stream->printf(";Probe offsets:\nM565 X%1.5f Y%1.5f Z%1.5f\n", x, y, z);
-            if(save) {
-                if(!isnan(grid[0])) gcode->stream->printf(";Load saved grid\nM375\n");
-                else if(gcode->m == 503) gcode->stream->printf(";WARNING No grid to save\n");
-            }
-            return true;
-
         } else if(gcode->m == 380) { // M380: Disable flex compensation, M380.1: Display data, M380.2: Save, M380.3: Load
             if(gcode->subcode == 1) {
                 // Display current flex compensation data
@@ -560,6 +553,23 @@ bool CartGridStrategy::handleGcode(Gcode *gcode)
                 updateCompensationTransform();
                 reset_flex_compensation();
                 gcode->stream->printf("Flex compensation disabled\n");
+            }
+            return true;
+        } else if(gcode->m == 565) { // M565: Set Z probe offsets
+            float x = 0, y = 0, z = 0;
+            if(gcode->has_letter('X')) x = gcode->get_value('X');
+            if(gcode->has_letter('Y')) y = gcode->get_value('Y');
+            if(gcode->has_letter('Z')) z = gcode->get_value('Z');
+            probe_offsets = std::make_tuple(x, y, z);
+            return true;
+
+        } else if(gcode->m == 500 || gcode->m == 503) { // M500 save, M503 display
+            float x, y, z;
+            std::tie(x, y, z) = probe_offsets;
+            gcode->stream->printf(";Probe offsets:\nM565 X%1.5f Y%1.5f Z%1.5f\n", x, y, z);
+            if(save) {
+                if(!isnan(grid[0])) gcode->stream->printf(";Load saved grid\nM375\n");
+                else if(gcode->m == 503) gcode->stream->printf(";WARNING No grid to save\n");
             }
             return true;
         }
