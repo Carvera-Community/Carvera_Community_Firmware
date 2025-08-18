@@ -79,20 +79,20 @@ try_again:
         // ignore all lowercase as they are simpleshell commands
         return;
     }
+    
+    //Get linenumber
+    if ( first_char == 'N' ) {
+        //Strip line number value from possible_command
+		size_t lnsize = possible_command.find_first_not_of("N0123456789.,- ");
+		if(lnsize != string::npos) {
+			possible_command = possible_command.substr(lnsize);
+		}else{
+			// it is a blank line
+			possible_command.clear();
+		}
+    }
 
-    if ( first_char == 'G' || first_char == 'M' || first_char == 'T' || first_char == 'S' || first_char == 'N' || first_char == '#') {
-
-        //Get linenumber
-        if ( first_char == 'N' ) {
-            //Strip line number value from possible_command
-			size_t lnsize = possible_command.find_first_not_of("N0123456789.,- ");
-			if(lnsize != string::npos) {
-				possible_command = possible_command.substr(lnsize);
-			}else{
-				// it is a blank line
-				possible_command.clear();
-			}
-        }
+    if ( first_char == 'G' || first_char == 'M' || first_char == 'T' || first_char == 'S' || first_char == '#') {
 
         if ( first_char == 'G'){
 			//check if has G90/G91
