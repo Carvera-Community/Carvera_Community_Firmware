@@ -2080,6 +2080,7 @@ void ATCHandler::on_gcode_received(void *argument)
 					bool zprobe = false;
 					bool zprobe_abs = false;
 					bool leveling = false;
+					bool Rotation = false;
 
 					float x_path_pos = gcode->get_value('X');
 					float y_path_pos = gcode->get_value('Y');
@@ -2106,6 +2107,9 @@ void ATCHandler::on_gcode_received(void *argument)
 		    			} else {
 			    			zprobe_abs = true;
 		    			}
+		    		}
+		    		if (gcode->has_letter('R')) {
+		    			Rotation = true;
 		    		}
 		    		if (gcode->has_letter('A') && gcode->has_letter('B') && gcode->has_letter('I') && gcode->has_letter('J') && gcode->has_letter('H')) {
 		    			leveling = true;
@@ -2163,31 +2167,42 @@ void ATCHandler::on_gcode_received(void *argument)
 			            }
 			            if (gcode->has_letter('P')) {
 			            	gcode->stream->printf("goto x and y clearance first\r\n");
-			            	if(THEKERNEL->factory_set->FuncSetting & (1<<0) )
-			            	{
-			            		if (zprobe_abs) {
-    								char buff[100];
-    								// lift z to clearance position with fast speed
+							char buff[100];
+		            		if (zprobe_abs) {
+								// lift z to clearance position with fast speed
+								snprintf(buff, sizeof(buff), "G53 G0 Z%.3f", THEROBOT->from_millimeters(this->clearance_z));
+								this->script_queue.push(buff);
+
+								// Avoid the position of the chuck
+								snprintf(buff, sizeof(buff), "G53 G90 G0 Y%.3f", THEROBOT->from_millimeters(this->clearance_y));
+								this->script_queue.push(buff);
+								
+								// goto x and y clearance
+								snprintf(buff, sizeof(buff), "G53 G90 G0 X%.3f", THEROBOT->from_millimeters(this->clearance_x));
+								this->script_queue.push(buff);
+		            		}
+		            		else
+		            		{
+		            			if(Rotation)
+		            			{
+		            				// lift z to clearance position with fast speed
 									snprintf(buff, sizeof(buff), "G53 G0 Z%.3f", THEROBOT->from_millimeters(this->clearance_z));
 									this->script_queue.push(buff);
-
-    								// Avoid the position of the chuck
+									// goto y clearance
 									snprintf(buff, sizeof(buff), "G53 G90 G0 Y%.3f", THEROBOT->from_millimeters(this->clearance_y));
 									this->script_queue.push(buff);
-									
-									// goto x and y clearance
-									snprintf(buff, sizeof(buff), "G53 G90 G0 X%.3f", THEROBOT->from_millimeters(this->clearance_x));
+									// goto x position
+									snprintf(buff, sizeof(buff), "G90 G0 X%.3f", THEROBOT->from_millimeters(x_path_pos));
 									this->script_queue.push(buff);
-			            		}
-			            		else
-			            		{
-			            			this->fill_goto_origin_scripts(x_path_pos, y_path_pos);
-			            		}
-			            	}
-			            	else
-			            	{
-			            		this->fill_goto_origin_scripts(x_path_pos, y_path_pos);
-			            	}
+									// goto y position
+									snprintf(buff, sizeof(buff), "G90 G0 Y%.3f", THEROBOT->from_millimeters(y_path_pos));
+									this->script_queue.push(buff);
+		            			}
+		            			else
+		            			{
+		            				this->fill_goto_origin_scripts(x_path_pos, y_path_pos);
+		            			}
+		            		}
 			            }
 		    		} else {
 		    			if (gcode->has_letter('P')) {
@@ -2196,7 +2211,27 @@ void ATCHandler::on_gcode_received(void *argument)
 				            this->clear_script_queue();
 		    				// goto path origin first
 			            	gcode->stream->printf("Goto path origin first\r\n");
-			            	this->fill_goto_origin_scripts(x_path_pos, y_path_pos);
+			            	
+	            			if(Rotation)
+	            			{
+	            				char buff[100];
+	            				// lift z to clearance position with fast speed
+								snprintf(buff, sizeof(buff), "G53 G0 Z%.3f", THEROBOT->from_millimeters(this->clearance_z));
+								this->script_queue.push(buff);
+								// goto y clearance
+								snprintf(buff, sizeof(buff), "G53 G90 G0 Y%.3f", THEROBOT->from_millimeters(this->clearance_y));
+								this->script_queue.push(buff);
+								// goto x position
+								snprintf(buff, sizeof(buff), "G90 G0 X%.3f", THEROBOT->from_millimeters(x_path_pos));
+								this->script_queue.push(buff);
+								// goto y position
+								snprintf(buff, sizeof(buff), "G90 G0 Y%.3f", THEROBOT->from_millimeters(y_path_pos));
+								this->script_queue.push(buff);
+	            			}
+	            			else
+	            			{
+	            				this->fill_goto_origin_scripts(x_path_pos, y_path_pos);
+	            			}
 		    			}
 		    		}
 				} else {
@@ -2369,17 +2404,25 @@ void ATCHandler::on_main_loop(void *argument)
 	        rapid_move(true, this->clearance_x, this->clearance_y, NAN, NAN, NAN);
 		} else if (goto_position == 2) {
 			// goto work origin
-			// shrink A value first before move
-    		float ma = THEROBOT->actuators[A_AXIS]->get_current_position();
-    		if (fabs(ma) > 360) {
-    			THEROBOT->reset_axis_position(fmodf(ma, 360.0), A_AXIS);
-    		}    		
-			// shrink B value first before move
-//    		ma = THEROBOT->actuators[B_AXIS]->get_current_position();
-//    		if (fabs(ma) > 360) {
-//    			THEROBOT->reset_axis_position(fmodf(ma, 360.0), B_AXIS);
-//    		}
-			//rapid_move(false, 0, 0, NAN, 0, 0);
+			float mpos[5];
+			mpos[X_AXIS] = 0;
+			mpos[Y_AXIS] = 0;
+			mpos[Z_AXIS] = 0;
+			mpos[B_AXIS] = 0;
+    		
+			mpos[A_AXIS] = THEROBOT->actuators[A_AXIS]->get_current_position();
+			Robot::wcs_t pos = THEROBOT->mcs2wcs(mpos);
+			float wa = THEROBOT->from_millimeters(std::get<A_AXIS>(pos));
+			float ma = THEROBOT->actuators[A_AXIS]->get_current_position();
+			
+			if(fabs(wa) > 360)
+			{
+				float deltwa = wa - fmodf(wa, 360.0);
+				ma = ma - deltwa;
+				
+				THEROBOT->reset_axis_position(ma, A_AXIS);
+			}
+			
 			rapid_move(false, 0, 0, NAN, 0, NAN);
 		} else if (goto_position == 3) {
 			// goto anchor 1
