@@ -985,12 +985,21 @@ void CartGridStrategy::doCompensation(float *target, bool inverse, bool debug)
 // Print calibration results for plotting or manual frame adjustment.
 void CartGridStrategy::print_bed_level(StreamOutput *stream)
 {
+	char buffer[256];
+	unsigned int buffer_pos = 0;
     if(!human_readable){
         for (int y = 0; y < current_grid_y_size; y++) {
             for (int x = 0; x < current_grid_x_size; x++) {
-                stream->printf("%1.4f ", grid[x + (current_grid_x_size * y)]);
+            	buffer_pos += snprintf(buffer + buffer_pos, sizeof(buffer) - buffer_pos, 
+                             "%1.4f ", grid[x + (current_grid_x_size * y)]);                             
+		        if (buffer_pos >= sizeof(buffer) - 30) {
+		            stream->printf("%s", buffer);
+		            buffer_pos = 0;
+		        }
             }
-            stream->printf("\n");
+            buffer_pos += snprintf(buffer + buffer_pos, sizeof(buffer) - buffer_pos, "\n");
+	        stream->printf("%s", buffer);
+	        buffer_pos = 0;
         }
     } else {
 
@@ -1003,22 +1012,44 @@ void CartGridStrategy::print_bed_level(StreamOutput *stream)
         int yInc = (y_size<0) ? 1: -1;
 
         for (int y = yStart; y != yStop; y += yInc) {
-            stream->printf("%10.4f|", y * (y_size / (current_grid_y_size - 1)));
+            buffer_pos += snprintf(buffer + buffer_pos, sizeof(buffer) - buffer_pos, 
+                             "%10.4f|", y * (y_size / (current_grid_y_size - 1)));     
             for (int x = xStart; x != xStop; x += xInc) {
-                stream->printf("%10.4f ",  grid[x + (current_grid_x_size * y)]);
+	            buffer_pos += snprintf(buffer + buffer_pos, sizeof(buffer) - buffer_pos, 
+	                             "%10.4f ",  grid[x + (current_grid_x_size * y)]);                              
+		        if (buffer_pos >= sizeof(buffer) - 30) {
+		            stream->printf("%s", buffer);
+		            buffer_pos = 0;
+		        } 
             }
-            stream->printf("\n");
+            buffer_pos += snprintf(buffer + buffer_pos, sizeof(buffer) - buffer_pos, "\n");
+	        stream->printf("%s", buffer);
+	        buffer_pos = 0;
         }
-        stream->printf("           ");
+        buffer_pos += snprintf(buffer + buffer_pos, sizeof(buffer) - buffer_pos, "           ");     
         for (int x = xStart; x != xStop; x += xInc) {
-            stream->printf("-----+-----");
+        	buffer_pos += snprintf(buffer + buffer_pos, sizeof(buffer) - buffer_pos, "-----+-----"); 
+        	if (buffer_pos >= sizeof(buffer) - 30) {
+		            stream->printf("%s", buffer);
+		            buffer_pos = 0;
+		        } 
         }
-        stream->printf("\n");
-        stream->printf("           ");
+        buffer_pos += snprintf(buffer + buffer_pos, sizeof(buffer) - buffer_pos, "\n");
+        stream->printf("%s", buffer);
+        buffer_pos = 0;
+        
+        buffer_pos += snprintf(buffer + buffer_pos, sizeof(buffer) - buffer_pos, "           ");
         for (int x = xStart; x != xStop; x += xInc) {
-            stream->printf("%1.4f ",  x * (x_size / (current_grid_x_size - 1)));
+            buffer_pos += snprintf(buffer + buffer_pos, sizeof(buffer) - buffer_pos,
+	                             "%1.4f ",  x * (x_size / (current_grid_x_size - 1)));                              
+		        if (buffer_pos >= sizeof(buffer) - 30) {
+		            stream->printf("%s", buffer);
+		            buffer_pos = 0;
+		        } 
         }
-            stream->printf("\n");
+        buffer_pos += snprintf(buffer + buffer_pos, sizeof(buffer) - buffer_pos, "\n");
+        stream->printf("%s", buffer);
+        buffer_pos = 0;
 
     }
 
