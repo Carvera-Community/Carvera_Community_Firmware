@@ -60,6 +60,7 @@
 #define detector_switch_checksum    CHECKSUM("toolsensor")
 #define switch_checksum 			CHECKSUM("switch")
 #define state_checksum              CHECKSUM("state")
+#define ignore_on_halt_checksum     CHECKSUM("ignore_on_halt")
 
 #define X_AXIS 0
 #define Y_AXIS 1
@@ -193,10 +194,20 @@ void ZProbe::on_main_loop(void *argument)
 
     if (check_probe_tool() == 2){
         is_3dprobe_active = true;
-    }else{
-        is_3dprobe_active = false;    
+        if (CARVERA_AIR == THEKERNEL->factory_set->MachineModel) {
+            bool ignore_on_halt = true;
+            PublicData::set_value( switch_checksum, detector_switch_checksum, ignore_on_halt_checksum, &ignore_on_halt );
+        }
     }
-
+    else{
+        is_3dprobe_active = false;    
+        if (CARVERA_AIR == THEKERNEL->factory_set->MachineModel) {
+            bool ignore_on_halt = false;
+            PublicData::set_value( switch_checksum, detector_switch_checksum, ignore_on_halt_checksum, &ignore_on_halt );
+        }
+    }
+    
+    
     switch(probing_cycle)
     {
         case CALIBRATE_PROBE_BORE:
@@ -259,7 +270,7 @@ uint32_t ZProbe::read_probe(uint32_t dummy)
         if (this->pin.get() != invert_probe && is_3dprobe_active && !probe_triggered) {
             probe_triggered = true;
             // Set halt state immediately for fast response, defer event processing to main loop
-            if (!probing || !calibrating) {
+            if (!probing && !calibrating) {
                 THEKERNEL->set_halt_reason(CRASH_DETECTED);
                 THEKERNEL->set_halted(true);
                 // Set a flag to process the halt event in the main loop
