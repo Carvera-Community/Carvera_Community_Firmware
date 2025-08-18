@@ -60,6 +60,7 @@
 #define detector_switch_checksum    CHECKSUM("toolsensor")
 #define switch_checksum 			CHECKSUM("switch")
 #define state_checksum              CHECKSUM("state")
+#define ignore_on_halt_checksum     CHECKSUM("ignore_on_halt")
 
 #define X_AXIS 0
 #define Y_AXIS 1
@@ -111,7 +112,9 @@ void ZProbe::config_load()
     this->calibrate_pin.from_string( THEKERNEL->config->value(zprobe_checksum, calibrate_pin_checksum)->by_default("0.5^" )->as_string())->as_input();
     this->debounce_ms    = THEKERNEL->config->value(zprobe_checksum, debounce_ms_checksum)->by_default(0  )->as_number();
     this->probe_calibration_safety_margin = THEKERNEL->config->value(zprobe_checksum, probe_calibration_safety_margin_checksum)->by_default(0.1F)->as_number();
-    
+    this->halt_pending = false;
+    this->probe_triggered = false;
+
     // get strategies to load
     vector<uint16_t> modules;
     THEKERNEL->config->get_module_list( &modules, leveling_strategy_checksum);
@@ -183,12 +186,28 @@ void ZProbe::config_load()
 
 void ZProbe::on_main_loop(void *argument)
 {
-    if (check_probe_tool() == 2){
-        is_3dprobe_active = true;
-    }else{
-        is_3dprobe_active = false;    
+    // Handle deferred halt event from crash detection
+    if (halt_pending) {
+        halt_pending = false;
+        THEKERNEL->call_event(ON_HALT, nullptr);
     }
 
+    if (check_probe_tool() == 2){
+        is_3dprobe_active = true;
+        if (CARVERA_AIR == THEKERNEL->factory_set->MachineModel) {
+            bool ignore_on_halt = true;
+            PublicData::set_value( switch_checksum, detector_switch_checksum, ignore_on_halt_checksum, &ignore_on_halt );
+        }
+    }
+    else{
+        is_3dprobe_active = false;    
+        if (CARVERA_AIR == THEKERNEL->factory_set->MachineModel) {
+            bool ignore_on_halt = false;
+            PublicData::set_value( switch_checksum, detector_switch_checksum, ignore_on_halt_checksum, &ignore_on_halt );
+        }
+    }
+    
+    
     switch(probing_cycle)
     {
         case CALIBRATE_PROBE_BORE:
@@ -241,6 +260,25 @@ uint32_t ZProbe::read_probe(uint32_t dummy)
     if (CARVERA_AIR == THEKERNEL->factory_set->MachineModel && (is_3dprobe_active || probing || calibrating)){
         bool b = true;
 		PublicData::set_value( switch_checksum, detector_switch_checksum, state_checksum, &b );
+    }
+
+    if (probe_triggered && !(this->pin.get() != invert_probe)) {
+        probe_triggered = false;
+    }
+
+    if(STEPPER[X_AXIS]->is_moving() || STEPPER[Y_AXIS]->is_moving() || STEPPER[Z_AXIS]->is_moving()) {
+        if (this->pin.get() != invert_probe && is_3dprobe_active && !probe_triggered) {
+            probe_triggered = true;
+            // Set halt state immediately for fast response, defer event processing to main loop
+            if (!probing && !calibrating) {
+                THEKERNEL->set_halt_reason(CRASH_DETECTED);
+                THEKERNEL->set_halted(true);
+                // Set a flag to process the halt event in the main loop
+                halt_pending = true;
+                THEKERNEL->streams->printf("error:3D Probe crash detected\r\n");
+                THEKERNEL->streams->printf("Manually move the probe to a safe position\r\n");
+            } 
+        }
     }
 
     if (!probing) return 0;

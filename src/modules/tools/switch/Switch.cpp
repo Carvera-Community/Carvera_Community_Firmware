@@ -48,7 +48,7 @@
 #define    output_off_command_checksum  CHECKSUM("output_off_command")
 #define    pwm_period_ms_checksum       CHECKSUM("pwm_period_ms")
 #define    failsafe_checksum            CHECKSUM("failsafe_set_to")
-#define    ignore_onhalt_checksum       CHECKSUM("ignore_on_halt")
+#define    ignore_on_halt_checksum      CHECKSUM("ignore_on_halt")
 
 #define ROUND2DP(x) (roundf(x * 1e2F) / 1e2F)
 
@@ -124,7 +124,7 @@ void Switch::on_config_reload(void *argument)
     if(!is_input) {
         string type = THEKERNEL->config->value(switch_checksum, this->name_checksum, output_type_checksum )->by_default("digital")->as_string();
         this->failsafe= THEKERNEL->config->value(switch_checksum, this->name_checksum, failsafe_checksum )->by_default(0)->as_number();
-        this->ignore_on_halt= THEKERNEL->config->value(switch_checksum, this->name_checksum, ignore_onhalt_checksum )->by_default(false)->as_bool();
+        this->ignore_on_halt= THEKERNEL->config->value(switch_checksum, this->name_checksum, ignore_on_halt_checksum )->by_default(false)->as_bool();
 
         if(type == "pwm"){
             this->output_type= SIGMADELTA;
@@ -495,6 +495,9 @@ void Switch::on_set_public_data(void *argument)
     	} else {
     		this->turn_off_switch();
     	}
+        pdr->set_taken();
+    } else if (pdr->third_element_is(ignore_on_halt_checksum)) {
+        this->ignore_on_halt = *static_cast<bool *>(pdr->get_data_ptr());
         pdr->set_taken();
     }
 }

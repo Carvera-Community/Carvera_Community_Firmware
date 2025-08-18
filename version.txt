@@ -12,6 +12,7 @@ To let the Carvera work perfectly, please make sure both your controller softwar
 - Enhancement: Added a sag compensation for the Carvera AIR that compensates for rotational and gravitational sag of the x axis carriage
 - Enhancement: Bed Leveling can be saved to the sd card and loaded after a reboot
 - Enhancement: Margin scan, ZProbe and Bed Leveling can be done with the 3D Probe aswell
+- Enhancement: 3D Probe crash detection
 - Bugfix: Machine crashes during probing cycles should be fixed
 
 
