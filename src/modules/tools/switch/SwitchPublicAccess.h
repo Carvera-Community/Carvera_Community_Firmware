@@ -13,6 +13,7 @@
 #define probecharger_checksum        CHECKSUM("probecharger")
 #define air_checksum               	 CHECKSUM("air")
 #define beep_checksum          	     CHECKSUM("beep")
+#define extendout_checksum			 CHECKSUM("extendout")
 
 struct pad_switch {
     int name;
