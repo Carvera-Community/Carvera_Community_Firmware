@@ -64,7 +64,14 @@ void SpindleControl::on_gcode_received(void *argument)
             	if (THEKERNEL->get_vacuum_mode()) {
             		// open vacuum
             		bool b = true;
-                    PublicData::set_value( switch_checksum, vacuum_checksum, state_checksum, &b );
+            		if(CARVERA == THEKERNEL->factory_set->MachineModel)
+	        		{
+                    	PublicData::set_value( switch_checksum, vacuum_checksum, state_checksum, &b );
+                    }
+	                else
+	                {
+	                	PublicData::set_value( switch_checksum, extendout_checksum, state_checksum, &b );
+	                }
             	}
 
                 // M3 with S value provided: set speed
@@ -87,7 +94,14 @@ void SpindleControl::on_gcode_received(void *argument)
             	if (THEKERNEL->get_vacuum_mode()) {
             		// close vacuum
             		bool b = false;
-                    PublicData::set_value( switch_checksum, vacuum_checksum, state_checksum, &b );
+                    if(CARVERA == THEKERNEL->factory_set->MachineModel)
+	        		{
+                    	PublicData::set_value( switch_checksum, vacuum_checksum, state_checksum, &b );
+                    }
+	                else
+	                {
+	                	PublicData::set_value( switch_checksum, extendout_checksum, state_checksum, &b );
+	                }
             	}
 
                 // M5: spindle off
