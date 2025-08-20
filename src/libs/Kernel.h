@@ -190,6 +190,9 @@ class Kernel {
 
         void set_zprobing(bool f) { zprobing = f; }
         bool is_zprobing() const { return zprobing; }
+
+        void set_flex_compensation_active(bool f) { flex_compensation_active = f; }
+        bool is_flex_compensation_active() const { return flex_compensation_active; }
         
         void set_probeLaser(bool f) { probeLaserOn = f; }
         bool is_probeLaserOn() const { return probeLaserOn; }
@@ -286,6 +289,7 @@ class Kernel {
             volatile bool cachewait:1;
             bool disable_serial_console:1;
             bool halt_on_error_debug:1;
+            bool flex_compensation_active:1;
         };
         int iic_page_write(unsigned char u8PageNum, unsigned char u8len, unsigned char *pu8Array);
 

@@ -835,6 +835,10 @@ bool ZProbe::probe_XYZ(Gcode *gcode)
     float pos[3];
     THEROBOT->get_axis_position(pos, 3);
 
+    if(THEKERNEL->is_flex_compensation_active()) {
+        if(THEROBOT->compensationTransform) THEROBOT->compensationTransform(pos, true, false); // get inverse compensation transform
+    }
+
     uint8_t probeok = probe_detected ? 1 : 0;
 
     // print results using the GRBL format
@@ -934,6 +938,10 @@ void ZProbe::calibrate_Z(Gcode *gcode)
     THEROBOT->reset_position_from_current_actuator_position();
     float pos[3];
     THEROBOT->get_axis_position(pos, 3);
+
+    if(THEKERNEL->is_flex_compensation_active()) {
+        if(THEROBOT->compensationTransform) THEROBOT->compensationTransform(pos, true, false); // get inverse compensation transform
+    }
     
     if (safety_margin_exceeded) {
         safety_margin_exceeded = false;
@@ -1157,33 +1165,34 @@ bool ZProbe::fast_slow_probe_sequence(int axis, int direction){
     THECONVEYOR->wait_for_idle();
     //store position
     THEROBOT->get_current_machine_position(mpos);
-    memcpy(old_mpos, mpos, sizeof(mpos));
     // current_position/mpos includes the compensation transform so we need to get the inverse to get actual position
-    if(THEROBOT->compensationTransform) THEROBOT->compensationTransform(mpos, true, true); // get inverse compensation transform
-    
+    if(THEKERNEL->is_flex_compensation_active()) {
+        if(THEROBOT->compensationTransform) THEROBOT->compensationTransform(mpos, true, true); // get inverse compensation transform
+    }
+
     // if probing x positive then the output goes to the positive out and vice versa
     if (axis == 0){
         if (direction > 0){
-            out_coords.x_positive_x_out= old_mpos[0];
-            out_coords.x_positive_y_out = old_mpos[1];
+            out_coords.x_positive_x_out= mpos[0];
+            out_coords.x_positive_y_out = mpos[1];
         }else{
-            out_coords.x_negative_x_out= old_mpos[0];
-            out_coords.x_negative_y_out = old_mpos[1];
+            out_coords.x_negative_x_out= mpos[0];
+            out_coords.x_negative_y_out = mpos[1];
         }
     }else if (axis == 1){
         if (direction > 0){
-            out_coords.y_positive_x_out= old_mpos[0];
-            out_coords.y_positive_y_out = old_mpos[1];
+            out_coords.y_positive_x_out= mpos[0];
+            out_coords.y_positive_y_out = mpos[1];
         }else{
-            out_coords.y_negative_x_out= old_mpos[0];
-            out_coords.y_negative_y_out = old_mpos[1];
+            out_coords.y_negative_x_out= mpos[0];
+            out_coords.y_negative_y_out = mpos[1];
         }
     }else if (axis == 2){
-        out_coords.z_negative_z_out = old_mpos[2];
+        out_coords.z_negative_z_out = mpos[2];
     }else if (axis == 10){
-        out_coords.x_positive_x_out = old_mpos[0];
-        out_coords.y_positive_y_out = old_mpos[1];
-        out_coords.z_negative_z_out = old_mpos[2];
+        out_coords.x_positive_x_out = mpos[0];
+        out_coords.y_positive_y_out = mpos[1];
+        out_coords.z_negative_z_out = mpos[2];
     }
    
     moveBuffer[0] = retractx;
@@ -1357,11 +1366,12 @@ void ZProbe::probe_bore(bool calibration) //M461
     THECONVEYOR->wait_for_idle();
     //save center position to use later
     THEROBOT->get_current_machine_position(mpos);
-    memcpy(old_mpos, mpos, sizeof(mpos));
     // current_position/mpos includes the compensation transform so we need to get the inverse to get actual position
-    if(THEROBOT->compensationTransform) THEROBOT->compensationTransform(mpos, true, true); // get inverse compensation transform
-    out_coords.origin_x = old_mpos[0];
-    out_coords.origin_y = old_mpos[1];
+    if(THEKERNEL->is_flex_compensation_active()) {
+        if(THEROBOT->compensationTransform) THEROBOT->compensationTransform(mpos, true, false); // get inverse compensation transform
+    }
+    out_coords.origin_x = mpos[0];
+    out_coords.origin_y = mpos[1];
 
 	//setup repeat
 	for(int i=0; i< param.repeat; i++) {
@@ -1483,9 +1493,10 @@ void ZProbe::probe_boss(bool calibration) //M462
     THECONVEYOR->wait_for_idle();
     //save center position to use later
     THEROBOT->get_current_machine_position(mpos);
-    memcpy(old_mpos, mpos, sizeof(mpos));
     // current_position/mpos includes the compensation transform so we need to get the inverse to get actual position
-    if(THEROBOT->compensationTransform) THEROBOT->compensationTransform(mpos, true, true); // get inverse compensation transform
+    if(THEKERNEL->is_flex_compensation_active()) {
+        if(THEROBOT->compensationTransform) THEROBOT->compensationTransform(mpos, true, false); // get inverse compensation transform
+    }
     out_coords.origin_x = mpos[0];
     this->out_coords.origin_y = mpos[1];
     this->param.clearance_world_pos = mpos[2]; //test old_mpos[2];
@@ -1612,7 +1623,6 @@ void ZProbe::probe_boss(bool calibration) //M462
 void ZProbe::probe_insideCorner() //M463
 {
     float mpos[3];
-    float old_mpos[3];
 
     if (param.repeat < 1){
         THEKERNEL->streams->printf("ALARM: Probe fail: repeat value cannot be less than 1\n");
@@ -1629,11 +1639,12 @@ void ZProbe::probe_insideCorner() //M463
     THECONVEYOR->wait_for_idle();
     //save center position to use later
     THEROBOT->get_current_machine_position(mpos);
-    memcpy(old_mpos, mpos, sizeof(mpos));
     // current_position/mpos includes the compensation transform so we need to get the inverse to get actual position
-    if(THEROBOT->compensationTransform) THEROBOT->compensationTransform(mpos, true, true); // get inverse compensation transform
-    out_coords.origin_x = old_mpos[0];
-    out_coords.origin_y = old_mpos[1];
+    if(THEKERNEL->is_flex_compensation_active()) {
+        if(THEROBOT->compensationTransform) THEROBOT->compensationTransform(mpos, true, false); // get inverse compensation transform
+    }
+    out_coords.origin_x = mpos[0];
+    out_coords.origin_y = mpos[1];
 
     rotate(X_AXIS, param.x_axis_distance, &param.x_rotated_x, &param.x_rotated_y, param.rotation_angle);
     rotate(Y_AXIS, param.y_axis_distance, &param.y_rotated_x, &param.y_rotated_y, param.rotation_angle);
@@ -1696,7 +1707,6 @@ void ZProbe::probe_outsideCorner() //M464
     THEKERNEL->streams->printf("Probing Outside Corner\n");
 
     float mpos[3];
-    float old_mpos[3];
 
     if (param.repeat < 1){
         THEKERNEL->streams->printf("ALARM: Probe fail: repeat value cannot be less than 1\n");
@@ -1722,12 +1732,13 @@ void ZProbe::probe_outsideCorner() //M464
     THECONVEYOR->wait_for_idle();
     //save center position to use later
     THEROBOT->get_current_machine_position(mpos);
-    memcpy(old_mpos, mpos, sizeof(mpos));
     // current_position/mpos includes the compensation transform so we need to get the inverse to get actual position
-    if(THEROBOT->compensationTransform) THEROBOT->compensationTransform(mpos, true, true); // get inverse compensation transform
-    out_coords.origin_x = old_mpos[0];
-    out_coords.origin_y = old_mpos[1];
-    param.clearance_world_pos = old_mpos[2];
+    if(THEKERNEL->is_flex_compensation_active()) {
+        if(THEROBOT->compensationTransform) THEROBOT->compensationTransform(mpos, true, false); // get inverse compensation transform
+    }
+    out_coords.origin_x = mpos[0];
+    out_coords.origin_y = mpos[1];
+    param.clearance_world_pos = mpos[2];
 
 	//setup repeat
 	for(int i=0; i< param.repeat; i++) {
@@ -1893,7 +1904,9 @@ void ZProbe::probe_axisangle(bool probe_a_axis, bool probe_with_offset) //M465
     //save center position to use later
     THEROBOT->get_current_machine_position(mpos);    // current_position/mpos includes the compensation transform so we need to get the inverse to get actual position
     a_axis_pos = THEROBOT->actuators[3]->get_current_position();
-    if(THEROBOT->compensationTransform) THEROBOT->compensationTransform(mpos, true, true); // get inverse compensation transform
+    if(THEKERNEL->is_flex_compensation_active()) {
+        if(THEROBOT->compensationTransform) THEROBOT->compensationTransform(mpos, true, false); // get inverse compensation transform
+    }
     out_coords.origin_x = mpos[0];
     out_coords.origin_y = mpos[1];
     param.clearance_world_pos = mpos[2];

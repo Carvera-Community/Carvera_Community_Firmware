@@ -590,7 +590,12 @@ void CartGridStrategy::setAdjustFunction(bool on)
 }
 
 void CartGridStrategy::updateCompensationTransform()
-{
+{   
+    if(flex_compensation_active) {
+        THEKERNEL->set_flex_compensation_active(true);
+    } else {
+        THEKERNEL->set_flex_compensation_active(false);
+    }
     // Enable compensation transform if ANY compensation is active
     if(cartesian_grid_active || flex_compensation_active) {
         // set the compensationTransform in robot

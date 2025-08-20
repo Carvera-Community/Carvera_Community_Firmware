@@ -194,6 +194,7 @@ void SimpleShell::on_module_loaded()
     this->register_for_event(ON_CONSOLE_LINE_RECEIVED);
     this->register_for_event(ON_GCODE_RECEIVED);
     this->register_for_event(ON_SECOND_TICK);
+    this->cont_mode_active = false;
 
     reset_delay_secs = 0;
 }
@@ -366,7 +367,9 @@ void SimpleShell::on_console_line_received( void *argument )
 
             case 'J':
                 // instant jog command
-                jog(possible_command, new_message.stream);
+                if(!this->cont_mode_active) {
+                    jog(possible_command, new_message.stream);
+                }
                 break;
 
             default:
@@ -2086,6 +2089,7 @@ void SimpleShell::jog(string parameters, StreamOutput *stream)
     }
     float min_time= 0.05;
     if(cont_mode) {
+        this->cont_mode_active = true;
         // continuous jog mode
         // calculate minimum distance to travel to accomodate acceleration and feedrate
         float acc= THEROBOT->get_default_acceleration();
@@ -2093,6 +2097,8 @@ void SimpleShell::jog(string parameters, StreamOutput *stream)
         // Validate acceleration value
         if(acc <= 0 || isnan(acc)) {
             stream->printf("error: Invalid acceleration value: %f\n", acc);
+            stream->printf("^Y\n");
+            this->cont_mode_active = false;  // Reset flag before returning
             return;
         }
         
@@ -2137,22 +2143,27 @@ void SimpleShell::jog(string parameters, StreamOutput *stream)
                 // If moving towards a limit and brake distance is greater than distance to limit
                 if(delta[i] < 0 && !isnan(THEROBOT->get_soft_endstop_min(i)) && 
                     dist_to_min[i] <= fabs(2 * delta[i] + 2* delta_const[i])){
-                    if (scale > dist_to_min[i]/fabs(delta[i])) {
-                        scale = dist_to_min[i]/fabs(delta[i]);
+                    if (scale > dist_to_min[i]/fabs(2 * delta[i] + 2 * delta_const[i])) {
+                        scale = dist_to_min[i]/fabs(2 * delta[i] + 2 * delta_const[i]);
                     }
                     if (dist_to_min[i] <= 0) {
                         stream->printf("error:Soft Endstop %c would be exceeded - ignore jog command\n", i+'X');
+                        stream->printf("^Y\n");
+                        this->cont_mode_active = false;  // Reset flag before returning
                         return;
                     }
                     move_to_min_limit = true;
                 }
                 if(delta[i] > 0 && !isnan(THEROBOT->get_soft_endstop_max(i)) && 
                     dist_to_max[i] <= fabs(2 * delta[i] + 2 * delta_const[i])) {
-                    if (scale > dist_to_max[i]/fabs(delta[i])) {
-                        scale = dist_to_max[i]/fabs(delta[i]);
+                    if (scale > dist_to_max[i]/fabs(2 * delta[i] + 2 * delta_const[i])) {
+                        scale = dist_to_max[i]/fabs(2 * delta[i] + 2 * delta_const[i]);
+                        stream->printf("scale[%d]: %f\n", i, scale);
                     }
                     if (dist_to_max[i] <= 0) {
                         stream->printf("error:Soft Endstop %c would be exceeded - ignore jog command\n", i+'X');
+                        stream->printf("^Y\n");
+                        this->cont_mode_active = false;  // Reset flag before returning
                         return;
                     }
                     move_to_max_limit = true;
@@ -2160,9 +2171,12 @@ void SimpleShell::jog(string parameters, StreamOutput *stream)
             }
             if(move_to_min_limit || move_to_max_limit) {
                 for (int j = X_AXIS; j <= Z_AXIS; ++j) {
-                    delta[j] = delta[j] * scale;
+                    delta[j] = (2 * delta[j] + 2 * delta_const[j]) * scale;
                 }
                 THEROBOT->delta_move(delta, fr, n_motors);
+                THECONVEYOR->wait_for_idle();
+                stream->printf("^Y\n");
+                this->cont_mode_active = false;  // Reset flag before returning
                 return;
             }
         }
@@ -2187,6 +2201,8 @@ void SimpleShell::jog(string parameters, StreamOutput *stream)
             stream->printf("error:Not enough memory to run continuous mode\n");
             THECONVEYOR->set_hold(false);
             THECONVEYOR->flush_queue();
+            stream->printf("^Y\n");
+            this->cont_mode_active = false;  // Reset flag before returning
             return;
         }
 
@@ -2265,8 +2281,8 @@ void SimpleShell::jog(string parameters, StreamOutput *stream)
         THEROBOT->reset_position_from_current_actuator_position();
         // restore compensationTransform
         //THEROBOT->compensationTransform= savect;
-        stream->printf("ok\n");
-
+        stream->printf("^Y\n");
+        this->cont_mode_active = false;
     }else{
         THEROBOT->rotate(&delta[0], &delta[1], &delta[2]);
         THEROBOT->delta_move(delta, fr, n_motors);

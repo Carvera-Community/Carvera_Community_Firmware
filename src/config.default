@@ -208,7 +208,7 @@ alpha_max_travel							500				# Max travel in mm for alpha/X axis when homing
 alpha_fast_homing_rate_mm_s					15				# Alpha/X fast homing feedrate in mm/second
 alpha_slow_homing_rate_mm_s					3				# Alpha/X slow homing feedrate in mm/second
 alpha_limit_enable                          true            # Set to true to enable X min and max limit switches
-alpha_homing_retract_mm						1				# Distance to retract from the endstop after it is hit for alpha/X
+alpha_homing_retract_mm						2				# Distance to retract from the endstop after it is hit for alpha/X
 alpha_motor_alarm_pin						0.1!^				# servo motor alarm for X axis
 
 beta_min_endstop							1.1^            # Pin to read min endstop, add a ! to invert if endstop is NO connected to ground
@@ -220,7 +220,7 @@ beta_max_travel								380				# Max travel in mm for beta/Y axis when homing
 beta_fast_homing_rate_mm_s					15				# Beta/Y  fast homing feedrate in mm/second
 beta_slow_homing_rate_mm_s					3				# Beta/Y  slow homing feedrate in mm/second
 beta_limit_enable                           true            # Set to true to enable Y min and max limit switches
-beta_homing_retract_mm						1				# Distance to retract from the endstop after it is hit for beta/Y
+beta_homing_retract_mm						2				# Distance to retract from the endstop after it is hit for beta/Y
 beta_motor_alarm_pin						0.0!^				# servo motor alarm for Y axis
 
 #gamma_min_endstop							0.26^			# Pin to read min endstop, add a ! to invert if endstop is NO connected to ground
@@ -232,7 +232,7 @@ gamma_max_travel							150				# Max travel in mm for gamma/Z axis when homing
 gamma_fast_homing_rate_mm_s					10				# Gamma/Z fast homing feedrate in mm/second
 gamma_slow_homing_rate_mm_s					3				# Gamma/Z slow homing feedrate in mm/second
 gamma_limit_enable                          true            # Set to true to enable Z min and max limit switches
-gamma_homing_retract_mm						1				# Distance to retract from the endstop after it is hit for gamma/Z
+gamma_homing_retract_mm						2				# Distance to retract from the endstop after it is hit for gamma/Z
 gamma_motor_alarm_pin						3.25!^			# servo motor alarm for Z axis
 
 delta_min_endstop							0.21!^			# Pin to read min endstop, add a ! to invert if endstop is NO connected to ground
