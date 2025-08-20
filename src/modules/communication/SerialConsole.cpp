@@ -164,26 +164,14 @@ void SerialConsole::processPacket() {
             case PTYPE_CTRL_SINGLE: { 
                 if(packetData[3] == '?') {
 	            	query_flag = true;
-                    this->previous_char = '?';
-	        	} 
-                else if(this->previous_char == '?' && packetData[3] == '1') {
-                    query_flag = true;
-                    THEKERNEL->set_keep_alive_request(true);
-                    this->previous_char = 0; // Reset
                 }
 	        	else if(packetData[3] == 'X' - 'A' + 1) {
 	            	halt_flag = true;
 	        	}
                 else if(packetData[3] == 'Y' - 'A' + 1) { // ^Y
-                    if (THEKERNEL->get_internal_stop_request()) {
-                        THEKERNEL->set_internal_stop_request(false);
-                    } else {
-                        THEKERNEL->set_stop_request(true);
-                        THEKERNEL->set_stop_request_time(us_ticker_read() / 1000);
-                    }
-                }
-                else if(packetData[3] == 'Z' - 'A' + 1) { // ^Z
-                    THEKERNEL->set_keep_alive_request(true);
+                    THEKERNEL->set_stop_request(true);
+                    THEKERNEL->streams->printf("^Y\n");
+                    return;
                 }
 	        	else if(THEKERNEL->is_feed_hold_enabled()) {
 		            if(packetData[3] == '!') { // safe pause
@@ -196,8 +184,14 @@ void SerialConsole::processPacket() {
                 break;
             }
             case PTYPE_CTRL_MULTI: {
+                
                 struct SerialMessage message;
                 message.message.assign(packetData+3,len- 5);
+                if (message.message == "?!") {
+                    query_flag = true;
+                    THEKERNEL->set_keep_alive_request(true);
+                    return;
+                }
                 message.stream = this;
                 THEKERNEL->call_event(ON_CONSOLE_LINE_RECEIVED, &message );
                 break;

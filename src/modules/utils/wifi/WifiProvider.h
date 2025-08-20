@@ -18,12 +18,11 @@ using namespace std;
 
 #include "M8266WIFIDrv.h"
 #include "libs/RingBuffer.h"
+#include "libs/CommonEnums.h"
 
 #define WIFI_DATA_MAX_SIZE 1460
 #define WIFI_DATA_TIMEOUT_MS 10
 #define MAX_WLAN_SIGNALS 8
-
-enum ParseState { WAIT_HEADER, READ_LENGTH, READ_DATA, CHECK_FOOTER };
 class WifiProvider : public Module, public StreamOutput
 {
 public:
