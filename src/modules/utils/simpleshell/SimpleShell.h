@@ -91,6 +91,10 @@ private:
     static void enable_4th_hd(string parameters, StreamOutput *stream );
     
     static void disable_4th_hd( string parameters, StreamOutput *stream);
+    
+    static void PacketMessage(char cmd, const char* s, int size, StreamOutput *stream);
+    
+    static unsigned int crc16_ccitt(unsigned char *data, unsigned int len);
 
     typedef void (*PFUNC)(string parameters, StreamOutput *stream);
     typedef struct {
@@ -101,4 +105,5 @@ private:
     static const ptentry_t commands_table[];
     static int reset_delay_secs;
     uint32_t keep_alive_time;
+    bool cont_mode_active;
 };

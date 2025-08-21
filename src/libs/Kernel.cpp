@@ -38,6 +38,7 @@
 #include "MainButtonPublicAccess.h"
 #include "mbed.h"
 #include "utils.h"
+#include "WifiPublicAccess.h"
 
 #ifndef NO_TOOLS_LASER
 #include "Laser.h"
@@ -600,6 +601,15 @@ std::string Kernel::get_diagnose_string()
     ok = PublicData::get_value(main_button_checksum, get_e_stop_state_checksum, 0, &data[10]);
     if (ok) {
         n = snprintf(buf, sizeof(buf), "|I:%d", data[10]);
+        if(n > sizeof(buf)) n = sizeof(buf);
+        str.append(buf, n);
+    }
+    
+    // get wifi rssi
+    signed char rssidata;
+    ok = PublicData::get_value(wlan_checksum, get_rssi_checksum, 0, &rssidata);
+    if (ok) {
+        n = snprintf(buf, sizeof(buf), "|RSSI:%d", rssidata);
         if(n > sizeof(buf)) n = sizeof(buf);
         str.append(buf, n);
     }

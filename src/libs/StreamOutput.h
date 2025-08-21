@@ -30,8 +30,14 @@ class StreamOutput {
         virtual int puts(const char* buf, int size = 0) = 0;
         virtual bool ready() { return true; };
         virtual int type() {return 0; }; // 0: serial, 1: wifi
+        virtual void reset(void) {return ; };
+        
+        virtual int printfcmd(const char cmd, const char *format, ...) __attribute__ ((format(printf, 3, 4))){ return -1; };
 
         static NullStreamOutput NullStream;
+        void PacketMessage(char cmd, const char* s, int size);
+		unsigned int crc16_ccitt(unsigned char *data, unsigned int len);
+    
 };
 
 class NullStreamOutput : public StreamOutput {

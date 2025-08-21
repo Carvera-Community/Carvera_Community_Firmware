@@ -56,8 +56,6 @@ class Player : public Module {
         void set_serial_rx_irq(bool enable);
         int inbyte(StreamOutput *stream, unsigned int timeout_ms);
         int inbytes(StreamOutput *stream, char **buf, int size, unsigned int timeout_ms);
-        void flush_input(StreamOutput *stream);
-        void cancel_transfer(StreamOutput *stream);
         unsigned int crc16_ccitt(unsigned char *data, unsigned int len);
         int check_crc(int crc, unsigned char *data, unsigned int len);
 		
@@ -65,6 +63,7 @@ class Player : public Module {
 //		int compressfile(string sfilename, string dfilename, StreamOutput* stream);
         // 2024
         // bool check_cluster(const char *gcode_str, float *x_value, float *y_value, float *distance, float *slope, float *s_value);
+        void SendMessage(char cmd, char* s, int size , StreamOutput *stream);
 
         string filename;
         string last_filename;

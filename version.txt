@@ -13,6 +13,7 @@ To let the Carvera work perfectly, please make sure both your controller softwar
 - Enhancement: Bed Leveling can be saved to the sd card and loaded after a reboot
 - Enhancement: Margin scan, ZProbe and Bed Leveling can be done with the 3D Probe aswell
 - Enhancement: 3D Probe crash detection
+- Enhancement: Updated to Makera 1.0.4beta Firmware
 - Bugfix: Machine crashes during probing cycles should be fixed
 
 
