@@ -155,7 +155,6 @@ void WifiProvider::receive_wifi_data() {
 	        }
 			if(WifiData[i] == 'Y' - 'A' + 1) { // ^Y
 	            THEKERNEL->set_stop_request(true); // generic stop what you are doing request
-				THEKERNEL->streams->printf("^Y\n");
 	            continue;
 	        }
 			if(WifiData[i] == 'Z' - 'A' + 1) { // ^Z
