@@ -1610,11 +1610,11 @@ void ZProbe::probe_boss(bool calibration) //M462
     THEKERNEL->streams->printf("Center Point is: %.3f , %.3f and is stored in MCS as #154,#155\n" , THEKERNEL->probe_outputs[3],THEKERNEL->probe_outputs[4] );
 
     if (param.save_position > 0 && check_last_probe_ok()){
-        if (param.x_axis_distance != 0 && param.y_axis_distance != 0){
+        if (probe_x_axis && probe_y_axis){
             THEROBOT->set_current_wcs_by_mpos( THEKERNEL->probe_outputs[3], THEKERNEL->probe_outputs[4], NAN);
-        }else if (param.x_axis_distance != 0){
+        }else if (probe_x_axis){
             THEROBOT->set_current_wcs_by_mpos( THEKERNEL->probe_outputs[3], NAN, NAN);
-        }else if (param.y_axis_distance != 0){
+        }else if (probe_y_axis){
             THEROBOT->set_current_wcs_by_mpos( NAN, THEKERNEL->probe_outputs[4], NAN);
         }
     }
