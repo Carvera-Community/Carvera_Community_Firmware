@@ -353,34 +353,63 @@ void ATCHandler::fill_cali_scripts(bool is_probe, bool clear_z) {
 	// save new tool offset
 	this->script_queue.push("M493.1");
 	// lift z to safe position with fast speed
-	snprintf(buff, sizeof(buff), "G53 G0 Z%.3f", THEROBOT->from_millimeters(this->safe_z_mm));
+	// snprintf(buff, sizeof(buff), "G53 G0 Z%.3f", THEROBOT->from_millimeters(this->safe_z_mm));
+	// this->script_queue.push(buff);
+	
+	//TOOL DIAMERTER CALIBRATION
+	//determine if there is a call for a diameter tool calibration.  This would likely have to be a new Gcode command, or a new M code. 
+		//M491.2?
+	//move the tool up 
+	snprintf(buff, sizeof(buff), "G91 G0 Z2"); //could be called 'cali_tool_stepover"
+	this->script_queue.push(buff);
+	//move the tool to the left (-x direction), making sure to clear 6mm tool diameter
+	snprintf(buff, sizeof(buff), "G91 G0 X-10.5"); //could be called 'cali_tool_stepover"
 	this->script_queue.push(buff);
 	
-	//Add code here for diameter toll calibration 
-		//determine if there is a call for a diameter tool calibration.  This would likely have to be a new Gcode command, or a new M code. 
-			//M491.2?
-		//move the tool to the left (-x direction), making sure to clear 6mm tool diameter
-			//G91 G0 X-6.0 F1000.0
-		//move the tool down to the previously determined tool bottom potition z safety tollerance (+ 0.5mm to avoid rapid collision)
-			//G53 G0 Z(value from previous ops) F1000.0
-		//move tool down below 0 plane of the tool calibration sensor / TLO at a safe speed
-			//G91 G1 Z-1.5 F100.0
-		//turn the spindle on in refevse at a very low spinfle speed (<1000rpm)
-			//M4 S1000 //TODO: add a new M code for this in the spindle module
-		//move the tool in a +x direction until the tool touches the sensor, at a slow speed
-			//G38.6 X3 F100.0 (I wish there was an awareness of the tool diameter here, so that it would error closer the edge of the sensor)
-		//retract the tool in the -x direction by a small amount (0.5mm)
-			//G91 G0 X-0.5 F100.0
-		//move the tool in a +x direction until the tool touches the sensor, at a measuring speed
-			//G38.6 X1 F100.0
-		//set the tool diameter to the measured value (TDO)
-			//TODO: will likely need some kind of way to set the tool diameter via a tool table by usig G10.  For now just print the results 
-		//retract the tool in the -x direction by a small amount (0.5mm)
-			//G91 G0 X-0.5 F100.0
-		//fully retract the tool in the Z direction to the safe Z height\
-			//G53 G0 Z(value from previous ops) F1000.0
+	// snprintf(buff, sizeof(buff), "M851 S100"); // 
+	// this->script_queue.push(buff);
+	// Move tool down below 0 plane of the tool calibration sensor / TLO at a safe speed
+	snprintf(buff, sizeof(buff), "G91 G1 Z-3.5 F100");
+	this->script_queue.push(buff);
 
-	// check if wireless probe is will be triggered
+	// snprintf(buff, sizeof(buff), "M4 S1000"); // TODO: add a new M code for this in the spindle module
+	
+	// Turn the spindle on in reverse at a very low spindle speed (<1000rpm)
+	snprintf(buff, sizeof(buff), "M3 S2000"); // 
+	this->script_queue.push(buff);
+
+	// Move the tool in a +x direction until the tool touches the sensor, at a slow speed
+	snprintf(buff, sizeof(buff), "G38.6 X3.5 F30");
+	this->script_queue.push(buff);
+
+	// Retract the tool in the -x direction by a small amount (0.5mm)
+	snprintf(buff, sizeof(buff), "G91 G0 X-0.5");
+	this->script_queue.push(buff);
+
+	// // Move the tool in a +x direction until the tool touches the sensor, at a measuring speed
+	// snprintf(buff, sizeof(buff), "G38.6 X%.3f F%.3f", 3.5 - probe_retract_mm, probe_slow_rate);
+	// this->script_queue.push(buff);
+
+	// // Retract the tool in the -x direction by a small amount (0.5mm)
+	// snprintf(buff, sizeof(buff), "G91 G0 X-0.5");
+	// this->script_queue.push(buff);
+
+	// Set the tool diameter to the measured value (TDO)
+	// TODO: will likely need some kind of way to set the tool diameter via a tool table by using G10. For now, just print the results
+	// this->script_queue.push("M493.2");
+
+	// Retract the tool in the -x direction by a small amount (0.5mm)
+	// snprintf(buff, sizeof(buff), "G91 G0 X-0.5");
+	// this->script_queue.push(buff);
+
+	// turn the spingle off and EXT port off
+	snprintf(buff, sizeof(buff), "M5"); // TODO: add a new M code for this in the spindle module.  WARNING!!! Ext port to the BLD-300 the spindle direction is now reverse logic.  This is also confirmed form the datasheet lingo "Direction: Low Level/CCW High Level or No Connection/CW"
+	this->script_queue.push(buff);
+
+	// Fully retract the tool in the Z direction to the safe Z height
+	snprintf(buff, sizeof(buff), "G53 G0 Z%.3f F1000.0", THEROBOT->from_millimeters(this->safe_z_mm));
+	this->script_queue.push(buff);
+
 	if (is_probe) {
 		this->script_queue.push("M492.3"); //internal command to determine if toolrack is empty. Needs exploration
 	}
