@@ -17,7 +17,6 @@
 
 void SpindleControl::on_gcode_received(void *argument) 
 {
-    
     Gcode *gcode = static_cast<Gcode *>(argument);
         
     if (gcode->has_m)
@@ -41,10 +40,10 @@ void SpindleControl::on_gcode_received(void *argument)
             report_settings();
           
         }
-        else if (gcode->m == 3)
+        else if (gcode->m == 3) // Spindle on clockwise
         {
-        	if(THEKERNEL->is_halted()) return; // if in halted state ignore any commands
-        	if (!THEKERNEL->get_laser_mode()) {
+            if(THEKERNEL->is_halted()) return;
+            if (!THEKERNEL->get_laser_mode()) {
                 // current tool number and tool offset
                 struct tool_status tool;
                 bool tool_ok = PublicData::get_value( atc_handler_checksum, get_tool_status_checksum, &tool );
@@ -78,7 +77,45 @@ void SpindleControl::on_gcode_received(void *argument)
                 }
         	}
         }
-        else if (gcode->m == 5)
+        else if (gcode->m == 4) // Spindle on counter-clockwise 
+        {
+            if(THEKERNEL->is_halted()) return;
+            if (!THEKERNEL->get_laser_mode()) {
+                // current tool number and tool offset checks
+                struct tool_status tool;
+                bool tool_ok = PublicData::get_value(atc_handler_checksum, get_tool_status_checksum, &tool);
+                if (tool_ok) {
+                    tool_ok = (tool.active_tool > 0 && tool.active_tool < 256);
+                }
+                if (!tool_ok) {
+                    THEKERNEL->set_halt_reason(MANUAL);
+                    THEKERNEL->call_event(ON_HALT, nullptr);
+                    THEKERNEL->streams->printf("ERROR: No tool or probe tool!\n");
+                    return;
+                }
+
+                THECONVEYOR->wait_for_idle();
+
+                // Handle vacuum mode if enabled
+                if (THEKERNEL->get_vacuum_mode()) {
+                    bool b = true;
+                    PublicData::set_value(switch_checksum, vacuum_checksum, state_checksum, &b);
+                }
+
+                // M4 with S value provided: set speed
+                if (gcode->has_letter('S')) {
+                    set_speed(gcode->get_value('S'));
+                }
+                
+                // M4: Spindle on CCW
+                if (!spindle_on) {
+                    // Set direction to CCW before turning on
+                    output_inverted = !output_inverted; // Invert output for CCW
+                    turn_on();
+                }
+            }
+        }
+        else if (gcode->m == 5) // Spindle off
         {
         	if (!THEKERNEL->get_laser_mode()) {
                 THECONVEYOR->wait_for_idle();

@@ -371,11 +371,12 @@ void ATCHandler::fill_cali_scripts(bool is_probe, bool clear_z) {
 	// Move tool down below 0 plane of the tool calibration sensor / TLO at a safe speed
 	snprintf(buff, sizeof(buff), "G91 G1 Z-3.5 F100");
 	this->script_queue.push(buff);
-
-	// snprintf(buff, sizeof(buff), "M4 S1000"); // TODO: add a new M code for this in the spindle module
 	
-	// Turn the spindle on in reverse at a very low spindle speed (<1000rpm)
-	snprintf(buff, sizeof(buff), "M3 S2000"); // 
+	// Turn the spindle on in reverse at a very low spindle speed 
+	// WARNING!!! Ext port to the BLD-300 the spindle direction is now reverse logic. 
+	// This is also confirmed form the datasheet lingo "Direction: Low Level/CCW High Level or No Connection/CW"
+	//TODO the EXT needs to be leveraged and an inversion on the EXT port to account for the new inverted spindle state. 
+	snprintf(buff, sizeof(buff), "M4 S2000"); //
 	this->script_queue.push(buff);
 
 	// Move the tool in a +x direction until the tool touches the sensor, at a slow speed
@@ -403,7 +404,7 @@ void ATCHandler::fill_cali_scripts(bool is_probe, bool clear_z) {
 	// this->script_queue.push(buff);
 
 	// turn the spingle off and EXT port off
-	snprintf(buff, sizeof(buff), "M5"); // TODO: add a new M code for this in the spindle module.  WARNING!!! Ext port to the BLD-300 the spindle direction is now reverse logic.  This is also confirmed form the datasheet lingo "Direction: Low Level/CCW High Level or No Connection/CW"
+	snprintf(buff, sizeof(buff), "M5"); 
 	this->script_queue.push(buff);
 
 	// Fully retract the tool in the Z direction to the safe Z height

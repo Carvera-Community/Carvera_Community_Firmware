@@ -18,10 +18,12 @@ class SpindleControl: public Module {
 
     protected:
         bool spindle_on;
+        bool output_inverted{false};
 
     private:
         void on_gcode_received(void *argument);
         void on_halt(void *argument);
+        bool spindle_reversed{false}; //track rotation dir
         
         virtual void turn_on(void) {};
         virtual void turn_off(void) {};
