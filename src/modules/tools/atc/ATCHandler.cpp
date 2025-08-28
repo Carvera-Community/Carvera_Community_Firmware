@@ -88,6 +88,7 @@
 #define clearance_x_checksum		CHECKSUM("clearance_x")
 #define clearance_y_checksum		CHECKSUM("clearance_y")
 #define clearance_z_checksum		CHECKSUM("clearance_z")
+#define skip_path_origin_checksum	CHECKSUM("skip_path_origin")
 
 ATCHandler::ATCHandler()
 {
@@ -895,9 +896,11 @@ void ATCHandler::fill_goto_origin_scripts(float x_pos, float y_pos) {
 	snprintf(buff, sizeof(buff), "G53 G0 Z%.3f", THEROBOT->from_millimeters(this->clearance_z));
 	this->script_queue.push(buff);
 
-	// goto start position
-	snprintf(buff, sizeof(buff), "G90 G0 X%.3f Y%.3f", THEROBOT->from_millimeters(x_pos), THEROBOT->from_millimeters(y_pos));
-	this->script_queue.push(buff);
+	if(!this->skip_path_origin){
+		// goto start position
+		snprintf(buff, sizeof(buff), "G90 G0 X%.3f Y%.3f", THEROBOT->from_millimeters(x_pos), THEROBOT->from_millimeters(y_pos));
+		this->script_queue.push(buff);
+	}
 
 }
 
@@ -1247,6 +1250,8 @@ void ATCHandler::on_config_reload(void *argument)
 		this->clearance_z = THEKERNEL->config->value(coordinate_checksum, clearance_z_checksum)->by_default(-5  )->as_number();
 	}
 	this->rotation_width = THEKERNEL->config->value(coordinate_checksum, rotation_width_checksum)->by_default(45  )->as_number();
+
+	this->skip_path_origin = THEKERNEL->config->value(atc_checksum, skip_path_origin_checksum)->by_default(false)->as_bool();
 }
 
 void ATCHandler::on_halt(void* argument)

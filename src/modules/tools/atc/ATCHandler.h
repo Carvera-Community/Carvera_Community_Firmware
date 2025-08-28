@@ -192,6 +192,8 @@ private:
     float clearance_y;
     float clearance_z;
 
+    bool skip_path_origin;
+
     struct atc_tool {
     	int num;
     	float mx_mm;
