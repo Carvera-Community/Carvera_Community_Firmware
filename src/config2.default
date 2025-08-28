@@ -299,8 +299,7 @@ leveling-strategy.rectangular-grid.human_readable			true
 leveling-strategy.rectangular-grid.only_by_two_corners		true
 
 # Flex part
-leveling-strategy.rectangular-grid.flex_x_points					30
-leveling-strategy.rectangular-grid.flex_x_size        				300
+leveling-strategy.rectangular-grid.flex_x_points					60
 leveling-strategy.rectangular-grid.flex_compensation_always_active 	false
 
 
@@ -468,6 +467,8 @@ atc.margin_rate_mm_m 1000.0 			# X and Y speed when scaning margin
 atc.probe.fast_rate_mm_m 500			# Z axis fast speed when doing calibrate
 atc.probe.slow_rate_mm_m 100			# Z axis slow speed when doing calibrate
 atc.probe.retract_mm 2					# Retract distance when hitting probe
+
+atc.skip_path_origin false				# skip the travel to the path origin
 
 # Laser
 laser_module_test_power 0.01            # Laser power when doing test(0 - 1)

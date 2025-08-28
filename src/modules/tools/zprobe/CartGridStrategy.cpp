@@ -126,12 +126,13 @@
 #define before_probe_gcode_checksum  CHECKSUM("before_probe_gcode")
 #define after_probe_gcode_checksum   CHECKSUM("after_probe_gcode")
 #define flex_x_points_checksum       CHECKSUM("flex_x_points")
-#define flex_x_size_checksum         CHECKSUM("flex_x_size")
 #define flex_compensation_always_active_checksum CHECKSUM("flex_compensation_always_active")
 
 #define GRIDFILE "/sd/cartesian.grid"
 #define GRIDFILE_NM "/sd/cartesian_nm.grid"
 #define FLEX_COMPENSATION_FILE "/sd/flex_compensation.dat"
+
+#define PI 3.14159265358979323846F
 
 CartGridStrategy::CartGridStrategy(ZProbe *zprobe) : LevelingStrategy(zprobe)
 {
@@ -234,9 +235,8 @@ bool CartGridStrategy::handleConfig()
     }
 
     // Flex compensation configuration
-    this->flex_x_points = THEKERNEL->config->value(leveling_strategy_checksum, cart_grid_leveling_strategy_checksum, flex_x_points_checksum)->by_default(30)->as_number();
+    this->flex_x_points = THEKERNEL->config->value(leveling_strategy_checksum, cart_grid_leveling_strategy_checksum, flex_x_points_checksum)->by_default(60)->as_number();
     this->flex_x_start = 0.0F;
-    this->flex_x_size = THEKERNEL->config->value(leveling_strategy_checksum, cart_grid_leveling_strategy_checksum, flex_x_size_checksum)->by_default(300.0F)->as_number();
 
     // Allocate memory for flex compensation data
     flex_data_size = flex_x_points * sizeof(float);
@@ -852,6 +852,9 @@ void CartGridStrategy::doCompensation(float *target, bool inverse, bool debug)
         int target_z_int = (int)(target[Z_AXIS] * 10000.0f);
         int triangle_z_int = abs(target_z_int) + machine_offset_z_int + TLO_int + refmz_int - sensor_machine_z_int;
 
+        float y_component = 0.0;
+        float z_component = 0.0;
+
         // Check if target is within flex compensation range
         if (target[X_AXIS] >= flex_x_start && target[X_AXIS] <= flex_x_start + flex_x_size) {
             // Calculate grid spacing using integers
@@ -892,26 +895,24 @@ void CartGridStrategy::doCompensation(float *target, bool inverse, bool debug)
             float delta_low = flex_compensation_data[grid_index];
             float delta_high = flex_compensation_data[grid_index + 1];
             interpolated_delta = delta_low + (t_int / 10000.0f) * (delta_high - delta_low);
-            
-            if (inverse) {
-                // Inverse operation: subtract the compensation instead of adding it
-                target[Y_AXIS] = target[Y_AXIS] - interpolated_delta;
-                // Inverse Z compensation: add back the compensation instead of subtracting
-                // Convert triangle_y and triangle_z back to float for division
-                float triangle_y_float = triangle_y_int / 10000.0f;
-                float triangle_z_float = triangle_z_int / 10000.0f;
-                float z_compensation = (triangle_y_float / triangle_z_float * interpolated_delta + 0.5 * interpolated_delta);
-                target[Z_AXIS] = target[Z_AXIS] + z_compensation;
-            } else {
-                // Normal operation: add the compensation
-                target[Y_AXIS] = target[Y_AXIS] + interpolated_delta;
-                // rotational component + translation component
-                // Convert triangle_y and triangle_z back to float for division
-                float triangle_y_float = triangle_y_int / 10000.0f;
-                float triangle_z_float = triangle_z_int / 10000.0f;
-                float z_compensation = (triangle_y_float / triangle_z_float * interpolated_delta + 0.5 * interpolated_delta);
-                target[Z_AXIS] = target[Z_AXIS] - z_compensation;
+        }else{
+            if(target[X_AXIS] < this->x_start){
+                interpolated_delta = flex_compensation_data[0];
+            }else{
+                interpolated_delta = flex_compensation_data[flex_current_x_points - 1];
             }
+        }
+
+        // rotational component
+        y_component = cos(atan((triangle_y_int / 10000.0f) / (triangle_z_int / 10000.0f))) * interpolated_delta;
+        z_component = sin(atan((triangle_y_int / 10000.0f) / (triangle_z_int / 10000.0f))) * interpolated_delta;
+
+        if (inverse) {
+            target[Y_AXIS] = target[Y_AXIS] - y_component;
+            target[Z_AXIS] = target[Z_AXIS] + z_component;
+        } else {
+            target[Y_AXIS] = target[Y_AXIS] + y_component;
+            target[Z_AXIS] = target[Z_AXIS] - z_component;
         }
     }
 
@@ -1062,7 +1063,7 @@ bool CartGridStrategy::doFlexMeasurement(Gcode *gc)
     }
 
     if(gc->has_letter('X')) {
-        x_distance = gc->get_value('X');
+        this->flex_x_size = gc->get_value('X');
     } else {
         gc->stream->printf("ERROR: X parameter required for G33\n");
         return false;
@@ -1076,7 +1077,7 @@ bool CartGridStrategy::doFlexMeasurement(Gcode *gc)
         return false;
     }
 
-    if(x_distance <= 0 || num_points <= 0) {
+    if(this->flex_x_size <= 0 || num_points <= 0) {
         gc->stream->printf("ERROR: X and I parameters must be positive\n");
         return false;
     }
@@ -1092,11 +1093,18 @@ bool CartGridStrategy::doFlexMeasurement(Gcode *gc)
     float current_y = THEROBOT->get_axis_position(Y_AXIS);
     float current_z = THEROBOT->get_axis_position(Z_AXIS);
 
+    int machine_offset_z_int = 510000;      // Z distance between the centerplane between the rods and the end of the spindle (51.0 * 10000)
+    int sensor_machine_z_int = -1153600;   // Z machine coordinate if the tool length would be 0 (-115.36 * 10000)
+    int refmz_int = (int)(THEKERNEL->eeprom_data->REFMZ * 10000.0f);                  
+    int TLO_int = (int)(THEKERNEL->eeprom_data->TLO * 10000.0f);
+
+    int triangle_y_int = 900000;            // Y distance between the plane through both rods to the center of the spindle (90.0 * 10000)
+    int triangle_z_int = abs(current_z * 10000.0f	) + machine_offset_z_int + TLO_int + refmz_int - sensor_machine_z_int;
+
     this->flex_x_start = current_x;
-    this->flex_x_size = x_distance;
 
     gc->stream->printf("Starting flex measurement at current position: X%1.3f Y%1.3f Z%1.3f\n", current_x, current_y, current_z);
-    gc->stream->printf("Parameters: Y coordinate=%1.3f, X distance=%1.3f, Points=%d\n", y_coordinate, x_distance, num_points);
+    gc->stream->printf("Parameters: Y coordinate=%1.3f, X distance=%1.3f, Points=%d\n", y_coordinate, this->flex_x_size, num_points);
 
     // Allocate array for storing delta values
     float *delta_array = (float *)AHB.alloc(num_points * sizeof(float));
@@ -1114,7 +1122,7 @@ bool CartGridStrategy::doFlexMeasurement(Gcode *gc)
     float reference_y = 0.0F;
 
     // Calculate X step size
-    float x_step = x_distance / (num_points - 1);
+    float x_step = this->flex_x_size / (num_points - 1);
 
     zprobe->init_parameters_and_out_coords();
     // Set up probe parameters for Y-axis probing
@@ -1149,7 +1157,7 @@ bool CartGridStrategy::doFlexMeasurement(Gcode *gc)
         gc->stream->printf("Reference Y value: %1.3f mm\n", reference_y);
         // Calculate delta from reference
         float delta = measured_y - reference_y;
-        delta_array[i] = delta;
+        delta_array[i] = delta / cos(atan(triangle_y_int / triangle_z_int));
         if (fabs(delta) > fabs(max_delta)) {
             max_delta = delta;
         }
