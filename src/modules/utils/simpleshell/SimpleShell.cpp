@@ -2140,6 +2140,15 @@ void SimpleShell::jog(string parameters, StreamOutput *stream)
         // make sure we do not exceed maximum
         if(fr > rate_mm_s) fr= rate_mm_s;
     }
+
+    float current_pos[n_motors];
+    THEROBOT->get_axis_position(current_pos);
+
+    float dist_to_min[3] ={0,0,0};
+    float dist_to_max[3] ={0,0,0};
+    int min_axis = 0;
+    int max_axis = 0;
+
     float min_time= 0.05;
     if(cont_mode) {
         this->cont_mode_active = true;
@@ -2174,13 +2183,6 @@ void SimpleShell::jog(string parameters, StreamOutput *stream)
         THEROBOT->rotate(&delta[0], &delta[1], &delta[2]);
         THEROBOT->rotate(&delta_const[0], &delta_const[1], &delta_const[2]);
         // stream->printf("distance: %f, time:%f, X%f Y%f Z%f, speed:%f\n", d, t, delta[0], delta[1], delta[2], fr);
-        float current_pos[n_motors];
-        THEROBOT->get_current_machine_position(current_pos);
-
-        float dist_to_min[3] ={0,0,0};
-        float dist_to_max[3] ={0,0,0};
-        int min_axis = 0;
-        int max_axis = 0;
         // Check soft limits during continuous jogging
         if(THEROBOT->is_soft_endstop_enabled()) {
             bool move_to_min_limit = false;
@@ -2338,6 +2340,52 @@ void SimpleShell::jog(string parameters, StreamOutput *stream)
         this->cont_mode_active = false;
     }else{
         THEROBOT->rotate(&delta[0], &delta[1], &delta[2]);
+        // Check soft limits during continuous jogging
+        if(THEROBOT->is_soft_endstop_enabled()) {
+            bool move_to_min_limit = false;
+            bool move_to_max_limit = false;
+            float scale = 10000.0F;
+            // Check each axis that is homed
+            for (int i = 0; i <= Z_AXIS; ++i) {
+                if(!THEROBOT->is_homed(i)) continue;
+                
+                // Calculate distance to soft limits
+                dist_to_min[i] = (current_pos[i] - THEROBOT->get_soft_endstop_min(i));
+                dist_to_max[i] = (THEROBOT->get_soft_endstop_max(i) - current_pos[i]);
+                // If moving towards a limit and brake distance is greater than distance to limit
+                if(delta[i] < 0 && !isnan(THEROBOT->get_soft_endstop_min(i)) && 
+                    dist_to_min[i] <= fabs(delta[i])){
+                    if (scale > dist_to_min[i]/fabs(delta[i])) {
+                        scale = dist_to_min[i]/fabs(delta[i]);
+                    }
+                    if (dist_to_min[i] <= 0) {
+                        stream->printf("error:Soft Endstop %c would be exceeded - ignore jog command\n", i+'X');
+                        return;
+                    }
+                    move_to_min_limit = true;
+                }
+                if(delta[i] > 0 && !isnan(THEROBOT->get_soft_endstop_max(i)) && 
+                    dist_to_max[i] <= fabs(delta[i])) {
+                    if (scale > dist_to_max[i]/fabs(delta[i])) {
+                        scale = dist_to_max[i]/fabs(delta[i]);
+                        stream->printf("scale[%d]: %f\n", i, scale);
+                    }
+                    if (dist_to_max[i] <= 0) {
+                        stream->printf("error:Soft Endstop %c would be exceeded - ignore jog command\n", i+'X');
+                        return;
+                    }
+                    move_to_max_limit = true;
+                }
+            }
+            if(move_to_min_limit || move_to_max_limit) {
+                for (int j = X_AXIS; j <= Z_AXIS; ++j) {
+                    delta[j] = delta[j] * scale;
+                }
+                THEROBOT->delta_move(delta, fr, n_motors);
+                THECONVEYOR->wait_for_idle();
+                return;
+            }
+        }
         THEROBOT->delta_move(delta, fr, n_motors);
         // turn off queue delay and run it now
         THECONVEYOR->force_queue();
