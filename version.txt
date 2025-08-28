@@ -7,6 +7,7 @@ To let the Carvera work perfectly, please make sure both your controller softwar
 [v2.0.0c-RC1]
 - Enhancement: 3D Probe crash detection
 - Enhancement: Setting "atc.skip_path_origin true" skips the initial travel to the path origin when starting a job 
+- Enhancement: Step jogging now stops at the endstops with a ramp rather than going to a halt state
 - Change: Deleted the "flex_x_size" setting because this is specified by the G33 command only
 - Change: Changed the math for the flex compensation. Now also does the last compensation value if leaving measurement bounds
 
