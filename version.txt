@@ -9,7 +9,7 @@ To let the Carvera work perfectly, please make sure both your controller softwar
 - Enhancement: Setting "atc.skip_path_origin true" skips the initial travel to the path origin when starting a job 
 - Enhancement: Step jogging now stops at the endstops with a ramp rather than going to a halt state
 - Enhancement: "abort" command now also aborts ATC scripts and programs can be aborted at toolchanges
-- Enhancement: Added M467 square probe mode to probe 4 points to quickly find all 4 heights and the heighest and lowest point
+- Enhancement: Added M466.1 square probe mode to probe 4 points to quickly find all 4 heights and the heighest and lowest point
 - Enhancement: All XYZ moves, that don't probe are done with the rapid rate to speed up the probing process
 - Enhancement: Improved the probing output for the single probe double tap routine to show the work coordinates aswell
 - Change: Deleted the "flex_x_size" setting because this is specified by the G33 command only

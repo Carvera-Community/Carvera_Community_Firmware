@@ -721,27 +721,28 @@ void ZProbe::on_gcode_received(void *argument)
                 }
                 break;
             case 466:
-                if (!gcode->has_letter('X') && !gcode->has_letter('Y') && !gcode->has_letter('Z')){
-                    gcode->stream->printf("ALARM: Probe fail: No Axis Set\n");
-                    THEKERNEL->call_event(ON_HALT, nullptr);
-                    THEKERNEL->set_halt_reason(PROBE_FAIL);
-                    return;
+                if (gcode->subcode == 1){
+                    if (!gcode->has_letter('X') || !gcode->has_letter('Y') || !gcode->has_letter('H')){
+                        gcode->stream->printf("ALARM: Probe fail: Both X and Y axis and height need to be set for Square Probing\n");
+                        THEKERNEL->call_event(ON_HALT, nullptr);
+                        THEKERNEL->set_halt_reason(PROBE_FAIL);
+                        return;
+                    }
+                    if (parse_parameters(gcode)){
+                        probing_cycle = PROBE_SQUARE;
+                    }
+                }else{
+                    if (!gcode->has_letter('X') && !gcode->has_letter('Y') && !gcode->has_letter('Z')){
+                        gcode->stream->printf("ALARM: Probe fail: No Axis Set\n");
+                        THEKERNEL->call_event(ON_HALT, nullptr);
+                        THEKERNEL->set_halt_reason(PROBE_FAIL);
+                        return;
+                    }
+                    if (parse_parameters(gcode, (gcode->has_letter('Z') && !gcode->has_letter('X') && !gcode->has_letter('Y')))){
+                        probing_cycle = PROBE_SINGLE_AXIS_DOUBLE_TAP;
+                    }
                 }
-                if (parse_parameters(gcode, (gcode->has_letter('Z') && !gcode->has_letter('X') && !gcode->has_letter('Y')))){
-                    probing_cycle = PROBE_SINGLE_AXIS_DOUBLE_TAP;
-                }
-                break;
-            case 467:
-                if (!gcode->has_letter('X') || !gcode->has_letter('Y') || !gcode->has_letter('H')){
-                    gcode->stream->printf("ALARM: Probe fail: Both X and Y axis and height need to be set for Square Probing\n");
-                    THEKERNEL->call_event(ON_HALT, nullptr);
-                    THEKERNEL->set_halt_reason(PROBE_FAIL);
-                    return;
-                }
-                if (parse_parameters(gcode)){
-                    probing_cycle = PROBE_SQUARE;
-                }
-                break;
+                break;                
             case 670:
                 if (gcode->has_letter('S')) this->slow_feedrate = gcode->get_value('S');
                 if (gcode->has_letter('K')) this->fast_feedrate = gcode->get_value('K');
@@ -2158,7 +2159,7 @@ void ZProbe::probe_square(){
             mpos[3] = 0;
             mpos[4] = 0;
             Robot::wcs_t pos = THEROBOT->mcs2wcs(mpos);
-            THEKERNEL->streams->printf("Point %d: X: %.3f, Y: %.3f, WPos Z: %.3f\n", j + 1, std::get<X_AXIS>(pos), std::get<Y_AXIS>(pos), std::get<Z_AXIS>(pos));
+            THEKERNEL->streams->printf("Point %d: X: %.3f, Y: %.3f, Z: %.3f\n", j + 1, std::get<X_AXIS>(pos), std::get<Y_AXIS>(pos), std::get<Z_AXIS>(pos));
             if (j == min_z_index - 1){
                 min_z = std::get<Z_AXIS>(pos);
             }
