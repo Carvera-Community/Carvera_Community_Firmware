@@ -250,6 +250,10 @@ void ZProbe::on_main_loop(void *argument)
             single_axis_probe_double_tap();
             probing_cycle = NONE;
             break;
+        case PROBE_SQUARE:
+            probe_square();
+            probing_cycle = NONE;
+            break;
         default:
             break;
     }
@@ -727,6 +731,17 @@ void ZProbe::on_gcode_received(void *argument)
                     probing_cycle = PROBE_SINGLE_AXIS_DOUBLE_TAP;
                 }
                 break;
+            case 467:
+                if (!gcode->has_letter('X') || !gcode->has_letter('Y') || !gcode->has_letter('H')){
+                    gcode->stream->printf("ALARM: Probe fail: Both X and Y axis and height need to be set for Square Probing\n");
+                    THEKERNEL->call_event(ON_HALT, nullptr);
+                    THEKERNEL->set_halt_reason(PROBE_FAIL);
+                    return;
+                }
+                if (parse_parameters(gcode)){
+                    probing_cycle = PROBE_SQUARE;
+                }
+                break;
             case 670:
                 if (gcode->has_letter('S')) this->slow_feedrate = gcode->get_value('S');
                 if (gcode->has_letter('K')) this->fast_feedrate = gcode->get_value('K');
@@ -1167,7 +1182,7 @@ bool ZProbe::fast_slow_probe_sequence(int axis, int direction){
     THEROBOT->get_current_machine_position(mpos);
     // current_position/mpos includes the compensation transform so we need to get the inverse to get actual position
     if(THEKERNEL->is_flex_compensation_active()) {
-        if(THEROBOT->compensationTransform) THEROBOT->compensationTransform(mpos, true, true); // get inverse compensation transform
+        if(THEROBOT->compensationTransform) THEROBOT->compensationTransform(mpos, true, false); // get inverse compensation transform
     }
 
     // if probing x positive then the output goes to the positive out and vice versa
@@ -1507,11 +1522,11 @@ void ZProbe::probe_boss(bool calibration) //M462
         THECONVEYOR->wait_for_idle();
         if (probe_x_axis) {
             // return if probe touches wall during outside move
-            if (xy_probe_move_alarm_when_hit(POS, param.probe_g38_subcode, param.x_rotated_x, param.x_rotated_y, param.feed_rate) == 1){
+            if (xy_probe_move_alarm_when_hit(POS, param.probe_g38_subcode, param.x_rotated_x, param.x_rotated_y, param.rapid_rate) == 1){
                 return;
             }
             //probe z no hit no alarm -side_depth, retract slightly if probe point hit
-            z_probe_move_with_retract(param.probe_g38_subcode, -(param.side_depth + param.clearance_height), 1.0, param.feed_rate);
+            z_probe_move_with_retract(param.probe_g38_subcode, -(param.side_depth + param.clearance_height), 1.0, param.rapid_rate);
 
             // probe in negative x direction
             fast_slow_probe_sequence(X_AXIS, NEG);
@@ -1524,12 +1539,12 @@ void ZProbe::probe_boss(bool calibration) //M462
             coordinated_move(out_coords.origin_x, out_coords.origin_y, NAN, param.rapid_rate );
             
             // return if probe touches wall during outside move
-            if (xy_probe_move_alarm_when_hit(NEG, param.probe_g38_subcode, param.x_rotated_x, param.x_rotated_y, param.feed_rate) == 1){
+            if (xy_probe_move_alarm_when_hit(NEG, param.probe_g38_subcode, param.x_rotated_x, param.x_rotated_y, param.rapid_rate) == 1){
                 return;
             }
 
             //probe z no hit no alarm -side_depth, retract slightly if probe point hit
-            z_probe_move_with_retract(param.probe_g38_subcode, -(param.side_depth + param.clearance_height), 1.0, param.feed_rate);
+            z_probe_move_with_retract(param.probe_g38_subcode, -(param.side_depth + param.clearance_height), 1.0, param.rapid_rate);
 
             // probe in positive x direction
             fast_slow_probe_sequence(X_AXIS, POS);
@@ -1555,12 +1570,12 @@ void ZProbe::probe_boss(bool calibration) //M462
 
         if (probe_y_axis) {
             // return if probe touches wall during outside move
-            if (xy_probe_move_alarm_when_hit(POS, param.probe_g38_subcode, param.y_rotated_x, param.y_rotated_y, param.feed_rate) == 1){
+            if (xy_probe_move_alarm_when_hit(POS, param.probe_g38_subcode, param.y_rotated_x, param.y_rotated_y, param.rapid_rate) == 1){
                 return;
             }
 
             //probe z no hit no alarm -side_depth, retract slightly if probe point hit
-            z_probe_move_with_retract(param.probe_g38_subcode, -(param.side_depth + param.clearance_height), 1.0, param.feed_rate);
+            z_probe_move_with_retract(param.probe_g38_subcode, -(param.side_depth + param.clearance_height), 1.0, param.rapid_rate);
             
             // probe in negative y direction
             fast_slow_probe_sequence(Y_AXIS, NEG);
@@ -1573,12 +1588,12 @@ void ZProbe::probe_boss(bool calibration) //M462
             coordinated_move(out_coords.origin_x, out_coords.origin_y, NAN, param.rapid_rate );
 
             // return if probe touches wall during outside move
-            if (xy_probe_move_alarm_when_hit(NEG, param.probe_g38_subcode, param.y_rotated_x, param.y_rotated_y, param.feed_rate) == 1){
+            if (xy_probe_move_alarm_when_hit(NEG, param.probe_g38_subcode, param.y_rotated_x, param.y_rotated_y, param.rapid_rate) == 1){
                 return;
             }
 
             //probe z no hit no alarm -side_depth, retract slightly if probe point hit
-            z_probe_move_with_retract(param.probe_g38_subcode, -(param.side_depth + param.clearance_height), 1.0, param.feed_rate);
+            z_probe_move_with_retract(param.probe_g38_subcode, -(param.side_depth + param.clearance_height), 1.0, param.rapid_rate);
 
             // probe in positive y direction
             fast_slow_probe_sequence(Y_AXIS, POS);
@@ -1746,12 +1761,12 @@ void ZProbe::probe_outsideCorner() //M464
         coordinated_move(NAN, NAN, param.clearance_world_pos, param.rapid_rate);
 
         // return if probe touches wall during outside move
-        if (xy_probe_move_alarm_when_hit(NEG, param.probe_g38_subcode, param.x_rotated_x, param.x_rotated_y, param.feed_rate) == 1){
+        if (xy_probe_move_alarm_when_hit(NEG, param.probe_g38_subcode, param.x_rotated_x, param.x_rotated_y, param.rapid_rate) == 1){
             return;
         }
         
         //probe z no hit no alarm -side_depth, retract slightly if probe point hit
-        z_probe_move_with_retract(param.probe_g38_subcode, -(param.side_depth + param.clearance_height), 1.0, param.feed_rate);
+        z_probe_move_with_retract(param.probe_g38_subcode, -(param.side_depth + param.clearance_height), 1.0, param.rapid_rate);
 
         // probe in positive x direction
         fast_slow_probe_sequence(X_AXIS, POS);
@@ -1768,12 +1783,12 @@ void ZProbe::probe_outsideCorner() //M464
         coordinated_move(out_coords.origin_x, out_coords.origin_y, NAN, param.rapid_rate );
         
         // return if probe touches wall during outside move
-        if (xy_probe_move_alarm_when_hit(NEG, param.probe_g38_subcode, param.y_rotated_x, param.y_rotated_y, param.feed_rate) == 1){
+        if (xy_probe_move_alarm_when_hit(NEG, param.probe_g38_subcode, param.y_rotated_x, param.y_rotated_y, param.rapid_rate) == 1){
             return;
         }
 
         //probe z no hit no alarm -side_depth, retract slightly if probe point hit
-        z_probe_move_with_retract(param.probe_g38_subcode, -(param.side_depth + param.clearance_height), 1.0, param.feed_rate);
+        z_probe_move_with_retract(param.probe_g38_subcode, -(param.side_depth + param.clearance_height), 1.0, param.rapid_rate);
 
         // probe in positive y direction
         fast_slow_probe_sequence(Y_AXIS, POS);
@@ -1924,7 +1939,7 @@ void ZProbe::probe_axisangle(bool probe_a_axis, bool probe_with_offset) //M465
             coordinated_move(out_coords.origin_x, out_coords.origin_y, NAN, param.rapid_rate );
 
             // probe along x axis to second position, alarm if hit
-            xy_probe_move_alarm_when_hit(POS, param.probe_g38_subcode, 0.0, param.y_rotated_y, param.feed_rate);
+            xy_probe_move_alarm_when_hit(POS, param.probe_g38_subcode, 0.0, param.y_rotated_y, param.rapid_rate);
             
             fast_slow_probe_sequence(Z_AXIS, NEG);
             if (check_last_probe_ok()){
@@ -1936,7 +1951,7 @@ void ZProbe::probe_axisangle(bool probe_a_axis, bool probe_with_offset) //M465
                 return;
             }
             
-            xy_probe_move_alarm_when_hit(NEG, param.probe_g38_subcode, 0.0, 2 * param.y_rotated_y, param.feed_rate);
+            xy_probe_move_alarm_when_hit(NEG, param.probe_g38_subcode, 0.0, 2 * param.y_rotated_y, param.rapid_rate);
             fast_slow_probe_sequence(Z_AXIS, NEG);
             if (check_last_probe_ok()){
                 out_coords.y_negative_y_out = out_coords.z_negative_z_out;
@@ -1964,7 +1979,7 @@ void ZProbe::probe_axisangle(bool probe_a_axis, bool probe_with_offset) //M465
             //return to center position
             coordinated_move(out_coords.origin_x, out_coords.origin_y, NAN, param.rapid_rate );
             //probe along x axis to second position, alarm if hit
-            xy_probe_move_alarm_when_hit(POS, param.probe_g38_subcode, param.x_rotated_x, param.x_rotated_y, param.feed_rate);
+            xy_probe_move_alarm_when_hit(POS, param.probe_g38_subcode, param.x_rotated_x, param.x_rotated_y, param.rapid_rate);
 
             //probe along y axis to find second point
             fast_slow_probe_sequence(Y_AXIS, POS);
@@ -1993,7 +2008,7 @@ void ZProbe::probe_axisangle(bool probe_a_axis, bool probe_with_offset) //M465
             //return to center position
             coordinated_move(out_coords.origin_x, out_coords.origin_y, NAN, param.rapid_rate );
             //probe along x axis to second position, alarm if hit
-            xy_probe_move_alarm_when_hit(POS, param.probe_g38_subcode, param.y_rotated_x, param.y_rotated_y, param.feed_rate);
+            xy_probe_move_alarm_when_hit(POS, param.probe_g38_subcode, param.y_rotated_x, param.y_rotated_y, param.rapid_rate);
 
             //probe along y axis to find second point
             fast_slow_probe_sequence(X_AXIS, POS);
@@ -2033,13 +2048,13 @@ void ZProbe::probe_axisangle(bool probe_a_axis, bool probe_with_offset) //M465
                                         param.probe_g38_subcode, 
                                         THEROBOT->from_millimeters(param.visualize_path_distance * cos(THEKERNEL->probe_outputs[2] * pi/180)), 
                                         THEROBOT->from_millimeters(param.visualize_path_distance * sin(THEKERNEL->probe_outputs[2] * pi/180 )), 
-                                        param.feed_rate);
+                                        param.rapid_rate);
         }else{
             xy_probe_move_alarm_when_hit(POS, 
                                     param.probe_g38_subcode, 
                                     THEROBOT->from_millimeters(param.visualize_path_distance * cos((THEKERNEL->probe_outputs[2] + 90) * pi/180)), 
                                     THEROBOT->from_millimeters(param.visualize_path_distance * sin((THEKERNEL->probe_outputs[2] + 90) * pi/180 )), 
-                                    param.feed_rate);
+                                    param.rapid_rate);
         }
         //return to center position
         THECONVEYOR->wait_for_idle();
@@ -2052,6 +2067,107 @@ void ZProbe::probe_axisangle(bool probe_a_axis, bool probe_with_offset) //M465
         }else{
         THEROBOT->set_current_wcs_by_mpos(NAN,NAN,NAN,NAN,NAN,THEKERNEL->probe_outputs[2]);
         }
+    }
+}
+
+void ZProbe::probe_square(){
+    THEKERNEL->streams->printf("Probing Square\n");
+
+    float mpos[5];
+
+    if (param.repeat < 1){
+        THEKERNEL->streams->printf("ALARM: Probe fail: repeat value cannot be less than 1\n");
+        THEKERNEL->call_event(ON_HALT, nullptr);
+        THEKERNEL->set_halt_reason(PROBE_FAIL);
+        return;
+    }
+
+    rotate(X_AXIS, param.x_axis_distance, &param.x_rotated_x, &param.x_rotated_y, param.rotation_angle);
+    rotate(Y_AXIS, param.y_axis_distance, &param.y_rotated_x, &param.y_rotated_y, param.rotation_angle);
+    // always wait for idle before getting the machine pos
+    THECONVEYOR->wait_for_idle();
+    //save center position to use later
+    THEROBOT->get_current_machine_position(mpos);
+    // current_position/mpos includes the compensation transform so we need to get the inverse to get actual position
+    if(THEKERNEL->is_flex_compensation_active()) {
+        if(THEROBOT->compensationTransform) THEROBOT->compensationTransform(mpos, true, false); // get inverse compensation transform
+    }
+
+    // used for starting position
+    out_coords.origin_x = mpos[0];
+    out_coords.origin_y = mpos[1];
+    out_coords.origin_z = mpos[2];
+
+    float x_pos[4] = {0, 0, 0, 0};
+    float y_pos[4] = {0, 0, 0, 0};
+    float z_pos[4] = {out_coords.origin_z, out_coords.origin_z, out_coords.origin_z, out_coords.origin_z};
+
+    param.z_axis_distance = -(fabs(param.probe_height));
+
+    x_pos[0] = out_coords.origin_x;
+    y_pos[0] = out_coords.origin_y;
+    x_pos[1] = out_coords.origin_x + param.x_rotated_x;
+    y_pos[1] = out_coords.origin_y + param.x_rotated_y;
+    x_pos[2] = out_coords.origin_x + param.x_rotated_x + param.y_rotated_x;
+    y_pos[2] = out_coords.origin_y + param.x_rotated_y + param.y_rotated_y;
+    x_pos[3] = out_coords.origin_x + param.y_rotated_x;
+    y_pos[3] = out_coords.origin_y + param.y_rotated_y;
+
+    float min_z = 0;
+    float max_z = 0;
+    int min_z_index = 0;
+    int max_z_index = 0;
+
+    for (int i = 0; i < param.repeat; i++){
+        // go to starting position
+        coordinated_move(out_coords.origin_x, out_coords.origin_y, out_coords.origin_z, param.rapid_rate);
+        for (int j = 0; j < 4; j++){
+            fast_slow_probe_sequence(Z_AXIS, NEG);
+            z_pos[j] = out_coords.z_negative_z_out;
+            if (j == 0){
+                min_z = max_z = z_pos[j];
+                min_z_index = max_z_index = 1;
+            }
+            if (z_pos[j] < min_z){
+                min_z = z_pos[j];
+                min_z_index = j + 1;
+            }
+            if (z_pos[j] > max_z){
+                max_z = z_pos[j];
+                max_z_index = j + 1;
+            }
+            // move to next point
+            coordinated_move(NAN, NAN, out_coords.origin_z, param.rapid_rate);
+            if (j < 3){
+                coordinated_move(x_pos[j+1], y_pos[j+1], NAN, param.rapid_rate);
+            }else{
+                coordinated_move(out_coords.origin_x, out_coords.origin_y, NAN, param.rapid_rate);
+            }
+        }
+        THECONVEYOR->wait_for_idle();
+        THEKERNEL->streams->printf("--- Machine Coordinates ---\n");
+        for (int j = 0; j < 4; j++){
+            THEKERNEL->streams->printf("Point %d: X: %.3f, Y: %.3f, Z: %.3f\n", j + 1, x_pos[j], y_pos[j], z_pos[j]);
+        }
+        THEKERNEL->streams->printf("Min Z: %.3f, Max Z: %.3f\n", min_z, max_z);
+        THEKERNEL->streams->printf("--- Work Coordinates ---\n");
+        for (int j = 0; j < 4; j++){
+            mpos[0] = x_pos[j];
+            mpos[1] = y_pos[j];
+            mpos[2] = z_pos[j];
+            mpos[3] = 0;
+            mpos[4] = 0;
+            Robot::wcs_t pos = THEROBOT->mcs2wcs(mpos);
+            THEKERNEL->streams->printf("Point %d: X: %.3f, Y: %.3f, WPos Z: %.3f\n", j + 1, std::get<X_AXIS>(pos), std::get<Y_AXIS>(pos), std::get<Z_AXIS>(pos));
+            if (j == min_z_index - 1){
+                min_z = std::get<Z_AXIS>(pos);
+            }
+            if (j == max_z_index - 1){
+                max_z = std::get<Z_AXIS>(pos);
+            }
+        }
+        THEKERNEL->streams->printf("Min Z: %.3f, Max Z: %.3f\n", min_z, max_z);
+        THEKERNEL->streams->printf("Min Z Point#: %d, Max Z Point#: %d\n", min_z_index, max_z_index);
     }
 }
 
@@ -2222,29 +2338,48 @@ void ZProbe::single_axis_probe_double_tap(){
         }
     }
     float ave_z = sum / (param.repeat) + (param.tool_dia/2 + tip_z);
+    float mpos[5];
+    mpos[0] = ave_x;
+    mpos[1] = ave_y;
+    mpos[2] = ave_z;
+    mpos[3] = 0;
+    mpos[4] = 0;
+    Robot::wcs_t pos = THEROBOT->mcs2wcs(mpos);
 
     if ((param.x_axis_distance != 0 && param.y_axis_distance != 0) || param.rotation_angle != 0) {
+        THEKERNEL->streams->printf("--- Machine Coordinates ---\n");
         THEKERNEL->streams->printf("Final Position: X:%.3f , Y:%.3f\n", ave_x , ave_y);
+        THEKERNEL->streams->printf("--- Work Coordinates ---\n");
+        THEKERNEL->streams->printf("Final Position: X:%.3f , Y:%.3f, Z:%.3f\n", std::get<X_AXIS>(pos), std::get<Y_AXIS>(pos), std::get<Z_AXIS>(pos));
         THEKERNEL->probe_outputs[3] = ave_x;
         THEKERNEL->probe_outputs[4] = ave_y;
         if (param.save_position > 0 && check_last_probe_ok()){
             THEROBOT->set_current_wcs_by_mpos( THEKERNEL->probe_outputs[3], THEKERNEL->probe_outputs[4], NAN);
         }
     } else if(param.x_axis_distance != 0){
+        THEKERNEL->streams->printf("--- Machine Coordinates ---\n");
         THEKERNEL->streams->printf("Final Position X: %.3f\n", ave_x);
+        THEKERNEL->streams->printf("--- Work Coordinates ---\n");
+        THEKERNEL->streams->printf("Final Position X: %.3f\n", std::get<X_AXIS>(pos));
         THEKERNEL->probe_outputs[3] = ave_x;
         if (param.save_position > 0 && check_last_probe_ok()){
             THEROBOT->set_current_wcs_by_mpos( THEKERNEL->probe_outputs[3], NAN, NAN);
         }
     } else if(param.y_axis_distance != 0){
+        THEKERNEL->streams->printf("--- Machine Coordinates ---\n");
         THEKERNEL->streams->printf("Final Position Y: %.3f\n", ave_y);
+        THEKERNEL->streams->printf("--- Work Coordinates ---\n");
+        THEKERNEL->streams->printf("Final Position Y: %.3f\n", std::get<Y_AXIS>(pos));
         THEKERNEL->probe_outputs[4] = ave_y;
         if (param.save_position > 0 && check_last_probe_ok()){
             THEROBOT->set_current_wcs_by_mpos( NAN, THEKERNEL->probe_outputs[4], NAN);
         }
     }
     if (param.z_axis_distance != 0){
+        THEKERNEL->streams->printf("--- Machine Coordinates ---\n");
         THEKERNEL->streams->printf("Final Positon Z: %.3f\n", ave_z);
+        THEKERNEL->streams->printf("--- Work Coordinates ---\n");
+        THEKERNEL->streams->printf("Final Positon Z: %.3f\n", std::get<Z_AXIS>(pos));
         THEKERNEL->probe_outputs[5] = ave_z;
         if (param.save_position == 2 && check_last_probe_ok()){
             THEROBOT->set_current_wcs_by_mpos( NAN, NAN, THEKERNEL->probe_outputs[5]);
