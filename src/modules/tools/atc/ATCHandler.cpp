@@ -1258,18 +1258,9 @@ void ATCHandler::on_halt(void* argument)
 {
     uint8_t halt_reason;
     if (argument == nullptr ) {
-        this->atc_status = NONE;
-        this->clear_script_queue();
-        this->set_inner_playing(false);
-        THEKERNEL->set_atc_state(ATC_NONE);
-        if(THEKERNEL->factory_set->FuncSetting & (1<<2))	//ATC 
-	    {
-	        this->atc_home_info.clamp_status = UNHOMED;
-		}
-		else	//Manual Tool Change
-		{
-			THEKERNEL->set_tool_waiting(false);
-		}
+
+        abort();
+
 		if(CARVERA_AIR == THEKERNEL->factory_set->MachineModel)
 	    {
     		halt_reason = THEKERNEL->get_halt_reason();
@@ -1282,6 +1273,20 @@ void ATCHandler::on_halt(void* argument)
 				this->beep_error();
 			}
 		}
+	}
+}
+
+void ATCHandler::abort(){
+	this->atc_status = NONE;
+	this->clear_script_queue();
+	this->set_inner_playing(false);
+	THEKERNEL->set_atc_state(ATC_NONE);
+	if(THEKERNEL->factory_set->FuncSetting & (1<<2))	//ATC 
+	{
+		this->atc_home_info.clamp_status = UNHOMED;
+	}else	//Manual Tool Change
+	{
+		THEKERNEL->set_tool_waiting(false);
 	}
 }
 
@@ -2678,7 +2683,10 @@ void ATCHandler::on_set_public_data(void* argument)
         }
         this->tool_offset = 0.0;
         pdr->set_taken();
-    }
+    } else if (pdr->second_element_is(abort_checksum)) {
+		this->abort();
+		pdr->set_taken();
+	}
 	
 	if(CARVERA_AIR == THEKERNEL->factory_set->MachineModel)
 	{

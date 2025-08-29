@@ -80,6 +80,7 @@ private:
 
     void set_inner_playing(bool inner_playing);
     bool get_inner_playing() const;
+    void abort();
 
     // set tool offset afteer calibrating
     void set_tool_offset();

@@ -639,6 +639,8 @@ void Player::abort_command( string parameters, StreamOutput *stream )
     fclose(current_file_handler);
     current_file_handler = NULL;
 
+    PublicData::set_value( atc_handler_checksum, abort_checksum, nullptr );
+
     THEKERNEL->set_suspending(false);
     THEKERNEL->set_waiting(true);
 
