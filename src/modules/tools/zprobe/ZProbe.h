@@ -36,6 +36,7 @@ enum PROBING_CYCLES {
     PROBE_A_AXIS = 51, // M465.1
     PROBE_A_AXIS_WITH_OFFSET = 52, // M465.2
     PROBE_SINGLE_AXIS_DOUBLE_TAP = 60, // M466
+    PROBE_SQUARE = 70, // M467
     NONE = 255, // Default
 };
 
@@ -140,6 +141,7 @@ private:
     void probe_insideCorner();
     void probe_outsideCorner();
     void probe_axisangle(bool probe_a_axis = false, bool probe_with_offset = false);
+    void probe_square();
     void calibrate_probe_bore();
     void calibrate_probe_boss();
     void single_axis_probe_double_tap();
