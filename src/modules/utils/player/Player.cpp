@@ -621,6 +621,9 @@ void Player::progress_command( string parameters, StreamOutput *stream )
 
 void Player::abort_command( string parameters, StreamOutput *stream )
 {
+
+    PublicData::set_value( atc_handler_checksum, abort_checksum, nullptr );
+
     if(!playing_file && current_file_handler == NULL) {
         stream->printf("Not currently playing\r\n");
         return;
@@ -638,8 +641,6 @@ void Player::abort_command( string parameters, StreamOutput *stream )
 
     fclose(current_file_handler);
     current_file_handler = NULL;
-
-    PublicData::set_value( atc_handler_checksum, abort_checksum, nullptr );
 
     THEKERNEL->set_suspending(false);
     THEKERNEL->set_waiting(true);
