@@ -79,6 +79,7 @@ extern "C" uint32_t  _sbrk(int size);
 // Version is defined by makefile using -D__GITVERSIONSTRING__ 
 #define VERSION __GITVERSIONSTRING__
 
+
 // command lookup table
 const SimpleShell::ptentry_t SimpleShell::commands_table[] = {
     {"ls",       SimpleShell::ls_command},

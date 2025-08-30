@@ -1,6 +1,7 @@
 Notice: 
 To let the Carvera work perfectly, please make sure both your controller software and firmware are up to date. For firmware, download the new firmware first, then use the 'update' function to upgrade the firmware, and reset the machine after the update is complete.
 
+
 [dev improvements branch] 
 1. developer quality-of-life enhancements, no user-visible features. See DEVELOPER.md for details. USB-C GDB debugging support, improved memory management with validation and bug fixes, and seamless GCC 14.2.1 toolchain integration on Linux, macOS, and Windows.
 
@@ -23,6 +24,7 @@ To let the Carvera work perfectly, please make sure both your controller softwar
 - Enhancement: Bed Leveling can be saved to the sd card and loaded after a reboot
 - Enhancement: Margin scan, ZProbe and Bed Leveling can be done with the 3D Probe aswell
 - Bugfix: Machine crashes during probing cycles should be fixed
+
 
 
 [1.0.11c]
