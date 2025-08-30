@@ -1,5 +1,32 @@
 Notice: 
 To let the Carvera work perfectly, please make sure both your controller software and firmware are up to date. For firmware, download the new firmware first, then use the 'update' function to upgrade the firmware, and reset the machine after the update is complete.
+
+
+[dev improvements branch] 
+1. developer quality-of-life enhancements, no user-visible features. See DEVELOPER.md for details. USB-C GDB debugging support, improved memory management with validation and bug fixes, and seamless GCC 14.2.1 toolchain integration on Linux, macOS, and Windows.
+
+[v2.0.0c-RC1]
+- Enhancement: 3D Probe crash detection
+- Enhancement: Setting "atc.skip_path_origin true" skips the initial travel to the path origin when starting a job 
+- Enhancement: Step jogging now stops at the endstops with a ramp rather than going to a halt state
+- Enhancement: "abort" command now also aborts ATC scripts and programs can be aborted at toolchanges
+- Enhancement: Added M466.1 square probe mode to probe 4 points to quickly find all 4 heights and the heighest and lowest point
+- Enhancement: All XYZ moves, that don't probe are done with the rapid rate to speed up the probing process
+- Enhancement: Improved the probing output for the single probe double tap routine to show the work coordinates aswell
+- Change: Deleted the "flex_x_size" setting because this is specified by the G33 command only
+- Change: Changed the math for the flex compensation. Now also does the last compensation value if leaving measurement bounds
+
+[2.0.0cPR130alpha]
+- Enhancement: Continous Jog Mode
+- Enhancement: 3D probe is now always powered on the Carvera AIR
+- Enhancement: Added M465.1 and M465.2 to probe 4th axis stock
+- Enhancement: Added a sag compensation for the Carvera AIR that compensates for rotational and gravitational sag of the x axis carriage
+- Enhancement: Bed Leveling can be saved to the sd card and loaded after a reboot
+- Enhancement: Margin scan, ZProbe and Bed Leveling can be done with the 3D Probe aswell
+- Bugfix: Machine crashes during probing cycles should be fixed
+
+
+
 [1.0.11c]
 - fixed issue with rotated WCS and arc movements
 - fixed issue with probing bosses in the Y axis

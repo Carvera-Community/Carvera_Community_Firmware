@@ -7,6 +7,7 @@
 
 #pragma once
 
+#include <stdint.h>
 #include "Module.h"
 
 #include <functional>
@@ -99,5 +100,6 @@ private:
 
     static const ptentry_t commands_table[];
     static int reset_delay_secs;
-
+    uint32_t keep_alive_time;
+    bool cont_mode_active;
 };

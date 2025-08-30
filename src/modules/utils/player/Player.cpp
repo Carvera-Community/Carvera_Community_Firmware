@@ -52,8 +52,8 @@
 
 extern SDFAT mounter;
 
-unsigned char xbuff[8200] __attribute__((section("AHBSRAM1"))); /* 2 for data length, 8192 for XModem + 3 head chars + 2 crc + nul */
-static unsigned char fbuff[4096] __attribute__((section("AHBSRAM1")));
+unsigned char xbuff[8200] __attribute__((section("AHBSRAM"))); /* 2 for data length, 8192 for XModem + 3 head chars + 2 crc + nul */
+static unsigned char fbuff[4096] __attribute__((section("AHBSRAM")));
 // used for XMODEM
 #define SOH  0x01
 #define STX  0x02
@@ -621,6 +621,9 @@ void Player::progress_command( string parameters, StreamOutput *stream )
 
 void Player::abort_command( string parameters, StreamOutput *stream )
 {
+
+    PublicData::set_value( atc_handler_checksum, abort_checksum, nullptr );
+
     if(!playing_file && current_file_handler == NULL) {
         stream->printf("Not currently playing\r\n");
         return;

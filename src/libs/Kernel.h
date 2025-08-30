@@ -17,6 +17,8 @@
 #include <array>
 #include <vector>
 #include <string>
+#include "modules/utils/wifi/WifiProvider.h"
+#include "libs/USBDevice/MSCFileSystem.h"
 
 // 9 WCS offsets
 #define MAX_WCS 9UL
@@ -67,6 +69,7 @@ enum HALT_REASON {
 	E_STOP					= 13,
 	POWER_OVERHEATED		= 14,
 	NON_HOME				= 15,
+	CRASH_DETECTED			= 16,
 	// Need to reset when triggered
 	HARD_LIMIT				= 21,
 	MOTOR_ERROR_X			= 22,
@@ -144,6 +147,18 @@ class Kernel {
         void set_bad_mcu(bool b) { bad_mcu= b; }
         bool is_bad_mcu() const { return bad_mcu; }
 
+        bool get_stop_request() const { return stop_request; }
+        void set_stop_request(bool f) { stop_request= f; }
+
+        uint32_t get_stop_request_time() const { return stop_request_time; }
+        void set_stop_request_time(uint32_t t) { stop_request_time = t; }
+
+        void set_keep_alive_request(bool f) { keep_alive_request = f; }
+        bool get_keep_alive_request() const { return keep_alive_request; }
+
+        bool get_internal_stop_request() const { return internal_stop_request; }
+        void set_internal_stop_request(bool f) { internal_stop_request = f; }
+
         void set_uploading(bool f) { uploading = f; }
         bool is_uploading() const { return uploading; }
 
@@ -175,12 +190,16 @@ class Kernel {
 
         void set_zprobing(bool f) { zprobing = f; }
         bool is_zprobing() const { return zprobing; }
+
+        void set_flex_compensation_active(bool f) { flex_compensation_active = f; }
+        bool is_flex_compensation_active() const { return flex_compensation_active; }
         
         void set_probeLaser(bool f) { probeLaserOn = f; }
         bool is_probeLaserOn() const { return probeLaserOn; }
 
         void set_halt_reason(uint8_t reason) { halt_reason = reason; }
         uint8_t get_halt_reason() const { return halt_reason; }
+        void set_halted(bool h) { halted = h; }
 
         void set_atc_state(uint8_t state) { atc_state = state; }
         uint8_t get_atc_state() const { return atc_state; }        
@@ -243,6 +262,7 @@ class Kernel {
         // When a module asks to be called for a specific event ( a hook ), this is where that request is remembered
         mbed::I2C* i2c;
         std::array<std::vector<Module*>, NUMBER_OF_DEFINED_EVENTS> hooks;
+        uint32_t stop_request_time;
         struct {
             bool use_leds:1;
             bool halted:1;
@@ -251,6 +271,9 @@ class Kernel {
             bool ok_per_line:1;
             volatile bool enable_feed_hold:1;
             bool bad_mcu:1;
+            bool stop_request:1;
+            bool internal_stop_request:1;
+            bool keep_alive_request:1;
             volatile bool uploading:1;
             bool laser_mode:1;
             bool vacuum_mode:1;
@@ -264,6 +287,9 @@ class Kernel {
             bool zprobing:1;
             bool probeLaserOn:1;
             volatile bool cachewait:1;
+            bool disable_serial_console:1;
+            bool halt_on_error_debug:1;
+            bool flex_compensation_active:1;
         };
         int iic_page_write(unsigned char u8PageNum, unsigned char u8len, unsigned char *pu8Array);
 

@@ -35,7 +35,6 @@ double Block::fp_scale= 0;
 
 Block::Block()
 {
-    tick_info= nullptr;
     line = 0;
     clear();
 }
@@ -86,14 +85,6 @@ void Block::clear()
     */
 
     total_move_ticks= 0;
-    if(tick_info == nullptr) {
-        // we create this once for this block
-        tick_info= new tickinfo_t[n_actuators]; //(tickinfo_t *)malloc(sizeof(tickinfo_t) * n_actuators);
-        if(tick_info == nullptr) {
-            // if we ran out of memory in AHB0 just stop here
-            __debugbreak();
-        }
-    }
 
     for(int i = 0; i < n_actuators; ++i) {
         tick_info[i].steps_per_tick= 0;
@@ -104,6 +95,15 @@ void Block::clear()
         tick_info[i].steps_to_move= 0;
         tick_info[i].step_count= 0;
         tick_info[i].next_accel_event= 0;
+    }
+}
+
+// Only used for continuous mode to reuse the same block over and over
+void Block::reset(tickinfo_t *saved)
+{
+    for(int i = 0; i < n_actuators; ++i) {
+        if(saved[i].steps_to_move == 0) continue;
+        tick_info[i]= saved[i];
     }
 }
 

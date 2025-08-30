@@ -80,6 +80,7 @@ private:
 
     void set_inner_playing(bool inner_playing);
     bool get_inner_playing() const;
+    void abort();
 
     // set tool offset afteer calibrating
     void set_tool_offset();
@@ -191,6 +192,8 @@ private:
     float clearance_x;
     float clearance_y;
     float clearance_z;
+
+    bool skip_path_origin;
 
     struct atc_tool {
     	int num;

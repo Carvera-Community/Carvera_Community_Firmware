@@ -11,6 +11,7 @@
 #include "Module.h"
 #include "Pin.h"
 #include <fastmath.h>
+#include "ATCHandlerPublicAccess.h"
 
 #include <vector>
 
@@ -22,6 +23,22 @@ class StepperMotor;
 class Gcode;
 class StreamOutput;
 class LevelingStrategy;
+
+// Homing States
+enum PROBING_CYCLES {
+    CALIBRATE_PROBE_BORE = 0, // M460
+    CALIBRATE_PROBE_BOSS = 1, // M460.3
+    PROBE_BORE = 10, // M461
+    PROBE_BOSS = 20, // M462
+    PROBE_INSIDE_CORNER = 30, // M463
+    PROBE_OUTSIDE_CORNER = 40, // M464
+    PROBE_AXIS_ANGLE = 50, // M465
+    PROBE_A_AXIS = 51, // M465.1
+    PROBE_A_AXIS_WITH_OFFSET = 52, // M465.2
+    PROBE_SINGLE_AXIS_DOUBLE_TAP = 60, // M466
+    PROBE_SQUARE = 70, // M467
+    NONE = 255, // Default
+};
 
 struct probe_parameters{
     float x_axis_distance;
@@ -79,13 +96,14 @@ class ZProbe: public Module
 public:
     ZProbe() : invert_override(false),invert_probe(false) {
         probe_calibration_safety_margin = 0.1F;
-        reset_probe_tracking();  
+        reset_probe_tracking();
     };
 
     virtual ~ZProbe() {};
 
     void on_module_loaded();
     void on_gcode_received(void *argument);
+    void on_main_loop(void *argument);
 
     bool check_last_probe_ok();
     bool run_probe(float& mm, float feedrate, float max_dist= -1, bool reverse= false);
@@ -101,22 +119,29 @@ public:
     float getProbeHeight() const { return probe_height; }
     float getMaxZ() const { return max_z; }
 
+    // Public methods for external access
+    void set_probe_parameters(const probe_parameters& params) { param = params; }
+    probe_parameters& get_probe_parameters() { return param; }
+    xy_output_coordinates& get_output_coordinates() { return out_coords; }
+    bool fast_slow_probe_sequence_public(int axis, int direction);
+    void init_parameters_and_out_coords();
+
 private:
     void config_load();
     bool probe_XYZ(Gcode *gcode);
     void rotate(int axis, float axis_distance, float *y_x, float *y_y, float rotation_angle);
     void rotateXY(float x_in = NAN, float y_in = NAN, float *x_out = nullptr, float *y_out = nullptr, float rotation_angle = 0);
     float get_xyz_move_length(float x, float y, float z);
-    void fast_slow_probe_sequence( int axis, int direction);
+    bool fast_slow_probe_sequence( int axis, int direction);
     int xy_probe_move_alarm_when_hit(int direction, int probe_g38_subcode, float x, float y, float feed_rate);
     void z_probe_move_with_retract(int probe_g38_subcode, float z, float clearance_height, float feed_rate);
     bool parse_parameters(Gcode *gcode, bool override_probe_check = false);
-    void init_parameters_and_out_coords();
     void probe_bore(bool calibration = false);
     void probe_boss(bool calibration = false);
     void probe_insideCorner();
     void probe_outsideCorner();
-    void probe_axisangle();
+    void probe_axisangle(bool probe_a_axis = false, bool probe_with_offset = false);
+    void probe_square();
     void calibrate_probe_bore();
     void calibrate_probe_boss();
     void single_axis_probe_double_tap();
@@ -126,7 +151,7 @@ private:
     void on_get_public_data(void* argument);
     uint32_t probe_doubleHit(uint32_t dummy);
     void reset_probe_tracking();
-    bool is_probe_tool();
+    uint8_t check_probe_tool();
 
     float slow_feedrate;
     float fast_feedrate;
@@ -135,11 +160,13 @@ private:
     float max_z;
     bool tool_0_3axis;
     float dwell_before_probing;
+    bool is_3dprobe_active;
 
     Gcode* gcodeBuffer;
     char buff[100];
     probe_parameters param;
     xy_output_coordinates out_coords;
+    machine_offsets machine_offset;
 
     Pin pin;
     Pin calibrate_pin;
@@ -153,6 +180,10 @@ private:
     volatile bool calibrating;
     volatile bool probe_detected;
     volatile bool calibrate_detected;
+    volatile bool probe_triggered;
+    volatile bool halt_pending;
+
+    PROBING_CYCLES probing_cycle;
 
 
     bool bfirstHitDetected  = false;

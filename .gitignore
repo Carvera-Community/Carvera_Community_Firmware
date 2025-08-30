@@ -41,4 +41,10 @@
 gcc-arm-none-eabi-4_8-2014q1-20140314-win32.zip
 BuildShell.cmd
 win_install.log
-
+.cache/*
+**/.DS_Store
+.vscode
+gcc-arm-none-eabi*
+.analzyer
+.analyzer/**
+.cursor

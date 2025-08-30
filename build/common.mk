@@ -38,7 +38,6 @@ else
 Q=
 endif
 
-
 # Default variables.
 SRC ?= .
 BUILD_TYPE ?= Release
@@ -65,7 +64,7 @@ endif
 
 
 ifeq "$(BUILD_TYPE)" "Checked"
-OPTIMIZATION ?= 2
+OPTIMIZATION ?= s
 MRI_ENABLE = 1
 MRI_SEMIHOST_STDIO ?= 1
 endif
@@ -150,13 +149,13 @@ MRI_DIR  = $(BUILD_DIR)/../mri
 # Include path which points to external library headers and to subdirectories of this project which contain headers.
 SUBDIRS = $(wildcard $(SRC)/* $(SRC)/*/* $(SRC)/*/*/* $(SRC)/*/*/*/* $(SRC)/*/*/*/*/* $(SRC)/*/*/*/*/*/*)
 PROJINCS = $(sort $(dir $(SUBDIRS)))
-INCDIRS += $(SRC) $(PROJINCS) $(MRI_DIR) $(MBED_DIR) $(MBED_DIR)/$(DEVICE)
+INCDIRS += $(SRC) $(PROJINCS) $(MRI_DIR)/core $(MBED_DIR) $(MBED_DIR)/$(DEVICE)
 
 # DEFINEs to be used when building C/C++ code
 DEFINES += -DTARGET_$(DEVICE)
 DEFINES += -DMRI_ENABLE=$(MRI_ENABLE) -DMRI_INIT_PARAMETERS='"$(MRI_INIT_PARAMETERS)"'
 DEFINES += -DMRI_BREAK_ON_INIT=$(MRI_BREAK_ON_INIT) -DMRI_SEMIHOST_STDIO=$(MRI_SEMIHOST_STDIO)
-DEFINES += -DWRITE_BUFFER_DISABLE=$(WRITE_BUFFER_DISABLE) -DSTACK_SIZE=$(STACK_SIZE)
+DEFINES += -DWRITE_BUFFER_DISABLE=$(WRITE_BUFFER_DISABLE) -DSTACK_SIZE=$(STACK_SIZE) -D__STACK_SIZE=$(STACK_SIZE)
 
 ifeq "$(OPTIMIZATION)" "0"
 DEFINES += -DDEBUG
@@ -169,7 +168,7 @@ SYS_LIBS = -specs=nano.specs -lstdc++ -lsupc++ -lm -lgcc -lc -lnosys
 LIBS = $(LIBS_PREFIX)
 
 ifeq "$(MRI_ENABLE)" "1"
-LIBS += $(MRI_DIR)/mri.ar
+LIBS += $(MRI_DIR)/lib/armv7-m/libmri_mbed1768.a
 endif
 
 LIBS += $(MBED_LIBS)
@@ -197,7 +196,15 @@ GCFLAGS += -ffunction-sections -fdata-sections  -fno-exceptions -fno-delete-null
 GCFLAGS += $(patsubst %,-I%,$(INCDIRS))
 GCFLAGS += $(DEFINES)
 GCFLAGS += $(DEPFLAGS)
-GCFLAGS += -Wall -Wextra -Wno-unused-parameter -Wcast-align -Wpointer-arith -Wredundant-decls -Wcast-qual -Wcast-align
+GCFLAGS += -Wall -Wextra -Wno-unused-parameter -fomit-frame-pointer \
+ -Wpointer-arith -Wredundant-decls -Wcast-qual -Wcast-align
+
+ifeq ($(IS_GCC_10_3_OR_LATER),1)
+GCFLAGS += -fanalyzer -floop-unroll-and-jam \
+	-floop-interchange -fstack-clash-protection -mfix-cortex-m3-ldrd \
+ 	-ftree-vectorize
+endif
+
 
 GPFLAGS += $(GCFLAGS) -fno-rtti -std=gnu++11
 
@@ -218,15 +225,24 @@ ifneq "$(NO_FLOAT_PRINTF)" "1"
 LDFLAGS += -u _printf_float
 endif
 
+# Use standard variables if defined, otherwise default to arm-none-eabi tools
+# Keep internal names (GCC, GPP, etc.) for compatibility
+GCC ?= $(CC)
+GPP ?= $(CXX)
+AS  ?= $(AS)
+LD  ?= $(CXX) # Linker uses C++ compiler, so map to CXX
+OBJCOPY ?= $(OBJCOPY)
+OBJDUMP ?= $(OBJDUMP)
+SIZE ?= $(SIZE)
 
-#  Compiler/Assembler/Linker Paths
-GCC = arm-none-eabi-gcc
-GPP = arm-none-eabi-g++
-AS = arm-none-eabi-as
-LD = arm-none-eabi-g++
-OBJCOPY = arm-none-eabi-objcopy
-OBJDUMP = arm-none-eabi-objdump
-SIZE = arm-none-eabi-size
+# Default toolchain if standard variables are not set
+GCC ?= arm-none-eabi-gcc
+GPP ?= arm-none-eabi-g++
+AS  ?= arm-none-eabi-as
+LD  ?= arm-none-eabi-g++
+OBJCOPY ?= arm-none-eabi-objcopy
+OBJDUMP ?= arm-none-eabi-objdump
+SIZE ?= arm-none-eabi-size
 
 # Some tools are different on Windows in comparison to Unix.
 ifeq "$(OS)" "Windows_NT"

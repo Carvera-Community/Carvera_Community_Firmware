@@ -55,6 +55,7 @@
 #include "WifiPublicAccess.h"
 
 #include "mbed.h" // for wait_ms()
+#include <strings.h> // For strncasecmp
 
 extern unsigned int g_maximumHeapAddress;
 extern unsigned char xbuff[8200];
@@ -75,7 +76,9 @@ extern "C" uint32_t  _sbrk(int size);
 // support upload file type definition
 #define FILETYPE	"lz"		//compressed by quicklz
 // version definition
-#define VERSION "1.0.11c"
+// Version is defined by makefile using -D__GITVERSIONSTRING__ 
+#define VERSION __GITVERSIONSTRING__
+
 
 // command lookup table
 const SimpleShell::ptentry_t SimpleShell::commands_table[] = {
@@ -189,6 +192,7 @@ void SimpleShell::on_module_loaded()
     this->register_for_event(ON_CONSOLE_LINE_RECEIVED);
     this->register_for_event(ON_GCODE_RECEIVED);
     this->register_for_event(ON_SECOND_TICK);
+    this->cont_mode_active = false;
 
     reset_delay_secs = 0;
 }
@@ -341,7 +345,9 @@ void SimpleShell::on_console_line_received( void *argument )
 
             case 'J':
                 // instant jog command
-                jog(possible_command, new_message.stream);
+                if(!this->cont_mode_active) {
+                    jog(possible_command, new_message.stream);
+                }
                 break;
 
             default:
@@ -804,17 +810,21 @@ void SimpleShell::save_command( string parameters, StreamOutput *stream )
 void SimpleShell::mem_command( string parameters, StreamOutput *stream)
 {
     bool verbose = shift_parameter( parameters ).find_first_of("Vv") != string::npos;
-    unsigned long heap = (unsigned long)_sbrk(0);
-    unsigned long m = g_maximumHeapAddress - heap;
-    stream->printf("Unused Heap: %lu bytes\r\n", m);
+    unsigned long heap_top = (unsigned long)_sbrk(0);
+    unsigned long heap_unallocated_top = (STACK_SIZE && g_maximumHeapAddress != 0) ? g_maximumHeapAddress - heap_top : 0; // Calculate unallocated space at the top if stack limit is set
+    stream->printf("Main Heap Unallocated Top: %lu bytes\r\n", heap_unallocated_top);
 
-    uint32_t f = heapWalk(stream, verbose);
-    stream->printf("Total Free RAM: %lu bytes\r\n", m + f);
+    uint32_t heap_fragmented_free = heapWalk(stream, verbose); // Calculates and prints used/free within allocated heap part
+    stream->printf("Total Free RAM (Main Heap): %lu bytes\r\n", heap_unallocated_top + heap_fragmented_free);
 
-    stream->printf("Free AHB0: %lu, AHB1: %lu\r\n", AHB0.free(), AHB1.free());
+    // Use MemoryPool::free() which calculates total free space in the pool
+    uint32_t ahb_total_free = AHB.free();
+    stream->printf("AHB Pool Total Free: %lu bytes\r\n", ahb_total_free);
+
     if (verbose) {
-        AHB0.debug(stream);
-        AHB1.debug(stream);
+        stream->printf("--- AHB Pool Details ---\n");
+        AHB.debug(stream); // Detailed AHB pool breakdown
+        stream->printf("--- End AHB Pool Details ---\n");
     }
 
     stream->printf("Block size: %u bytes, Tickinfo size: %u bytes\n", sizeof(Block), sizeof(Block::tickinfo_t) * Block::n_actuators);
@@ -1991,7 +2001,7 @@ void SimpleShell::test_command( string parameters, StreamOutput *stream)
         }
 
         uint32_t sps= strtol(stepspersec.c_str(), NULL, 10);
-        sps= std::max(sps, 1UL);
+        sps= std::max(sps, static_cast<uint32_t>(1UL));
 
         uint32_t delayus= 1000000.0F / sps;
         for(int s= 0;s<steps;s++) {
@@ -2016,7 +2026,7 @@ void SimpleShell::test_command( string parameters, StreamOutput *stream)
 
 void SimpleShell::jog(string parameters, StreamOutput *stream)
 {
-    // $J X0.1 [Y0.2] [F0.5]
+    // $J X0.1 [Y0.2] [S0.5]
     int n_motors= THEROBOT->get_number_registered_motors();
 
     // get axis to move and amount (X0.1)
@@ -2024,25 +2034,53 @@ void SimpleShell::jog(string parameters, StreamOutput *stream)
 
     float rate_mm_s= NAN;
     float scale= 1.0F;
+    float fr= NAN;
     float delta[n_motors];
+    float delta_const[n_motors];
     for (int i = 0; i < n_motors; ++i) {
         delta[i]= 0;
+        delta_const[i]= 0;
     }
 
     // $J is first parameter
     shift_parameter(parameters);
     if(parameters.empty()) {
-        stream->printf("usage: $J X0.01 [F0.5] - axis can be XYZABC, optional speed is scale of max_rate\n");
+        stream->printf("usage: $J [-c] X0.01 [S0.5|Fnnn] - axis can be XYZABC, optional speed is scale of max_rate or feedrate. -c turns on continuous jog mode\n");
         return;
     }
 
+    bool cont_mode= false;
+    bool send_ok= false;
     while(!parameters.empty()) {
         string p= shift_parameter(parameters);
 
+        if(p.size() == 2 && p[0] == '-') {
+            // process option
+            switch(toupper(p[1])) {
+                case 'C':
+                    cont_mode= true;
+                    break;
+                case 'R': // send ok when done use this when sending $J in a gcode file
+                    send_ok= true;
+                    break;
+                default:
+                    stream->printf("error:illegal option %c\n", p[1]);
+                    return;
+            }
+            continue;
+        }
+
+
         char ax= toupper(p[0]);
-        if(ax == 'F') {
+        if(ax == 'S') {
             // get speed scale
             scale= strtof(p.substr(1).c_str(), NULL);
+            fr= NAN;
+            continue;
+        }else if(ax == 'F') {
+            // OR specify feedrate (last one wins)
+            scale= 1.0F;
+            fr= strtof(p.substr(1).c_str(), NULL) / 60.0F; // we want mm/sec but F is specified in mm/min
             continue;
         }
 
@@ -2070,7 +2108,6 @@ void SimpleShell::jog(string parameters, StreamOutput *stream)
             }else{
                 rate_mm_s = std::min(rate_mm_s, THEROBOT->actuators[i]->get_max_rate());
             }
-            //hstream->printf("%d %f F%f\n", i, delta[i], rate_mm_s);
         }
     }
     if(!ok) {
@@ -2078,11 +2115,282 @@ void SimpleShell::jog(string parameters, StreamOutput *stream)
         return;
     }
 
-    //stream->printf("F%f\n", rate_mm_s*scale);
+    // There is a race condition where a quick press/release could send the ^Y before the $J -c is executed
+    // this would result in continuous movement, not a good thing.
+    // so check if stop request is true and abort if it is, this means we must leave stop request false after this
+    if(THEKERNEL->get_stop_request()) {
+        if((us_ticker_read() / 1000) - THEKERNEL->get_stop_request_time() > 500) {
+            stream->printf("Stop request timeout\n");
+            THEKERNEL->set_stop_request(false);
+        }else{
+            THEKERNEL->set_stop_request(false);
+            stream->printf("ok\n");
+            return;
+        }
+    }
 
-    THEROBOT->delta_move(delta, rate_mm_s*scale, n_motors);
-    // turn off queue delay and run it now
-    THECONVEYOR->force_queue();
+    if(THEKERNEL->get_internal_stop_request()) {
+        THEKERNEL->set_internal_stop_request(false);
+        stream->printf("Internal stop request reset\n");
+    }
+
+    // set feedrate, either scale of max or actual feedrate
+    if(isnan(fr)) {
+        fr = rate_mm_s * scale;
+    }else{
+        // make sure we do not exceed maximum
+        if(fr > rate_mm_s) fr= rate_mm_s;
+    }
+
+    float current_pos[n_motors];
+    THEROBOT->get_axis_position(current_pos);
+
+    float dist_to_min[3] ={0,0,0};
+    float dist_to_max[3] ={0,0,0};
+    int min_axis = 0;
+    int max_axis = 0;
+
+    float min_time= 0.05;
+    if(cont_mode) {
+        this->cont_mode_active = true;
+        // continuous jog mode
+        // calculate minimum distance to travel to accomodate acceleration and feedrate
+        float acc= THEROBOT->get_default_acceleration();
+        
+        // Validate acceleration value
+        if(acc <= 0 || isnan(acc)) {
+            stream->printf("error: Invalid acceleration value: %f\n", acc);
+            stream->printf("^Y\n");
+            this->cont_mode_active = false;  // Reset flag before returning
+            return;
+        }
+        
+        float ta= fr/acc; // time to reach feed rate
+        float da= 0.5F * acc * powf(ta, 2); // distance required to accelerate (or decelerate)
+        float dc = min_time * fr;
+        if((da + dc)/ fr > 5) {
+            // increase feedrate so it will not take more than 5 seconds
+            fr= (da*3)/5;
+        }
+        
+
+        // we need to move at least this distance to reach full speed
+        for (int i = 0; i < n_motors; ++i) {
+            if(delta[i] != 0) {
+                delta[i]= da * (delta[i]<0?-1:1);
+                delta_const[i]= dc * (delta[i]<0?-1:1);
+            }
+        }
+        THEROBOT->rotate(&delta[0], &delta[1], &delta[2]);
+        THEROBOT->rotate(&delta_const[0], &delta_const[1], &delta_const[2]);
+        // stream->printf("distance: %f, time:%f, X%f Y%f Z%f, speed:%f\n", d, t, delta[0], delta[1], delta[2], fr);
+        // Check soft limits during continuous jogging
+        if(THEROBOT->is_soft_endstop_enabled()) {
+            bool move_to_min_limit = false;
+            bool move_to_max_limit = false;
+            float scale = 10000.0F;
+            // Check each axis that is homed
+            for (int i = 0; i <= Z_AXIS; ++i) {
+                if(!THEROBOT->is_homed(i)) continue;
+                
+                // Calculate distance to soft limits
+                dist_to_min[i] = (current_pos[i] - THEROBOT->get_soft_endstop_min(i));
+                dist_to_max[i] = (THEROBOT->get_soft_endstop_max(i) - current_pos[i]);
+                // If moving towards a limit and brake distance is greater than distance to limit
+                if(delta[i] < 0 && !isnan(THEROBOT->get_soft_endstop_min(i)) && 
+                    dist_to_min[i] <= fabs(2 * delta[i] + 2* delta_const[i])){
+                    if (scale > dist_to_min[i]/fabs(2 * delta[i] + 2 * delta_const[i])) {
+                        scale = dist_to_min[i]/fabs(2 * delta[i] + 2 * delta_const[i]);
+                    }
+                    if (dist_to_min[i] <= 0) {
+                        stream->printf("error:Soft Endstop %c would be exceeded - ignore jog command\n", i+'X');
+                        stream->printf("^Y\n");
+                        this->cont_mode_active = false;  // Reset flag before returning
+                        return;
+                    }
+                    move_to_min_limit = true;
+                }
+                if(delta[i] > 0 && !isnan(THEROBOT->get_soft_endstop_max(i)) && 
+                    dist_to_max[i] <= fabs(2 * delta[i] + 2 * delta_const[i])) {
+                    if (scale > dist_to_max[i]/fabs(2 * delta[i] + 2 * delta_const[i])) {
+                        scale = dist_to_max[i]/fabs(2 * delta[i] + 2 * delta_const[i]);
+                        stream->printf("scale[%d]: %f\n", i, scale);
+                    }
+                    if (dist_to_max[i] <= 0) {
+                        stream->printf("error:Soft Endstop %c would be exceeded - ignore jog command\n", i+'X');
+                        stream->printf("^Y\n");
+                        this->cont_mode_active = false;  // Reset flag before returning
+                        return;
+                    }
+                    move_to_max_limit = true;
+                }
+            }
+            if(move_to_min_limit || move_to_max_limit) {
+                for (int j = X_AXIS; j <= Z_AXIS; ++j) {
+                    delta[j] = (2 * delta[j] + 2 * delta_const[j]) * scale;
+                }
+                THEROBOT->delta_move(delta, fr, n_motors);
+                THECONVEYOR->wait_for_idle();
+                stream->printf("^Y\n");
+                this->cont_mode_active = false;  // Reset flag before returning
+                return;
+            }
+        }
+
+        THECONVEYOR->wait_for_idle();
+        // turn off any compensation transform so Z does not move as we jog
+        //auto savect= THEROBOT->compensationTransform;
+        //THEROBOT->reset_compensated_machine_position();
+
+        // feed three blocks that allow full acceleration, full speed and full deceleration
+        THECONVEYOR->set_hold(true);
+        THEROBOT->delta_move(delta, fr, n_motors); // accelerates upto speed
+        THEROBOT->delta_move(delta_const, fr, n_motors); // continues at full speed
+        THEROBOT->delta_move(delta_const, fr, n_motors); // continues at full speed
+        THEROBOT->delta_move(delta, fr, n_motors); // decelerates to zero
+
+        // DEBUG
+        // THECONVEYOR->dump_queue();
+
+        // tell it to run the second block until told to stop
+        if(!THECONVEYOR->set_continuous_mode(true)) {
+            stream->printf("error:Not enough memory to run continuous mode\n");
+            THECONVEYOR->set_hold(false);
+            THECONVEYOR->flush_queue();
+            stream->printf("^Y\n");
+            this->cont_mode_active = false;  // Reset flag before returning
+            return;
+        }
+
+        THECONVEYOR->set_hold(false);
+        THECONVEYOR->force_queue();
+
+        uint32_t last_block_time = us_ticker_read() / 1000;
+
+        this->keep_alive_time = us_ticker_read() / 1000;
+        uint32_t block_interval_ms = (uint32_t)((ta + 0.5 *min_time) * 1000.0f);
+        float time_start_to_end_block = 0;
+        int stage = 0;
+        THECONVEYOR->set_continuous_mode(true);
+
+        while(!THEKERNEL->get_stop_request() && !THEKERNEL->get_internal_stop_request()) {
+            
+            // Check halt state FIRST - this prevents the loop from continuing when halted
+            if(THEKERNEL->is_halted()) break;
+            
+            // Check soft limits during continuous jogging
+            if(THEROBOT->is_soft_endstop_enabled()) {
+                float current_pos[n_motors];
+                THEROBOT->get_current_machine_position(current_pos);
+
+                // Check each axis that is homed
+                for (int i = 0; i <= Z_AXIS; ++i) {
+                    if(!THEROBOT->is_homed(i)) continue;
+                    
+                    // Calculate distance to soft limits
+                    float dist_to_min = current_pos[i] - THEROBOT->get_soft_endstop_min(i);
+                    float dist_to_max = THEROBOT->get_soft_endstop_max(i) - current_pos[i];
+                    
+                    // If moving towards a limit and brake distance is greater than distance to limit
+                    if(delta[i] < 0 && !isnan(THEROBOT->get_soft_endstop_min(i)) && 
+                        dist_to_min <= fabs(2 * delta_const[i] + delta[i]) + 1) {
+                        THEKERNEL->set_internal_stop_request(true);
+                        break;
+                    }
+                    if(delta[i] > 0 && !isnan(THEROBOT->get_soft_endstop_max(i)) &&     
+                        dist_to_max <= fabs(2 * delta_const[i] + delta[i]) + 1) {
+                        THEKERNEL->set_internal_stop_request(true);
+                        break;
+                    }
+                }
+            }
+            // Add another coasting block every block_interval_ms milliseconds
+            uint32_t current_time = us_ticker_read() / 1000;
+            if(current_time - last_block_time >= block_interval_ms && !THEKERNEL->get_internal_stop_request()) {
+                // Calculate time for this block before updating last_block_time
+                
+                THEROBOT->delta_move(delta_const, fr, n_motors);
+                if(stage == 0) {
+                    time_start_to_end_block = current_time - last_block_time;
+                    block_interval_ms = (uint32_t)((min_time) * 1000.0f);
+                    stage++;
+                }
+                last_block_time = current_time;
+            }
+            
+            THEKERNEL->call_event(ON_IDLE);
+
+            if(THEKERNEL->get_keep_alive_request()) {
+                THEKERNEL->set_keep_alive_request(false);
+                keep_alive_time = us_ticker_read() / 1000;
+            }else if (us_ticker_read() / 1000 - keep_alive_time > 400) {
+                THEKERNEL->set_internal_stop_request(true);
+            }
+        }
+        THECONVEYOR->set_continuous_mode(false);
+        THEKERNEL->set_stop_request(false);
+        if (!THEKERNEL->is_halted()) {
+            THECONVEYOR->wait_for_idle();
+        }
+
+        // reset the position based on current actuator position
+        THEROBOT->reset_position_from_current_actuator_position();
+        // restore compensationTransform
+        //THEROBOT->compensationTransform= savect;
+        stream->printf("^Y\n");
+        this->cont_mode_active = false;
+    }else{
+        THEROBOT->rotate(&delta[0], &delta[1], &delta[2]);
+        // Check soft limits during continuous jogging
+        if(THEROBOT->is_soft_endstop_enabled()) {
+            bool move_to_min_limit = false;
+            bool move_to_max_limit = false;
+            float scale = 10000.0F;
+            // Check each axis that is homed
+            for (int i = 0; i <= Z_AXIS; ++i) {
+                if(!THEROBOT->is_homed(i)) continue;
+                
+                // Calculate distance to soft limits
+                dist_to_min[i] = (current_pos[i] - THEROBOT->get_soft_endstop_min(i));
+                dist_to_max[i] = (THEROBOT->get_soft_endstop_max(i) - current_pos[i]);
+                // If moving towards a limit and brake distance is greater than distance to limit
+                if(delta[i] < 0 && !isnan(THEROBOT->get_soft_endstop_min(i)) && 
+                    dist_to_min[i] <= fabs(delta[i])){
+                    if (scale > dist_to_min[i]/fabs(delta[i])) {
+                        scale = dist_to_min[i]/fabs(delta[i]);
+                    }
+                    if (dist_to_min[i] <= 0) {
+                        stream->printf("error:Soft Endstop %c would be exceeded - ignore jog command\n", i+'X');
+                        return;
+                    }
+                    move_to_min_limit = true;
+                }
+                if(delta[i] > 0 && !isnan(THEROBOT->get_soft_endstop_max(i)) && 
+                    dist_to_max[i] <= fabs(delta[i])) {
+                    if (scale > dist_to_max[i]/fabs(delta[i])) {
+                        scale = dist_to_max[i]/fabs(delta[i]);
+                        stream->printf("scale[%d]: %f\n", i, scale);
+                    }
+                    if (dist_to_max[i] <= 0) {
+                        stream->printf("error:Soft Endstop %c would be exceeded - ignore jog command\n", i+'X');
+                        return;
+                    }
+                    move_to_max_limit = true;
+                }
+            }
+            if(move_to_min_limit || move_to_max_limit) {
+                for (int j = X_AXIS; j <= Z_AXIS; ++j) {
+                    delta[j] = delta[j] * scale;
+                }
+                THEROBOT->delta_move(delta, fr, n_motors);
+                THECONVEYOR->wait_for_idle();
+                return;
+            }
+        }
+        THEROBOT->delta_move(delta, fr, n_motors);
+        // turn off queue delay and run it now
+        THECONVEYOR->force_queue();
+    }
 }
 
 void SimpleShell::help_command( string parameters, StreamOutput *stream )

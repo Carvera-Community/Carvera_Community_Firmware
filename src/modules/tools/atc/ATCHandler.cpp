@@ -88,6 +88,7 @@
 #define clearance_x_checksum		CHECKSUM("clearance_x")
 #define clearance_y_checksum		CHECKSUM("clearance_y")
 #define clearance_z_checksum		CHECKSUM("clearance_z")
+#define skip_path_origin_checksum	CHECKSUM("skip_path_origin")
 
 ATCHandler::ATCHandler()
 {
@@ -895,9 +896,11 @@ void ATCHandler::fill_goto_origin_scripts(float x_pos, float y_pos) {
 	snprintf(buff, sizeof(buff), "G53 G0 Z%.3f", THEROBOT->from_millimeters(this->clearance_z));
 	this->script_queue.push(buff);
 
-	// goto start position
-	snprintf(buff, sizeof(buff), "G90 G0 X%.3f Y%.3f", THEROBOT->from_millimeters(x_pos), THEROBOT->from_millimeters(y_pos));
-	this->script_queue.push(buff);
+	if(!this->skip_path_origin){
+		// goto start position
+		snprintf(buff, sizeof(buff), "G90 G0 X%.3f Y%.3f", THEROBOT->from_millimeters(x_pos), THEROBOT->from_millimeters(y_pos));
+		this->script_queue.push(buff);
+	}
 
 }
 
@@ -1247,24 +1250,17 @@ void ATCHandler::on_config_reload(void *argument)
 		this->clearance_z = THEKERNEL->config->value(coordinate_checksum, clearance_z_checksum)->by_default(-5  )->as_number();
 	}
 	this->rotation_width = THEKERNEL->config->value(coordinate_checksum, rotation_width_checksum)->by_default(45  )->as_number();
+
+	this->skip_path_origin = THEKERNEL->config->value(atc_checksum, skip_path_origin_checksum)->by_default(false)->as_bool();
 }
 
 void ATCHandler::on_halt(void* argument)
 {
     uint8_t halt_reason;
     if (argument == nullptr ) {
-        this->atc_status = NONE;
-        this->clear_script_queue();
-        this->set_inner_playing(false);
-        THEKERNEL->set_atc_state(ATC_NONE);
-        if(THEKERNEL->factory_set->FuncSetting & (1<<2))	//ATC 
-	    {
-	        this->atc_home_info.clamp_status = UNHOMED;
-		}
-		else	//Manual Tool Change
-		{
-			THEKERNEL->set_tool_waiting(false);
-		}
+
+        abort();
+
 		if(CARVERA_AIR == THEKERNEL->factory_set->MachineModel)
 	    {
     		halt_reason = THEKERNEL->get_halt_reason();
@@ -1277,6 +1273,20 @@ void ATCHandler::on_halt(void* argument)
 				this->beep_error();
 			}
 		}
+	}
+}
+
+void ATCHandler::abort(){
+	this->atc_status = NONE;
+	this->clear_script_queue();
+	this->set_inner_playing(false);
+	THEKERNEL->set_atc_state(ATC_NONE);
+	if(THEKERNEL->factory_set->FuncSetting & (1<<2))	//ATC 
+	{
+		this->atc_home_info.clamp_status = UNHOMED;
+	}else	//Manual Tool Change
+	{
+		THEKERNEL->set_tool_waiting(false);
 	}
 }
 
@@ -2120,7 +2130,7 @@ void ATCHandler::on_gcode_received(void *argument)
 						set_inner_playing(true);
 						atc_status = AUTOMATION;
 			            this->clear_script_queue();
-			            if (active_tool != 0) {
+			            if (active_tool != 0 && active_tool < 999990) {
 			            	// need to change to probe tool first
 			        		gcode->stream->printf("Change to probe tool first!\r\n");
 			                // save current position
@@ -2128,7 +2138,7 @@ void ATCHandler::on_gcode_received(void *argument)
 									                
 							if(THEKERNEL->factory_set->FuncSetting & (1<<2))	//ATC 
 							{
-				        		if (active_tool > 0) {
+				        		if (active_tool > 0 && active_tool < 999990) {
 				        			// drop current tool
 				            		int old_tool = active_tool;
 				            		// change to probe tool
@@ -2642,6 +2652,19 @@ void ATCHandler::on_get_public_data(void* argument)
     } else if (pdr->second_element_is(get_atc_clamped_status_checksum)) {
 		uint8_t* data = static_cast<uint8_t*>(pdr->get_data_ptr());
 		*data = static_cast<uint8_t>(this->atc_home_info.clamp_status); //0 unhomed, 1 clamped, 2 unclamped
+	} else if (pdr->second_element_is(get_machine_offsets_checksum)) {
+		struct machine_offsets *m = static_cast<machine_offsets*>(pdr->get_data_ptr());
+		m->anchor1_x = this->anchor1_x;
+		m->anchor1_y = this->anchor1_y;
+		m->anchor2_offset_x = this->anchor2_offset_x;
+		m->anchor2_offset_y = this->anchor2_offset_y;
+		m->anchor_width = this->anchor_width;
+		m->rotation_offset_x = this->rotation_offset_x;
+		m->rotation_offset_y = this->rotation_offset_y;
+		m->rotation_offset_z = this->rotation_offset_z;
+		m->rotation_width = this->rotation_width;
+		m->clearance_z = this->clearance_z;
+		pdr->set_taken();
 	}
 }
 
@@ -2660,7 +2683,10 @@ void ATCHandler::on_set_public_data(void* argument)
         }
         this->tool_offset = 0.0;
         pdr->set_taken();
-    }
+    } else if (pdr->second_element_is(abort_checksum)) {
+		this->abort();
+		pdr->set_taken();
+	}
 	
 	if(CARVERA_AIR == THEKERNEL->factory_set->MachineModel)
 	{

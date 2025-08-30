@@ -38,6 +38,7 @@ class Robot : public Module {
         void reset_axis_position(float x, float y, float z);
         void reset_actuator_position(const ActuatorCoordinates &ac);
         void reset_position_from_current_actuator_position();
+        void reset_compensated_machine_position();
         float get_seconds_per_minute() const { return seconds_per_minute; }
         float get_z_maxfeedrate() const { return this->max_speeds[Z_AXIS]; }
         float get_default_acceleration() const { return default_acceleration; }
@@ -117,6 +118,15 @@ class Robot : public Module {
             uint8_t plane_axis_2:2;
         };
 
+        // Soft endstop accessors
+        float get_soft_endstop_min(int axis) const { return soft_endstop_min[axis]; }
+        float get_soft_endstop_max(int axis) const { return soft_endstop_max[axis]; }
+        bool is_soft_endstop_enabled() const { return soft_endstop_enabled; }
+        bool is_soft_endstop_halt() const { return soft_endstop_halt; }
+
+        // Homing status accessors
+        bool is_homed(uint8_t i) const;
+
     private:
         bool home_override = false;
         enum MOTION_MODE_T {
@@ -133,7 +143,6 @@ class Robot : public Module {
         bool append_arc( Gcode* gcode, const float target[], const float rotated_target[], const float offset[], float radius, bool is_clockwise );
         bool compute_arc(Gcode* gcode, const float offset[], const float target[], const float rotated_target[], enum MOTION_MODE_T motion_mode);
         void process_move(Gcode *gcode, enum MOTION_MODE_T);
-        bool is_homed(uint8_t i) const;
 
         float theta(float x, float y);
         void select_plane(uint8_t axis_0, uint8_t axis_1, uint8_t axis_2);

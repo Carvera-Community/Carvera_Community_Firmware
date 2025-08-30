@@ -122,6 +122,13 @@ C_FLAGS+=$(patsubst %,-I%,$(INCLUDE_DIRS))
 C_FLAGS+=-DTARGET_$(DEVICE) -DTOOLCHAIN_GCC_ARM
 C_FLAGS+=$(DEP_FLAGS)
 
+ifeq ($(IS_GCC_10_3_OR_LATER),1)
+GCFLAGS += -fanalyzer -floop-unroll-and-jam \
+	-floop-interchange -fstack-clash-protection -mfix-cortex-m3-ldrd \
+ 	-ftree-vectorize
+endif
+
+
 CPP_FLAGS:=$(C_FLAGS) -fno-rtti
 C_FLAGS +=-std=c99
 
@@ -135,18 +142,30 @@ RELEASE_CPP_FLAGS=$(CPP_FLAGS) -O$(RELEASE_OPTIMIZATION) -DNDEBUG
 
 
 # Flags used to assemble assembly languages sources.
-AS_FLAGSv=-g3 $(DEVICE_AS_FLAGS) -x assembler-with-cpp
+AS_FLAGS=-g3 $(DEVICE_AS_FLAGS) -x assembler-with-cpp
 AS_FLAGS+=$(patsubst %,-I%,$(INCDIRS))
+AS_FLAGS+=-D__STACK_SIZE=$(STACK_SIZE)
 
 
-# GNU Tools for ARM Embedded filenames.
-GCC     =arm-none-eabi-gcc
-GPP     =arm-none-eabi-g++
-LD      =arm-none-eabi-g++
-AR      =arm-none-eabi-ar
-OBJCOPY =arm-none-eabi-objcopy
-OBJDUMP =arm-none-eabi-objdump
-SIZE    =arm-none-eabi-size
+# Use standard variables if defined, otherwise default to arm-none-eabi tools
+# Keep internal names (GCC, GPP, etc.) for compatibility
+GCC ?= $(CC)
+GPP ?= $(CXX)
+AS  ?= $(AS)
+LD  ?= $(CXX) # Linker uses C++ compiler, so map to CXX
+AR  ?= $(AR)
+OBJCOPY ?= $(OBJCOPY)
+OBJDUMP ?= $(OBJDUMP)
+SIZE ?= $(SIZE)
+
+# GNU Tools for ARM Embedded filenames (Defaults if standard vars not set).
+GCC     ?=arm-none-eabi-gcc
+GPP     ?=arm-none-eabi-g++
+LD      ?=arm-none-eabi-g++
+AR      ?=arm-none-eabi-ar
+OBJCOPY ?=arm-none-eabi-objcopy
+OBJDUMP ?=arm-none-eabi-objdump
+SIZE    ?=arm-none-eabi-size
 
 
 # Command line tools that are different between *nix and Windows.

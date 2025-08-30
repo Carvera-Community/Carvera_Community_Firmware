@@ -2,8 +2,9 @@
 
 #include "LevelingStrategy.h"
 
-#include <string.h>
+#include <string>
 #include <tuple>
+#include <cstdint>
 
 #define cart_grid_leveling_strategy_checksum CHECKSUM("rectangular-grid")
 
@@ -24,11 +25,19 @@ private:
     bool scan_bed(Gcode *gc);
     bool findBed(float x, float y, float z);
     void setAdjustFunction(bool on);
+    void updateCompensationTransform();
     void print_bed_level(StreamOutput *stream);
     void doCompensation(float *target, bool inverse, bool debug);
     void reset_bed_level();
     void save_grid(StreamOutput *stream);
     bool load_grid(StreamOutput *stream);
+
+    // Flex compensation methods
+    bool doFlexMeasurement(Gcode *gc);
+    void print_flex_compensation_data(StreamOutput *stream);
+    void save_flex_compensation_data(StreamOutput *stream);
+    bool load_flex_compensation_data(StreamOutput *stream);
+    void reset_flex_compensation();
 
     float initial_height;
     float tolerance;
@@ -59,4 +68,20 @@ private:
         bool human_readable:1;
         bool new_file_format:1;
     };
+
+    // Flex compensation data
+    float *flex_compensation_data;
+    uint8_t flex_x_points;
+    uint8_t flex_current_x_points;
+    float flex_x_start;
+    float flex_x_size;
+    bool flex_compensation_active;
+    size_t flex_data_size;
+    float flex_max_delta;
+    bool flex_compensation_always_active;
+
+    // Compensation state tracking
+    bool cartesian_grid_active;
+
+    static const char* FLEX_COMPENSATION_FILE;
 };
