@@ -6,6 +6,7 @@ on:
     tags: ['v*']
   pull_request:
     branches: ['master', 'Dev']
+  workflow_dispatch:
 env:
   GCC_VERSION: 14.2
 
