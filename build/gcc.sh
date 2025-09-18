@@ -118,7 +118,7 @@ download_and_unpack() {
 
 # --- GCC Download Functions ---
 
-download_gcc_4_8_darwin() {
+download_gcc_4_8_darwin_x86_64() {
     local url="https://launchpad.net/gcc-arm-embedded/4.8/4.8-2014-q1-update/+download/gcc-arm-none-eabi-4_8-2014q1-20140314-mac.tar.bz2"
     local hash="5d34d95a53ba545f1585b9136cbb6805"
     local hash_type="md5"
@@ -129,7 +129,7 @@ download_gcc_4_8_darwin() {
     download_and_unpack "$url" "$hash_type" "$hash" "$gcc_version_internal" "$archive_name" "$hash_tool"
 }
 
-download_gcc_4_8_linux() {
+download_gcc_4_8_linux_x86_64() {
     local url="https://launchpad.net/gcc-arm-embedded/4.8/4.8-2014-q1-update/+download/gcc-arm-none-eabi-4_8-2014q1-20140314-linux.tar.bz2"
     local hash="72b0d06ae16b303c25fd70b2883d3950"
     local hash_type="md5"
@@ -140,7 +140,7 @@ download_gcc_4_8_linux() {
     download_and_unpack "$url" "$hash_type" "$hash" "$gcc_version_internal" "$archive_name" "$hash_tool"
 }
 
-download_gcc_14_2_darwin() {
+download_gcc_14_2_darwin_arm64() {
     local url="https://developer.arm.com/-/media/Files/downloads/gnu/14.2.rel1/binrel/arm-gnu-toolchain-14.2.rel1-darwin-arm64-arm-none-eabi.tar.xz"
     local hash="c7c78ffab9bebfce91d99d3c24da6bf4b81c01e16cf551eb2ff9f25b9e0a3818"
     local hash_type="sha256"
@@ -151,11 +151,22 @@ download_gcc_14_2_darwin() {
     download_and_unpack "$url" "$hash_type" "$hash" "$gcc_version_internal" "$archive_name" "$hash_tool"
 }
 
-download_gcc_14_2_linux() {
+download_gcc_14_2_linux_x86_64() {
     local url="https://developer.arm.com/-/media/Files/downloads/gnu/14.2.rel1/binrel/arm-gnu-toolchain-14.2.rel1-x86_64-arm-none-eabi.tar.xz"
     local hash="62a63b981fe391a9cbad7ef51b17e49aeaa3e7b0d029b36ca1e9c3b2a9b78823"
     local hash_type="sha256"
     local archive_name="arm-gnu-toolchain-14.2.rel1-x86_64-arm-none-eabi.tar.xz"
+    local hash_tool="sha256sum"
+    local gcc_version_internal="14-2"
+
+    download_and_unpack "$url" "$hash_type" "$hash" "$gcc_version_internal" "$archive_name" "$hash_tool"
+}
+
+download_gcc_14_2_linux_aarch64() {
+    local url="https://developer.arm.com/-/media/Files/downloads/gnu/14.2.rel1/binrel/arm-gnu-toolchain-14.2.rel1-aarch64-arm-none-eabi.tar.xz"
+    local hash="87330bab085dd8749d4ed0ad633674b9dc48b237b61069e3b481abd364d0a684"
+    local hash_type="sha256"
+    local archive_name="arm-gnu-toolchain-14.2.rel1-aarch64-arm-none-eabi.tar.xz"
     local hash_tool="sha256sum"
     local gcc_version_internal="14-2"
 
@@ -204,12 +215,13 @@ check_gcc() {
         echo "GCC toolchain version $version_user not detected at ${display_path}." >&2
         echo "Downloading GCC $version_user..." >&2
         os=$(detect_os)
-        local download_func="download_gcc_${version/-/_}_${os}" # e.g., download_gcc_14_2_linux
+        arch=$(uname -m)
+        local download_func="download_gcc_${version/-/_}_${os}_${arch}" # e.g., download_gcc_14_2_linux_x86_64
 
         if declare -F "$download_func" > /dev/null; then
             "$download_func" # Call the appropriate download function
         else
-            echo "Error: No download function found for GCC $version_user on $os ($download_func)" >&2
+            echo "Error: No download function found for GCC $version_user on $os/$arch ($download_func)" >&2
             exit 1
         fi
 
