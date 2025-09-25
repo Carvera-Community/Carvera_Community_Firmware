@@ -615,6 +615,7 @@ void ZProbe::on_gcode_received(void *argument)
 
             case 460:
                 if (gcode->subcode == 3) { //calibrate using anchor . Moved to atchandler for cleanliness
+                    parse_parameters(gcode);
                 } else if (gcode->subcode == 2){//calibrate using boss
                     if (!gcode->has_letter('X') && !gcode->has_letter('Y')){ //error if there is a problem
                         gcode->stream->printf("ALARM: Probe fail: No Gague Length\n");
