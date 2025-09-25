@@ -1,6 +1,8 @@
 [Unreleased]
-- Fix: Scanning wifi scan no longer causes a machine crash
-- Fix: Repeat boss probes would probe both X and Y axis even if only probe distance was provided to one.
+- Fixed: Scanning wifi scan no longer causes a machine crash
+- Fixed: Probe crash detection would incorrectly trigger with stock ZProbe during TLO calibration 
+- Fixed: Repeat boss probes would probe both X and Y axis even if only probe distance was provided to one.
+
 
 [v2.0.0c-RC1]
 - Enhancement: 3D Probe crash detection
@@ -20,15 +22,15 @@
 - Enhancement: Added a sag compensation for the Carvera AIR that compensates for rotational and gravitational sag of the x axis carriage
 - Enhancement: Bed Leveling can be saved to the sd card and loaded after a reboot
 - Enhancement: Margin scan, ZProbe and Bed Leveling can be done with the 3D Probe aswell
-- Bugfix: Machine crashes during probing cycles should be fixed
+- Fixed: Machine crashes during probing cycles should be fixed
 
 [1.0.11c]
 - fixed issue with rotated WCS and arc movements
 - fixed issue with probing bosses in the Y axis
 
 [1.0.10c]
-- Bugfix: Firmware crashs associated with the LED bar problem fixed
-- Bugfix: issue with changing Z heights when changing WCS offset
+- Fixed: Firmware crashs associated with the LED bar problem fixed
+- Fixed: issue with changing Z heights when changing WCS offset
 - Added more verbose output to the print eeprom data
 - Enhancement: Always visualize the outside corner after probing
 
@@ -38,7 +40,7 @@
 
 [1.0.8c_beta]
 - New firmware version format. The base makera firmware no longer is part of the community version string.
-- Bugfix: After switching to the community firmware the offsets of G54 to G59 are now properly checked for corruption
+- Fixed: After switching to the community firmware the offsets of G54 to G59 are now properly checked for corruption
 - Includes the WCS rotation support
 
 [1.0.3c1.0.7alpha1]

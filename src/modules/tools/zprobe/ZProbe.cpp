@@ -90,6 +90,7 @@ void ZProbe::on_module_loaded()
     // register event-handlers
     register_for_event(ON_GCODE_RECEIVED);
     register_for_event(ON_GET_PUBLIC_DATA);
+    register_for_event(ON_SET_PUBLIC_DATA);
     register_for_event(ON_MAIN_LOOP);
 
     this->probing_cycle = NONE;
@@ -97,6 +98,7 @@ void ZProbe::on_module_loaded()
     // we read the probe in this timer
     probing = false;
     calibrating = false;
+    tlo_calibrating = false;
     THEKERNEL->slow_ticker->attach(1000, this, &ZProbe::read_probe);
     THEKERNEL->slow_ticker->attach(1000, this, &ZProbe::read_calibrate);
 	if(!(THEKERNEL->factory_set->FuncSetting & (1<<2)))	//Manual Tool change 
@@ -274,7 +276,8 @@ uint32_t ZProbe::read_probe(uint32_t dummy)
         if (this->pin.get() != invert_probe && is_3dprobe_active && !probe_triggered) {
             probe_triggered = true;
             // Set halt state immediately for fast response, defer event processing to main loop
-            if (!probing && !calibrating) {
+            // Disable crash detection during TLO calibration to prevent false positives
+            if (!probing && !calibrating && !tlo_calibrating) {
                 THEKERNEL->set_halt_reason(CRASH_DETECTED);
                 THEKERNEL->set_halted(true);
                 // Set a flag to process the halt event in the main loop
@@ -890,6 +893,22 @@ uint8_t ZProbe::check_probe_tool() {
         return 1;
     }
     return 0;
+}
+
+void ZProbe::set_tlo_calibrating(bool state) {
+    tlo_calibrating = state;
+}
+
+void ZProbe::on_set_public_data(void* argument) {
+    PublicDataRequest* pdr = static_cast<PublicDataRequest*>(argument);
+    
+    if(!pdr->starts_with(zprobe_checksum)) return;
+    
+    if(pdr->second_element_is(set_tlo_calibrating_checksum)) {
+        bool *state = static_cast<bool*>(pdr->get_data_ptr());
+        this->set_tlo_calibrating(*state);
+        pdr->set_taken();
+    }
 }
 
 // just probe / calibrate Z using calibrate pin
