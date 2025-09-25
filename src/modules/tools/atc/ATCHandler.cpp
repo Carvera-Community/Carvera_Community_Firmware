@@ -1866,6 +1866,9 @@ void ATCHandler::on_gcode_received(void *argument)
 				this->script_queue.push(buff);
 
 				atc_status = CALI;
+				// Set TLO calibration flag to disable 3D probe crash detection
+				bool tlo_calibrating = true;
+				PublicData::set_value( zprobe_checksum, set_tlo_calibrating_checksum, &tlo_calibrating );
 				this->fill_cali_scripts(active_tool == 0 || active_tool >= 999990, true);
 
 				THECONVEYOR->wait_for_idle();
@@ -1918,6 +1921,9 @@ void ATCHandler::on_gcode_received(void *argument)
 				set_inner_playing(true);
 				this->clear_script_queue();
 				atc_status = CALI;
+				// Set TLO calibration flag to disable 3D probe crash detection
+				bool tlo_calibrating = true;
+				PublicData::set_value( zprobe_checksum, set_tlo_calibrating_checksum, &tlo_calibrating );
 				this->fill_cali_scripts(active_tool == 0 || active_tool >= 999990, true);
 
 			}
@@ -2317,6 +2323,9 @@ void ATCHandler::on_main_loop(void *argument)
             	this->clear_script_queue();
 
 				this->atc_status = NONE;
+				// Clear TLO calibration flag to re-enable 3D probe crash detection
+				bool tlo_calibrating = false;
+				PublicData::set_value( zprobe_checksum, set_tlo_calibrating_checksum, &tlo_calibrating );
 				set_inner_playing(false);
 				THEKERNEL->set_atc_state(ATC_NONE);
 
@@ -2352,6 +2361,9 @@ void ATCHandler::on_main_loop(void *argument)
 		}
 
         this->atc_status = NONE;
+		// Clear TLO calibration flag to re-enable 3D probe crash detection
+		bool tlo_calibrating = false;
+		PublicData::set_value( zprobe_checksum, set_tlo_calibrating_checksum, &tlo_calibrating );
 
 		set_inner_playing(false);
 
