@@ -1499,14 +1499,23 @@ void ZProbe::probe_boss(bool calibration) //M462
         probe_y_axis = true;
     }
 
-    param.x_axis_distance = param.x_axis_distance/2 + param.extra_probe_distance;
-    param.y_axis_distance = param.y_axis_distance/2 + param.extra_probe_distance;
+    // Only modify axis distances for axes that are actually being probed
+    if (probe_x_axis) {
+        param.x_axis_distance = param.x_axis_distance/2 + param.extra_probe_distance;
+    }
+    if (probe_y_axis) {
+        param.y_axis_distance = param.y_axis_distance/2 + param.extra_probe_distance;
+    }
 
     if (calibration){
         param.tool_dia = 0;
     }
 
-    if (param.repeat < 1){
+    // When called from calibrate_probe_boss(), don't use repeat loop here
+    // The repeat logic is handled by the calling function
+    int repeat_count = calibration ? 1 : param.repeat;
+    
+    if (repeat_count < 1){
         THEKERNEL->streams->printf("ALARM: Probe fail: repeat value cannot be less than 1\n");
         THEKERNEL->call_event(ON_HALT, nullptr);
         THEKERNEL->set_halt_reason(PROBE_FAIL);
@@ -1536,7 +1545,7 @@ void ZProbe::probe_boss(bool calibration) //M462
     this->out_coords.origin_y = mpos[1];
     this->param.clearance_world_pos = mpos[2]; //test old_mpos[2];
 	//setup repeat
-	for(int i=0; i< param.repeat; i++) {
+	for(int i=0; i< repeat_count; i++) {
         //goto clearance height
         coordinated_move(NAN, NAN, param.clearance_world_pos, param.rapid_rate);
         THECONVEYOR->wait_for_idle();

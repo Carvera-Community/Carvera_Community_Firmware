@@ -1,6 +1,8 @@
 [Unreleased]
 - Fixed: Scanning wifi scan no longer causes a machine crash
 - Fixed: Probe crash detection would incorrectly trigger with stock ZProbe during TLO calibration 
+- Fixed: Repeat boss probes would probe both X and Y axis even if only probe distance was provided to one.
+
 
 [v2.0.0c-RC1]
 - Enhancement: 3D Probe crash detection
