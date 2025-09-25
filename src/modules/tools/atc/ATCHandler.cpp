@@ -135,13 +135,8 @@ void ATCHandler::fill_calibrate_probe_anchor_scripts(bool invert_probe){
 	}
 
 	//print status
-	snprintf(buff, sizeof(buff), ";Confirm that 3 axis probe is in collet\nand anchor 2 is installed\nResume will continue program\n");
+	snprintf(buff, sizeof(buff), ";Confirm that 3 axis probe is in collet\nand anchor 2 is installed\n");
 	this->script_queue.push(buff);
-	
-	//pause
-	//snprintf(buff, sizeof(buff), "M600.5");
-	//this->script_queue.push(buff);
-
 
 	//move to clearance
 	snprintf(buff, sizeof(buff), "G90 G53 G0 Z%.3f", THEROBOT->from_millimeters(this->clearance_z));
@@ -265,11 +260,7 @@ void ATCHandler::calibrate_anchor1(Gcode *gcode) //M469.1
 	}
 
 	//print status
-	snprintf(buff, sizeof(buff), ";Confirm that a 3 axis probe is in collet\nand anchor 1 is installed and clear\nResume will continue program\n");
-	this->script_queue.push(buff);
-	
-	//pause
-	snprintf(buff, sizeof(buff), "M600.5");
+	snprintf(buff, sizeof(buff), ";Confirm that a 3 axis probe is in collet\nand anchor 1 is installed and clear\n");
 	this->script_queue.push(buff);
 
 
@@ -323,13 +314,6 @@ void ATCHandler::calibrate_anchor2(Gcode *gcode)//M469.2
 	//print status
 	snprintf(buff, sizeof(buff), ";Confirm that a 3 axis probe is in collet\nand anchor 2 is installed and clear\n");
 	this->script_queue.push(buff);
-	snprintf(buff, sizeof(buff), ";Resume will continue program\n");
-	this->script_queue.push(buff);
-	
-	//pause
-	snprintf(buff, sizeof(buff), "M600.5");
-	this->script_queue.push(buff);
-
 
 	//move to clearance
 	snprintf(buff, sizeof(buff), "G90 G53 G0 Z%.3f", THEROBOT->from_millimeters(this->clearance_z));
@@ -388,13 +372,8 @@ void ATCHandler::calibrate_a_axis_headstock(Gcode *gcode)//M469.4
 	}
 
 	//print status
-	snprintf(buff, sizeof(buff), ";Confirm that a 3 axis probe is in collet\nand the 4th axis is installed and clear\nResume will continue program\n");
+	snprintf(buff, sizeof(buff), ";Confirm that a 3 axis probe is in collet\nand the 4th axis is installed and clear\n");
 	this->script_queue.push(buff);
-	
-	//pause
-	snprintf(buff, sizeof(buff), "M600.5");
-	this->script_queue.push(buff);
-
 
 	//move to clearance
 	snprintf(buff, sizeof(buff), "G90 G53 G0 Z%.3f", THEROBOT->from_millimeters(this->clearance_z));
@@ -458,13 +437,8 @@ void ATCHandler::calibrate_a_axis_height(Gcode *gcode) //M469.5
 	//print status
 	snprintf(buff, sizeof(buff), ";Confirm that a 3 axis probe is in collet\nand the 4th axis is installed with a pin and clear\n");
 	this->script_queue.push(buff);
-	snprintf(buff, sizeof(buff), ";This code uses variables #116-120\nResume will continue program\n");
+	snprintf(buff, sizeof(buff), ";This code uses variables #116-120\n");
 	this->script_queue.push(buff);
-	
-	//pause
-	snprintf(buff, sizeof(buff), "M600.5");
-	this->script_queue.push(buff);
-
 
 	//move to clearance
 	snprintf(buff, sizeof(buff), "G90 G53 G0 Z%.3f", THEROBOT->from_millimeters(this->clearance_z));
