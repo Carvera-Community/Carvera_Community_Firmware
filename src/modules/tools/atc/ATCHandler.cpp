@@ -139,8 +139,8 @@ void ATCHandler::fill_calibrate_probe_anchor_scripts(bool invert_probe){
 	this->script_queue.push(buff);
 	
 	//pause
-	snprintf(buff, sizeof(buff), "M600.5");
-	this->script_queue.push(buff);
+	//snprintf(buff, sizeof(buff), "M600.5");
+	//this->script_queue.push(buff);
 
 
 	//move to clearance
