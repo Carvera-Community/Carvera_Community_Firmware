@@ -167,8 +167,6 @@ void ATCHandler::fill_calibrate_probe_anchor_scripts(bool invert_probe){
 	snprintf(buff, sizeof(buff), "M460.2 X%.3f E5 L2 I%i", this->anchor_width, invert_probe ? 1:0);
 	this->script_queue.push(buff);
 
-	snprintf(buff, sizeof(buff), "M462 X%.3f E5 I%i", this->anchor_width/2 + 3, invert_probe ? 1:0);
-	this->script_queue.push(buff);
 	
 }
 
