@@ -288,7 +288,7 @@ void ATCHandler::calibrate_anchor1(Gcode *gcode) //M469.1
 	
 	//execute calibration with specific values
 	
-	snprintf(buff, sizeof(buff), "M463 X-20 Y-20 H8 C1 I%i", invert_probe ? 1:0);
+	snprintf(buff, sizeof(buff), "M463 X-20 Y-20 H6 C1 I%i", invert_probe ? 1:0);
 	this->script_queue.push(buff);
 
 	snprintf(buff, sizeof(buff), "M469.6 X%.3f Y%.3f P1", this->anchor1_x , this->anchor1_y);
@@ -339,7 +339,7 @@ void ATCHandler::calibrate_anchor2(Gcode *gcode)//M469.2
 	
 	//execute calibration with specific values
 	
-	snprintf(buff, sizeof(buff), "M463 X-20 Y-20 H8 C1 I%i", invert_probe ? 1:0);
+	snprintf(buff, sizeof(buff), "M463 X-20 Y-20 H6 C1 I%i", invert_probe ? 1:0);
 	this->script_queue.push(buff);
 
 	snprintf(buff, sizeof(buff), "M469.6 X%.3f Y%.3f P2", this->anchor2_offset_x , this->anchor2_offset_y);
