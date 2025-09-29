@@ -135,13 +135,8 @@ void ATCHandler::fill_calibrate_probe_anchor_scripts(bool invert_probe){
 	}
 
 	//print status
-	snprintf(buff, sizeof(buff), ";Confirm that 3 axis probe is in collet\nand anchor 2 is installed\nResume will continue program\n");
+	snprintf(buff, sizeof(buff), ";Confirm that 3 axis probe is in collet\nand anchor 2 is installed\n");
 	this->script_queue.push(buff);
-	
-	//pause
-	snprintf(buff, sizeof(buff), "M600.5");
-	this->script_queue.push(buff);
-
 
 	//move to clearance
 	snprintf(buff, sizeof(buff), "G90 G53 G0 Z%.3f", THEROBOT->from_millimeters(this->clearance_z));
@@ -167,8 +162,6 @@ void ATCHandler::fill_calibrate_probe_anchor_scripts(bool invert_probe){
 	snprintf(buff, sizeof(buff), "M460.2 X%.3f E5 L2 I%i", this->anchor_width, invert_probe ? 1:0);
 	this->script_queue.push(buff);
 
-	snprintf(buff, sizeof(buff), "M462 X%.3f E5 I%i", this->anchor_width/2 + 3, invert_probe ? 1:0);
-	this->script_queue.push(buff);
 	
 }
 
@@ -267,11 +260,7 @@ void ATCHandler::calibrate_anchor1(Gcode *gcode) //M469.1
 	}
 
 	//print status
-	snprintf(buff, sizeof(buff), ";Confirm that a 3 axis probe is in collet\nand anchor 1 is installed and clear\nResume will continue program\n");
-	this->script_queue.push(buff);
-	
-	//pause
-	snprintf(buff, sizeof(buff), "M600.5");
+	snprintf(buff, sizeof(buff), ";Confirm that a 3 axis probe is in collet\nand anchor 1 is installed and clear\n");
 	this->script_queue.push(buff);
 
 
@@ -299,7 +288,7 @@ void ATCHandler::calibrate_anchor1(Gcode *gcode) //M469.1
 	
 	//execute calibration with specific values
 	
-	snprintf(buff, sizeof(buff), "M463 X-20 Y-20 H8 C1 I%i", invert_probe ? 1:0);
+	snprintf(buff, sizeof(buff), "M463 X-20 Y-20 H6 C1 I%i", invert_probe ? 1:0);
 	this->script_queue.push(buff);
 
 	snprintf(buff, sizeof(buff), "M469.6 X%.3f Y%.3f P1", this->anchor1_x , this->anchor1_y);
@@ -325,13 +314,6 @@ void ATCHandler::calibrate_anchor2(Gcode *gcode)//M469.2
 	//print status
 	snprintf(buff, sizeof(buff), ";Confirm that a 3 axis probe is in collet\nand anchor 2 is installed and clear\n");
 	this->script_queue.push(buff);
-	snprintf(buff, sizeof(buff), ";Resume will continue program\n");
-	this->script_queue.push(buff);
-	
-	//pause
-	snprintf(buff, sizeof(buff), "M600.5");
-	this->script_queue.push(buff);
-
 
 	//move to clearance
 	snprintf(buff, sizeof(buff), "G90 G53 G0 Z%.3f", THEROBOT->from_millimeters(this->clearance_z));
@@ -357,7 +339,7 @@ void ATCHandler::calibrate_anchor2(Gcode *gcode)//M469.2
 	
 	//execute calibration with specific values
 	
-	snprintf(buff, sizeof(buff), "M463 X-20 Y-20 H8 C1 I%i", invert_probe ? 1:0);
+	snprintf(buff, sizeof(buff), "M463 X-20 Y-20 H6 C1 I%i", invert_probe ? 1:0);
 	this->script_queue.push(buff);
 
 	snprintf(buff, sizeof(buff), "M469.6 X%.3f Y%.3f P2", this->anchor2_offset_x , this->anchor2_offset_y);
@@ -390,13 +372,8 @@ void ATCHandler::calibrate_a_axis_headstock(Gcode *gcode)//M469.4
 	}
 
 	//print status
-	snprintf(buff, sizeof(buff), ";Confirm that a 3 axis probe is in collet\nand the 4th axis is installed and clear\nResume will continue program\n");
+	snprintf(buff, sizeof(buff), ";Confirm that a 3 axis probe is in collet\nand the 4th axis is installed and clear\n");
 	this->script_queue.push(buff);
-	
-	//pause
-	snprintf(buff, sizeof(buff), "M600.5");
-	this->script_queue.push(buff);
-
 
 	//move to clearance
 	snprintf(buff, sizeof(buff), "G90 G53 G0 Z%.3f", THEROBOT->from_millimeters(this->clearance_z));
@@ -460,13 +437,8 @@ void ATCHandler::calibrate_a_axis_height(Gcode *gcode) //M469.5
 	//print status
 	snprintf(buff, sizeof(buff), ";Confirm that a 3 axis probe is in collet\nand the 4th axis is installed with a pin and clear\n");
 	this->script_queue.push(buff);
-	snprintf(buff, sizeof(buff), ";This code uses variables #116-120\nResume will continue program\n");
+	snprintf(buff, sizeof(buff), ";This code uses variables #116-120\n");
 	this->script_queue.push(buff);
-	
-	//pause
-	snprintf(buff, sizeof(buff), "M600.5");
-	this->script_queue.push(buff);
-
 
 	//move to clearance
 	snprintf(buff, sizeof(buff), "G90 G53 G0 Z%.3f", THEROBOT->from_millimeters(this->clearance_z));
@@ -1866,6 +1838,9 @@ void ATCHandler::on_gcode_received(void *argument)
 				this->script_queue.push(buff);
 
 				atc_status = CALI;
+				// Set TLO calibration flag to disable 3D probe crash detection
+				bool tlo_calibrating = true;
+				PublicData::set_value( zprobe_checksum, set_tlo_calibrating_checksum, &tlo_calibrating );
 				this->fill_cali_scripts(active_tool == 0 || active_tool >= 999990, true);
 
 				THECONVEYOR->wait_for_idle();
@@ -1918,6 +1893,9 @@ void ATCHandler::on_gcode_received(void *argument)
 				set_inner_playing(true);
 				this->clear_script_queue();
 				atc_status = CALI;
+				// Set TLO calibration flag to disable 3D probe crash detection
+				bool tlo_calibrating = true;
+				PublicData::set_value( zprobe_checksum, set_tlo_calibrating_checksum, &tlo_calibrating );
 				this->fill_cali_scripts(active_tool == 0 || active_tool >= 999990, true);
 
 			}
@@ -2317,6 +2295,9 @@ void ATCHandler::on_main_loop(void *argument)
             	this->clear_script_queue();
 
 				this->atc_status = NONE;
+				// Clear TLO calibration flag to re-enable 3D probe crash detection
+				bool tlo_calibrating = false;
+				PublicData::set_value( zprobe_checksum, set_tlo_calibrating_checksum, &tlo_calibrating );
 				set_inner_playing(false);
 				THEKERNEL->set_atc_state(ATC_NONE);
 
@@ -2352,6 +2333,9 @@ void ATCHandler::on_main_loop(void *argument)
 		}
 
         this->atc_status = NONE;
+		// Clear TLO calibration flag to re-enable 3D probe crash detection
+		bool tlo_calibrating = false;
+		PublicData::set_value( zprobe_checksum, set_tlo_calibrating_checksum, &tlo_calibrating );
 
 		set_inner_playing(false);
 

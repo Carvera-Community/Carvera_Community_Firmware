@@ -90,6 +90,7 @@ void ZProbe::on_module_loaded()
     // register event-handlers
     register_for_event(ON_GCODE_RECEIVED);
     register_for_event(ON_GET_PUBLIC_DATA);
+    register_for_event(ON_SET_PUBLIC_DATA);
     register_for_event(ON_MAIN_LOOP);
 
     this->probing_cycle = NONE;
@@ -97,6 +98,7 @@ void ZProbe::on_module_loaded()
     // we read the probe in this timer
     probing = false;
     calibrating = false;
+    tlo_calibrating = false;
     THEKERNEL->slow_ticker->attach(1000, this, &ZProbe::read_probe);
     THEKERNEL->slow_ticker->attach(1000, this, &ZProbe::read_calibrate);
 	if(!(THEKERNEL->factory_set->FuncSetting & (1<<2)))	//Manual Tool change 
@@ -274,7 +276,8 @@ uint32_t ZProbe::read_probe(uint32_t dummy)
         if (this->pin.get() != invert_probe && is_3dprobe_active && !probe_triggered) {
             probe_triggered = true;
             // Set halt state immediately for fast response, defer event processing to main loop
-            if (!probing && !calibrating) {
+            // Disable crash detection during TLO calibration to prevent false positives
+            if (!probing && !calibrating && !tlo_calibrating) {
                 THEKERNEL->set_halt_reason(CRASH_DETECTED);
                 THEKERNEL->set_halted(true);
                 // Set a flag to process the halt event in the main loop
@@ -612,6 +615,7 @@ void ZProbe::on_gcode_received(void *argument)
 
             case 460:
                 if (gcode->subcode == 3) { //calibrate using anchor . Moved to atchandler for cleanliness
+                    parse_parameters(gcode);
                 } else if (gcode->subcode == 2){//calibrate using boss
                     if (!gcode->has_letter('X') && !gcode->has_letter('Y')){ //error if there is a problem
                         gcode->stream->printf("ALARM: Probe fail: No Gague Length\n");
@@ -890,6 +894,22 @@ uint8_t ZProbe::check_probe_tool() {
         return 1;
     }
     return 0;
+}
+
+void ZProbe::set_tlo_calibrating(bool state) {
+    tlo_calibrating = state;
+}
+
+void ZProbe::on_set_public_data(void* argument) {
+    PublicDataRequest* pdr = static_cast<PublicDataRequest*>(argument);
+    
+    if(!pdr->starts_with(zprobe_checksum)) return;
+    
+    if(pdr->second_element_is(set_tlo_calibrating_checksum)) {
+        bool *state = static_cast<bool*>(pdr->get_data_ptr());
+        this->set_tlo_calibrating(*state);
+        pdr->set_taken();
+    }
 }
 
 // just probe / calibrate Z using calibrate pin
@@ -1480,14 +1500,23 @@ void ZProbe::probe_boss(bool calibration) //M462
         probe_y_axis = true;
     }
 
-    param.x_axis_distance = param.x_axis_distance/2 + param.extra_probe_distance;
-    param.y_axis_distance = param.y_axis_distance/2 + param.extra_probe_distance;
+    // Only modify axis distances for axes that are actually being probed
+    if (probe_x_axis) {
+        param.x_axis_distance = param.x_axis_distance/2 + param.extra_probe_distance;
+    }
+    if (probe_y_axis) {
+        param.y_axis_distance = param.y_axis_distance/2 + param.extra_probe_distance;
+    }
 
     if (calibration){
         param.tool_dia = 0;
     }
 
-    if (param.repeat < 1){
+    // When called from calibrate_probe_boss(), don't use repeat loop here
+    // The repeat logic is handled by the calling function
+    int repeat_count = calibration ? 1 : param.repeat;
+    
+    if (repeat_count < 1){
         THEKERNEL->streams->printf("ALARM: Probe fail: repeat value cannot be less than 1\n");
         THEKERNEL->call_event(ON_HALT, nullptr);
         THEKERNEL->set_halt_reason(PROBE_FAIL);
@@ -1517,7 +1546,7 @@ void ZProbe::probe_boss(bool calibration) //M462
     this->out_coords.origin_y = mpos[1];
     this->param.clearance_world_pos = mpos[2]; //test old_mpos[2];
 	//setup repeat
-	for(int i=0; i< param.repeat; i++) {
+	for(int i=0; i< repeat_count; i++) {
         //goto clearance height
         coordinated_move(NAN, NAN, param.clearance_world_pos, param.rapid_rate);
         THECONVEYOR->wait_for_idle();

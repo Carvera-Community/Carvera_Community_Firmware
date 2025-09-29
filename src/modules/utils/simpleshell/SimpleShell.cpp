@@ -958,7 +958,7 @@ void SimpleShell::wlan_command( string parameters, StreamOutput *stream)
         if (ok) {
             char *str = (char *)returned_data;
             stream->printf("%s", str);
-            free(str);
+            AHB.dealloc(str);
         	if (send_eof) {
             	stream->_putc(EOT);
         	}
