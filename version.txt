@@ -1,8 +1,10 @@
+[unreleased]
+- Enhancement: Move G0 at the configured default_seek_rate configured, defaulting to 3000mm/min, unless a Feed parameter is provided. This returns G0 being a rapid movement command.
+
 [v2.0.0c-RC2]
 - Fixed: Scanning wifi scan no longer causes a machine crash
 - Fixed: Probe crash detection would incorrectly trigger with stock ZProbe during TLO calibration 
 - Fixed: Repeat boss probes would probe both X and Y axis even if only probe distance was provided to one.
-
 
 [v2.0.0c-RC1]
 - Enhancement: 3D Probe crash detection
