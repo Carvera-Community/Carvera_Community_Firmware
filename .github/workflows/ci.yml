@@ -4,6 +4,7 @@ name: Carvera Community Firmware Build
 on:
   push:
     tags: ['v*']
+    branches: ['Dev']
   pull_request:
     branches: ['master', 'Dev']
   workflow_dispatch:
@@ -43,6 +44,7 @@ jobs:
 
     outputs:
       version: ${{ steps.set-version.outputs.VERSION }}
+      is-dev-build: ${{ steps.set-version.outputs.IS_DEV_BUILD }}
 
     steps:
       - name: Checkout code
@@ -55,7 +57,16 @@ jobs:
 
       - name: Set VERSION
         id: set-version
-        run: ./.github/scripts/set-version.sh
+        run: |
+          if [[ "${{ github.ref }}" == "refs/heads/Dev" ]]; then
+            VERSION=$(date +'%Y.%m.%d')
+            IS_DEV_BUILD=true
+          else
+            VERSION=$(.github/scripts/set-version.sh | grep VERSION= | cut -d'=' -f2)
+            IS_DEV_BUILD=false
+          fi
+          echo "VERSION=$VERSION" >>"$GITHUB_OUTPUT"
+          echo "IS_DEV_BUILD=$IS_DEV_BUILD" >>"$GITHUB_OUTPUT"
 
       - name: Cache compiler toolchain
         uses: actions/cache@v4
@@ -68,17 +79,22 @@ jobs:
       - name: Build firmware
         run: |
           ./build/build.sh --gcc ${{ env.GCC_VERSION }} --clean VERSION=${{ steps.set-version.outputs.VERSION }}
-          cp LPC1768/main.bin firmware-${{ steps.set-version.outputs.VERSION }}.bin      
-          tar czf firmware-debug-symbols-${{ steps.set-version.outputs.VERSION }}.tar.gz LPC1768/main.elf LPC1768/main.map
+          if [[ "${{ steps.set-version.outputs.IS_DEV_BUILD }}" == "true" ]]; then
+            cp LPC1768/main.bin firmware.bin
+          else
+            cp LPC1768/main.bin firmware-${{ steps.set-version.outputs.VERSION }}.bin      
+            tar czf firmware-debug-symbols-${{ steps.set-version.outputs.VERSION }}.tar.gz LPC1768/main.elf LPC1768/main.map
+          fi
 
       - name: Upload firmware artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: firmware-${{ steps.set-version.outputs.VERSION }}-${{ matrix.arch }}
-          path: firmware-${{ steps.set-version.outputs.VERSION }}.bin
+          name: ${{ steps.set-version.outputs.IS_DEV_BUILD == 'true' && 'firmware-dev' || format('firmware-{0}-{1}', steps.set-version.outputs.VERSION, matrix.arch) }}
+          path: ${{ steps.set-version.outputs.IS_DEV_BUILD == 'true' && 'firmware.bin' || format('firmware-{0}.bin', steps.set-version.outputs.VERSION) }}
           compression-level: 0
           
       - name: Upload debug symbols artifacts
+        if: steps.set-version.outputs.IS_DEV_BUILD == 'false'
         uses: actions/upload-artifact@v4
         with:
           name: firmware-debug-symbols-${{ steps.set-version.outputs.VERSION }}-${{ matrix.arch }}
@@ -112,5 +128,52 @@ jobs:
           files: |
             release-assets/firmware-${{ needs.build.outputs.version }}.bin
             release-assets/firmware-debug-symbols-${{ needs.build.outputs.version }}.tar.gz
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  dev-release:
+    needs: build
+    runs-on: ubuntu-24.04
+    if: github.ref == 'refs/heads/Dev'
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # Delete the old dev release to ensure chronological order
+      - name: Delete old dev release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Check if dev release exists and delete it
+          if gh release view dev --repo ${{ github.repository }} 2>/dev/null; then
+            gh release delete dev --repo ${{ github.repository }} --yes
+          fi
+
+      - name: Download firmware artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: firmware-dev
+          path: release-assets
+
+      - name: Generate dev release notes
+        run: python3 ./.github/scripts/dev_release_notes.py
+
+      - name: Force move 'dev' tag to latest commit on Dev branch
+        run: |
+          git tag -f dev
+          git push origin dev --force
+
+      - name: Create GitHub Dev Release
+        uses: softprops/action-gh-release@v2.2.2
+        with:
+          tag_name: dev
+          body_path: dev-CHANGELOG.md
+          prerelease: true
+          files: |
+            release-assets/firmware.bin
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
