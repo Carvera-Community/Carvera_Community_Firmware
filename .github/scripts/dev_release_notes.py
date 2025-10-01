@@ -19,12 +19,12 @@ def main():
 
 ## What is a Dev Build?
 
-Dev builds are the latest versions of Carvera Community Firmware, automatically compiled after every new commit to the `Dev` branch. This means that each build incorporates the most recent changes and improvements. While these builds offer a glimpse into the ongoing development of Carvera Controller, keep in mind that they are still works in progress and may contain bugs or unstable features.
+Dev builds are the latest versions of Carvera Community Firmware, automatically compiled after every new commit to the `Dev` branch. This means that each build incorporates the most recent changes and improvements. While these builds offer a glimpse into the ongoing development of Carvera Firmware, keep in mind that they are still works in progress and may contain bugs or unstable features.
 
 ## Please Note:
 
 * Dev builds are developmental and may contain bugs.
-* Your feedback is crucial. Please report any issues or suggestions on our GitHub page.
+* Your feedback is crucial. Please report any issues or suggestions on our GitHub page or Discord.
 
 ## Release notes
 The follow changes are present in the dev build:
