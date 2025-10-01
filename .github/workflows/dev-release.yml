@@ -1,0 +1,86 @@
+name: Dev Release
+
+on:
+  push:
+    branches:
+      - Dev
+
+env:
+  GCC_VERSION: 14.2
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set TOOLCHAIN_DIR
+        run: echo "TOOLCHAIN_DIR=$GITHUB_WORKSPACE/toolchain/$GCC_VERSION" >> $GITHUB_ENV
+
+      - name: Cache compiler toolchain
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.TOOLCHAIN_DIR }}
+          key: ${{ runner.os }}-toolchain-gcc-${{ env.GCC_VERSION }}
+          restore-keys: |
+            ${{ runner.os }}-toolchain-gcc-
+
+      - name: Build firmware
+        run: |
+          ./build/build.sh --gcc ${{ env.GCC_VERSION }} --clean VERSION=$(date +'%Y.%m.%d')
+          cp LPC1768/main.bin firmware.bin      
+
+      - name: Upload firmware artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: firmware
+          path: firmware.bin
+          compression-level: 0
+
+  dev-release:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # Delete the old dev release to ensure chronological order
+      - name: Delete old dev release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Check if dev release exists and delete it
+          if gh release view dev --repo ${{ github.repository }} 2>/dev/null; then
+            gh release delete dev --repo ${{ github.repository }} --yes
+          fi
+
+      - name: Download firmware artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: firmware
+          path: release-assets
+
+      - name: Generate dev release notes
+        run: python3 ./.github/scripts/dev_release_notes.py
+
+      - name: Force move 'dev' tag to latest commit on Dev branch
+        run: |
+          git tag -f dev
+          git push origin dev --force
+
+      - name: Create GitHub Dev Release
+        uses: softprops/action-gh-release@v2.2.2
+        with:
+          tag_name: dev
+          body_path: dev-CHANGELOG.md
+          prerelease: true
+          files: |
+            release-assets/firmware.bin
+
