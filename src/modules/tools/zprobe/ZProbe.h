@@ -149,9 +149,11 @@ private:
     uint32_t read_probe(uint32_t dummy);
     uint32_t read_calibrate(uint32_t dummy);
     void on_get_public_data(void* argument);
+    void on_set_public_data(void* argument);
     uint32_t probe_doubleHit(uint32_t dummy);
     void reset_probe_tracking();
     uint8_t check_probe_tool();
+    void set_tlo_calibrating(bool state);
 
     float slow_feedrate;
     float fast_feedrate;
@@ -178,6 +180,7 @@ private:
 
     volatile bool probing;
     volatile bool calibrating;
+    volatile bool tlo_calibrating;
     volatile bool probe_detected;
     volatile bool calibrate_detected;
     volatile bool probe_triggered;
