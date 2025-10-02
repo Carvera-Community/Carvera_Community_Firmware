@@ -57,7 +57,7 @@ jobs:
         id: set-version
         run: |
           if [[ "${{ github.ref }}" == "refs/heads/Dev" ]]; then
-            VERSION=$(date +'%Y.%m.%d')
+            VERSION=$(date +'%Y.%m.%d')c
             IS_DEV_BUILD=true
           else
             VERSION=$(.github/scripts/set-version.sh | grep VERSION= | cut -d'=' -f2)
