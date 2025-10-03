@@ -24,6 +24,7 @@ jobs:
           fetch-depth: 0
           repository: ${{ github.event.pull_request.head.repo.full_name }}
           ref: ${{ github.event.pull_request.head.sha }}
+          token: ${{ secrets.GITHUB_TOKEN }}
       - name: Run all checks
         run: ./.github/scripts/run-checks.sh
         env:
@@ -69,6 +70,7 @@ jobs:
           fetch-depth: 0
           repository: ${{ github.event.pull_request.head.repo.full_name }}
           ref: ${{ github.event.pull_request.head.sha }}
+          token: ${{ secrets.GITHUB_TOKEN }}
       
       - name: Set TOOLCHAIN_DIR
         run: echo "TOOLCHAIN_DIR=$GITHUB_WORKSPACE/toolchain/$GCC_VERSION" >> $GITHUB_ENV
