@@ -69,26 +69,26 @@ jobs:
           ref: ${{ github.event.pull_request.head.ref }}
       
       - name: Set TOOLCHAIN_DIR
-        run: echo "TOOLCHAIN_DIR=$GITHUB_WORKSPACE/toolchain/14.2" >> $GITHUB_ENV
+        run: echo "TOOLCHAIN_DIR=$GITHUB_WORKSPACE/toolchain/$GCC_VERSION" >> $GITHUB_ENV
       
       - name: Cache compiler toolchain
         uses: actions/cache@v4
         with:
           path: ${{ env.TOOLCHAIN_DIR }}
-          key: ${{ matrix.os }}-${{ matrix.arch }}-toolchain-gcc-14.2
+          key: ${{ runner.os }}-${{ runner.arch }}-toolchain-gcc-${{ env.GCC_VERSION }}
           restore-keys: |
-            ${{ matrix.os }}-${{ matrix.arch }}-toolchain-gcc-
+            ${{ runner.os }}-${{ runner.arch }}-toolchain-gcc-
       
       - name: Build firmware (Linux/macOS)
         if: matrix.os != 'windows-2022'
         run: |
-          ./build/build.sh --gcc 14.2 --clean
+          ./build/build.sh --gcc ${{ env.GCC_VERSION }} --clean
       
       - name: Build firmware (Windows)
         if: matrix.os == 'windows-2022'
         shell: pwsh
         run: |
-          ./build/build.ps1 --GccVersion 14.2 --Clean
+          ./build/build.ps1 --GccVersion ${{ env.GCC_VERSION }} --Clean
       
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
@@ -110,7 +110,7 @@ jobs:
           fetch-depth: 0
 
       - name: Set TOOLCHAIN_DIR
-        run: echo "TOOLCHAIN_DIR=$GITHUB_WORKSPACE/toolchain/14.2" >> $GITHUB_ENV
+        run: echo "TOOLCHAIN_DIR=$GITHUB_WORKSPACE/toolchain/$GCC_VERSION" >> $GITHUB_ENV
 
       - name: Set VERSION
         id: set-version
