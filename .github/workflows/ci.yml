@@ -13,7 +13,7 @@ env:
 
 jobs:
   pr-checks:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-24.04-arm
     permissions:
       checks: write
     if: github.event_name == 'pull_request'
@@ -36,8 +36,8 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - runs-on: ubuntu-24.04
-            arch: x86_64
+          - runs-on: ubuntu-24.04-arm
+            arch: arm64
     runs-on: ${{ matrix.runs-on }}
 
     outputs:
@@ -78,7 +78,8 @@ jobs:
         run: |
           ./build/build.sh --gcc ${{ env.GCC_VERSION }} --clean VERSION=${{ steps.set-version.outputs.VERSION }}
           if [[ "${{ steps.set-version.outputs.IS_DEV_BUILD }}" == "true" ]]; then
-            cp LPC1768/main.bin firmware.bin
+            cp LPC1768/main.bin firmware-${{ steps.set-version.outputs.VERSION }}.bin
+            tar czf firmware-debug-symbols-${{ steps.set-version.outputs.VERSION }}.tar.gz LPC1768/main.elf LPC1768/main.map
           else
             cp LPC1768/main.bin firmware-${{ steps.set-version.outputs.VERSION }}.bin      
             tar czf firmware-debug-symbols-${{ steps.set-version.outputs.VERSION }}.tar.gz LPC1768/main.elf LPC1768/main.map
@@ -87,15 +88,14 @@ jobs:
       - name: Upload firmware artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ steps.set-version.outputs.IS_DEV_BUILD == 'true' && 'firmware-dev' || format('firmware-{0}-{1}', steps.set-version.outputs.VERSION, matrix.arch) }}
-          path: ${{ steps.set-version.outputs.IS_DEV_BUILD == 'true' && 'firmware.bin' || format('firmware-{0}.bin', steps.set-version.outputs.VERSION) }}
+          name: ${{ steps.set-version.outputs.IS_DEV_BUILD == 'true' && format('firmware-{0}-dev', steps.set-version.outputs.VERSION) || format('firmware-{0}-{1}', steps.set-version.outputs.VERSION, matrix.arch) }}
+          path: firmware-${{ steps.set-version.outputs.VERSION }}.bin
           compression-level: 0
           
       - name: Upload debug symbols artifacts
-        if: steps.set-version.outputs.IS_DEV_BUILD == 'false'
         uses: actions/upload-artifact@v4
         with:
-          name: firmware-debug-symbols-${{ steps.set-version.outputs.VERSION }}-${{ matrix.arch }}
+          name: ${{ steps.set-version.outputs.IS_DEV_BUILD == 'true' && format('firmware-debug-symbols-{0}-dev', steps.set-version.outputs.VERSION) || format('firmware-debug-symbols-{0}-{1}', steps.set-version.outputs.VERSION, matrix.arch) }}
           path: firmware-debug-symbols-${{ steps.set-version.outputs.VERSION }}.tar.gz
           compression-level: 0
   release:
@@ -109,13 +109,13 @@ jobs:
       - name: Download firmware artifact
         uses: actions/download-artifact@v4
         with:
-          name: firmware-${{ needs.build.outputs.version }}-x86_64
+          name: firmware-${{ needs.build.outputs.version }}-arm64
           path: release-assets
 
       - name: Download debug symbols artifact
         uses: actions/download-artifact@v4
         with:
-          name: firmware-debug-symbols-${{ needs.build.outputs.version }}-x86_64
+          name: firmware-debug-symbols-${{ needs.build.outputs.version }}-arm64
           path: release-assets
 
       - name: Create GitHub Release
@@ -154,7 +154,13 @@ jobs:
       - name: Download firmware artifacts
         uses: actions/download-artifact@v4
         with:
-          name: firmware-dev
+          name: firmware-${{ needs.build.outputs.version }}-dev
+          path: release-assets
+
+      - name: Download debug symbols artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: firmware-debug-symbols-${{ needs.build.outputs.version }}-dev
           path: release-assets
 
       - name: Generate dev release notes
@@ -172,6 +178,7 @@ jobs:
           body_path: dev-CHANGELOG.md
           prerelease: true
           files: |
-            release-assets/firmware.bin
+            release-assets/firmware-${{ needs.build.outputs.version }}.bin
+            release-assets/firmware-debug-symbols-${{ needs.build.outputs.version }}.tar.gz
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
