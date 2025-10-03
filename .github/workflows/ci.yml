@@ -160,7 +160,7 @@ jobs:
       - name: Upload debug symbols artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: firmware-debug-symbols-${{ steps.set-version.outputs.VERSION }}
+          name: firmware-debug-symbols-${{ steps.set-version.outputs.VERSION }}-${{ runner.arch }}
           path: firmware-debug-symbols-${{ steps.set-version.outputs.VERSION }}.tar.gz
           compression-level: 0
   release:
@@ -174,13 +174,13 @@ jobs:
       - name: Download firmware artifact
         uses: actions/download-artifact@v4
         with:
-          name: firmware-${{ needs.build.outputs.version }}-arm64
+          name: firmware-${{ needs.build.outputs.version }}-ARM64
           path: release-assets
 
       - name: Download debug symbols artifact
         uses: actions/download-artifact@v4
         with:
-          name: firmware-debug-symbols-${{ needs.build.outputs.version }}-arm64
+          name: firmware-debug-symbols-${{ needs.build.outputs.version }}-ARM64
           path: release-assets
 
       - name: Create GitHub Release
@@ -195,7 +195,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
   dev-release:
     needs: build
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-24.04-arm
     if: github.ref == 'refs/heads/Dev'
     permissions:
       contents: write
@@ -218,13 +218,13 @@ jobs:
       - name: Download firmware artifacts
         uses: actions/download-artifact@v4
         with:
-          name: firmware-${{ needs.build.outputs.version }}-dev
+          name: firmware-${{ needs.build.outputs.version }}-ARM64
           path: release-assets
 
       - name: Download debug symbols artifacts
         uses: actions/download-artifact@v4
         with:
-          name: firmware-debug-symbols-${{ needs.build.outputs.version }}-dev
+          name: firmware-debug-symbols-${{ needs.build.outputs.version }}-ARM64
           path: release-assets
 
       - name: Generate dev release notes
