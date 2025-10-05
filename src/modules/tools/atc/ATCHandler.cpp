@@ -1858,14 +1858,13 @@ void ATCHandler::on_gcode_received(void *argument)
 				char buff[100];
 				float tolerance = 0.1;
 				if (gcode->has_letter('H')) {
-		    		tolerance = gcode->get_value('H');
+					tolerance = gcode->get_value('H');
 					if (tolerance < 0.02) {
 						THEKERNEL->streams->printf("ERROR: Tool Break Check - tolerance set too small\n");
 						THEKERNEL->call_event(ON_HALT, nullptr);
-        				THEKERNEL->set_halt_reason(CALIBRATE_FAIL);
+						THEKERNEL->set_halt_reason(CALIBRATE_FAIL);
 						return;
 					}
-
 				}
 				//store current TLO
 				float tlo = THEKERNEL->eeprom_data->TLO;
@@ -1930,6 +1929,27 @@ void ATCHandler::on_gcode_received(void *argument)
 				}
 
 			} else {
+				
+				// Handle one-off probe position offsets
+
+				this->probe_oneoff_x = 0.0;
+				this->probe_oneoff_y = 0.0;
+				this->probe_oneoff_z = 0.0;
+				this->probe_oneoff_configured = false;
+
+				if (gcode->has_letter('X')) {
+					this->probe_oneoff_x = gcode->get_value('X');
+					this->probe_oneoff_configured = true;
+				}
+				if (gcode->has_letter('Y')) {
+					this->probe_oneoff_y = gcode->get_value('Y');
+					this->probe_oneoff_configured = true;
+				}
+				if (gcode->has_letter('Z')) {
+					this->probe_oneoff_z = gcode->get_value('Z');
+					this->probe_oneoff_configured = true;
+				}
+
 				// do calibrate
 				THEROBOT->push_state();
 				THEROBOT->get_axis_position(last_pos, 3);
@@ -1982,28 +2002,6 @@ void ATCHandler::on_gcode_received(void *argument)
 			}
 		} else if (gcode->m == 493) {
 			if (gcode->subcode == 0 || gcode->subcode == 1) {
-				// Handle one-off probe position offsets for M493.1
-				if (gcode->has_letter('X')) {
-					this->probe_oneoff_x = gcode->get_value('X');
-					this->probe_oneoff_configured = true;
-				}
-				if (gcode->has_letter('Y')) {
-					this->probe_oneoff_y = gcode->get_value('Y');
-					this->probe_oneoff_configured = true;
-				}
-				if (gcode->has_letter('Z')) {
-					this->probe_oneoff_z = gcode->get_value('Z');
-					this->probe_oneoff_configured = true;
-				}
-				
-				// Clear one-off offsets if no parameters provided
-				if (!gcode->has_letter('X') && !gcode->has_letter('Y') && !gcode->has_letter('Z')) {
-					this->probe_oneoff_x = 0.0;
-					this->probe_oneoff_y = 0.0;
-					this->probe_oneoff_z = 0.0;
-					this->probe_oneoff_configured = false;
-				}
-				
 				if (this->active_tool == 0 || this->active_tool >= 999990){
 					THEROBOT->set_probe_tool_not_calibrated(false);
 				}
