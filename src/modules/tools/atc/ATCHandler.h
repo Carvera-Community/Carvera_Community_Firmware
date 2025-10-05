@@ -172,6 +172,18 @@ private:
     float probe_retract_mm;
     float probe_height_mm;
 
+    // Configurable probe position (absolute Machine Coordinate System)
+    float probe_mcs_x;
+    float probe_mcs_y;
+    float probe_mcs_z;
+    bool probe_position_configured;
+
+    // One-off probe position offsets for M493.1 (temporary offsets for specific tools)
+    float probe_oneoff_x;
+    float probe_oneoff_y;
+    float probe_oneoff_z;
+    bool probe_oneoff_configured;
+
     float last_pos[3];
 
     float anchor1_x;
