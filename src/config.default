@@ -390,6 +390,13 @@ coordinate.toolrack_offset_x 356		# Tool 6 X Offset relative to anchor1
 coordinate.toolrack_offset_y 0.0		# Tool 6 Y Offset relative to anchor1
 coordinate.toolrack_z -112.5			# ATC Z axis machine coordinates
 
+# Tool setter (probe) position in absolute Machine Coordinate System
+# If not set, uses hardcoded values: X=-4.158, Y=-42.568, Z=-157.0 for CARVERA
+# Set these values to configure a custom probe position, leave unset to use defaults
+#coordinate.probe_mcs_x -4.158		# Tool setter X position in MCS (mm)
+#coordinate.probe_mcs_y -42.568		# Tool setter Y position in MCS (mm)  
+#coordinate.probe_mcs_z -157.0		# Tool setter Z position in MCS (mm)
+
 coordinate.rotation_offset_x 3.5		# Rotation module X Offset relative to anchor1
 coordinate.rotation_offset_y 37.5		# Rotation module Y Offset relative to anchor1
 coordinate.rotation_offset_z 23		    # Rotation module Z Offset relative to chuck center
