@@ -965,7 +965,9 @@ void Player::on_set_public_data(void *argument)
     } else if (pdr->second_element_is(restart_job_checksum)) {
     	if (!this->last_filename.empty()) {
     		THEKERNEL->streams->printf("Job restarted: %s.\r\n", this->last_filename.c_str());
-        	this->play_command(this->last_filename, &(StreamOutput::NullStream));
+    		// Quote the filename to handle spaces properly
+    		string quoted_filename = "\"" + this->last_filename + "\"";
+        	this->play_command(quoted_filename, &(StreamOutput::NullStream));
     	}
     }
 }
