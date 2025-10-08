@@ -189,6 +189,11 @@ void Robot::on_module_loaded()
 
 void Robot::load_config()
 {
+    // Check if config cache is available, if not return early to avoid crash
+    if (!THEKERNEL->config->is_config_cache_loaded()) {
+        return;
+    }
+    
     // Arm solutions are used to convert positions in millimeters into position in steps for each stepper motor.
     // While for a cartesian arm solution, this is a simple multiplication, in other, less simple cases, there is some serious math to be done.
     // To make adding those solution easier, they have their own, separate object.
@@ -1438,6 +1443,11 @@ void Robot::process_move(Gcode *gcode, enum MOTION_MODE_T motion_mode)
             this->seek_rate = this->to_millimeters( gcode->get_value('F') );
         else
             this->feed_rate = this->to_millimeters( gcode->get_value('F') );
+    } else if( motion_mode == SEEK ) {
+        // For G0 (SEEK) commands without F parameter, reset to default seek rate
+        if (THEKERNEL->config->is_config_cache_loaded()) {
+            this->seek_rate = THEKERNEL->config->value(default_seek_rate_checksum)->by_default(3000.0F)->as_number();
+        }
     }
 
     if(gcode->has_letter('S')) {
