@@ -4,6 +4,7 @@
 - Enhancement: Tool TLO calibration MCode M491.1 can now be offset with parameters X/Y/Z. This enables probing of tools with off-centre cutting points.
 - Enhancement: M493.4 now shows details about the current tool setter position config
 - Fixed: When probing an angle with the L parameter > 1, it shows the results of each run instead of the average
+- Fixed: M469.4 was probing where the 4th axis module ends and the chuck starts, now it probes 5mm back in X to ensure the 4th axis module body is probed.
 
 [v2.0.0c-RC2]
 - Fixed: Scanning wifi scan no longer causes a machine crash

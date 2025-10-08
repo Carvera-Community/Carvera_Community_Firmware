@@ -195,7 +195,7 @@ private:
     float rotation_offset_x;
     float rotation_offset_y;
     float rotation_offset_z;
-    float rotation_width = 45;
+    float rotation_width = 100;
 
     float toolrack_offset_x;
     float toolrack_offset_y;
