@@ -380,7 +380,8 @@ void ATCHandler::calibrate_a_axis_headstock(Gcode *gcode)//M469.4
 	this->script_queue.push(buff);
 
 	//move to probe position
-	snprintf(buff, sizeof(buff), "G91 G53 G0 X%.3f", this->anchor1_x + this->rotation_offset_x);
+	// rotation_offset_x is where the 4th axis head finishes and the chuck starts. Probing 5mm back from this to ensure it touches the 4th axis module body
+	snprintf(buff, sizeof(buff), "G91 G53 G0 X%.3f", this->anchor1_x + this->rotation_offset_x - 5); 
 	this->script_queue.push(buff);
 	snprintf(buff, sizeof(buff), "G91 G53 G0 Y%.3f", this->anchor1_y + this->rotation_offset_y);
 	this->script_queue.push(buff);
