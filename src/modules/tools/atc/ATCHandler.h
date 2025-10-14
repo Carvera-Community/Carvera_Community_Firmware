@@ -116,6 +116,7 @@ private:
     void calibrate_set_value(Gcode *gcode);
 
     void clear_script_queue();
+    void load_custom_tool_slots();
 
     void rapid_move(bool mc, float x, float y, float z, float a, float b);
     void beep_complete();
@@ -214,7 +215,19 @@ private:
     	float mz_mm;
     };
 
+    struct ToolSlot {
+        int tool_number;
+        float x_mm;
+        float y_mm; 
+        float z_mm;
+        bool enabled;
+        
+        ToolSlot() : tool_number(0), x_mm(0), y_mm(0), z_mm(0), enabled(false) {}
+    };
+
     vector<struct atc_tool> atc_tools;
+    vector<struct ToolSlot> custom_tool_slots;
+    bool use_custom_tool_slots;
 
     int active_tool;
     int target_tool;
