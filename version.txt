@@ -2,6 +2,7 @@
 - Fixed: Scanning wifi scan no longer causes a machine crash
 - Fixed: Probe crash detection would incorrectly trigger with stock ZProbe during TLO calibration 
 - Fixed: Repeat boss probes would probe both X and Y axis even if only probe distance was provided to one.
+- Fixed: Calibrate probe on anchor 2 would hit the bolt cutout
 
 
 [v2.0.0c-RC1]

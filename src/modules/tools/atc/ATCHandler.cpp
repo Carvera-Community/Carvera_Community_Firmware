@@ -143,7 +143,7 @@ void ATCHandler::fill_calibrate_probe_anchor_scripts(bool invert_probe){
 	this->script_queue.push(buff);
 
 	//move to anchor 2 probe position
-	snprintf(buff, sizeof(buff), "G91 G53 G0 X%.3f Y%.3f", this->anchor1_x + this->anchor2_offset_x - this->anchor_width/2, this->anchor1_y + this->anchor2_offset_y + 25);
+	snprintf(buff, sizeof(buff), "G91 G53 G0 X%.3f Y%.3f", this->anchor1_x + this->anchor2_offset_x - this->anchor_width/2, this->anchor1_y + this->anchor2_offset_y + 20);
 	this->script_queue.push(buff);
 	
 	//probe -z
