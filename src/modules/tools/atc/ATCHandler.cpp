@@ -1743,6 +1743,10 @@ void ATCHandler::on_gcode_received(void *argument)
 					THEKERNEL->call_event(ON_HALT, nullptr);
 					THEKERNEL->set_halt_reason(ATC_TOOL_INVALID);
 					gcode->stream->printf("ALARM: Invalid tool: T%d\r\n", new_tool);
+				} else if (this->use_custom_tool_slots && new_tool >= 0 && !this->is_custom_tool_defined(new_tool) && new_tool <= this->tool_number) {
+					THEKERNEL->call_event(ON_HALT, nullptr);
+					THEKERNEL->set_halt_reason(ATC_TOOL_INVALID);
+					gcode->stream->printf("ALARM: Tool T%d not defined in custom tool slots\r\n", new_tool);
 				} else if (new_tool != active_tool) {
 					if (new_tool > -1 && THEKERNEL->get_laser_mode()) {
 						THEKERNEL->streams->printf("ALARM: Can not do ATC in laser mode!\n");
