@@ -1766,7 +1766,7 @@ void ATCHandler::on_gcode_received(void *argument)
 					}
 
 					//drop current tool
-					if (this->active_tool > -1 && this->active_tool <= this->tool_number){ //drop atc tool
+					if (this->active_tool > -1 && (this->is_custom_tool_defined(this->active_tool) || this->active_tool <= this->tool_number)){ //drop atc tool
 						THEKERNEL->streams->printf("Start dropping current tool: T%d\r\n", this->active_tool);
 						// just drop tool
 						atc_status = DROP;
@@ -1784,7 +1784,7 @@ void ATCHandler::on_gcode_received(void *argument)
 						THEKERNEL->streams->printf("Start picking new tool: T%d\r\n", new_tool);
 						atc_status = PICK;
 						this->fill_manual_pickup_scripts(new_tool,true,auto_calibrate,custom_TLO);
-					} else if(new_tool >= 0){ //standard ATC
+					} else if(new_tool >= 0 && (this->is_custom_tool_defined(new_tool) || new_tool <= this->tool_number)){ //standard ATC
 						THEKERNEL->streams->printf("Start picking new tool: T%d\r\n", new_tool);
 						atc_status = PICK;
 						this->fill_pick_scripts(new_tool, true);
