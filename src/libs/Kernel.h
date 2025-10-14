@@ -99,6 +99,7 @@ typedef struct {
 	int TOOL;
 	float G54AB[2];
     float perm_vars[20];
+    float TOOL_DIA;  // Tool diameter for cutter compensation
 } EEPROM_data;
 
 typedef struct {

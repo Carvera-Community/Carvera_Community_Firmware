@@ -50,6 +50,16 @@ class Robot : public Module {
         void set_max_delta(float delta) {max_delta = delta; }
         void  push_state();
         void  pop_state();
+
+        // Cutter compensation types and access methods
+        enum COMPENSATION_SIDE_T {
+            COMPENSATION_NONE,
+            COMPENSATION_LEFT,  // G41
+            COMPENSATION_RIGHT  // G42
+        };
+        bool is_compensation_active() const { return compensation_active; }
+        COMPENSATION_SIDE_T get_compensation_side() const { return comp_side; }
+        float get_compensation_radius() const { return compensation_radius; }
         void check_max_actuator_speeds();
         float to_millimeters( float value ) const { return this->inch_mode ? value * 25.4F : value; }
         float from_millimeters( float value) const { return this->inch_mode ? value/25.4F : value;  }
@@ -94,10 +104,11 @@ class Robot : public Module {
             bool disable_segmentation:1;                      // set to disable segmentation
             bool disable_arm_solution:1;                      // set to disable the arm solution
             bool segment_z_moves:1;
-            bool save_g92:1;                                  // save g92 on M500 if set
-            bool save_g54:1;                                  // save WCS on M500 if set
+            bool save_g92:1;                                 // save g92 on M500 if set
+            bool save_g54:1;                                 // save WCS on M500 if set
             bool is_g123:1;
             bool soft_endstop_enabled:1;
+            bool compensation_active:1;                       // true when cutter compensation active (G41/G42)
             bool soft_endstop_halt:1;
             uint8_t plane_axis_0:2;                           // Current plane ( XY, XZ, YZ )
             uint8_t plane_axis_1:2;
@@ -120,7 +131,16 @@ class Robot : public Module {
         bool compute_arc(Gcode* gcode, const float offset[], const float target[], enum MOTION_MODE_T motion_mode);
         void process_move(Gcode *gcode, enum MOTION_MODE_T);
         bool is_homed(uint8_t i) const;
-
+        
+        // Cutter compensation math helpers
+        void apply_linear_compensation(float target[]);
+        void apply_arc_compensation(float target[], float offset[], bool clockwise);
+        void set_compensation(COMPENSATION_SIDE_T side, float radius) { 
+            compensation_active = (side != COMPENSATION_NONE);
+            comp_side = side;
+            compensation_radius = radius;
+        }
+        
         float theta(float x, float y);
         void select_plane(uint8_t axis_0, uint8_t axis_1, uint8_t axis_2);
         void clearToolOffset();
@@ -156,6 +176,10 @@ class Robot : public Module {
 		*/
         float arc_milestone[3];                              // used as start of an arc command
         float max_delta;
+        
+        // Cutter compensation state
+        COMPENSATION_SIDE_T comp_side{COMPENSATION_NONE};    // Current compensation side (G41/G42)
+        float compensation_radius{0};                        // Current compensation radius for active tool
 
         float laser_module_offset_x;
 		float laser_module_offset_y;

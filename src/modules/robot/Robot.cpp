@@ -135,6 +135,9 @@ Robot::Robot()
     this->disable_segmentation= false;
     this->disable_arm_solution= false;
     this->n_motors= 0;
+    this->compensation_active = false;
+    this->comp_side = COMPENSATION_NONE;
+    this->compensation_radius = 0.0F;
 }
 
 //Called when the module has just been loaded
@@ -409,7 +412,11 @@ void Robot::print_position(uint8_t subcode, std::string& res, bool ignore_extrud
     char buf[64];
     if(subcode == 0) { // M114 print WCS
         wcs_t pos= mcs2wcs(machine_position);
-        n = snprintf(buf, sizeof(buf), "C: X:%1.4f Y:%1.4f Z:%1.4f", from_millimeters(std::get<X_AXIS>(pos)), from_millimeters(std::get<Y_AXIS>(pos)), from_millimeters(std::get<Z_AXIS>(pos)));
+        n = snprintf(buf, sizeof(buf), "C: X:%1.4f Y:%1.4f Z:%1.4f%s", 
+                  from_millimeters(std::get<X_AXIS>(pos)), 
+                  from_millimeters(std::get<Y_AXIS>(pos)), 
+                  from_millimeters(std::get<Z_AXIS>(pos)),
+                  compensation_active ? (comp_side == COMPENSATION_LEFT ? " G41" : " G42") : "");
 
     } else if(subcode == 4) {
         // M114.4 print last milestone
@@ -549,6 +556,36 @@ void Robot::on_gcode_received(void *argument)
             case 1:  motion_mode = LINEAR;  break;
             case 2:  motion_mode = CW_ARC;  break;
             case 3:  motion_mode = CCW_ARC; break;
+            
+            case 40: // G40: Cancel cutter compensation
+                set_compensation(COMPENSATION_NONE, 0);
+                break;
+                
+            case 41: // G41: Cutter compensation left
+            case 42: { // G42: Cutter compensation right
+                // Determine compensation side based on G-code
+                COMPENSATION_SIDE_T side = (gcode->g == 41) ? COMPENSATION_LEFT : COMPENSATION_RIGHT;
+                
+                // Get tool diameter from D word or EEPROM
+                float radius = 0;
+                if (gcode->has_letter('D')) {
+                    // D word specifies tool diameter
+                    float diameter = to_millimeters(gcode->get_value('D'));
+                    radius = diameter * 0.5F;
+                } else if (THEKERNEL->eeprom_data->TOOL_DIA > 0) {
+                    // Use stored diameter from EEPROM if available
+                    radius = THEKERNEL->eeprom_data->TOOL_DIA * 0.5F;
+                } else {
+                    // No diameter specified - disable compensation
+                    side = COMPENSATION_NONE;
+                    THEKERNEL->streams->printf("Warning: No tool diameter for G4%d - compensation disabled\n", gcode->g);
+                }
+                
+                // Enable compensation with calculated radius
+                set_compensation(side, radius);
+                break;
+            }
+            
             case 4: { // G4 Dwell
                 uint32_t delay_ms = 0;
                 if (gcode->has_letter('P')) {
@@ -1157,13 +1194,22 @@ void Robot::process_move(Gcode *gcode, enum MOTION_MODE_T motion_mode)
     memcpy(target, machine_position, n_motors*sizeof(float));
 
     if(!next_command_is_MCS) {
-        if (this->absolute_mode) {
+            if (this->absolute_mode) {
             // apply wcs offsets and g92 offset and tool offset
             if(!isnan(param[X_AXIS])) {
                 target[X_AXIS]= ROUND_NEAR_HALF(param[X_AXIS] + std::get<X_AXIS>(wcs_offsets[current_wcs]) - std::get<X_AXIS>(g92_offset) + std::get<X_AXIS>(tool_offset));
             }
 
-            if(!isnan(param[Y_AXIS])) {
+            // Apply cutter compensation if enabled
+            if(this->compensation_active) {
+                if(motion_mode == LINEAR) {
+                    // For linear moves, adjust the target point
+                    apply_linear_compensation(target);
+                } else if(motion_mode == CW_ARC || motion_mode == CCW_ARC) {
+                    // For arc moves, adjust the I,J offset values directly
+                    apply_arc_compensation(target, offset, motion_mode == CW_ARC);
+                }
+            }            if(!isnan(param[Y_AXIS])) {
                 target[Y_AXIS]= ROUND_NEAR_HALF(param[Y_AXIS] + std::get<Y_AXIS>(wcs_offsets[current_wcs]) - std::get<Y_AXIS>(g92_offset) + std::get<Y_AXIS>(tool_offset));
             }
 
@@ -1996,6 +2042,51 @@ bool Robot::compute_arc(Gcode * gcode, const float offset[], const float target[
     return this->append_arc(gcode, target, offset,  radius, is_clockwise );
 }
 
+// Apply cutter compensation to a linear move by adjusting the target point perpendicular to direction of travel
+void Robot::apply_linear_compensation(float target[]) 
+{
+    // Calculate move vector 
+    float dx = target[X_AXIS] - machine_position[X_AXIS];
+    float dy = target[Y_AXIS] - machine_position[Y_AXIS];
+    float len = hypotf(dx, dy);
+    
+    if (len < 0.00001F) return;  // Skip tiny moves
+    
+    // Compute normal vector (-dy/len, dx/len) which points left of direction
+    float nx = -dy/len;
+    float ny = dx/len;
+    
+    // Apply offset in normal direction (positive=left, negative=right)
+    float comp = (comp_side == COMPENSATION_LEFT ? 1.0F : -1.0F) * compensation_radius;
+    target[X_AXIS] += comp * nx;
+    target[Y_AXIS] += comp * ny;
+}
+
+// Apply cutter compensation to an arc move by adjusting the arc radius via I,J offsets
+void Robot::apply_arc_compensation(float target[], float offset[], bool clockwise) 
+{
+    // Calculate current arc radius from I,J offset
+    float radius = hypotf(offset[0], offset[1]);
+    if (radius < 0.00001F) return;  // Skip if arc degenerates to point
+    
+    // For arcs, we offset the radius based on cutter compensation:
+    // - For G41 (left) and G2 (CW) or G42 (right) and G3 (CCW): add radius
+    // - For G41 (left) and G3 (CCW) or G42 (right) and G2 (CW): subtract radius
+    float comp = (comp_side == COMPENSATION_LEFT ? 1.0F : -1.0F) * compensation_radius;
+    comp = (comp_side == COMPENSATION_LEFT) == clockwise ? comp : -comp;
+    float new_radius = radius + comp;
+    
+    if (new_radius < 0.00001F) {
+        // Arc would collapse - we should really convert this to linear move
+        THEKERNEL->streams->printf("Warning: Arc compensation results in zero radius\n");
+        return;
+    }
+    
+    // Scale I,J offset to new radius to maintain arc center 
+    float scale = new_radius / radius;
+    offset[0] *= scale;
+    offset[1] *= scale;
+}
 
 float Robot::theta(float x, float y)
 {

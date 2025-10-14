@@ -400,6 +400,15 @@ std::string Kernel::get_query_string()
 	    }
         if(n > sizeof(buf)) n= sizeof(buf);
         str.append(buf, n);
+        
+        // Add cutter compensation status
+        if(robot->is_compensation_active()) {
+            // Format is |C:side,radius where side is 1 for left (G41) or 2 for right (G42)
+            int side = (robot->get_compensation_side() == Robot::COMPENSATION_LEFT) ? 1 : 2;
+            n = snprintf(buf, sizeof(buf), "|C:%d,%1.3f", side, robot->get_compensation_radius());
+            if(n > sizeof(buf)) n= sizeof(buf);
+            str.append(buf, n);
+        }
     }
 
     // wireless probe current voltage
