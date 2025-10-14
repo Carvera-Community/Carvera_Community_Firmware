@@ -182,6 +182,19 @@ void ATCHandler::load_custom_tool_slots() {
     }
 }
 
+bool ATCHandler::is_custom_tool_defined(int tool_num) {
+    if (!this->use_custom_tool_slots) {
+        return false;
+    }
+    
+    for (const auto& slot : this->custom_tool_slots) {
+        if (slot.enabled && slot.tool_number == tool_num) {
+            return true;
+        }
+    }
+    return false;
+}
+
 void ATCHandler::fill_calibrate_probe_anchor_scripts(bool invert_probe){
 	THEKERNEL->streams->printf("Calibrating Probe Tip With Anchor 2\n");
 	char buff[100];
@@ -1758,7 +1771,7 @@ void ATCHandler::on_gcode_received(void *argument)
 						// just drop tool
 						atc_status = DROP;
 						this->fill_drop_scripts(active_tool);
-					} else if(this->active_tool > this->tool_number){ //drop manual tool
+					} else if(this->active_tool > this->tool_number && !this->is_custom_tool_defined(this->active_tool)){ //drop manual tool
 						THEKERNEL->streams->printf("Start dropping current tool: T%d\r\n", this->active_tool);
 						// just drop tool
 						atc_status = DROP;
@@ -1767,7 +1780,7 @@ void ATCHandler::on_gcode_received(void *argument)
 
 					//pick up new tool
 					
-					if (new_tool > this->tool_number){ //manual tool
+					if (new_tool > this->tool_number && !this->is_custom_tool_defined(new_tool)){ //manual tool
 						THEKERNEL->streams->printf("Start picking new tool: T%d\r\n", new_tool);
 						atc_status = PICK;
 						this->fill_manual_pickup_scripts(new_tool,true,auto_calibrate,custom_TLO);

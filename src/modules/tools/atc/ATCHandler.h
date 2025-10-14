@@ -117,6 +117,7 @@ private:
 
     void clear_script_queue();
     void load_custom_tool_slots();
+    bool is_custom_tool_defined(int tool_num);
 
     void rapid_move(bool mc, float x, float y, float z, float a, float b);
     void beep_complete();
