@@ -3,7 +3,7 @@
 - Enhancement: Tool setter sensor location can now be configured separately. Use config items coordinate.probe_mcs_x coordinate.probe_mcs_y and coordinate.probe_mcs_z. If unset, the original hardcoded values will be used.
 - Enhancement: Tool TLO calibration MCode M491.1 can now be offset with parameters X/Y/Z. This enables probing of tools with off-centre cutting points.
 - Enhancement: M493.4 now shows details about the current tool setter position config
-- Enhancement: Added capability to configure custom tool slots up to 99. If any tool_slots are defined the machine defaults are ignored. The X/Y/Z MCS centre position is defined per tool. Use tool_slots.T.x, tool_slots.T.y, tool_slots.T.z, tool_slots.T.enable for config, where T is the slot number. Eg for slot 1 `config-set sd tool_slots.1.x -11.450`
+- Enhancement: Added capability to configure custom tool slots up to 99. If any tool_slots are defined the machine defaults are ignored. The X/Y/Z MCS centre position is defined per tool. Use tool_slots.T.x, tool_slots.T.y, tool_slots.T.z for config, where T is the slot number. Eg for slot 1 `config-set sd tool_slots.1.x -11.450`
 - Enhancement: Added M889 to show current tool slot configuration. If no custom tool slots are defined it shows the current stock tool slot config. This is useful for converting the stock slots to custom ones.
 - Fixed: When probing an angle with the L parameter > 1, it shows the results of each run instead of the average
 - Fixed: M469.4 was probing where the 4th axis module ends and the chuck starts, now it probes 5mm back in X to ensure the 4th axis module body is probed.

@@ -141,43 +141,53 @@ void ATCHandler::load_custom_tool_slots() {
     // Clear existing custom tool slots
     this->custom_tool_slots.clear();
     this->use_custom_tool_slots = false;
-    
+
     // Check for custom tool slot configurations
-    // Look for tool_slots.0.enable, tool_slots.1.enable, etc.
-    for (int i = 0; i < 99; i++) { // Check up to 99 custom slots
+    // Look for tool_slots.0.x, tool_slots.1.x, etc. to find defined slots
+    for (int i = 0; i < 99; i++) {
         char config_key[64];
-        snprintf(config_key, sizeof(config_key), "tool_slots.%d.enable", i);
+        snprintf(config_key, sizeof(config_key), "tool_slots.%d.x", i);
         
         uint16_t enable_checksums[3];
         get_checksums(enable_checksums, config_key);
         
-        ConfigValue *enable_cv = THEKERNEL->config->value(enable_checksums);
-        if (enable_cv && enable_cv->as_bool()) {
-            // This slot is enabled, load its configuration
+        ConfigValue *x_cv = THEKERNEL->config->value(enable_checksums);
+        if (x_cv) {
+            // This slot has at least an X coordinate, load its configuration
             ToolSlot slot;
             slot.tool_number = i; // Configuration index is the tool number
-            slot.enabled = true;
+            slot.valid = false;
             
             // Load X coordinate
-            snprintf(config_key, sizeof(config_key), "tool_slots.%d.x", i);
-            get_checksums(enable_checksums, config_key);
-            ConfigValue *x_cv = THEKERNEL->config->value(enable_checksums);
-            slot.x_mm = x_cv ? x_cv->as_number() : 0.0f;
+            slot.x_mm = x_cv->by_default(NAN)->as_number();
             
             // Load Y coordinate
             snprintf(config_key, sizeof(config_key), "tool_slots.%d.y", i);
             get_checksums(enable_checksums, config_key);
             ConfigValue *y_cv = THEKERNEL->config->value(enable_checksums);
-            slot.y_mm = y_cv ? y_cv->as_number() : 0.0f;
+            slot.y_mm = y_cv ? y_cv->by_default(NAN)->as_number() : NAN;
             
             // Load Z coordinate
             snprintf(config_key, sizeof(config_key), "tool_slots.%d.z", i);
             get_checksums(enable_checksums, config_key);
             ConfigValue *z_cv = THEKERNEL->config->value(enable_checksums);
-            slot.z_mm = z_cv ? z_cv->as_number() : 0.0f;
+            slot.z_mm = z_cv ? z_cv->by_default(NAN)->as_number() : NAN;
             
-            this->custom_tool_slots.push_back(slot);
-            this->use_custom_tool_slots = true;
+            // Validate that all coordinates are defined in configuration
+            // Check if all three coordinates were actually loaded from config
+            // A coordinate is considered defined if it's not NAN
+            bool x_defined = !isnan(slot.x_mm);
+            bool y_defined = !isnan(slot.y_mm);
+            bool z_defined = !isnan(slot.z_mm);
+            
+            slot.valid = x_defined && y_defined && z_defined;
+            
+            // Only add slots that have ALL three coordinates defined
+            // This prevents showing slots with partial or no configuration
+            if (slot.valid) {
+                this->custom_tool_slots.push_back(slot);
+                this->use_custom_tool_slots = true;
+            }
         }
     }
 }
@@ -188,12 +198,13 @@ bool ATCHandler::is_custom_tool_defined(int tool_num) {
     }
     
     for (const auto& slot : this->custom_tool_slots) {
-        if (slot.enabled && slot.tool_number == tool_num) {
+        if (slot.valid && slot.tool_number == tool_num) {
             return true;
         }
     }
     return false;
 }
+
 
 void ATCHandler::fill_calibrate_probe_anchor_scripts(bool invert_probe){
 	THEKERNEL->streams->printf("Calibrating Probe Tip With Anchor 2\n");
@@ -1249,6 +1260,7 @@ void ATCHandler::on_config_reload(void *argument)
 	}
 	
 	// Load custom tool slots configuration
+	// Delay loading to ensure system is fully initialized
 	this->load_custom_tool_slots();
 	
 	atc_tools.clear();
@@ -1258,7 +1270,7 @@ void ATCHandler::on_config_reload(void *argument)
 		// Find the maximum tool number to determine array size
 		int max_tool_num = 0;
 		for (const auto& slot : this->custom_tool_slots) {
-			if (slot.enabled && slot.tool_number > max_tool_num) {
+			if (slot.tool_number > max_tool_num) {
 				max_tool_num = slot.tool_number;
 			}
 		}
@@ -1266,9 +1278,9 @@ void ATCHandler::on_config_reload(void *argument)
 		// Resize atc_tools to accommodate the highest tool number
 		atc_tools.resize(max_tool_num + 1);
 		
-		// Set custom configurations
+		// Set custom configurations (only for valid slots)
 		for (const auto& slot : this->custom_tool_slots) {
-			if (slot.enabled && slot.tool_number >= 0 && slot.tool_number <= max_tool_num) {
+			if (slot.valid && slot.tool_number >= 0 && slot.tool_number <= max_tool_num) {
 				atc_tools[slot.tool_number].num = slot.tool_number;
 				atc_tools[slot.tool_number].mx_mm = slot.x_mm;
 				atc_tools[slot.tool_number].my_mm = slot.y_mm;
@@ -2445,7 +2457,7 @@ void ATCHandler::on_gcode_received(void *argument)
 			if (this->use_custom_tool_slots) {
 				gcode->stream->printf("Custom Tool Slots Configuration:\n");
 				for (const auto& slot : this->custom_tool_slots) {
-					if (slot.enabled) {
+					if (slot.valid) {
 						gcode->stream->printf("Tool %d: X=%.3f Y=%.3f Z=%.3f\n", 
 							slot.tool_number, slot.x_mm, slot.y_mm, slot.z_mm);
 					}

@@ -116,8 +116,6 @@ private:
     void calibrate_set_value(Gcode *gcode);
 
     void clear_script_queue();
-    void load_custom_tool_slots();
-    bool is_custom_tool_defined(int tool_num);
 
     void rapid_move(bool mc, float x, float y, float z, float a, float b);
     void beep_complete();
@@ -221,9 +219,9 @@ private:
         float x_mm;
         float y_mm; 
         float z_mm;
-        bool enabled;
+        bool valid;
         
-        ToolSlot() : tool_number(0), x_mm(0), y_mm(0), z_mm(0), enabled(false) {}
+        ToolSlot() : tool_number(0), x_mm(0), y_mm(0), z_mm(0), valid(false) {}
     };
 
     vector<struct atc_tool> atc_tools;
@@ -245,6 +243,10 @@ private:
     float tool_offset;
     int beep_state;
     int beep_count;
+
+    // Custom tool slots functions
+    void load_custom_tool_slots();
+    bool is_custom_tool_defined(int tool_num);
 
 };
 
