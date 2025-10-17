@@ -214,7 +214,19 @@ private:
     	float mz_mm;
     };
 
+    struct ToolSlot {
+        int tool_number;
+        float x_mm;
+        float y_mm; 
+        float z_mm;
+        bool valid;
+        
+        ToolSlot() : tool_number(0), x_mm(0), y_mm(0), z_mm(0), valid(false) {}
+    };
+
     vector<struct atc_tool> atc_tools;
+    vector<struct ToolSlot> custom_tool_slots;
+    bool use_custom_tool_slots;
 
     int active_tool;
     int target_tool;
@@ -231,6 +243,10 @@ private:
     float tool_offset;
     int beep_state;
     int beep_count;
+
+    // Custom tool slots functions
+    void load_custom_tool_slots();
+    bool is_custom_tool_defined(int tool_num);
 
 };
 
