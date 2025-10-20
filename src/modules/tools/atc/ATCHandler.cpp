@@ -465,8 +465,8 @@ void ATCHandler::calibrate_a_axis_height(Gcode *gcode) //M469.5
 		this->script_queue.push(buff);
 		snprintf(buff, sizeof(buff), "G38.3 Z-4 F150");
 		this->script_queue.push(buff);
-	snprintf(buff, sizeof(buff), "#119 = #5023");
-	this->script_queue.push(buff);
+		snprintf(buff, sizeof(buff), "#119 = #5023");
+		this->script_queue.push(buff);
 	} else{
 		snprintf(buff, sizeof(buff), "G38.5 Z-105 F450");
 		this->script_queue.push(buff);
@@ -485,8 +485,8 @@ void ATCHandler::calibrate_a_axis_height(Gcode *gcode) //M469.5
 	if (!invert_probe){
 		snprintf(buff, sizeof(buff), "G38.3 Z-4 F150");
 		this->script_queue.push(buff);
-	snprintf(buff, sizeof(buff), "#118 = #5023");
-	this->script_queue.push(buff);
+		snprintf(buff, sizeof(buff), "#118 = #5023");
+		this->script_queue.push(buff);
 	} else{
 		snprintf(buff, sizeof(buff), "G38.5 Z-4 F150");
 		this->script_queue.push(buff);
@@ -501,8 +501,8 @@ void ATCHandler::calibrate_a_axis_height(Gcode *gcode) //M469.5
 	if (!invert_probe){
 		snprintf(buff, sizeof(buff), "G38.3 Z-4 F150");
 		this->script_queue.push(buff);
-	snprintf(buff, sizeof(buff), "#117 = #5023");
-	this->script_queue.push(buff);
+		snprintf(buff, sizeof(buff), "#117 = #5023");
+		this->script_queue.push(buff);
 	} else{
 		snprintf(buff, sizeof(buff), "G38.5 Z-4 F150");
 		this->script_queue.push(buff);
@@ -517,8 +517,8 @@ void ATCHandler::calibrate_a_axis_height(Gcode *gcode) //M469.5
 	if (!invert_probe){
 		snprintf(buff, sizeof(buff), "G38.3 Z-4 F150");
 		this->script_queue.push(buff);
-	snprintf(buff, sizeof(buff), "#116 = #5023");
-	this->script_queue.push(buff);
+		snprintf(buff, sizeof(buff), "#116 = #5023");
+		this->script_queue.push(buff);
 	} else{
 		snprintf(buff, sizeof(buff), "G38.5 Z-4 F150");
 		this->script_queue.push(buff);
