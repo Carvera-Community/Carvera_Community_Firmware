@@ -89,6 +89,9 @@
 #define clearance_y_checksum		CHECKSUM("clearance_y")
 #define clearance_z_checksum		CHECKSUM("clearance_z")
 #define skip_path_origin_checksum	CHECKSUM("skip_path_origin")
+#define probe_mcs_x_checksum		CHECKSUM("probe_mcs_x")
+#define probe_mcs_y_checksum		CHECKSUM("probe_mcs_y")
+#define probe_mcs_z_checksum		CHECKSUM("probe_mcs_z")
 
 ATCHandler::ATCHandler()
 {
@@ -119,6 +122,13 @@ ATCHandler::ATCHandler()
     position_y = 8888;
     position_a = 88888888;
     position_b = 88888888;
+    
+    // Initialize one-off probe offsets
+    probe_oneoff_x = 0.0;
+    probe_oneoff_y = 0.0;
+    probe_oneoff_z = 0.0;
+    probe_oneoff_configured = false;
+    use_custom_tool_slots = false;
 }
 
 void ATCHandler::clear_script_queue(){
@@ -126,6 +136,75 @@ void ATCHandler::clear_script_queue(){
 		this->script_queue.pop();
 	}
 }
+
+void ATCHandler::load_custom_tool_slots() {
+    // Clear existing custom tool slots
+    this->custom_tool_slots.clear();
+    this->use_custom_tool_slots = false;
+
+    // Check for custom tool slot configurations
+    // Look for tool_slots.0.x, tool_slots.1.x, etc. to find defined slots
+    for (int i = 0; i < 99; i++) {
+        char config_key[64];
+        snprintf(config_key, sizeof(config_key), "tool_slots.%d.x", i);
+        
+        uint16_t enable_checksums[3];
+        get_checksums(enable_checksums, config_key);
+        
+        ConfigValue *x_cv = THEKERNEL->config->value(enable_checksums);
+        if (x_cv) {
+            // This slot has at least an X coordinate, load its configuration
+            ToolSlot slot;
+            slot.tool_number = i; // Configuration index is the tool number
+            slot.valid = false;
+            
+            // Load X coordinate
+            slot.x_mm = x_cv->by_default(NAN)->as_number();
+            
+            // Load Y coordinate
+            snprintf(config_key, sizeof(config_key), "tool_slots.%d.y", i);
+            get_checksums(enable_checksums, config_key);
+            ConfigValue *y_cv = THEKERNEL->config->value(enable_checksums);
+            slot.y_mm = y_cv ? y_cv->by_default(NAN)->as_number() : NAN;
+            
+            // Load Z coordinate
+            snprintf(config_key, sizeof(config_key), "tool_slots.%d.z", i);
+            get_checksums(enable_checksums, config_key);
+            ConfigValue *z_cv = THEKERNEL->config->value(enable_checksums);
+            slot.z_mm = z_cv ? z_cv->by_default(NAN)->as_number() : NAN;
+            
+            // Validate that all coordinates are defined in configuration
+            // Check if all three coordinates were actually loaded from config
+            // A coordinate is considered defined if it's not NAN
+            bool x_defined = !isnan(slot.x_mm);
+            bool y_defined = !isnan(slot.y_mm);
+            bool z_defined = !isnan(slot.z_mm);
+            
+            slot.valid = x_defined && y_defined && z_defined;
+            
+            // Only add slots that have ALL three coordinates defined
+            // This prevents showing slots with partial or no configuration
+            if (slot.valid) {
+                this->custom_tool_slots.push_back(slot);
+                this->use_custom_tool_slots = true;
+            }
+        }
+    }
+}
+
+bool ATCHandler::is_custom_tool_defined(int tool_num) {
+    if (!this->use_custom_tool_slots) {
+        return false;
+    }
+    
+    for (const auto& slot : this->custom_tool_slots) {
+        if (slot.valid && slot.tool_number == tool_num) {
+            return true;
+        }
+    }
+    return false;
+}
+
 
 void ATCHandler::fill_calibrate_probe_anchor_scripts(bool invert_probe){
 	THEKERNEL->streams->printf("Calibrating Probe Tip With Anchor 2\n");
@@ -769,28 +848,40 @@ void ATCHandler::fill_cali_scripts(bool is_probe, bool clear_z) {
 	// move x and y to calibrate position
     if(THEKERNEL->factory_set->FuncSetting & (1<<2))	//ATC 
     {
-		snprintf(buff, sizeof(buff), "G53 G0 X%.3f Y%.3f", THEROBOT->from_millimeters(probe_mx_mm), THEROBOT->from_millimeters(probe_my_mm));
+		// Use one-off offsets if configured, otherwise use standard probe position
+		float probe_x = probe_mx_mm + (this->probe_oneoff_configured ? this->probe_oneoff_x : 0.0);
+		float probe_y = probe_my_mm + (this->probe_oneoff_configured ? this->probe_oneoff_y : 0.0);
+		snprintf(buff, sizeof(buff), "G53 G0 X%.3f Y%.3f", THEROBOT->from_millimeters(probe_x), THEROBOT->from_millimeters(probe_y));
 	}
 	else	//Manual Tool Change
 	{
-		snprintf(buff, sizeof(buff), "G53 G0 X%.3f Y%.3f", THEROBOT->from_millimeters(anchor1_x + 280), THEROBOT->from_millimeters(anchor1_y + 196));
+		// Use one-off offsets if configured, otherwise use standard manual position
+		float probe_x = anchor1_x + 280 + (this->probe_oneoff_configured ? this->probe_oneoff_x : 0.0);
+		float probe_y = anchor1_y + 196 + (this->probe_oneoff_configured ? this->probe_oneoff_y : 0.0);
+		snprintf(buff, sizeof(buff), "G53 G0 X%.3f Y%.3f", THEROBOT->from_millimeters(probe_x), THEROBOT->from_millimeters(probe_y));
 	}
 	this->script_queue.push(buff);
 	// do calibrate with fast speed
     if(THEKERNEL->factory_set->FuncSetting & (1<<2))	//ATC 
     {
-		snprintf(buff, sizeof(buff), "G38.6 Z%.3f F%.3f", probe_mz_mm, probe_fast_rate);
+		// Use one-off Z offset if configured, otherwise use standard probe Z position
+		float probe_z = probe_mz_mm + (this->probe_oneoff_configured ? this->probe_oneoff_z : 0.0);
+		snprintf(buff, sizeof(buff), "G38.6 Z%.3f F%.3f", probe_z, probe_fast_rate);
 	}
 	else	//Manual Tool Change
 	{
-		snprintf(buff, sizeof(buff), "G38.6 Z%.3f F%.3f", toolrack_z, probe_fast_rate);
+		// Use one-off Z offset if configured, otherwise use toolrack Z position
+		float probe_z = toolrack_z + (this->probe_oneoff_configured ? this->probe_oneoff_z : 0.0);
+		snprintf(buff, sizeof(buff), "G38.6 Z%.3f F%.3f", probe_z, probe_fast_rate);
 	}
 	this->script_queue.push(buff);
 	// lift a bit
 	snprintf(buff, sizeof(buff), "G91 G0 Z%.3f", THEROBOT->from_millimeters(probe_retract_mm));
 	this->script_queue.push(buff);
 	// do calibrate with slow speed
-	snprintf(buff, sizeof(buff), "G38.6 Z%.3f F%.3f", -1 - probe_retract_mm, probe_slow_rate);
+	// Use one-off Z offset if configured, otherwise use standard offset
+	float slow_probe_z = -1 - probe_retract_mm + (this->probe_oneoff_configured ? this->probe_oneoff_z : 0.0);
+	snprintf(buff, sizeof(buff), "G38.6 Z%.3f F%.3f", slow_probe_z, probe_slow_rate);
 	this->script_queue.push(buff);
 	// save new tool offset
 	this->script_queue.push("M493.1");
@@ -1153,38 +1244,92 @@ void ATCHandler::on_config_reload(void *argument)
 		this->toolrack_offset_y = THEKERNEL->config->value(coordinate_checksum, toolrack_offset_y_checksum)->by_default(196  )->as_number();
 	}
 	
+	// Load custom tool slots configuration
+	// Delay loading to ensure system is fully initialized
+	this->load_custom_tool_slots();
+	
 	atc_tools.clear();
-	if(THEKERNEL->factory_set->FuncSetting & (1<<3))	//for CE1 expand
-	{
-		for (int i = 0; i <=  8; i ++) {
-			struct atc_tool tool;
-			tool.num = i;
-		    // lift z axis to atc start position
-			snprintf(buff, sizeof(buff), "tool%d", i);
-			tool.mx_mm = this->anchor1_x + this->toolrack_offset_x;
-			tool.my_mm = this->anchor1_y + this->toolrack_offset_y -5 + (i == 0 ? 219 : (8 - i) * 25);
-			tool.mz_mm = this->toolrack_z - 4.5;
-			atc_tools.push_back(tool);
+	
+	// Use custom tool slots if any are enabled, otherwise use default configuration
+	if (this->use_custom_tool_slots) {
+		// Find the maximum tool number to determine array size
+		int max_tool_num = 0;
+		for (const auto& slot : this->custom_tool_slots) {
+			if (slot.tool_number > max_tool_num) {
+				max_tool_num = slot.tool_number;
+			}
 		}
-		probe_mx_mm = this->anchor1_x + this->toolrack_offset_x;
-		probe_my_mm = this->anchor1_y + this->toolrack_offset_y -5 + 197;
-		probe_mz_mm = this->toolrack_z - 44.5;
-	}
-	else
-	{
-		for (int i = 0; i <=  6; i ++) {
-			struct atc_tool tool;
-			tool.num = i;
-		    // lift z axis to atc start position
-			snprintf(buff, sizeof(buff), "tool%d", i);
-			tool.mx_mm = this->anchor1_x + this->toolrack_offset_x;
-			tool.my_mm = this->anchor1_y + this->toolrack_offset_y + (i == 0 ? 210 : (6 - i) * 30);
-			tool.mz_mm = this->toolrack_z;
-			atc_tools.push_back(tool);
+		
+		// Resize atc_tools to accommodate the highest tool number
+		atc_tools.resize(max_tool_num + 1);
+		
+		// Set custom configurations (only for valid slots)
+		for (const auto& slot : this->custom_tool_slots) {
+			if (slot.valid && slot.tool_number >= 0 && slot.tool_number <= max_tool_num) {
+				atc_tools[slot.tool_number].num = slot.tool_number;
+				atc_tools[slot.tool_number].mx_mm = slot.x_mm;
+				atc_tools[slot.tool_number].my_mm = slot.y_mm;
+				atc_tools[slot.tool_number].mz_mm = slot.z_mm;
+			}
 		}
-		probe_mx_mm = this->anchor1_x + this->toolrack_offset_x;
-		probe_my_mm = this->anchor1_y + this->toolrack_offset_y + 180;
-		probe_mz_mm = this->toolrack_z - 40;
+		// Calculate probe position - use configured absolute MCS coordinates if available, otherwise use hardcoded values
+		if (this->probe_position_configured) {
+			probe_mx_mm = isnan(this->probe_mcs_x) ? (this->anchor1_x + this->toolrack_offset_x) : this->probe_mcs_x;
+			probe_my_mm = isnan(this->probe_mcs_y) ? (this->anchor1_y + this->toolrack_offset_y + 180) : this->probe_mcs_y;
+			probe_mz_mm = isnan(this->probe_mcs_z) ? (this->toolrack_z - 40) : this->probe_mcs_z;
+		} else {
+			probe_mx_mm = this->anchor1_x + this->toolrack_offset_x;
+			probe_my_mm = this->anchor1_y + this->toolrack_offset_y + 180;
+			probe_mz_mm = this->toolrack_z - 40;
+		}
+	} else {
+		// Use default tool slot configuration
+		if(THEKERNEL->factory_set->FuncSetting & (1<<3))	//for CE1 expand
+		{
+			for (int i = 0; i <=  8; i ++) {
+				struct atc_tool tool;
+				tool.num = i;
+			    // lift z axis to atc start position
+				snprintf(buff, sizeof(buff), "tool%d", i);
+				tool.mx_mm = this->anchor1_x + this->toolrack_offset_x;
+				tool.my_mm = this->anchor1_y + this->toolrack_offset_y -5 + (i == 0 ? 219 : (8 - i) * 25);
+				tool.mz_mm = this->toolrack_z - 4.5;
+				atc_tools.push_back(tool);
+			}
+			// Calculate probe position - use configured absolute MCS coordinates if available, otherwise use hardcoded values
+			if (this->probe_position_configured) {
+				probe_mx_mm = isnan(this->probe_mcs_x) ? (this->anchor1_x + this->toolrack_offset_x) : this->probe_mcs_x;
+				probe_my_mm = isnan(this->probe_mcs_y) ? (this->anchor1_y + this->toolrack_offset_y -5 + 197) : this->probe_mcs_y;
+				probe_mz_mm = isnan(this->probe_mcs_z) ? (this->toolrack_z - 44.5) : this->probe_mcs_z;
+			} else {
+				probe_mx_mm = this->anchor1_x + this->toolrack_offset_x;
+				probe_my_mm = this->anchor1_y + this->toolrack_offset_y -5 + 197;
+				probe_mz_mm = this->toolrack_z - 44.5;
+			}
+		}
+		else
+		{
+			for (int i = 0; i <=  6; i ++) {
+				struct atc_tool tool;
+				tool.num = i;
+			    // lift z axis to atc start position
+				snprintf(buff, sizeof(buff), "tool%d", i);
+				tool.mx_mm = this->anchor1_x + this->toolrack_offset_x;
+				tool.my_mm = this->anchor1_y + this->toolrack_offset_y + (i == 0 ? 210 : (6 - i) * 30);
+				tool.mz_mm = this->toolrack_z;
+				atc_tools.push_back(tool);
+			}
+			// Calculate probe position - use configured absolute MCS coordinates if available, otherwise use hardcoded values
+			if (this->probe_position_configured) {
+				probe_mx_mm = isnan(this->probe_mcs_x) ? (this->anchor1_x + this->toolrack_offset_x) : this->probe_mcs_x;
+				probe_my_mm = isnan(this->probe_mcs_y) ? (this->anchor1_y + this->toolrack_offset_y + 180) : this->probe_mcs_y;
+				probe_mz_mm = isnan(this->probe_mcs_z) ? (this->toolrack_z - 40) : this->probe_mcs_z;
+			} else {
+				probe_mx_mm = this->anchor1_x + this->toolrack_offset_x;
+				probe_my_mm = this->anchor1_y + this->toolrack_offset_y + 180;
+				probe_mz_mm = this->toolrack_z - 40;
+			}
+		}
 	}
 	
 	if(CARVERA == THEKERNEL->factory_set->MachineModel)
@@ -1210,6 +1355,14 @@ void ATCHandler::on_config_reload(void *argument)
 	this->rotation_width = THEKERNEL->config->value(coordinate_checksum, rotation_width_checksum)->by_default(100 )->as_number();
 
 	this->skip_path_origin = THEKERNEL->config->value(atc_checksum, skip_path_origin_checksum)->by_default(false)->as_bool();
+
+	// Load configurable probe position (absolute MCS coordinates)
+	this->probe_mcs_x = THEKERNEL->config->value(coordinate_checksum, probe_mcs_x_checksum)->by_default(NAN)->as_number();
+	this->probe_mcs_y = THEKERNEL->config->value(coordinate_checksum, probe_mcs_y_checksum)->by_default(NAN)->as_number();
+	this->probe_mcs_z = THEKERNEL->config->value(coordinate_checksum, probe_mcs_z_checksum)->by_default(NAN)->as_number();
+	
+	// Check if probe position is configured (at least one coordinate is set)
+	this->probe_position_configured = !isnan(this->probe_mcs_x) || !isnan(this->probe_mcs_y) || !isnan(this->probe_mcs_z);
 }
 
 void ATCHandler::on_halt(void* argument)
@@ -1587,6 +1740,10 @@ void ATCHandler::on_gcode_received(void *argument)
 					THEKERNEL->call_event(ON_HALT, nullptr);
 					THEKERNEL->set_halt_reason(ATC_TOOL_INVALID);
 					gcode->stream->printf("ALARM: Invalid tool: T%d\r\n", new_tool);
+				} else if (this->use_custom_tool_slots && new_tool >= 0 && !this->is_custom_tool_defined(new_tool) && new_tool <= this->tool_number) {
+					THEKERNEL->call_event(ON_HALT, nullptr);
+					THEKERNEL->set_halt_reason(ATC_TOOL_INVALID);
+					gcode->stream->printf("ALARM: Tool T%d not defined in custom tool slots\r\n", new_tool);
 				} else if (new_tool != active_tool) {
 					if (new_tool > -1 && THEKERNEL->get_laser_mode()) {
 						THEKERNEL->streams->printf("ALARM: Can not do ATC in laser mode!\n");
@@ -1610,12 +1767,12 @@ void ATCHandler::on_gcode_received(void *argument)
 					}
 
 					//drop current tool
-					if (this->active_tool > -1 && this->active_tool <= this->tool_number){ //drop atc tool
+					if (this->active_tool > -1 && (this->is_custom_tool_defined(this->active_tool) || this->active_tool <= this->tool_number)){ //drop atc tool
 						THEKERNEL->streams->printf("Start dropping current tool: T%d\r\n", this->active_tool);
 						// just drop tool
 						atc_status = DROP;
 						this->fill_drop_scripts(active_tool);
-					} else if(this->active_tool > this->tool_number){ //drop manual tool
+					} else if(this->active_tool > this->tool_number && !this->is_custom_tool_defined(this->active_tool)){ //drop manual tool
 						THEKERNEL->streams->printf("Start dropping current tool: T%d\r\n", this->active_tool);
 						// just drop tool
 						atc_status = DROP;
@@ -1624,11 +1781,11 @@ void ATCHandler::on_gcode_received(void *argument)
 
 					//pick up new tool
 					
-					if (new_tool > this->tool_number){ //manual tool
+					if (new_tool > this->tool_number && !this->is_custom_tool_defined(new_tool)){ //manual tool
 						THEKERNEL->streams->printf("Start picking new tool: T%d\r\n", new_tool);
 						atc_status = PICK;
 						this->fill_manual_pickup_scripts(new_tool,true,auto_calibrate,custom_TLO);
-					} else if(new_tool >= 0){ //standard ATC
+					} else if(new_tool >= 0 && (this->is_custom_tool_defined(new_tool) || new_tool <= this->tool_number)){ //standard ATC
 						THEKERNEL->streams->printf("Start picking new tool: T%d\r\n", new_tool);
 						atc_status = PICK;
 						this->fill_pick_scripts(new_tool, true);
@@ -1801,14 +1958,13 @@ void ATCHandler::on_gcode_received(void *argument)
 				char buff[100];
 				float tolerance = 0.1;
 				if (gcode->has_letter('H')) {
-		    		tolerance = gcode->get_value('H');
+					tolerance = gcode->get_value('H');
 					if (tolerance < 0.02) {
 						THEKERNEL->streams->printf("ERROR: Tool Break Check - tolerance set too small\n");
 						THEKERNEL->call_event(ON_HALT, nullptr);
-        				THEKERNEL->set_halt_reason(CALIBRATE_FAIL);
+						THEKERNEL->set_halt_reason(CALIBRATE_FAIL);
 						return;
 					}
-
 				}
 				//store current TLO
 				float tlo = THEKERNEL->eeprom_data->TLO;
@@ -1873,6 +2029,27 @@ void ATCHandler::on_gcode_received(void *argument)
 				}
 
 			} else {
+				
+				// Handle one-off probe position offsets
+
+				this->probe_oneoff_x = 0.0;
+				this->probe_oneoff_y = 0.0;
+				this->probe_oneoff_z = 0.0;
+				this->probe_oneoff_configured = false;
+
+				if (gcode->has_letter('X')) {
+					this->probe_oneoff_x = gcode->get_value('X');
+					this->probe_oneoff_configured = true;
+				}
+				if (gcode->has_letter('Y')) {
+					this->probe_oneoff_y = gcode->get_value('Y');
+					this->probe_oneoff_configured = true;
+				}
+				if (gcode->has_letter('Z')) {
+					this->probe_oneoff_z = gcode->get_value('Z');
+					this->probe_oneoff_configured = true;
+				}
+
 				// do calibrate
 				THEROBOT->push_state();
 				THEROBOT->get_axis_position(last_pos, 3);
@@ -1944,6 +2121,12 @@ void ATCHandler::on_gcode_received(void *argument)
 		        	    THEKERNEL->eeprom_data->TOOL = this->active_tool;
 		        	    THEKERNEL->write_eeprom_data();
 		    		}
+		    		
+		    		// Clear one-off probe offsets when changing tools
+		    		this->probe_oneoff_x = 0.0;
+		    		this->probe_oneoff_y = 0.0;
+		    		this->probe_oneoff_z = 0.0;
+		    		this->probe_oneoff_configured = false;
 
 				} else {
 					THEKERNEL->set_halt_reason(ATC_NO_TOOL);
@@ -1981,6 +2164,16 @@ void ATCHandler::on_gcode_received(void *argument)
 				THEKERNEL->streams->printf("current tool offset [%.3f] , reference tool offset [%.3f]\n",cur_tool_mz,ref_tool_mz);
 			} else if (gcode->subcode == 4) { //report current TLO
 				THEKERNEL->streams->printf("current tool offset [%.3f] , reference tool offset [%.3f]\n",cur_tool_mz,ref_tool_mz);
+				if (this->probe_oneoff_configured) {
+					THEKERNEL->streams->printf("one-off tool setter position offsets: X[%.3f] Y[%.3f] Z[%.3f]\n", this->probe_oneoff_x, this->probe_oneoff_y, this->probe_oneoff_z);
+				} else {
+					THEKERNEL->streams->printf("no one-off tool setter position offsets configured\n");
+				}
+				if (this->probe_position_configured) {
+					THEKERNEL->streams->printf("Tool setter position (MCS): X[%.3f] Y[%.3f] Z[%.3f]\n", this->probe_mcs_x, this->probe_mcs_y, this->probe_mcs_z);
+				} else {
+					THEKERNEL->streams->printf("using default Tool setter position: X[%.3f] Y[%.3f] Z[%.3f]\n", probe_mx_mm, probe_my_mm, probe_mz_mm);
+				}
 			}
 		} else if (gcode->m == 494) {
 			if(THEKERNEL->factory_set->FuncSetting & (1<<2))	//ATC 
@@ -2216,7 +2409,7 @@ void ATCHandler::on_gcode_received(void *argument)
 			}
 			else if (gcode->subcode == 2) 
 			{
-				THEKERNEL->streams->printf("probe -- mx:%1.1f my:%1.1f mz:%1.1f\n", probe_mx_mm, probe_my_mm, probe_mz_mm);
+				THEKERNEL->streams->printf("probe (MCS) -- X:%1.1f Y:%1.1f Z:%1.1f\n", probe_mx_mm, probe_my_mm, probe_mz_mm);
 				for (int i = 0; i <=  tool_number; i ++) {
 					THEKERNEL->streams->printf("tool%d -- mx:%1.1f my:%1.1f mz:%1.1f\n", atc_tools[i].num, atc_tools[i].mx_mm, atc_tools[i].my_mm, atc_tools[i].mz_mm);
 				}
@@ -2244,6 +2437,23 @@ void ATCHandler::on_gcode_received(void *argument)
 		} else if ( gcode->m == 888 ) {
 			THEROBOT->override_homed_check(true);
 			THEKERNEL->streams->printf("Home Check Enabled\n");
+		} else if ( gcode->m == 889 ) {
+			// M889 - Display current tool configuration
+			if (this->use_custom_tool_slots) {
+				gcode->stream->printf("Custom Tool Slots Configuration:\n");
+				for (const auto& slot : this->custom_tool_slots) {
+					if (slot.valid) {
+						gcode->stream->printf("Tool %d: X=%.3f Y=%.3f Z=%.3f\n", 
+							slot.tool_number, slot.x_mm, slot.y_mm, slot.z_mm);
+					}
+				}
+			} else {
+				gcode->stream->printf("Default Tool Slots Configuration:\n");
+				for (const auto& tool : this->atc_tools) {
+					gcode->stream->printf("Tool %d: X=%.3f Y=%.3f Z=%.3f\n", 
+						tool.num, tool.mx_mm, tool.my_mm, tool.mz_mm);
+				}
+			}
 		}
 
     } else if (gcode->has_g && gcode->g == 28 && gcode->subcode == 0) {

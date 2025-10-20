@@ -172,6 +172,18 @@ private:
     float probe_retract_mm;
     float probe_height_mm;
 
+    // Configurable probe position (absolute Machine Coordinate System)
+    float probe_mcs_x;
+    float probe_mcs_y;
+    float probe_mcs_z;
+    bool probe_position_configured;
+
+    // One-off probe position offsets for M493.1 (temporary offsets for specific tools)
+    float probe_oneoff_x;
+    float probe_oneoff_y;
+    float probe_oneoff_z;
+    bool probe_oneoff_configured;
+
     float last_pos[3];
 
     float anchor1_x;
@@ -202,7 +214,19 @@ private:
     	float mz_mm;
     };
 
+    struct ToolSlot {
+        int tool_number;
+        float x_mm;
+        float y_mm; 
+        float z_mm;
+        bool valid;
+        
+        ToolSlot() : tool_number(0), x_mm(0), y_mm(0), z_mm(0), valid(false) {}
+    };
+
     vector<struct atc_tool> atc_tools;
+    vector<struct ToolSlot> custom_tool_slots;
+    bool use_custom_tool_slots;
 
     int active_tool;
     int target_tool;
@@ -219,6 +243,10 @@ private:
     float tool_offset;
     int beep_state;
     int beep_count;
+
+    // Custom tool slots functions
+    void load_custom_tool_slots();
+    bool is_custom_tool_defined(int tool_num);
 
 };
 
