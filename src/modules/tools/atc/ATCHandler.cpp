@@ -520,28 +520,13 @@ void ATCHandler::calibrate_a_axis_height(Gcode *gcode) //M469.5
 	snprintf(buff, sizeof(buff), ";This code uses variables #116-120\n");
 	this->script_queue.push(buff);
 
-	//move to clearance
-	snprintf(buff, sizeof(buff), "G90 G53 G0 Z%.3f", THEROBOT->from_millimeters(this->clearance_z));
+	// First Z probe at anchor position using fill_zprobe_abs_scripts
+	this->fill_zprobe_abs_scripts();
+
+	// Store location to variable
+	snprintf(buff, sizeof(buff), "#120 = #5023");
 	this->script_queue.push(buff);
 
-	//move to probe position
-	snprintf(buff, sizeof(buff), "G91 G53 G0 X%.3f", this->anchor1_x + this->rotation_offset_x);
-	this->script_queue.push(buff);
-	snprintf(buff, sizeof(buff), "G91 G53 G0 Y%.3f", this->anchor1_y + this->rotation_offset_y);
-	this->script_queue.push(buff);
-	
-	//probe -z
-	if (!invert_probe){
-		snprintf(buff, sizeof(buff), "G38.3 Z-105 F450");
-		this->script_queue.push(buff);
-		snprintf(buff, sizeof(buff), "#120 = #5023");
-		this->script_queue.push(buff);
-	} else{
-		snprintf(buff, sizeof(buff), "G38.5 Z-105 F450");
-		this->script_queue.push(buff);
-		snprintf(buff, sizeof(buff), "#120 = #5023");
-		this->script_queue.push(buff);
-	}
 	//move to clearance
 	snprintf(buff, sizeof(buff), "G90 G53 G0 Z%.3f", THEROBOT->from_millimeters(this->clearance_z));
 	this->script_queue.push(buff);
@@ -575,7 +560,7 @@ void ATCHandler::calibrate_a_axis_height(Gcode *gcode) //M469.5
 	this->script_queue.push(buff);
 	snprintf(buff, sizeof(buff), "G91 G0 A90");
 	this->script_queue.push(buff);
-
+	
 	if (!invert_probe){
 		snprintf(buff, sizeof(buff), "G38.3 Z-4 F150");
 		this->script_queue.push(buff);
@@ -591,7 +576,7 @@ void ATCHandler::calibrate_a_axis_height(Gcode *gcode) //M469.5
 	this->script_queue.push(buff);
 	snprintf(buff, sizeof(buff), "G91 G0 A90");
 	this->script_queue.push(buff);
-
+	
 	if (!invert_probe){
 		snprintf(buff, sizeof(buff), "G38.3 Z-4 F150");
 		this->script_queue.push(buff);
@@ -607,7 +592,7 @@ void ATCHandler::calibrate_a_axis_height(Gcode *gcode) //M469.5
 	this->script_queue.push(buff);
 	snprintf(buff, sizeof(buff), "G91 G0 A90");
 	this->script_queue.push(buff);
-
+	
 	if (!invert_probe){
 		snprintf(buff, sizeof(buff), "G38.3 Z-4 F150");
 		this->script_queue.push(buff);
