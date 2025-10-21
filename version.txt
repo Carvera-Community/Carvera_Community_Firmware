@@ -3,7 +3,7 @@
 - Fixed: Probe crash detection would incorrectly trigger with stock ZProbe during TLO calibration 
 - Fixed: Repeat boss probes would probe both X and Y axis even if only probe distance was provided to one.
 - Fixed: Calibrate probe on anchor 2 would hit the bolt cutout
-
+- Fixed: Change to probe tool using the controller would cause a halt
 
 [v2.0.0c-RC1]
 - Enhancement: 3D Probe crash detection

@@ -112,7 +112,7 @@ ATCHandler::ATCHandler()
     {
     	tool_number = 6;
     }
-	max_manual_tool_number = 100000;
+	max_manual_tool_number = 1000000;
     g28_triggered = false;
     goto_position = -1;
     position_x = 8888;
