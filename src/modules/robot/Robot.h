@@ -180,8 +180,8 @@ class Robot : public Module {
         // Cutter compensation state
         COMPENSATION_SIDE_T comp_side{COMPENSATION_NONE};    // Current compensation side (G41/G42)
         float compensation_radius{0};                        // Current compensation radius for active tool
-        float last_direction[2]{0,0};                       // Last move direction for compensation
-        float last_compensation[2]{0,0};                    // Last applied compensation offset
+        float next_target[2]{0,0};                          // Look-ahead target for corner handling
+        bool has_next_move{false};                          // Whether we have a queued next move
 
         float laser_module_offset_x;
 		float laser_module_offset_y;

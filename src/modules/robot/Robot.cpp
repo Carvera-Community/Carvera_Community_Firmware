@@ -138,10 +138,9 @@ Robot::Robot()
     this->compensation_active = false;
     this->comp_side = COMPENSATION_NONE;
     this->compensation_radius = 0.0F;
-    this->last_direction[0] = 0;
-    this->last_direction[1] = 0;
-    this->last_compensation[0] = 0;
-    this->last_compensation[1] = 0;
+    this->next_target[0] = 0;
+    this->next_target[1] = 0;
+    this->has_next_move = false;
 }
 
 //Called when the module has just been loaded
@@ -563,10 +562,9 @@ void Robot::on_gcode_received(void *argument)
             
             case 40: // G40: Cancel cutter compensation
                 set_compensation(COMPENSATION_NONE, 0);
-                last_direction[0] = 0;
-                last_direction[1] = 0;
-                last_compensation[0] = 0;
-                last_compensation[1] = 0;
+                next_target[0] = 0;
+                next_target[1] = 0;
+                has_next_move = false;
                 break;
                 
             case 41: // G41: Cutter compensation left
@@ -2117,59 +2115,95 @@ bool Robot::compute_arc(Gcode * gcode, const float offset[], const float target[
 // Apply cutter compensation to a linear move by adjusting the target point perpendicular to direction of travel
 void Robot::apply_linear_compensation(float target[]) 
 {
-    // First remove any previous compensation from the current position and target
-    float uncompensated_pos[2] = {
-        machine_position[X_AXIS] - last_compensation[0],
-        machine_position[Y_AXIS] - last_compensation[1]
-    };
+    THEKERNEL->streams->printf("Applying compensation for linear motion\n");
+    THEKERNEL->streams->printf("Original target: X%.3f Y%.3f\n", target[X_AXIS], target[Y_AXIS]);
     
-    float raw_target[2] = {
-        target[X_AXIS],
-        target[Y_AXIS]
-    };
-    
-    // Calculate move vector from uncompensated positions
-    float dx = raw_target[0] - uncompensated_pos[0];
-    float dy = raw_target[1] - uncompensated_pos[1];
+    // Calculate move vector
+    float dx = target[X_AXIS] - machine_position[X_AXIS];
+    float dy = target[Y_AXIS] - machine_position[Y_AXIS];
     float len = hypotf(dx, dy);
     
-    if (len < 0.00001F) return;  // Skip tiny moves
-    
-    // Calculate move direction unit vector
-    float dirx = dx/len;
-    float diry = dy/len;
-    
-    // Compare with last direction to see if we need to reapply compensation
-    bool direction_changed = true;  // Default to true for first move
-    
-    if (last_direction[0] != 0 || last_direction[1] != 0) {
-        float dot = dirx * last_direction[0] + diry * last_direction[1];
-        direction_changed = (fabsf(dot) < 0.99999F);  // Allow for small floating point differences
+    if (len < 0.00001F) {
+        THEKERNEL->streams->printf("Move too small, skipping compensation\n");
+        return;  // Skip tiny moves
     }
     
-    if (direction_changed) {
-        THEKERNEL->streams->printf("Direction changed, recalculating compensation\n");
+    // Calculate unit vector components
+    float ux = dx/len;
+    float uy = dy/len;
+    
+    if (has_next_move) {
+        // We have a next move, check if we need corner handling
+        float dx2 = next_target[0] - target[X_AXIS];
+        float dy2 = next_target[1] - target[Y_AXIS];
+        float len2 = hypotf(dx2, dy2);
         
-        // Compute normal vector (-dy/len, dx/len) which points left of direction
-        float nx = -diry;  // Already normalized
-        float ny = dirx;
-        
-        // Calculate new compensation
-        float comp = (comp_side == COMPENSATION_LEFT ? 1.0F : -1.0F) * compensation_radius;
-        last_compensation[0] = comp * nx;
-        last_compensation[1] = comp * ny;
-        
-        // Save new direction
-        last_direction[0] = dirx;
-        last_direction[1] = diry;
+        if (len2 > 0.00001F) {
+            // Calculate unit vectors
+            float ux1 = dx/len, uy1 = dy/len;
+            float ux2 = dx2/len2, uy2 = dy2/len2;
+            
+            // Check if direction changes enough to warrant corner handling
+            float dot = ux1*ux2 + uy1*uy2;
+            if (fabsf(dot) < 0.99999F) {
+                // Direction change detected, handle corner
+                THEKERNEL->streams->printf("Corner detected, calculating intersection\n");
+                
+                // Calculate normal vectors
+                float n1x = -uy1, n1y = ux1;
+                // Note: These normals are used in the final corner calculation
+                float n2x = -uy2;
+                float n2y = ux2;
+                
+                float angle = acosf(dot);
+                float cross = ux1*uy2 - uy1*ux2;
+                bool inside_corner = (cross > 0) == (comp_side == COMPENSATION_LEFT);
+                
+                // Calculate offset magnitude
+                float offset = (comp_side == COMPENSATION_LEFT ? 1.0F : -1.0F) * compensation_radius;
+                if (inside_corner) {
+                    offset /= sinf(angle/2);
+                }
+                
+                // Calculate intersection point
+                float p1x = target[X_AXIS] + offset * n1x;
+                float p1y = target[Y_AXIS] + offset * n1y;
+                
+                target[X_AXIS] = p1x;
+                target[Y_AXIS] = p1y;
+                
+                THEKERNEL->streams->printf("Corner compensation: X%.3f Y%.3f (inside=%d)\n", 
+                    p1x - target[X_AXIS], p1y - target[Y_AXIS], inside_corner);
+                return;
+            }
+        }
     }
     
-    // Apply compensation to target
-    target[X_AXIS] = raw_target[0] + last_compensation[0];
-    target[Y_AXIS] = raw_target[1] + last_compensation[1];
+    // Calculate perpendicular unit vector (normal)
+    // For left compensation: normal is (-uy, ux)
+    // For right compensation: normal is (uy, -ux)
+    float nx = (comp_side == COMPENSATION_LEFT) ? -uy : uy;
+    float ny = (comp_side == COMPENSATION_LEFT) ? ux : -ux;
     
-    THEKERNEL->streams->printf("Compensation vector: X%.3f Y%.3f\n", 
-        last_compensation[0], last_compensation[1]);
+    // Apply the offset
+    float offset = compensation_radius;
+    float dx_comp = offset * nx;
+    float dy_comp = offset * ny;
+    
+    target[X_AXIS] += dx_comp;
+    target[Y_AXIS] += dy_comp;
+    
+    THEKERNEL->streams->printf("Move direction: X%.3f Y%.3f\n", ux, uy);
+    THEKERNEL->streams->printf("Normal vector: X%.3f Y%.3f\n", nx, ny);
+    THEKERNEL->streams->printf("Compensation: X%.3f Y%.3f (offset %.3f)\n", 
+        dx_comp, dy_comp, offset);
+    THEKERNEL->streams->printf("Compensated target: X%.3f Y%.3f\n", 
+        target[X_AXIS], target[Y_AXIS]);
+    
+    // Store this target for next move
+    next_target[0] = target[X_AXIS];
+    next_target[1] = target[Y_AXIS];
+    has_next_move = true;
 }
 
 // Apply cutter compensation to an arc move by adjusting the arc radius via I,J offsets

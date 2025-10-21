@@ -32,32 +32,93 @@ class Robot {
 ```
 
 ## Core Mathematics
-### Linear Moves
+
+The cutter compensation implementation uses a look-ahead approach to properly handle both straight moves and corners. The compensation is calculated in two key situations:
+
+### 1. Linear Moves (Single Vector)
+For straight moves, we calculate a perpendicular offset vector from the current move direction:
+
 ```cpp
-// After computing target[] in MCS:
 void apply_linear_compensation(float *target) {
+    // Calculate move vector
     float dx = target[X_AXIS] - machine_position[X_AXIS];
     float dy = target[Y_AXIS] - machine_position[Y_AXIS];
     float len = sqrt(dx*dx + dy*dy);
     if(len < 0.00001F) return;  // Skip tiny moves
     
+    // Calculate perpendicular vector (normal to direction of travel)
     // Unit normal vector (-dy/len, dx/len) points left of direction
     float nx = -dy/len;
     float ny = dx/len;
-    float offset = (comp_left ? 1 : -1) * cutter_radius;
     
+    // Apply offset in the perpendicular direction
+    float offset = (comp_left ? 1 : -1) * compensation_radius;
     target[X_AXIS] += offset * nx;
     target[Y_AXIS] += offset * ny;
 }
 ```
 
-### Arc Moves
+### 2. Corner Handling (Two Vectors)
+When a corner is detected (next move is available and direction changes), we calculate the intersection of the offset paths:
+
+```cpp
+void handle_corner_compensation(float *current_target, float *next_target) {
+    // Get current move vector
+    float dx1 = current_target[X_AXIS] - machine_position[X_AXIS];
+    float dy1 = current_target[Y_AXIS] - machine_position[Y_AXIS];
+    float len1 = sqrt(dx1*dx1 + dy1*dy1);
+    
+    // Get next move vector
+    float dx2 = next_target[X_AXIS] - current_target[X_AXIS];
+    float dy2 = next_target[Y_AXIS] - current_target[Y_AXIS];
+    float len2 = sqrt(dx2*dx2 + dy2*dy2);
+    
+    if(len1 < 0.00001F || len2 < 0.00001F) return;
+    
+    // Calculate unit vectors
+    float ux1 = dx1/len1, uy1 = dy1/len1;
+    float ux2 = dx2/len2, uy2 = dy2/len2;
+    
+    // Calculate perpendicular vectors (normals)
+    float n1x = -uy1, n1y = ux1;  // Normal to first line
+    float n2x = -uy2, n2y = ux2;  // Normal to second line
+    
+    // Calculate angle between vectors using dot product
+    float dot = ux1*ux2 + uy1*uy2;
+    float angle = acos(dot);
+    
+    // Determine if it's an inside or outside corner
+    float cross = ux1*uy2 - uy1*ux2;
+    bool inside_corner = (cross > 0) == comp_left;
+    
+    // Calculate intersection point of offset lines
+    float offset = (comp_left ? 1 : -1) * compensation_radius;
+    if(inside_corner) {
+        // For inside corners, we need to extend to intersection
+        offset /= sin(angle/2);
+    }
+    
+    // Apply offsets to both line segments
+    float p1x = current_target[X_AXIS] + offset * n1x;
+    float p1y = current_target[Y_AXIS] + offset * n1y;
+    float p2x = current_target[X_AXIS] + offset * n2x;
+    float p2y = current_target[Y_AXIS] + offset * n2y;
+    
+    // Update target to intersection point
+    current_target[X_AXIS] = p1x;
+    current_target[Y_AXIS] = p1y;
+}
+```
+
+### 3. Arc Moves
+For arc moves, we adjust the radius while maintaining the arc center:
+
 ```cpp
 void apply_arc_compensation(float *target, float *offset, bool clockwise) {
     // Compute new arc center by offsetting perpendicular to radius
     float radius = sqrt(offset[0]*offset[0] + offset[1]*offset[1]);
     float direction = (comp_left == clockwise) ? 1 : -1;
-    float new_radius = radius + direction * cutter_radius;
+    float new_radius = radius + direction * compensation_radius;
     
     // Scale I,J offset to new radius
     float scale = new_radius / radius;
