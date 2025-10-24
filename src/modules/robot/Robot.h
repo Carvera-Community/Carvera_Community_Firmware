@@ -18,6 +18,7 @@ using std::string;
 #include "libs/Module.h"
 #include "ActuatorCoordinates.h"
 #include "nuts_bolts.h"
+#include "CompensationPreprocessor.h"
 #include <fastmath.h>
 
 class Gcode;
@@ -139,7 +140,11 @@ class Robot : public Module {
             compensation_active = (side != COMPENSATION_NONE);
             comp_side = side;
             compensation_radius = radius;
+            has_next_move = false;  // Reset look-ahead state
+            compensation_applied = false;  // Reset application state
         }
+        
+        bool compensation_applied;  // Track if compensation has been applied to current move
         
         float theta(float x, float y);
         void select_plane(uint8_t axis_0, uint8_t axis_1, uint8_t axis_2);
@@ -177,11 +182,8 @@ class Robot : public Module {
         float arc_milestone[3];                              // used as start of an arc command
         float max_delta;
         
-        // Cutter compensation state
-        COMPENSATION_SIDE_T comp_side{COMPENSATION_NONE};    // Current compensation side (G41/G42)
-        float compensation_radius{0};                        // Current compensation radius for active tool
-        float next_target[2]{0,0};                          // Look-ahead target for corner handling
-        bool has_next_move{false};                          // Whether we have a queued next move
+        // Cutter compensation handled by preprocessor
+        CompensationPreprocessor comp_preprocessor;
 
         float laser_module_offset_x;
 		float laser_module_offset_y;

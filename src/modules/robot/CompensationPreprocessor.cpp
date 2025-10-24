@@ -1,0 +1,125 @@
+#include "CompensationPreprocessor.h"
+#include "Robot.h"
+#include <cmath>
+
+CompensationPreprocessor::CompensationPreprocessor() 
+    : comp_side(NONE), comp_radius(0) {
+}
+
+void CompensationPreprocessor::enable_compensation(CompSide side, float diameter) {
+    comp_side = side;
+    comp_radius = diameter / 2.0f;
+    move_buffer.clear();
+    THEKERNEL->streams->printf("DBG:CompPrep: Enabled %s compensation, radius=%.3f\n", 
+        side == LEFT ? "LEFT" : "RIGHT", comp_radius);
+}
+
+void CompensationPreprocessor::disable_compensation() {
+    if (comp_side != NONE) {
+        flush_moves();
+        comp_side = NONE;
+        comp_radius = 0;
+        THEKERNEL->streams->printf("DBG:CompPrep: Compensation disabled\n");
+    }
+}
+
+bool CompensationPreprocessor::preprocess_move(Gcode* gcode, float* target, float* position) {
+    if (comp_side == NONE) return false;  // Pass through if compensation not active
+    
+    // Create move record
+    Move move;
+    move.start[0] = position[0];
+    move.start[1] = position[1];
+    move.end[0] = target[0];
+    move.end[1] = target[1];
+    move.is_arc = false;  // TODO: Handle arcs
+    move.line_number = gcode->get_line_number();
+    
+    // Buffer the move
+    buffer_move(move);
+    
+    // Need at least 2 moves to start processing
+    if (move_buffer.size() < 2) {
+        return true;  // Consumed but not ready to output
+    }
+    
+    // Process oldest move in buffer if we have enough context
+    Move& current = move_buffer[0];
+    float output[2];
+    
+    if (move_buffer.size() >= 3) {
+        // We have previous, current, and next moves - handle corners
+        calculate_corner_intersection(move_buffer[0], move_buffer[1], output);
+    } else {
+        // Simple perpendicular offset for the move
+        calculate_line_offset(current, output);
+    }
+    
+    // Update target with compensated position
+    target[0] = output[0];
+    target[1] = output[1];
+    
+    THEKERNEL->streams->printf("DBG:CompPrep: Move #%d offset [%.3f,%.3f] -> [%.3f,%.3f]\n",
+        current.line_number, current.end[0], current.end[1], output[0], output[1]);
+    
+    return true;
+}
+
+void CompensationPreprocessor::calculate_line_offset(const Move& move, float* output) {
+    // Calculate perpendicular offset vector
+    float dx = move.end[0] - move.start[0];
+    float dy = move.end[1] - move.start[1];
+    float len = hypotf(dx, dy);
+    
+    if (len < 0.00001F) {
+        output[0] = move.end[0];
+        output[1] = move.end[1];
+        return;
+    }
+    
+    // Normalize and rotate 90° based on compensation side
+    float scale = comp_radius / len;
+    if (comp_side == LEFT) {
+        output[0] = move.end[0] - dy * scale;
+        output[1] = move.end[1] + dx * scale;
+    } else {
+        output[0] = move.end[0] + dy * scale;
+        output[1] = move.end[1] - dx * scale;
+    }
+}
+
+void CompensationPreprocessor::buffer_move(const Move& move) {
+    move_buffer.push_back(move);
+    print_move(move, "Buffered");
+    
+    // Keep buffer size limited
+    while (move_buffer.size() > LOOKAHEAD_SIZE) {
+        move_buffer.erase(move_buffer.begin());
+    }
+}
+
+void CompensationPreprocessor::flush_moves() {
+    move_buffer.clear();
+}
+
+void CompensationPreprocessor::preprocess_arc_offsets(float offset[2], bool clockwise) {
+    if (comp_side == NONE) return;
+
+    // For arcs, we adjust the radius by modifying the I,J offsets
+    // - For G41 (left) and G2 (CW) or G42 (right) and G3 (CCW): add radius
+    // - For G41 (left) and G3 (CCW) or G42 (right) and G2 (CW): subtract radius
+    bool add_radius = (comp_side == LEFT && clockwise) || (comp_side == RIGHT && !clockwise);
+    float radius_adjustment = add_radius ? comp_radius : -comp_radius;
+
+    // Calculate current radius from I,J
+    float current_radius = hypotf(offset[0], offset[1]);
+    if (current_radius < 0.00001F) return;  // Skip if radius too small
+
+    // Adjust I,J proportionally to change radius
+    float scale = (current_radius + radius_adjustment) / current_radius;
+    offset[0] *= scale;
+    offset[1] *= scale;
+
+    THEKERNEL->streams->printf("DBG:CompPrep: Arc offset adjusted from r=%.3f to r=%.3f\n",
+        current_radius, current_radius + radius_adjustment);
+}

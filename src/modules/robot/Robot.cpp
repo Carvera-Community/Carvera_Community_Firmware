@@ -135,12 +135,7 @@ Robot::Robot()
     this->disable_segmentation= false;
     this->disable_arm_solution= false;
     this->n_motors= 0;
-    this->compensation_active = false;
-    this->comp_side = COMPENSATION_NONE;
-    this->compensation_radius = 0.0F;
-    this->next_target[0] = 0;
-    this->next_target[1] = 0;
-    this->has_next_move = false;
+    // Compensation handled by preprocessor now
 }
 
 //Called when the module has just been loaded
@@ -561,30 +556,23 @@ void Robot::on_gcode_received(void *argument)
             case 3:  motion_mode = CCW_ARC; break;
             
             case 40: // G40: Cancel cutter compensation
-                set_compensation(COMPENSATION_NONE, 0);
-                next_target[0] = 0;
-                next_target[1] = 0;
-                has_next_move = false;
+                set_compensation(CompensationPreprocessor::NONE, 0);
                 break;
                 
             case 41: // G41: Cutter compensation left
             case 42: { // G42: Cutter compensation right
-                // Debug output
-                THEKERNEL->streams->printf("Processing G%d command\n", gcode->g);
+                float diameter = 0;
                 
-                // Validate G-code
-                if(gcode->g != 41 && gcode->g != 42) {
-                    THEKERNEL->streams->printf("Error: Invalid G code %d\n", gcode->g);
-                    return;
+                if (gcode->has_letter('D')) {
+                    diameter = gcode->get_value('D');
+                    if(diameter <= 0) {
+                        THEKERNEL->streams->printf("Error: Tool diameter must be positive\n");
+                        break;
+                    }
+                } else {
+                    THEKERNEL->streams->printf("Error: D word required for G%d\n", gcode->g);
+                    break;
                 }
-
-                // Determine compensation side based on G-code
-                COMPENSATION_SIDE_T side = (gcode->g == 41) ? COMPENSATION_LEFT : COMPENSATION_RIGHT;
-                THEKERNEL->streams->printf("Setting compensation side: %s\n", (gcode->g == 41) ? "LEFT" : "RIGHT");
-                
-                // Get tool diameter from D word or EEPROM
-                float radius = 0;
-                bool valid_diameter = false;
                 
                 if (gcode->has_letter('D')) {
                     THEKERNEL->streams->printf("Found D word\n");
@@ -1254,36 +1242,15 @@ void Robot::process_move(Gcode *gcode, enum MOTION_MODE_T motion_mode)
             }
 
             // Apply cutter compensation if enabled (after WCS but before transforms)
-            if(this->compensation_active) {
-                const char* motion_str = "unknown";
-                if(motion_mode == SEEK) motion_str = "rapid";
-                else if(motion_mode == LINEAR) motion_str = "linear";
-                else if(motion_mode == CW_ARC) motion_str = "CW arc";
-                else if(motion_mode == CCW_ARC) motion_str = "CCW arc";
+            if(comp_preprocessor.is_active()) {
+                // Create move record with current position and target
+                if(!comp_preprocessor.preprocess_move(gcode, target, machine_position)) {
+                    return false;  // Move needs more context, will be processed later
+                }
                 
-                THEKERNEL->streams->printf("Applying compensation for %s motion\n", motion_str);
-
-                // Both G0 and G1 use linear compensation
-                if(motion_mode == SEEK || motion_mode == LINEAR) {
-                    // Show pre-compensation position
-                    THEKERNEL->streams->printf("Original target: X%.3f Y%.3f\n", target[X_AXIS], target[Y_AXIS]);
-                    
-                    // For linear moves, adjust the target point
-                    apply_linear_compensation(target);
-                    
-                    // Show post-compensation position
-                    THEKERNEL->streams->printf("Compensated target: X%.3f Y%.3f (offset %.3f)\n", 
-                        target[X_AXIS], target[Y_AXIS], compensation_radius);
-                        
-                } else if(motion_mode == CW_ARC || motion_mode == CCW_ARC) {
-                    // For arc moves, show pre-compensation values
-                    THEKERNEL->streams->printf("Original arc: center offset I%.3f J%.3f\n", offset[0], offset[1]);
-                    
-                    // Adjust the I,J offset values directly
-                    apply_arc_compensation(target, offset, motion_mode == CW_ARC);
-                    
-                    // Show post-compensation values
-                    THEKERNEL->streams->printf("Compensated arc: center offset I%.3f J%.3f\n", offset[0], offset[1]);
+                // For arc moves, adjust the I,J offsets
+                if(motion_mode == CW_ARC || motion_mode == CCW_ARC) {
+                    comp_preprocessor.preprocess_arc_offsets(offset, motion_mode == CW_ARC);
                 }
             }
 
@@ -2115,8 +2082,16 @@ bool Robot::compute_arc(Gcode * gcode, const float offset[], const float target[
 // Apply cutter compensation to a linear move by adjusting the target point perpendicular to direction of travel
 void Robot::apply_linear_compensation(float target[]) 
 {
-    THEKERNEL->streams->printf("Applying compensation for linear motion\n");
-    THEKERNEL->streams->printf("Original target: X%.3f Y%.3f\n", target[X_AXIS], target[Y_AXIS]);
+    static bool compensation_applied = false;
+    static int move_counter = 1;
+    static int corner_counter = 1;
+    
+    // Only apply compensation once per move
+    if (compensation_applied) {
+        compensation_applied = false;
+        return;
+    }
+    compensation_applied = true;
     
     // Calculate move vector
     float dx = target[X_AXIS] - machine_position[X_AXIS];
@@ -2124,13 +2099,40 @@ void Robot::apply_linear_compensation(float target[])
     float len = hypotf(dx, dy);
     
     if (len < 0.00001F) {
-        THEKERNEL->streams->printf("Move too small, skipping compensation\n");
+        THEKERNEL->streams->printf("DBG:CutterComp: Move length %.6f mm - too small, skipping\n", len);
         return;  // Skip tiny moves
     }
     
-    // Calculate unit vector components
+    THEKERNEL->streams->printf("DBG:CutterComp: Move #%d from [%.3f,%.3f] to [%.3f,%.3f]\n", 
+        move_counter++,
+        machine_position[X_AXIS], machine_position[Y_AXIS],
+        target[X_AXIS], target[Y_AXIS]);
+    
+    // Check if we have a next move queued and vectors have changed enough for corner handling
+    if (has_next_move) {
+        float dx2 = next_target[0] - target[X_AXIS];
+        float dy2 = next_target[1] - target[Y_AXIS];
+        float len2 = hypotf(dx2, dy2);
+        
+        if (len2 > 0.00001F) {
+            // Calculate dot product to check angle between moves
+            float dot = (dx*dx2 + dy*dy2) / (len * len2);
+            if (fabsf(dot) < 0.99F) {  // Angle greater than ~8 degrees
+                THEKERNEL->streams->printf("DBG:CutterComp: Corner detected between moves, angle=%.1f deg\n", 
+                    acosf(dot) * 180.0F / 3.14159F);
+            }
+        }
+    }
     float ux = dx/len;
     float uy = dy/len;
+    
+    // Clean up nearly-zero components to ensure precise perpendicular vectors
+    if (fabsf(ux) < 0.00001F) ux = 0.0F;
+    if (fabsf(uy) < 0.00001F) uy = 0.0F;
+    
+    // Renormalize if needed
+    if (ux == 0.0F) uy = (uy > 0.0F) ? 1.0F : -1.0F;
+    if (uy == 0.0F) ux = (ux > 0.0F) ? 1.0F : -1.0F;
     
     if (has_next_move) {
         // We have a next move, check if we need corner handling
@@ -2147,7 +2149,8 @@ void Robot::apply_linear_compensation(float target[])
             float dot = ux1*ux2 + uy1*uy2;
             if (fabsf(dot) < 0.99999F) {
                 // Direction change detected, handle corner
-                THEKERNEL->streams->printf("Corner detected, calculating intersection\n");
+                THEKERNEL->streams->printf("DBG:CutterComp: Corner #%d - processing angle=%.1f deg\n", 
+                    corner_counter++, acosf(dot) * 180.0F / 3.14159F);
                 
                 // Calculate normal vectors
                 float n1x = -uy1, n1y = ux1;
@@ -2172,18 +2175,30 @@ void Robot::apply_linear_compensation(float target[])
                 target[X_AXIS] = p1x;
                 target[Y_AXIS] = p1y;
                 
-                THEKERNEL->streams->printf("Corner compensation: X%.3f Y%.3f (inside=%d)\n", 
-                    p1x - target[X_AXIS], p1y - target[Y_AXIS], inside_corner);
+                THEKERNEL->streams->printf("DBG:CutterComp: Corner #%d - compensation point [%.3f,%.3f] (%s)\n", 
+                    corner_counter, target[X_AXIS], target[Y_AXIS], inside_corner ? "inside" : "outside");
                 return;
             }
         }
     }
     
     // Calculate perpendicular unit vector (normal)
-    // For left compensation: normal is (-uy, ux)
-    // For right compensation: normal is (uy, -ux)
-    float nx = (comp_side == COMPENSATION_LEFT) ? -uy : uy;
-    float ny = (comp_side == COMPENSATION_LEFT) ? ux : -ux;
+    float nx, ny;
+    
+    if (comp_side == COMPENSATION_LEFT) {
+        nx = -uy;  // Rotate 90 degrees CCW for left compensation
+        ny = ux;
+    } else {
+        nx = uy;   // Rotate 90 degrees CW for right compensation
+        ny = -ux;
+    }
+    
+    // Ensure normal vector is normalized
+    float nlen = hypotf(nx, ny);
+    if (nlen > 0.00001F) {
+        nx /= nlen;
+        ny /= nlen;
+    }
     
     // Apply the offset
     float offset = compensation_radius;
@@ -2193,13 +2208,11 @@ void Robot::apply_linear_compensation(float target[])
     target[X_AXIS] += dx_comp;
     target[Y_AXIS] += dy_comp;
     
-    THEKERNEL->streams->printf("Move direction: X%.3f Y%.3f\n", ux, uy);
-    THEKERNEL->streams->printf("Normal vector: X%.3f Y%.3f\n", nx, ny);
-    THEKERNEL->streams->printf("Compensation: X%.3f Y%.3f (offset %.3f)\n", 
-        dx_comp, dy_comp, offset);
-    THEKERNEL->streams->printf("Compensated target: X%.3f Y%.3f\n", 
-        target[X_AXIS], target[Y_AXIS]);
-    
+    THEKERNEL->streams->printf("DBG:CutterComp: Move vector [%.3f,%.3f] normal [%.3f,%.3f]\n", 
+        ux, uy, nx, ny);
+    THEKERNEL->streams->printf("DBG:CutterComp: Applied offset %.3f -> [%.3f,%.3f]\n", 
+        offset, target[X_AXIS], target[Y_AXIS]);
+
     // Store this target for next move
     next_target[0] = target[X_AXIS];
     next_target[1] = target[Y_AXIS];
