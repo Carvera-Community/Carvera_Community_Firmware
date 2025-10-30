@@ -28,6 +28,7 @@
 #include "EndstopsPublicAccess.h"
 #include "Configurator.h"
 #include "SimpleShell.h"
+#include "modules/robot/CompensationTypes.h"
 #include "TemperatureControlPublicAccess.h"
 #include "LaserPublicAccess.h"
 #include "ATCHandlerPublicAccess.h"
@@ -404,7 +405,7 @@ std::string Kernel::get_query_string()
         // Add cutter compensation status
         if(robot->is_compensation_active()) {
             // Format is |C:side,radius where side is 1 for left (G41) or 2 for right (G42)
-            int side = (robot->get_compensation_side() == Robot::COMPENSATION_LEFT) ? 1 : 2;
+            int side = (robot->get_compensation_side() == Compensation::LEFT) ? 1 : 2;
             n = snprintf(buf, sizeof(buf), "|C:%d,%1.3f", side, robot->get_compensation_radius());
             if(n > sizeof(buf)) n= sizeof(buf);
             str.append(buf, n);
@@ -1033,7 +1034,7 @@ bool Kernel::process_line(const string &buffer, uint16_t *check_sum, unsigned ch
     char* endPtr;
     string sValue = buffer.substr(begin_value, vsize);
     *value = std::strtol(sValue.c_str(), &endPtr, 10);
-    
+    return true;  // Default to success
 }
 
 

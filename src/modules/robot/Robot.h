@@ -18,8 +18,11 @@ using std::string;
 #include "libs/Module.h"
 #include "ActuatorCoordinates.h"
 #include "nuts_bolts.h"
-#include "CompensationPreprocessor.h"
 #include <fastmath.h>
+#include "CompensationTypes.h"
+
+// Forward declarations
+class CompensationPreprocessor;
 
 class Gcode;
 class BaseSolution;
@@ -32,6 +35,7 @@ class Robot : public Module {
     public:
         using wcs_t= std::tuple<float, float, float, float, float>;
         Robot();
+        virtual ~Robot();
         void on_module_loaded();
         void on_gcode_received(void* argument);
 
@@ -52,12 +56,8 @@ class Robot : public Module {
         void  push_state();
         void  pop_state();
 
-        // Cutter compensation types and access methods
-        enum COMPENSATION_SIDE_T {
-            COMPENSATION_NONE,
-            COMPENSATION_LEFT,  // G41
-            COMPENSATION_RIGHT  // G42
-        };
+        // Use CompensationPreprocessor's enum for consistency
+        using COMPENSATION_SIDE_T = Compensation::Side;
         bool is_compensation_active() const { return compensation_active; }
         COMPENSATION_SIDE_T get_compensation_side() const { return comp_side; }
         float get_compensation_radius() const { return compensation_radius; }
@@ -109,7 +109,6 @@ class Robot : public Module {
             bool save_g54:1;                                 // save WCS on M500 if set
             bool is_g123:1;
             bool soft_endstop_enabled:1;
-            bool compensation_active:1;                       // true when cutter compensation active (G41/G42)
             bool soft_endstop_halt:1;
             uint8_t plane_axis_0:2;                           // Current plane ( XY, XZ, YZ )
             uint8_t plane_axis_1:2;
@@ -137,7 +136,7 @@ class Robot : public Module {
         void apply_linear_compensation(float target[]);
         void apply_arc_compensation(float target[], float offset[], bool clockwise);
         void set_compensation(COMPENSATION_SIDE_T side, float radius) { 
-            compensation_active = (side != COMPENSATION_NONE);
+            compensation_active = (side != Compensation::NONE);
             comp_side = side;
             compensation_radius = radius;
             has_next_move = false;  // Reset look-ahead state
@@ -182,8 +181,14 @@ class Robot : public Module {
         float arc_milestone[3];                              // used as start of an arc command
         float max_delta;
         
+        // Cutter compensation variables
+        COMPENSATION_SIDE_T comp_side{Compensation::NONE};    // Current compensation side
+        float compensation_radius{0.0f};                     // Current compensation radius
+        bool has_next_move{false};                          // Track if we have look-ahead info
+        bool compensation_active{false};                     // True when cutter compensation active (G41/G42)
+        
         // Cutter compensation handled by preprocessor
-        CompensationPreprocessor comp_preprocessor;
+        CompensationPreprocessor* comp_preprocessor;
 
         float laser_module_offset_x;
 		float laser_module_offset_y;
@@ -199,6 +204,12 @@ class Robot : public Module {
         float max_speed;                                     // Setting : maximum feedrate in mm/s as specified by F parameter
 
         float soft_endstop_min[3], soft_endstop_max[3];
+        
+        // Compensation state variables
+        float radius{0};
+        bool valid_diameter{false};
+        float next_target[2]{0,0};  // For look-ahead compensation
+        COMPENSATION_SIDE_T side{Compensation::NONE};
 
         uint8_t n_motors;                                    //count of the motors/axis registered
 

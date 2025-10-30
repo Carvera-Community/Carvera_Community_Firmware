@@ -4,16 +4,16 @@
 #include <vector>
 #include "libs/Module.h"
 #include "libs/Kernel.h"
-#include "Robot.h"
-#include "Gcode.h"
+#include "libs/StreamOutputPool.h"
+#include "libs/StreamOutput.h"
+#include "modules/communication/utils/Gcode.h"
+#include "CompensationTypes.h"
+
+class Robot; // Forward declaration instead of including Robot.h
 
 class CompensationPreprocessor {
 public:
-    enum CompSide {
-        NONE,
-        LEFT,   // G41
-        RIGHT   // G42
-    };
+    using CompSide = Compensation::Side;
 
     struct Move {
         float start[2];  // XY start position
@@ -33,7 +33,10 @@ public:
     // Compensation control
     void enable_compensation(CompSide side, float diameter);
     void disable_compensation();
-    bool is_active() const { return comp_side != NONE; }
+    bool is_active() const { return comp_side != Compensation::NONE; }
+
+    // Preprocessing methods
+    void preprocess_arc_offsets(float offset[2], bool clockwise);
 
 private:
     // Move buffer for lookahead
@@ -48,7 +51,6 @@ private:
     void calculate_line_offset(const Move& move, float* output);
     void calculate_arc_offset(const Move& move, float* output);
     bool check_arc_validity(const Move& move);
-    void calculate_corner_intersection(const Move& prev, const Move& next, float* output);
     
     // Buffer management
     void buffer_move(const Move& move);
@@ -64,5 +66,5 @@ private:
     void print_move(const Move& move, const char* prefix) const;
     
     // Handle arc move I,J offset adjustments
-    void preprocess_arc_offsets(float offset[2], bool clockwise);
+    // Moved to public section
 };

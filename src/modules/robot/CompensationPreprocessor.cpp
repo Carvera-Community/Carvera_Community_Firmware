@@ -1,9 +1,11 @@
 #include "CompensationPreprocessor.h"
 #include "Robot.h"
+#include "libs/StreamOutputPool.h"
+#include "libs/Kernel.h"
 #include <cmath>
 
 CompensationPreprocessor::CompensationPreprocessor() 
-    : comp_side(NONE), comp_radius(0) {
+     : comp_side(Compensation::NONE), comp_radius(0) {
 }
 
 void CompensationPreprocessor::enable_compensation(CompSide side, float diameter) {
@@ -11,31 +13,28 @@ void CompensationPreprocessor::enable_compensation(CompSide side, float diameter
     comp_radius = diameter / 2.0f;
     move_buffer.clear();
     THEKERNEL->streams->printf("DBG:CompPrep: Enabled %s compensation, radius=%.3f\n", 
-        side == LEFT ? "LEFT" : "RIGHT", comp_radius);
+         side == Compensation::LEFT ? "LEFT" : "RIGHT", comp_radius);
 }
 
 void CompensationPreprocessor::disable_compensation() {
-    if (comp_side != NONE) {
+     if (comp_side != Compensation::NONE) {
         flush_moves();
-        comp_side = NONE;
+        comp_side = Compensation::NONE;
         comp_radius = 0;
         THEKERNEL->streams->printf("DBG:CompPrep: Compensation disabled\n");
     }
 }
 
 bool CompensationPreprocessor::preprocess_move(Gcode* gcode, float* target, float* position) {
-    if (comp_side == NONE) return false;  // Pass through if compensation not active
-    
-    // Create move record
+     if (comp_side == Compensation::NONE) return false;  // Pass through if compensation not active    // Create move record
     Move move;
     move.start[0] = position[0];
     move.start[1] = position[1];
     move.end[0] = target[0];
     move.end[1] = target[1];
     move.is_arc = false;  // TODO: Handle arcs
-    move.line_number = gcode->get_line_number();
-    
-    // Buffer the move
+     // Store line number if available from M code
+     move.line_number = (gcode->m > 0) ? gcode->m : 0;    // Buffer the move
     buffer_move(move);
     
     // Need at least 2 moves to start processing
@@ -49,7 +48,7 @@ bool CompensationPreprocessor::preprocess_move(Gcode* gcode, float* target, floa
     
     if (move_buffer.size() >= 3) {
         // We have previous, current, and next moves - handle corners
-        calculate_corner_intersection(move_buffer[0], move_buffer[1], output);
+        calculate_intersection(move_buffer[0], move_buffer[1], output);
     } else {
         // Simple perpendicular offset for the move
         calculate_line_offset(current, output);
@@ -79,7 +78,7 @@ void CompensationPreprocessor::calculate_line_offset(const Move& move, float* ou
     
     // Normalize and rotate 90° based on compensation side
     float scale = comp_radius / len;
-    if (comp_side == LEFT) {
+     if (comp_side == Compensation::LEFT) {
         output[0] = move.end[0] - dy * scale;
         output[1] = move.end[1] + dx * scale;
     } else {
@@ -98,17 +97,27 @@ void CompensationPreprocessor::buffer_move(const Move& move) {
     }
 }
 
+void CompensationPreprocessor::print_move(const Move& move, const char* prefix) const {
+    THEKERNEL->streams->printf("DBG:CompPrep: %s move #%d [%.3f,%.3f] -> [%.3f,%.3f]\n",
+        prefix, move.line_number, 
+        move.start[0], move.start[1],
+        move.end[0], move.end[1]);
+    if (move.is_arc) {
+        THEKERNEL->streams->printf("DBG:CompPrep: Arc center [%.3f,%.3f] radius=%.3f %s\n",
+            move.center[0], move.center[1], move.radius,
+            move.clockwise ? "CW" : "CCW");
+    }
+}
+
 void CompensationPreprocessor::flush_moves() {
     move_buffer.clear();
 }
 
 void CompensationPreprocessor::preprocess_arc_offsets(float offset[2], bool clockwise) {
-    if (comp_side == NONE) return;
-
-    // For arcs, we adjust the radius by modifying the I,J offsets
+     if (comp_side == Compensation::NONE) return;    // For arcs, we adjust the radius by modifying the I,J offsets
     // - For G41 (left) and G2 (CW) or G42 (right) and G3 (CCW): add radius
     // - For G41 (left) and G3 (CCW) or G42 (right) and G2 (CW): subtract radius
-    bool add_radius = (comp_side == LEFT && clockwise) || (comp_side == RIGHT && !clockwise);
+     bool add_radius = (comp_side == Compensation::LEFT && clockwise) || (comp_side == Compensation::RIGHT && !clockwise);
     float radius_adjustment = add_radius ? comp_radius : -comp_radius;
 
     // Calculate current radius from I,J

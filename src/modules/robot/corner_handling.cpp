@@ -1,3 +1,8 @@
+#include "CompensationPreprocessor.h"
+#include "libs/Kernel.h"
+#include "StreamOutputPool.h"
+#include <cmath>
+
 void CompensationPreprocessor::calculate_corner(const Move& prev, const Move& current, const Move& next, float* output) {
     // Calculate unit vectors for both moves
     float dx1 = current.end[0] - current.start[0];
@@ -60,7 +65,7 @@ bool CompensationPreprocessor::is_inside_corner(const Move& prev, const Move& ne
     float dy2 = prev.end[1] - prev.start[1];
     
     float cross = dx1*dy2 - dy1*dx2;
-    return (cross > 0) == (comp_side == LEFT);
+     return (cross > 0) == (comp_side == Compensation::LEFT);
 }
 
 void CompensationPreprocessor::calculate_intersection(const Move& line1, const Move& line2, float* output) {
@@ -71,7 +76,7 @@ void CompensationPreprocessor::calculate_intersection(const Move& line1, const M
     float dy2 = line2.end[1] - line2.start[1];
     
     // Calculate offset vectors (perpendicular)
-    float scale = (comp_side == LEFT) ? comp_radius : -comp_radius;
+     float scale = (comp_side == Compensation::LEFT) ? comp_radius : -comp_radius;
     float ox1 = -dy1 * scale;
     float oy1 = dx1 * scale;
     float ox2 = -dy2 * scale;
