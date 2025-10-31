@@ -5,6 +5,7 @@ using namespace std;
 #include "Module.h"
 #include <vector>
 #include <queue>
+#include <cstdint>
 #include "Pin.h"
 #include "Gcode.h"
 
@@ -208,10 +209,18 @@ private:
     bool skip_path_origin;
 
     struct atc_tool {
-    	int num;
-    	float mx_mm;
-    	float my_mm;
-    	float mz_mm;
+    	short int num;
+    	int16_t mx_mm;  // Stored as 0.01mm units (e.g., -25000 = -250.00mm)
+    	int16_t my_mm;  // Stored as 0.01mm units
+    	int16_t mz_mm;  // Stored as 0.01mm units
+    	
+    	// Helper functions to convert to/from float (in millimeters)
+    	float get_mx_mm() const { return mx_mm / 100.0f; }
+    	float get_my_mm() const { return my_mm / 100.0f; }
+    	float get_mz_mm() const { return mz_mm / 100.0f; }
+    	void set_mx_mm(float val) { mx_mm = (int16_t)(val * 100.0f + (val >= 0 ? 0.5f : -0.5f)); }
+    	void set_my_mm(float val) { my_mm = (int16_t)(val * 100.0f + (val >= 0 ? 0.5f : -0.5f)); }
+    	void set_mz_mm(float val) { mz_mm = (int16_t)(val * 100.0f + (val >= 0 ? 0.5f : -0.5f)); }
     };
 
     struct ToolSlot {

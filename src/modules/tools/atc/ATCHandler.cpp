@@ -758,18 +758,18 @@ void ATCHandler::fill_drop_scripts(int old_tool) {
 	snprintf(buff, sizeof(buff), "G53 G0 Z%.3f", THEROBOT->from_millimeters(this->clearance_z));
 	this->script_queue.push(buff);
     // move x and y to active tool position
-	snprintf(buff, sizeof(buff), "G53 G0 X%.3f Y%.3f", THEROBOT->from_millimeters(current_tool->mx_mm), THEROBOT->from_millimeters(current_tool->my_mm));
+	snprintf(buff, sizeof(buff), "G53 G0 X%.3f Y%.3f", THEROBOT->from_millimeters(current_tool->get_mx_mm()), THEROBOT->from_millimeters(current_tool->get_my_mm()));
 	this->script_queue.push(buff);
 	// move around to see if tool rack is empty
 	this->script_queue.push("M492.2");
     // move x and y to reseted tool position
-	snprintf(buff, sizeof(buff), "G53 G0 X%.3f Y%.3f", THEROBOT->from_millimeters(current_tool->mx_mm), THEROBOT->from_millimeters(current_tool->my_mm));
+	snprintf(buff, sizeof(buff), "G53 G0 X%.3f Y%.3f", THEROBOT->from_millimeters(current_tool->get_mx_mm()), THEROBOT->from_millimeters(current_tool->get_my_mm()));
 	this->script_queue.push(buff);
     // drop z axis to z position with fast speed
-	snprintf(buff, sizeof(buff), "G53 G1 Z%.3f F%.3f", THEROBOT->from_millimeters(current_tool->mz_mm + safe_z_offset_mm), THEROBOT->from_millimeters(fast_z_rate));
+	snprintf(buff, sizeof(buff), "G53 G1 Z%.3f F%.3f", THEROBOT->from_millimeters(current_tool->get_mz_mm() + safe_z_offset_mm), THEROBOT->from_millimeters(fast_z_rate));
 	this->script_queue.push(buff);
     // drop z axis with slow speed
-	snprintf(buff, sizeof(buff), "G53 G1 Z%.3f F%.3f", THEROBOT->from_millimeters(current_tool->mz_mm), THEROBOT->from_millimeters(slow_z_rate));
+	snprintf(buff, sizeof(buff), "G53 G1 Z%.3f F%.3f", THEROBOT->from_millimeters(current_tool->get_mz_mm()), THEROBOT->from_millimeters(slow_z_rate));
 	this->script_queue.push(buff);
 	// loose tool
 	this->script_queue.push("M490.2");
@@ -794,20 +794,20 @@ void ATCHandler::fill_pick_scripts(int new_tool, bool clear_z) {
 	snprintf(buff, sizeof(buff), "G53 G0 Z%.3f", THEROBOT->from_millimeters(clear_z ? this->clearance_z : this->safe_z_empty_mm));
 	this->script_queue.push(buff);
 	// move x and y to new tool position
-	snprintf(buff, sizeof(buff), "G53 G0 X%.3f Y%.3f", THEROBOT->from_millimeters(current_tool->mx_mm), THEROBOT->from_millimeters(current_tool->my_mm));
+	snprintf(buff, sizeof(buff), "G53 G0 X%.3f Y%.3f", THEROBOT->from_millimeters(current_tool->get_mx_mm()), THEROBOT->from_millimeters(current_tool->get_my_mm()));
 	this->script_queue.push(buff);
 	// move around to see if tool rack is filled
 	this->script_queue.push("M492.1");
 	// loose tool
 	this->script_queue.push("M490.2");
 	// move x and y to reseted tool position
-	snprintf(buff, sizeof(buff), "G53 G0 X%.3f Y%.3f", THEROBOT->from_millimeters(current_tool->mx_mm), THEROBOT->from_millimeters(current_tool->my_mm));
+	snprintf(buff, sizeof(buff), "G53 G0 X%.3f Y%.3f", THEROBOT->from_millimeters(current_tool->get_mx_mm()), THEROBOT->from_millimeters(current_tool->get_my_mm()));
 	this->script_queue.push(buff);
     // drop z axis to z position with fast speed
-	snprintf(buff, sizeof(buff), "G53 G1 Z%.3f F%.3f", THEROBOT->from_millimeters(current_tool->mz_mm + safe_z_offset_mm), THEROBOT->from_millimeters(fast_z_rate));
+	snprintf(buff, sizeof(buff), "G53 G1 Z%.3f F%.3f", THEROBOT->from_millimeters(current_tool->get_mz_mm() + safe_z_offset_mm), THEROBOT->from_millimeters(fast_z_rate));
 	this->script_queue.push(buff);
     // drop z axis with slow speed
-	snprintf(buff, sizeof(buff), "G53 G1 Z%.3f F%.3f", THEROBOT->from_millimeters(current_tool->mz_mm), THEROBOT->from_millimeters(slow_z_rate));
+	snprintf(buff, sizeof(buff), "G53 G1 Z%.3f F%.3f", THEROBOT->from_millimeters(current_tool->get_mz_mm()), THEROBOT->from_millimeters(slow_z_rate));
 	this->script_queue.push(buff);
 	// clamp tool
 	this->script_queue.push("M490.1");
@@ -1267,9 +1267,9 @@ void ATCHandler::on_config_reload(void *argument)
 		for (const auto& slot : this->custom_tool_slots) {
 			if (slot.valid && slot.tool_number >= 0 && slot.tool_number <= max_tool_num) {
 				atc_tools[slot.tool_number].num = slot.tool_number;
-				atc_tools[slot.tool_number].mx_mm = slot.x_mm;
-				atc_tools[slot.tool_number].my_mm = slot.y_mm;
-				atc_tools[slot.tool_number].mz_mm = slot.z_mm;
+				atc_tools[slot.tool_number].set_mx_mm(slot.x_mm);
+				atc_tools[slot.tool_number].set_my_mm(slot.y_mm);
+				atc_tools[slot.tool_number].set_mz_mm(slot.z_mm);
 			}
 		}
 		// Calculate probe position - use configured absolute MCS coordinates if available, otherwise use hardcoded values
@@ -1291,9 +1291,9 @@ void ATCHandler::on_config_reload(void *argument)
 				tool.num = i;
 			    // lift z axis to atc start position
 				snprintf(buff, sizeof(buff), "tool%d", i);
-				tool.mx_mm = this->anchor1_x + this->toolrack_offset_x;
-				tool.my_mm = this->anchor1_y + this->toolrack_offset_y -5 + (i == 0 ? 219 : (8 - i) * 25);
-				tool.mz_mm = this->toolrack_z - 4.5;
+				tool.set_mx_mm(this->anchor1_x + this->toolrack_offset_x);
+				tool.set_my_mm(this->anchor1_y + this->toolrack_offset_y -5 + (i == 0 ? 219 : (8 - i) * 25));
+				tool.set_mz_mm(this->toolrack_z - 4.5);
 				atc_tools.push_back(tool);
 			}
 			// Calculate probe position - use configured absolute MCS coordinates if available, otherwise use hardcoded values
@@ -1314,9 +1314,9 @@ void ATCHandler::on_config_reload(void *argument)
 				tool.num = i;
 			    // lift z axis to atc start position
 				snprintf(buff, sizeof(buff), "tool%d", i);
-				tool.mx_mm = this->anchor1_x + this->toolrack_offset_x;
-				tool.my_mm = this->anchor1_y + this->toolrack_offset_y + (i == 0 ? 210 : (6 - i) * 30);
-				tool.mz_mm = this->toolrack_z;
+				tool.set_mx_mm(this->anchor1_x + this->toolrack_offset_x);
+				tool.set_my_mm(this->anchor1_y + this->toolrack_offset_y + (i == 0 ? 210 : (6 - i) * 30));
+				tool.set_mz_mm(this->toolrack_z);
 				atc_tools.push_back(tool);
 			}
 			// Calculate probe position - use configured absolute MCS coordinates if available, otherwise use hardcoded values
@@ -2411,7 +2411,7 @@ void ATCHandler::on_gcode_received(void *argument)
 			{
 				THEKERNEL->streams->printf("probe (MCS) -- X:%1.1f Y:%1.1f Z:%1.1f\n", probe_mx_mm, probe_my_mm, probe_mz_mm);
 				for (int i = 0; i <=  tool_number; i ++) {
-					THEKERNEL->streams->printf("tool%d -- mx:%1.1f my:%1.1f mz:%1.1f\n", atc_tools[i].num, atc_tools[i].mx_mm, atc_tools[i].my_mm, atc_tools[i].mz_mm);
+					THEKERNEL->streams->printf("tool%d -- mx:%1.1f my:%1.1f mz:%1.1f\n", atc_tools[i].num, atc_tools[i].get_mx_mm(), atc_tools[i].get_my_mm(), atc_tools[i].get_mz_mm());
 				}
 			}
 			else if (gcode->subcode == 3) 
@@ -2451,7 +2451,7 @@ void ATCHandler::on_gcode_received(void *argument)
 				gcode->stream->printf("Default Tool Slots Configuration:\n");
 				for (const auto& tool : this->atc_tools) {
 					gcode->stream->printf("Tool %d: X=%.3f Y=%.3f Z=%.3f\n", 
-						tool.num, tool.mx_mm, tool.my_mm, tool.mz_mm);
+						tool.num, tool.get_mx_mm(), tool.get_my_mm(), tool.get_mz_mm());
 				}
 			}
 		}
