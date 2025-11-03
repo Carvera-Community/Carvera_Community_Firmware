@@ -135,13 +135,7 @@ class Robot : public Module {
         // Cutter compensation math helpers
         void apply_linear_compensation(float target[]);
         void apply_arc_compensation(float target[], float offset[], bool clockwise);
-        void set_compensation(COMPENSATION_SIDE_T side, float radius) { 
-            compensation_active = (side != Compensation::NONE);
-            comp_side = side;
-            compensation_radius = radius;
-            has_next_move = false;  // Reset look-ahead state
-            compensation_applied = false;  // Reset application state
-        }
+        void set_compensation(COMPENSATION_SIDE_T side, float radius);
         
         bool compensation_applied;  // Track if compensation has been applied to current move
         

@@ -6,9 +6,17 @@
 
 CompensationPreprocessor::CompensationPreprocessor() 
      : comp_side(Compensation::NONE), comp_radius(0) {
+    THEKERNEL->streams->printf("DBG:CompPrep: Preprocessor initialized\n");
 }
 
 void CompensationPreprocessor::enable_compensation(CompSide side, float diameter) {
+    // Validate input
+    if (side != Compensation::NONE && side != Compensation::LEFT && side != Compensation::RIGHT) {
+        THEKERNEL->streams->printf("ERROR:CompPrep: Invalid compensation side %d requested\n", side);
+        return;
+    }
+
+    THEKERNEL->streams->printf("DBG:CompPrep: Enabling compensation side=%d diameter=%.3f\n", side, diameter);
     comp_side = side;
     comp_radius = diameter / 2.0f;
     move_buffer.clear();
@@ -26,7 +34,19 @@ void CompensationPreprocessor::disable_compensation() {
 }
 
 bool CompensationPreprocessor::preprocess_move(Gcode* gcode, float* target, float* position) {
-     if (comp_side == Compensation::NONE) return false;  // Pass through if compensation not active    // Create move record
+    // Validate compensation state
+    if (comp_side != Compensation::NONE && comp_side != Compensation::LEFT && comp_side != Compensation::RIGHT) {
+        THEKERNEL->streams->printf("ERROR:CompPrep: Invalid compensation side %d\n", comp_side);
+        comp_side = Compensation::NONE;
+        return false;
+    }
+
+    THEKERNEL->streams->printf("DBG:CompPrep: Processing move [%.3f,%.3f] -> [%.3f,%.3f] (comp_side=%d)\n",
+        position[0], position[1], target[0], target[1], comp_side);
+        
+    if (comp_side == Compensation::NONE) {
+        return false;  // Pass through if compensation not active
+    }
     Move move;
     move.start[0] = position[0];
     move.start[1] = position[1];
@@ -65,7 +85,7 @@ bool CompensationPreprocessor::preprocess_move(Gcode* gcode, float* target, floa
 }
 
 void CompensationPreprocessor::calculate_line_offset(const Move& move, float* output) {
-    // Calculate perpendicular offset vector
+    // Calculate move vector
     float dx = move.end[0] - move.start[0];
     float dy = move.end[1] - move.start[1];
     float len = hypotf(dx, dy);
@@ -73,18 +93,30 @@ void CompensationPreprocessor::calculate_line_offset(const Move& move, float* ou
     if (len < 0.00001F) {
         output[0] = move.end[0];
         output[1] = move.end[1];
+        THEKERNEL->streams->printf("DBG:CompPrep: Zero length move skipped\n");
         return;
     }
     
-    // Normalize and rotate 90° based on compensation side
-    float scale = comp_radius / len;
-     if (comp_side == Compensation::LEFT) {
-        output[0] = move.end[0] - dy * scale;
-        output[1] = move.end[1] + dx * scale;
+    // Calculate unit vectors
+    float ux = dx / len;  // Unit vector along move
+    float uy = dy / len;
+    
+    // Calculate normal vector (perpendicular)
+    float nx, ny;
+    if (comp_side == Compensation::LEFT) {
+        nx = -uy;  // Rotate 90° CCW
+        ny = ux;
     } else {
-        output[0] = move.end[0] + dy * scale;
-        output[1] = move.end[1] - dx * scale;
+        nx = uy;   // Rotate 90° CW
+        ny = -ux;
     }
+    
+    // Apply offset in workpiece coordinates
+    output[0] = move.end[0] + nx * comp_radius;
+    output[1] = move.end[1] + ny * comp_radius;
+    
+    THEKERNEL->streams->printf("DBG:CompPrep: Move vector [%.3f,%.3f] normal [%.3f,%.3f]\n", 
+        ux, uy, nx, ny);
 }
 
 void CompensationPreprocessor::buffer_move(const Move& move) {

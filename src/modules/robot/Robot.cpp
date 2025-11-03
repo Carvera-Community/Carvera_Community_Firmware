@@ -125,7 +125,12 @@ Robot::~Robot() {
     delete comp_preprocessor;
 }
 
-Robot::Robot() : comp_preprocessor(new CompensationPreprocessor())
+Robot::Robot() : 
+    comp_preprocessor(new CompensationPreprocessor()), // Initialize immediately
+    compensation_active(false),
+    comp_side(Compensation::NONE),
+    compensation_radius(0),
+    has_next_move(false)
 {
     this->inch_mode = false;
     this->absolute_mode = true;
@@ -567,41 +572,38 @@ void Robot::on_gcode_received(void *argument)
                 
             case 41: // G41: Cutter compensation left
             case 42: { // G42: Cutter compensation right
-                float diameter = 0;
+                // Set compensation side based on G code
+                Compensation::Side side = (gcode->g == 41) ? Compensation::LEFT : Compensation::RIGHT;
+                float radius = 0;
+                bool valid_diameter = false;
                 
-                if (gcode->has_letter('D')) {
-                    diameter = gcode->get_value('D');
-                    if(diameter <= 0) {
-                        THEKERNEL->streams->printf("Error: Tool diameter must be positive\n");
-                        break;
-                    }
-                } else {
+                if (!gcode->has_letter('D')) {
                     THEKERNEL->streams->printf("Error: D word required for G%d\n", gcode->g);
                     break;
                 }
                 
-                if (gcode->has_letter('D')) {
-                    THEKERNEL->streams->printf("Found D word\n");
+                THEKERNEL->streams->printf("Found D word\n");
+                
+                // Use get_value with error checking
+                char *endptr = nullptr;
+                float diameter = gcode->get_value('D', &endptr);
+                
+                // Validate the diameter value
+                if(endptr != nullptr && diameter == diameter) { // Check for valid parse and not NaN
+                    diameter = to_millimeters(diameter);
+                    THEKERNEL->streams->printf("Parsed diameter: %f mm\n", diameter);
                     
-                    // Use get_value with error checking
-                    char *endptr = nullptr;
-                    float diameter = gcode->get_value('D', &endptr);
-                    
-                    // Validate the diameter value
-                    if(endptr != nullptr && diameter == diameter) { // Check for valid parse and not NaN
-                        diameter = to_millimeters(diameter);
-                        THEKERNEL->streams->printf("Parsed diameter: %f mm\n", diameter);
-                        
-                        if(diameter > 0) {
-                            radius = diameter * 0.5F;
-                            valid_diameter = true;
-                        } else {
-                            THEKERNEL->streams->printf("Error: Tool diameter must be positive\n");
-                        }
+                    if(diameter > 0) {
+                        radius = diameter * 0.5F;
+                        valid_diameter = true;
                     } else {
-                        THEKERNEL->streams->printf("Error: Invalid diameter value\n");
+                        THEKERNEL->streams->printf("Error: Tool diameter must be positive\n");
                     }
-                } else if (THEKERNEL->eeprom_data != nullptr) {
+                } else {
+                    THEKERNEL->streams->printf("Error: Invalid diameter value\n");
+                }
+                
+                if (!valid_diameter && THEKERNEL->eeprom_data != nullptr) {
                     // Safely check EEPROM
                     float eeprom_dia = THEKERNEL->eeprom_data->TOOL_DIA;
                     THEKERNEL->streams->printf("EEPROM tool diameter: %f\n", eeprom_dia);
@@ -1559,6 +1561,20 @@ bool Robot::append_milestone(const float target[], float rate_mm_s, unsigned int
     // unity transform by default
     memcpy(transformed_target, target, n_motors*sizeof(float));
 
+    // Apply cutter compensation if active
+    if(compensation_active) {
+        // Store current position for next move
+        if (has_next_move) {
+            next_target[0] = target[X_AXIS];
+            next_target[1] = target[Y_AXIS];
+        }
+        
+        // Apply compensation to the target
+        apply_linear_compensation(transformed_target);
+        THEKERNEL->streams->printf("DBG:CutterComp: Move modified from [%.3f,%.3f] to [%.3f,%.3f]\n",
+            target[X_AXIS], target[Y_AXIS], transformed_target[X_AXIS], transformed_target[Y_AXIS]);
+    }
+
     // check function pointer and call if set to transform the target to compensate for bed
     if(compensationTransform) {
         // some compensation strategies can transform XYZ, some just change Z
@@ -2089,11 +2105,35 @@ bool Robot::compute_arc(Gcode * gcode, const float offset[], const float target[
 }
 
 void Robot::set_compensation(COMPENSATION_SIDE_T side, float radius) {
+    // Validate input
+    if (side < Compensation::NONE || side > Compensation::RIGHT) {
+        THEKERNEL->streams->printf("ERROR:Robot: Invalid compensation side %d\n", side);
+        return;
+    }
+
     THEKERNEL->streams->printf("DBG:Robot: Setting compensation side=%d radius=%.3f\n", side, radius);
+    
+    // Always ensure we have a preprocessor
+    if (comp_preprocessor == nullptr) {
+        comp_preprocessor = new CompensationPreprocessor();
+    }
+
+    // Set local state first
     compensation_radius = radius;
     comp_side = side;
     compensation_active = (side != Compensation::NONE);
-    THEKERNEL->streams->printf("DBG:Robot: Compensation %s\n", compensation_active ? "ENABLED" : "DISABLED");
+    has_next_move = false;  // Reset look-ahead state
+    compensation_applied = false;  // Reset application state
+
+    // Then update preprocessor
+    if (compensation_active) {
+        comp_preprocessor->enable_compensation(side, 2 * radius); // preprocessor takes diameter
+    } else {
+        comp_preprocessor->disable_compensation();
+    }
+    
+    THEKERNEL->streams->printf("DBG:Robot: Compensation %s\n", 
+        compensation_active ? "ENABLED" : "DISABLED");
 }
 
 // Apply cutter compensation to a linear move by adjusting the target point perpendicular to direction of travel
@@ -2172,11 +2212,8 @@ void Robot::apply_linear_compensation(float target[])
                 THEKERNEL->streams->printf("DBG:CutterComp: Corner #%d - processing angle=%.1f deg\n", 
                     corner_counter++, acosf(dot) * 180.0F / 3.14159F);
                 
-                // Calculate normal vectors
+                // Calculate normal vector for first segment
                 float n1x = -uy1, n1y = ux1;
-                // Note: These normals are used in the final corner calculation
-                float n2x = -uy2;
-                float n2y = ux2;
                 
                 float angle = acosf(dot);
                 float cross = ux1*uy2 - uy1*ux2;
