@@ -6,6 +6,7 @@ using namespace std;
 #include <vector>
 #include <queue>
 #include <cstdint>
+#include <cmath>
 #include "Pin.h"
 #include "Gcode.h"
 
@@ -214,13 +215,49 @@ private:
     	int16_t my_mm;  // Stored as 0.01mm units
     	int16_t mz_mm;  // Stored as 0.01mm units
     	
+    	// Default constructor to initialize to 0
+    	atc_tool() : num(0), mx_mm(0), my_mm(0), mz_mm(0) {}
+    	
     	// Helper functions to convert to/from float (in millimeters)
     	float get_mx_mm() const { return mx_mm / 100.0f; }
     	float get_my_mm() const { return my_mm / 100.0f; }
     	float get_mz_mm() const { return mz_mm / 100.0f; }
-    	void set_mx_mm(float val) { mx_mm = (int16_t)(val * 100.0f + (val >= 0 ? 0.5f : -0.5f)); }
-    	void set_my_mm(float val) { my_mm = (int16_t)(val * 100.0f + (val >= 0 ? 0.5f : -0.5f)); }
-    	void set_mz_mm(float val) { mz_mm = (int16_t)(val * 100.0f + (val >= 0 ? 0.5f : -0.5f)); }
+    	void set_mx_mm(float val) {
+    		// Handle NaN and invalid values
+    		if (std::isnan(val) || val > 1000.0f || val < -1000.0f) {
+    			mx_mm = 0;
+    			return;
+    		}
+    		float fixed = val * 100.0f;
+    		// Clamp to int16_t range to prevent overflow (-327.68mm to 327.67mm)
+    		if (fixed > 32767.0f) fixed = 32767.0f;
+    		else if (fixed < -32768.0f) fixed = -32768.0f;
+    		mx_mm = (int16_t)(fixed + (fixed >= 0 ? 0.5f : -0.5f));
+    	}
+    	void set_my_mm(float val) {
+    		// Handle NaN and invalid values
+    		if (std::isnan(val) || val > 1000.0f || val < -1000.0f) {
+    			my_mm = 0;
+    			return;
+    		}
+    		float fixed = val * 100.0f;
+    		// Clamp to int16_t range to prevent overflow (-327.68mm to 327.67mm)
+    		if (fixed > 32767.0f) fixed = 32767.0f;
+    		else if (fixed < -32768.0f) fixed = -32768.0f;
+    		my_mm = (int16_t)(fixed + (fixed >= 0 ? 0.5f : -0.5f));
+    	}
+    	void set_mz_mm(float val) {
+    		// Handle NaN and invalid values
+    		if (std::isnan(val) || val > 1000.0f || val < -1000.0f) {
+    			mz_mm = 0;
+    			return;
+    		}
+    		float fixed = val * 100.0f;
+    		// Clamp to int16_t range to prevent overflow (-327.68mm to 327.67mm)
+    		if (fixed > 32767.0f) fixed = 32767.0f;
+    		else if (fixed < -32768.0f) fixed = -32768.0f;
+    		mz_mm = (int16_t)(fixed + (fixed >= 0 ? 0.5f : -0.5f));
+    	}
     };
 
     struct ToolSlot {

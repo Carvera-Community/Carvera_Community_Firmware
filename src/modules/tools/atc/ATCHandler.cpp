@@ -1261,6 +1261,8 @@ void ATCHandler::on_config_reload(void *argument)
 		}
 		
 		// Resize atc_tools to accommodate the highest tool number
+		// Initialize all elements to default values (default constructor ensures zero initialization)
+		atc_tools.clear();
 		atc_tools.resize(max_tool_num + 1);
 		
 		// Set custom configurations (only for valid slots)
