@@ -47,59 +47,87 @@ bool CompensationPreprocessor::preprocess_move(Gcode* gcode, float* target, floa
     if (comp_side == Compensation::NONE) {
         return false;  // Pass through if compensation not active
     }
+
+    // Calculate move vector
+    float dx = target[0] - position[0];
+    float dy = target[1] - position[1];
+    float move_length = sqrtf(dx*dx + dy*dy);
+
+    // For very short moves, maintain the same offset direction as the previous move
+    if (move_length < 0.1f && !move_buffer.empty()) {
+        const Move& prev = move_buffer.back();
+        target[0] = position[0] + dx + prev.direction[1] * comp_radius;
+        target[1] = position[1] + dy - prev.direction[0] * comp_radius;
+        
+        THEKERNEL->streams->printf("DBG:CompPrep: Short move (%.3fmm), maintaining direction\n", move_length);
+        return true;
+    }
+    
     Move move;
     move.start[0] = position[0];
     move.start[1] = position[1];
     move.end[0] = target[0];
     move.end[1] = target[1];
     move.is_arc = false;  // TODO: Handle arcs
-     // Store line number if available from M code
-     move.line_number = (gcode->m > 0) ? gcode->m : 0;    // Buffer the move
+    move.line_number = (gcode->m > 0) ? gcode->m : 0;
+    
+    // Calculate and cache move properties
+    float dx = target[0] - position[0];
+    float dy = target[1] - position[1];
+    move.length = sqrtf(dx*dx + dy*dy);
+    
+    if (move.length > 0.00001F) {
+        move.direction[0] = dx / move.length;  // Unit vector X
+        move.direction[1] = dy / move.length;  // Unit vector Y
+    } else {
+        // For zero-length moves, use previous direction or default to X axis
+        if (!move_buffer.empty()) {
+            move.direction[0] = move_buffer.back().direction[0];
+            move.direction[1] = move_buffer.back().direction[1];
+        } else {
+            move.direction[0] = 1.0F;
+            move.direction[1] = 0.0F;
+        }
+    }
     buffer_move(move);
     
-    // Need at least 2 moves to start processing
-    if (move_buffer.size() < 2) {
-        return true;  // Consumed but not ready to output
-    }
-    
-    // Process oldest move in buffer if we have enough context
-    Move& current = move_buffer[0];
+    // Process current move immediately for straight lines
     float output[2];
+    calculate_line_offset(move, output);
     
-    if (move_buffer.size() >= 3) {
-        // We have previous, current, and next moves - handle corners
-        calculate_intersection(move_buffer[0], move_buffer[1], output);
-    } else {
-        // Simple perpendicular offset for the move
-        calculate_line_offset(current, output);
-    }
-    
-    // Update target with compensated position
+    // Update the output position
     target[0] = output[0];
     target[1] = output[1];
     
-    THEKERNEL->streams->printf("DBG:CompPrep: Move #%d offset [%.3f,%.3f] -> [%.3f,%.3f]\n",
-        current.line_number, current.end[0], current.end[1], output[0], output[1]);
+    THEKERNEL->streams->printf("DBG:CompPrep: Applied offset [%.3f,%.3f] -> [%.3f,%.3f]\n", 
+        move.end[0], move.end[1], output[0], output[1]);
+    
+    // Remove old moves from buffer if needed
+    if (move_buffer.size() > 5) {
+        move_buffer.erase(move_buffer.begin());
+    }
     
     return true;
 }
 
 void CompensationPreprocessor::calculate_line_offset(const Move& move, float* output) {
-    // Calculate move vector
-    float dx = move.end[0] - move.start[0];
-    float dy = move.end[1] - move.start[1];
-    float len = hypotf(dx, dy);
+    // Use cached direction vector
+    float ux = move.direction[0];
+    float uy = move.direction[1];
     
-    if (len < 0.00001F) {
-        output[0] = move.end[0];
-        output[1] = move.end[1];
-        THEKERNEL->streams->printf("DBG:CompPrep: Zero length move skipped\n");
-        return;
+    // Calculate normal vector based on compensation side
+    float nx, ny;
+    if (comp_side == Compensation::LEFT) {
+        nx = -uy;  // Rotate 90° CCW
+        ny = ux;
+    } else {
+        nx = uy;   // Rotate 90° CW
+        ny = -ux;
     }
     
-    // Calculate unit vectors
-    float ux = dx / len;  // Unit vector along move
-    float uy = dy / len;
+    // Apply offset to both start and end points
+    output[0] = move.end[0] + nx * comp_radius;
+    output[1] = move.end[1] + ny * comp_radius;
     
     // Calculate normal vector (perpendicular)
     float nx, ny;

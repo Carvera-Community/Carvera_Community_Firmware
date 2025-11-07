@@ -23,6 +23,8 @@ public:
         float center[2]; // For arcs (I,J)
         float radius;    // For arcs
         int line_number;
+        float length;    // Cached move length
+        float direction[2]; // Cached unit vector
     };
 
     CompensationPreprocessor();
