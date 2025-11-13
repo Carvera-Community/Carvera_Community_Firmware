@@ -1193,7 +1193,7 @@ bool ZProbe::fast_slow_probe_sequence(int axis, int direction){
     THEROBOT->delta_move(moveBuffer, param.feed_rate, 3);
     //slow probe
     memset(&this->buff, 0 , sizeof(this->buff));
-    std::sprintf(this->buff, "G38.%i X%.3f Y%.3f Z%.3f F%.3f", 2 + param.probe_g38_subcode,THEROBOT->from_millimeters(x), THEROBOT->from_millimeters(y), THEROBOT->from_millimeters(z), param.slowZprobeRate);
+    std::sprintf(this->buff, "G38.%i X%.3f Y%.3f Z%.3f", 2 + param.probe_g38_subcode,THEROBOT->from_millimeters(x), THEROBOT->from_millimeters(y), THEROBOT->from_millimeters(z));
     this->gcodeBuffer = new Gcode(this->buff, &StreamOutput::NullStream);
     probe_XYZ(this->gcodeBuffer);
     delete gcodeBuffer;
@@ -1370,8 +1370,7 @@ void ZProbe::init_parameters_and_out_coords(){
     param.retract_distance = 1.5;                      //R
     param.clearance_height = 2;                        //C
     param.side_depth = 2;                              //E
-    param.probe_g38_subcode = 0;                       //I
-    param.slowZprobeRate = 50;                         
+    param.probe_g38_subcode = 0;                       //I                         
     param.extra_probe_distance = 4;                    //J
 }
 

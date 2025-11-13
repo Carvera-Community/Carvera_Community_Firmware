@@ -458,7 +458,7 @@ temperatureswitch.spindle.cooldown_power_laser 80.0		# cooldown power for laser 
 laser_module_clustering false				#
 
 # Z-probe
-zprobe.slow_feedrate 1.5				# Z probe slow speed (mm/s)
+zprobe.slow_feedrate 0.8				# Z probe slow speed (mm/s)
 zprobe.fast_feedrate 5					# Z probe fast speed (mm/s)
 zprobe.return_feedrate 20				# Z probe return speed (mm/s)
 zprobe.probe_height 2					# How much above bed to start probe
