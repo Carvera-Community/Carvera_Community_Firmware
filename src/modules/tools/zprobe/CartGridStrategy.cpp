@@ -409,6 +409,9 @@ bool CartGridStrategy::load_grid(StreamOutput *stream)
     x_size = x;
     y_size = y;
 
+    // keep track of worst case delta
+    float max_delta, max_z, min_z;
+
     for (int y = 0; y < current_grid_y_size; y++) {
         for (int x = 0; x < current_grid_x_size; x++) {
             if(fread(&grid[x + (current_grid_x_size * y)], sizeof(float), 1, fp) != 1) {
@@ -416,8 +419,12 @@ bool CartGridStrategy::load_grid(StreamOutput *stream)
                 fclose(fp);
                 return false;
             }
+            if((grid[x + (current_grid_x_size * y)]) > max_z) max_z = grid[x + (current_grid_x_size * y)];
+            if((grid[x + (current_grid_x_size * y)]) < min_z) min_z = grid[x + (current_grid_x_size * y)];
         }
     }
+    max_delta = fabs(max_z - min_z);
+    THEROBOT->set_max_delta(max_delta);
     stream->printf("grid loaded, grid: (%f, %f), size: %d x %d\n", x_size, y_size, load_grid_x_size, load_grid_y_size);
     fclose(fp);
     return true;
