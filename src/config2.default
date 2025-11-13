@@ -293,8 +293,8 @@ zprobe.calibration_safety_margin              0.1             # max distance to 
 # Leveling strategy
 leveling-strategy.rectangular-grid.enable					true
 leveling-strategy.rectangular-grid.size						15
-leveling-strategy.rectangular-grid.x_size					50
-leveling-strategy.rectangular-grid.y_size					50
+leveling-strategy.rectangular-grid.x_size					20
+leveling-strategy.rectangular-grid.y_size					20
 leveling-strategy.rectangular-grid.human_readable			true
 leveling-strategy.rectangular-grid.only_by_two_corners		true
 
