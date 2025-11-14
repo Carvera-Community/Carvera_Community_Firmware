@@ -67,6 +67,7 @@ private:
         bool only_by_two_corners:1;
         bool human_readable:1;
         bool new_file_format:1;
+        bool force_debug:1;
     };
 
     // Flex compensation data
@@ -77,7 +78,6 @@ private:
     float flex_x_size;
     bool flex_compensation_active;
     size_t flex_data_size;
-    float flex_max_delta;
     bool flex_compensation_always_active;
 
     // Compensation state tracking
