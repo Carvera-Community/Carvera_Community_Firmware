@@ -1556,7 +1556,11 @@ void ZProbe::probe_boss(bool calibration) //M462
                 return;
             }
             //probe z no hit no alarm -side_depth, retract slightly if probe point hit
-            z_probe_move_with_retract(param.probe_g38_subcode, -(param.side_depth + param.clearance_height), 1.0, param.rapid_rate);
+            if (param.probe_height != 0){
+                z_probe_move_with_retract(param.probe_g38_subcode, -(param.side_depth + param.retract_distance + param.tool_dia/2.0), 1.0, param.rapid_rate);
+            }else{
+                z_probe_move_with_retract(param.probe_g38_subcode, -(param.side_depth + param.tool_dia/2.0), 1.0, param.rapid_rate);
+            }
 
             // probe in negative x direction
             fast_slow_probe_sequence(X_AXIS, NEG);
@@ -1574,7 +1578,11 @@ void ZProbe::probe_boss(bool calibration) //M462
             }
 
             //probe z no hit no alarm -side_depth, retract slightly if probe point hit
-            z_probe_move_with_retract(param.probe_g38_subcode, -(param.side_depth + param.clearance_height), 1.0, param.rapid_rate);
+            if (param.probe_height != 0){
+                z_probe_move_with_retract(param.probe_g38_subcode, -(param.side_depth + param.retract_distance + param.tool_dia/2.0), 1.0, param.rapid_rate);
+            }else{
+                z_probe_move_with_retract(param.probe_g38_subcode, -(param.side_depth + param.tool_dia/2.0), 1.0, param.rapid_rate);
+            }
 
             // probe in positive x direction
             fast_slow_probe_sequence(X_AXIS, POS);
@@ -1605,7 +1613,11 @@ void ZProbe::probe_boss(bool calibration) //M462
             }
 
             //probe z no hit no alarm -side_depth, retract slightly if probe point hit
-            z_probe_move_with_retract(param.probe_g38_subcode, -(param.side_depth + param.clearance_height), 1.0, param.rapid_rate);
+            if (param.probe_height != 0){
+                z_probe_move_with_retract(param.probe_g38_subcode, -(param.side_depth + param.retract_distance + param.tool_dia/2.0), 1.0, param.rapid_rate);
+            }else{
+                z_probe_move_with_retract(param.probe_g38_subcode, -(param.side_depth + param.tool_dia/2.0), 1.0, param.rapid_rate);
+            }
             
             // probe in negative y direction
             fast_slow_probe_sequence(Y_AXIS, NEG);
@@ -1623,7 +1635,11 @@ void ZProbe::probe_boss(bool calibration) //M462
             }
 
             //probe z no hit no alarm -side_depth, retract slightly if probe point hit
-            z_probe_move_with_retract(param.probe_g38_subcode, -(param.side_depth + param.clearance_height), 1.0, param.rapid_rate);
+            if (param.probe_height != 0){
+                z_probe_move_with_retract(param.probe_g38_subcode, -(param.side_depth + param.retract_distance + param.tool_dia/2.0), 1.0, param.rapid_rate);
+            }else{
+                z_probe_move_with_retract(param.probe_g38_subcode, -(param.side_depth + param.tool_dia/2.0), 1.0, param.rapid_rate);
+            }
 
             // probe in positive y direction
             fast_slow_probe_sequence(Y_AXIS, POS);
@@ -1796,8 +1812,12 @@ void ZProbe::probe_outsideCorner() //M464
         }
         
         //probe z no hit no alarm -side_depth, retract slightly if probe point hit
-        z_probe_move_with_retract(param.probe_g38_subcode, -(param.side_depth + param.clearance_height), 1.0, param.rapid_rate);
-
+        if (param.probe_height != 0){
+            z_probe_move_with_retract(param.probe_g38_subcode, -(param.side_depth + param.retract_distance + param.tool_dia/2.0), 1.0, param.rapid_rate);
+        }else{
+            z_probe_move_with_retract(param.probe_g38_subcode, -(param.side_depth + param.tool_dia/2.0), 1.0, param.rapid_rate);
+        }
+        
         // probe in positive x direction
         fast_slow_probe_sequence(X_AXIS, POS);
 
@@ -1818,7 +1838,11 @@ void ZProbe::probe_outsideCorner() //M464
         }
 
         //probe z no hit no alarm -side_depth, retract slightly if probe point hit
-        z_probe_move_with_retract(param.probe_g38_subcode, -(param.side_depth + param.clearance_height), 1.0, param.rapid_rate);
+        if (param.probe_height != 0){
+            z_probe_move_with_retract(param.probe_g38_subcode, -(param.side_depth + param.retract_distance + param.tool_dia/2.0), 1.0, param.rapid_rate);
+        }else{
+            z_probe_move_with_retract(param.probe_g38_subcode, -(param.side_depth + param.tool_dia/2.0), 1.0, param.rapid_rate);
+        }
 
         // probe in positive y direction
         fast_slow_probe_sequence(Y_AXIS, POS);
