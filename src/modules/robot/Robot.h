@@ -20,9 +20,9 @@ using std::string;
 #include "nuts_bolts.h"
 #include <fastmath.h>
 #include "CompensationTypes.h"
+#include "CompensationPreprocessor.h"
 
 // Forward declarations
-class CompensationPreprocessor;
 
 class Gcode;
 class BaseSolution;
@@ -132,9 +132,9 @@ class Robot : public Module {
         void process_move(Gcode *gcode, enum MOTION_MODE_T);
         bool is_homed(uint8_t i) const;
         
-        // Cutter compensation math helpers
-        void apply_linear_compensation(float target[]);
-        void apply_arc_compensation(float target[], float offset[], bool clockwise);
+        // Cutter compensation with lookahead buffering
+        void parse_move_for_compensation(Gcode* gcode, enum MOTION_MODE_T motion_mode, CompensationPreprocessor::ParsedMove& parsed_move);
+        void process_parsed_move(const CompensationPreprocessor::ParsedMove& move);
         void set_compensation(COMPENSATION_SIDE_T side, float radius);
         
         bool compensation_applied;  // Track if compensation has been applied to current move

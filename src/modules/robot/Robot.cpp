@@ -42,6 +42,7 @@
 #include <string>
 #include <algorithm>
 #include <cmath>
+#include <queue>
 #include "CompensationPreprocessor.h"
 
 #define  default_seek_rate_checksum          CHECKSUM("default_seek_rate")
@@ -567,6 +568,18 @@ void Robot::on_gcode_received(void *argument)
             case 3:  motion_mode = CCW_ARC; break;
             
             case 40: // G40: Cancel cutter compensation
+                // Flush any buffered moves before disabling
+                if(comp_preprocessor && comp_preprocessor->is_active()) {
+                    std::queue<CompensationPreprocessor::ParsedMove> flushed_moves;
+                    comp_preprocessor->flush_buffer(flushed_moves);
+                    
+                    // Process all flushed moves
+                    while(!flushed_moves.empty()) {
+                        CompensationPreprocessor::ParsedMove move = flushed_moves.front();
+                        flushed_moves.pop();
+                        process_parsed_move(move);
+                    }
+                }
                 set_compensation(static_cast<Compensation::Side>(Compensation::NONE), 0.0f);
                 break;
                 
@@ -1188,7 +1201,28 @@ void Robot::on_gcode_received(void *argument)
 
     if( motion_mode != NONE) {
         is_g123= motion_mode != SEEK;
-        process_move(gcode, motion_mode);
+        
+        // If compensation is active, use buffering system
+        if(comp_preprocessor && comp_preprocessor->is_active()) {
+            // Parse the move
+            CompensationPreprocessor::ParsedMove parsed_move;
+            parse_move_for_compensation(gcode, motion_mode, parsed_move);
+            
+            if(parsed_move.valid) {
+                // Buffer the move
+                comp_preprocessor->buffer_move(parsed_move);
+                
+                // Try to get compensated moves from the buffer
+                CompensationPreprocessor::ParsedMove compensated_move;
+                while(comp_preprocessor->get_compensated_move(compensated_move)) {
+                    // Process the compensated move
+                    process_parsed_move(compensated_move);
+                }
+            }
+        } else {
+            // No compensation - use normal path
+            process_move(gcode, motion_mode);
+        }
         // THEKERNEL->streams->printf("GCode: [%s], mode:[%d]\n", gcode->get_command(), motion_mode);
     } else {
         is_g123= false;
@@ -1249,18 +1283,8 @@ void Robot::process_move(Gcode *gcode, enum MOTION_MODE_T motion_mode)
                 target[Z_AXIS]= ROUND_NEAR_HALF(param[Z_AXIS] + std::get<Z_AXIS>(wcs_offsets[current_wcs]) - std::get<Z_AXIS>(g92_offset) + std::get<Z_AXIS>(tool_offset));
             }
 
-            // Apply cutter compensation if enabled (after WCS but before transforms)
-            if(comp_preprocessor->is_active()) {
-                // Create move record with current position and target
-                if(!comp_preprocessor->preprocess_move(gcode, target, machine_position)) {
-                    return;  // Move needs more context, will be processed later
-                }
-                
-                // For arc moves, adjust the I,J offsets
-                if(motion_mode == CW_ARC || motion_mode == CCW_ARC) {
-                    comp_preprocessor->preprocess_arc_offsets(offset, motion_mode == CW_ARC);
-                }
-            }
+            // NOTE: Cutter compensation now handled via buffering in on_gcode_received()
+            // This process_move function only called when compensation is inactive
 
         } else {
             // they are deltas from the machine_position if specified
@@ -1551,9 +1575,7 @@ void Robot::reset_position_from_current_actuator_position()
 // all transforms and is what we actually convert to actuator positions
 bool Robot::append_milestone(const float target[], float rate_mm_s, unsigned int line)
 {
-    if(compensation_active) {
-        THEKERNEL->streams->printf("DBG:Robot: Processing move at line %d with compensation active\n", line);
-    }
+    // Removed verbose debug to prevent serial buffer overflow
     float deltas[n_motors];
     float transformed_target[n_motors]; // adjust target for bed compensation
     float unit_vec[N_PRIMARY_AXIS];
@@ -1561,19 +1583,8 @@ bool Robot::append_milestone(const float target[], float rate_mm_s, unsigned int
     // unity transform by default
     memcpy(transformed_target, target, n_motors*sizeof(float));
 
-    // Apply cutter compensation if active
-    if(compensation_active) {
-        // Store current position for next move
-        if (has_next_move) {
-            next_target[0] = target[X_AXIS];
-            next_target[1] = target[Y_AXIS];
-        }
-        
-        // Apply compensation to the target
-        apply_linear_compensation(transformed_target);
-        THEKERNEL->streams->printf("DBG:CutterComp: Move modified from [%.3f,%.3f] to [%.3f,%.3f]\n",
-            target[X_AXIS], target[Y_AXIS], transformed_target[X_AXIS], transformed_target[Y_AXIS]);
-    }
+    // NOTE: Cutter compensation now applied in CompensationPreprocessor before append_milestone
+    // This function receives already-compensated coordinates
 
     // check function pointer and call if set to transform the target to compensate for bed
     if(compensationTransform) {
@@ -2107,11 +2118,11 @@ bool Robot::compute_arc(Gcode * gcode, const float offset[], const float target[
 void Robot::set_compensation(COMPENSATION_SIDE_T side, float radius) {
     // Validate input
     if (side < Compensation::NONE || side > Compensation::RIGHT) {
-        THEKERNEL->streams->printf("ERROR:Robot: Invalid compensation side %d\n", side);
+        THEKERNEL->streams->printf("E06:BadSide\n"); // Error: invalid compensation side
         return;
     }
 
-    THEKERNEL->streams->printf("DBG:Robot: Setting compensation side=%d radius=%.3f\n", side, radius);
+    // Silent - setting compensation parameters
     
     // Always ensure we have a preprocessor
     if (comp_preprocessor == nullptr) {
@@ -2132,172 +2143,142 @@ void Robot::set_compensation(COMPENSATION_SIDE_T side, float radius) {
         comp_preprocessor->disable_compensation();
     }
     
-    THEKERNEL->streams->printf("DBG:Robot: Compensation %s\n", 
-        compensation_active ? "ENABLED" : "DISABLED");
+    // Silent - compensation state changed
 }
 
-// Apply cutter compensation to a linear move by adjusting the target point perpendicular to direction of travel
-void Robot::apply_linear_compensation(float target[]) 
-{
-    static bool compensation_applied = false;
-    static int move_counter = 1;
-    static int corner_counter = 1;
+// Parse a G-code move into a ParsedMove structure for compensation preprocessing
+void Robot::parse_move_for_compensation(Gcode* gcode, enum MOTION_MODE_T motion_mode, CompensationPreprocessor::ParsedMove& parsed_move) {
+    // Initialize the parsed move
+    parsed_move.valid = false;
     
-    // Only apply compensation once per move
-    if (compensation_applied) {
-        compensation_applied = false;
-        return;
-    }
-    compensation_applied = true;
-    
-    // Calculate move vector
-    float dx = target[X_AXIS] - machine_position[X_AXIS];
-    float dy = target[Y_AXIS] - machine_position[Y_AXIS];
-    float len = hypotf(dx, dy);
-    
-    if (len < 0.00001F) {
-        THEKERNEL->streams->printf("DBG:CutterComp: Move length %.6f mm - too small, skipping\n", len);
-        return;  // Skip tiny moves
-    }
-
-    THEKERNEL->streams->printf("DBG:CutterComp: State check - active=%d side=%d radius=%.3f\n",
-        compensation_active, comp_side, compensation_radius);
-    
-    THEKERNEL->streams->printf("DBG:CutterComp: Move #%d from [%.3f,%.3f] to [%.3f,%.3f]\n", 
-        move_counter++,
-        machine_position[X_AXIS], machine_position[Y_AXIS],
-        target[X_AXIS], target[Y_AXIS]);
-    
-    // Check if we have a next move queued and vectors have changed enough for corner handling
-    if (has_next_move) {
-        float dx2 = next_target[0] - target[X_AXIS];
-        float dy2 = next_target[1] - target[Y_AXIS];
-        float len2 = hypotf(dx2, dy2);
-        
-        if (len2 > 0.00001F) {
-            // Calculate dot product to check angle between moves
-            float dot = (dx*dx2 + dy*dy2) / (len * len2);
-            if (fabsf(dot) < 0.99F) {  // Angle greater than ~8 degrees
-                THEKERNEL->streams->printf("DBG:CutterComp: Corner detected between moves, angle=%.1f deg\n", 
-                    acosf(dot) * 180.0F / 3.14159F);
-            }
-        }
-    }
-    float ux = dx/len;
-    float uy = dy/len;
-    
-    // Clean up nearly-zero components to ensure precise perpendicular vectors
-    if (fabsf(ux) < 0.00001F) ux = 0.0F;
-    if (fabsf(uy) < 0.00001F) uy = 0.0F;
-    
-    // Renormalize if needed
-    if (ux == 0.0F) uy = (uy > 0.0F) ? 1.0F : -1.0F;
-    if (uy == 0.0F) ux = (ux > 0.0F) ? 1.0F : -1.0F;
-    
-    if (has_next_move) {
-        // We have a next move, check if we need corner handling
-        float dx2 = next_target[0] - target[X_AXIS];
-        float dy2 = next_target[1] - target[Y_AXIS];
-        float len2 = hypotf(dx2, dy2);
-        
-        if (len2 > 0.00001F) {
-            // Calculate unit vectors
-            float ux1 = dx/len, uy1 = dy/len;
-            float ux2 = dx2/len2, uy2 = dy2/len2;
-            
-            // Check if direction changes enough to warrant corner handling
-            float dot = ux1*ux2 + uy1*uy2;
-            if (fabsf(dot) < 0.99999F) {
-                // Direction change detected, handle corner
-                THEKERNEL->streams->printf("DBG:CutterComp: Corner #%d - processing angle=%.1f deg\n", 
-                    corner_counter++, acosf(dot) * 180.0F / 3.14159F);
-                
-                // Calculate normal vector for first segment
-                float n1x = -uy1, n1y = ux1;
-                
-                float angle = acosf(dot);
-                float cross = ux1*uy2 - uy1*ux2;
-                 bool inside_corner = (cross > 0) == (comp_side == Compensation::LEFT);                // Calculate offset magnitude
-                float offset = (comp_side == Compensation::LEFT ? 1.0F : -1.0F) * compensation_radius;
-                if (inside_corner) {
-                    offset /= sinf(angle/2);
+    // Extract XYZ coordinates (in G-code space, before WCS transforms)
+    for(int i = X_AXIS; i <= Z_AXIS; ++i) {
+        char letter = 'X' + i;
+        if(gcode->has_letter(letter)) {
+            parsed_move.xyz[i] = this->to_millimeters(gcode->get_value(letter));
+        } else {
+            // Use current position if not specified
+            if(this->absolute_mode) {
+                // In absolute mode, unspecified axes stay at last commanded position
+                // Reverse WCS transforms to get G-code space coordinates
+                float wcs_val = 0, g92_val = 0, tool_val = 0;
+                switch(i) {
+                    case X_AXIS: 
+                        wcs_val = std::get<X_AXIS>(wcs_offsets[current_wcs]);
+                        g92_val = std::get<X_AXIS>(g92_offset);
+                        tool_val = std::get<X_AXIS>(tool_offset);
+                        break;
+                    case Y_AXIS:
+                        wcs_val = std::get<Y_AXIS>(wcs_offsets[current_wcs]);
+                        g92_val = std::get<Y_AXIS>(g92_offset);
+                        tool_val = std::get<Y_AXIS>(tool_offset);
+                        break;
+                    case Z_AXIS:
+                        wcs_val = std::get<Z_AXIS>(wcs_offsets[current_wcs]);
+                        g92_val = std::get<Z_AXIS>(g92_offset);
+                        tool_val = std::get<Z_AXIS>(tool_offset);
+                        break;
                 }
-                
-                // Calculate intersection point
-                float p1x = target[X_AXIS] + offset * n1x;
-                float p1y = target[Y_AXIS] + offset * n1y;
-                
-                target[X_AXIS] = p1x;
-                target[Y_AXIS] = p1y;
-                
-                THEKERNEL->streams->printf("DBG:CutterComp: Corner #%d - compensation point [%.3f,%.3f] (%s)\n", 
-                    corner_counter, target[X_AXIS], target[Y_AXIS], inside_corner ? "inside" : "outside");
-                return;
+                parsed_move.xyz[i] = machine_position[i] - wcs_val + g92_val - tool_val;
+            } else {
+                // In incremental mode, unspecified = 0 delta
+                parsed_move.xyz[i] = machine_position[i];
             }
         }
     }
     
-    // Calculate perpendicular unit vector (normal)
-    float nx, ny;
+    // Extract IJK offsets for arcs
+    parsed_move.ijk[0] = NAN;
+    parsed_move.ijk[1] = NAN;
+    parsed_move.ijk[2] = NAN;
     
-    if (comp_side == Compensation::LEFT) {
-        nx = -uy;  // Rotate 90 degrees CCW for left compensation
-        ny = ux;
-    } else {
-        nx = uy;   // Rotate 90 degrees CW for right compensation
-        ny = -ux;
+    if(motion_mode == CW_ARC || motion_mode == CCW_ARC) {
+        for(char letter = 'I'; letter <= 'K'; letter++) {
+            if(gcode->has_letter(letter)) {
+                parsed_move.ijk[letter - 'I'] = this->to_millimeters(gcode->get_value(letter));
+            }
+        }
     }
     
-    // Ensure normal vector is normalized
-    float nlen = hypotf(nx, ny);
-    if (nlen > 0.00001F) {
-        nx /= nlen;
-        ny /= nlen;
+    // Set motion mode
+    switch(motion_mode) {
+        case SEEK:    parsed_move.mode = CompensationPreprocessor::MOTION_SEEK;    break;
+        case LINEAR:  parsed_move.mode = CompensationPreprocessor::MOTION_LINEAR;  break;
+        case CW_ARC:  parsed_move.mode = CompensationPreprocessor::MOTION_CW_ARC;  break;
+        case CCW_ARC: parsed_move.mode = CompensationPreprocessor::MOTION_CCW_ARC; break;
+        default:      parsed_move.mode = CompensationPreprocessor::MOTION_SEEK;    break;
     }
     
-    // Apply the offset
-    float offset = compensation_radius;
-    float dx_comp = offset * nx;
-    float dy_comp = offset * ny;
+    // Store feed rate and line number
+    parsed_move.feed_rate = this->feed_rate;  // Use current modal feed rate
+    parsed_move.line_num = 0;  // Line numbers not directly accessible from Gcode object
     
-    target[X_AXIS] += dx_comp;
-    target[Y_AXIS] += dy_comp;
+    // Initialize geometry fields (will be calculated by preprocessor)
+    parsed_move.direction[0] = 0;
+    parsed_move.direction[1] = 0;
+    parsed_move.length_2d = 0;
     
-    THEKERNEL->streams->printf("DBG:CutterComp: Move vector [%.3f,%.3f] normal [%.3f,%.3f]\n", 
-        ux, uy, nx, ny);
-    THEKERNEL->streams->printf("DBG:CutterComp: Applied offset %.3f -> [%.3f,%.3f]\n", 
-        offset, target[X_AXIS], target[Y_AXIS]);
-
-    // Store this target for next move
-    next_target[0] = target[X_AXIS];
-    next_target[1] = target[Y_AXIS];
-    has_next_move = true;
+    parsed_move.valid = true;
+    
+    // Silent - move parsed successfully
 }
 
-// Apply cutter compensation to an arc move by adjusting the arc radius via I,J offsets
-void Robot::apply_arc_compensation(float target[], float offset[], bool clockwise) 
-{
-    // Calculate current arc radius from I,J offset
-    float radius = hypotf(offset[0], offset[1]);
-    if (radius < 0.00001F) return;  // Skip if arc degenerates to point
-    
-    // For arcs, we offset the radius based on cutter compensation:
-    // - For G41 (left) and G2 (CW) or G42 (right) and G3 (CCW): add radius
-    // - For G41 (left) and G3 (CCW) or G42 (right) and G2 (CW): subtract radius
-    float comp = (comp_side == Compensation::LEFT ? 1.0F : -1.0F) * compensation_radius;
-    comp = (comp_side == Compensation::LEFT) == clockwise ? comp : -comp;
-    float new_radius = radius + comp;
-    
-    if (new_radius < 0.00001F) {
-        // Arc would collapse - we should really convert this to linear move
-        THEKERNEL->streams->printf("Warning: Arc compensation results in zero radius\n");
+// Process a compensated ParsedMove by applying WCS transforms and executing the move
+void Robot::process_parsed_move(const CompensationPreprocessor::ParsedMove& move) {
+    if(!move.valid) {
+        THEKERNEL->streams->printf("E07\n"); // Error: invalid parsed move
         return;
     }
     
-    // Scale I,J offset to new radius to maintain arc center 
-    float scale = new_radius / radius;
-    offset[0] *= scale;
-    offset[1] *= scale;
+    THEKERNEL->streams->printf("P\n"); // Compact: Processing move
+    
+    // The move coordinates are already compensated but still in G-code space
+    // Apply WCS transforms to get machine coordinates
+    float target[n_motors];
+    memcpy(target, machine_position, n_motors*sizeof(float));
+    
+    // Apply WCS, G92, and tool offsets (same as process_move does)
+    if(!next_command_is_MCS) {
+        target[X_AXIS] = ROUND_NEAR_HALF(move.xyz[X_AXIS] + std::get<X_AXIS>(wcs_offsets[current_wcs]) - 
+                                        std::get<X_AXIS>(g92_offset) + std::get<X_AXIS>(tool_offset));
+        target[Y_AXIS] = ROUND_NEAR_HALF(move.xyz[Y_AXIS] + std::get<Y_AXIS>(wcs_offsets[current_wcs]) - 
+                                        std::get<Y_AXIS>(g92_offset) + std::get<Y_AXIS>(tool_offset));
+        target[Z_AXIS] = ROUND_NEAR_HALF(move.xyz[Z_AXIS] + std::get<Z_AXIS>(wcs_offsets[current_wcs]) - 
+                                        std::get<Z_AXIS>(g92_offset) + std::get<Z_AXIS>(tool_offset));
+    } else {
+        target[X_AXIS] = ROUND_NEAR_HALF(move.xyz[X_AXIS]);
+        target[Y_AXIS] = ROUND_NEAR_HALF(move.xyz[Y_AXIS]);
+        target[Z_AXIS] = ROUND_NEAR_HALF(move.xyz[Z_AXIS]);
+    }
+    
+    // Convert feed rate from mm/min to mm/s
+    float rate_mm_s = move.feed_rate / 60.0f;
+    
+    // Execute the move based on type
+    if(move.mode == CompensationPreprocessor::MOTION_LINEAR || move.mode == CompensationPreprocessor::MOTION_SEEK) {
+        // Linear move
+        if(move.mode == CompensationPreprocessor::MOTION_SEEK && seek_rate > 0) {
+            rate_mm_s = seek_rate / 60.0f;
+        }
+        
+        append_line(nullptr, target, rate_mm_s, NAN);
+        
+        THEKERNEL->streams->printf("M\n"); // Compact: Move executed
+            
+    } else if(move.mode == CompensationPreprocessor::MOTION_CW_ARC || move.mode == CompensationPreprocessor::MOTION_CCW_ARC) {
+        // Arc move - offset is already compensated
+        float offset[3];
+        offset[0] = isnan(move.ijk[0]) ? 0 : move.ijk[0];
+        offset[1] = isnan(move.ijk[1]) ? 0 : move.ijk[1];
+        offset[2] = isnan(move.ijk[2]) ? 0 : move.ijk[2];
+        
+        // Calculate radius
+        float radius = sqrtf(offset[0]*offset[0] + offset[1]*offset[1] + offset[2]*offset[2]);
+        
+        append_arc(nullptr, target, offset, radius, move.mode == CompensationPreprocessor::MOTION_CW_ARC);
+        
+        THEKERNEL->streams->printf("M\n"); // Compact: Move executed
+    }
 }
 
 float Robot::theta(float x, float y)
