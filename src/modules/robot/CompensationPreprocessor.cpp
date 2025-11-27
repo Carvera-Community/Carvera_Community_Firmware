@@ -8,26 +8,28 @@
 CompensationPreprocessor::CompensationPreprocessor() 
     : comp_side(Compensation::NONE), 
       comp_radius(0),
+      buffer_head(0),
+      buffer_tail(0),
+      buffer_count(0),
       first_move_after_enable(false)
 {
     last_position[0] = last_position[1] = last_position[2] = 0;
     last_uncompensated_position[0] = last_uncompensated_position[1] = last_uncompensated_position[2] = 0;
-    THEKERNEL->streams->printf("DBG:CompPrep: Preprocessor initialized with lookahead buffering\n");
+    THEKERNEL->streams->printf("DBG:CompPrep: Fixed buffer initialized (no heap alloc)\n");
 }
 
 CompensationPreprocessor::~CompensationPreprocessor() {
-    while (!move_buffer.empty()) {
-        move_buffer.pop();
-    }
+    // No cleanup needed - fixed array, no dynamic allocation
+    buffer_count = 0;
 }
 
 // ============================================================================
 // Compensation Control
 // ============================================================================
 
-void CompensationPreprocessor::enable_compensation(CompSide side, float diameter) {
+void CompensationPreprocessor::enable_compensation(CompSide side, float diameter, const float current_position[3]) {
     if (side != Compensation::NONE && side != Compensation::LEFT && side != Compensation::RIGHT) {
-        THEKERNEL->streams->printf("E02:InvalidSide\n"); // Error: invalid compensation side
+        THEKERNEL->streams->printf("E02\n"); // Error: invalid compensation side
         return;
     }
 
@@ -35,11 +37,17 @@ void CompensationPreprocessor::enable_compensation(CompSide side, float diameter
     comp_radius = diameter / 2.0f;
     first_move_after_enable = true;
     
-    while (!move_buffer.empty()) {
-        move_buffer.pop();
-    }
+    buffer_clear();
     
-    // Silent enable - no confirmation message
+    // Initialize position tracking to current machine position
+    last_position[0] = current_position[0];
+    last_position[1] = current_position[1];
+    last_position[2] = current_position[2];
+    last_uncompensated_position[0] = current_position[0];
+    last_uncompensated_position[1] = current_position[1];
+    last_uncompensated_position[2] = current_position[2];
+    
+    THEKERNEL->streams->printf("G41@[%.1f,%.1f]\n", current_position[0], current_position[1]); // Compact: enabled at position
 }
 
 void CompensationPreprocessor::disable_compensation() {
@@ -56,26 +64,51 @@ void CompensationPreprocessor::disable_compensation() {
 // ============================================================================
 
 bool CompensationPreprocessor::buffer_move(const ParsedMove& move) {
+    //DEBUG: Where is this being called from?
+    THEKERNEL->streams->printf(">>BUFFER_MOVE_CALLED\n");
+    
+    THEKERNEL->streams->printf("  BufState: count=%d head=%d tail=%d\n", buffer_count, buffer_head, buffer_tail);
+    
     if (!move.valid) {
         THEKERNEL->streams->printf("E01\n"); // Error code: invalid move
         return false;
     }
     
+    // Safety check: prevent buffer overflow
+    if (buffer_is_full()) {
+        THEKERNEL->streams->printf("E08:BufFull\n"); // Error: Buffer overflow
+        return false;
+    }
+    
     // Calculate move geometry from UNCOMPENSATED position to check if it's zero-length
-    ParsedMove temp_move = move;
-    calculate_move_geometry(temp_move, last_uncompensated_position);
+    // Do this in-place without making a copy to save stack space
+    float dx = move.xyz[0] - last_uncompensated_position[0];
+    float dy = move.xyz[1] - last_uncompensated_position[1];
+    float move_length = sqrtf(dx*dx + dy*dy);
     
     // Skip zero-length moves (they would cause division by zero in intersection calc)
-    if (temp_move.length_2d < 0.001f) {
+    if (move_length < 0.001f) {
         // Silent skip - update Z if needed
         last_uncompensated_position[2] = move.xyz[2];
         last_position[2] = move.xyz[2];
-        THEKERNEL->streams->printf("Z\n"); // Compact: Zero-length skipped
+        // Compact debug removed // Compact: Zero-length skipped
         return true;
     }
     
-    move_buffer.push(temp_move);  // Push the move with calculated geometry
-    THEKERNEL->streams->printf("B%d\n", move_buffer.size()); // Compact: Buffered, buffer size
+    // Create a copy only now that we know it's valid
+    // Calculate geometry before pushing to avoid recalculation
+    ParsedMove buffered_move = move;
+    buffered_move.length_2d = move_length;
+    if (move_length > 0.00001f) {
+        buffered_move.direction[0] = dx / move_length;
+        buffered_move.direction[1] = dy / move_length;
+    } else {
+        buffered_move.direction[0] = 0;
+        buffered_move.direction[1] = 0;
+    }
+    
+    buffer_push(buffered_move);  // Push the move with calculated geometry
+    THEKERNEL->streams->printf("B%d\n", buffer_count); // Compact: Buffered, buffer size
     
     // Update uncompensated position to this move's endpoint
     last_uncompensated_position[0] = move.xyz[0];
@@ -86,19 +119,19 @@ bool CompensationPreprocessor::buffer_move(const ParsedMove& move) {
 }
 
 bool CompensationPreprocessor::get_compensated_move(ParsedMove& output_move) {
-    if (move_buffer.size() < LOOKAHEAD_DEPTH) {
+    if (buffer_count < LOOKAHEAD_DEPTH) {
         return false; // Silent - waiting for more moves
     }
     
-    std::queue<ParsedMove> temp_queue = move_buffer;
+    // Direct access to buffer elements (no copying whole buffer!)
+    const ParsedMove& move1 = buffer_at(0);
+    const ParsedMove& move2 = buffer_at(1);
+    const ParsedMove& move3 = buffer_at(2);
     
-    ParsedMove move1 = temp_queue.front(); temp_queue.pop();
-    ParsedMove move2 = temp_queue.front(); temp_queue.pop();
-    ParsedMove move3 = temp_queue.front();
+    // Pop the first move from buffer
+    buffer_pop();
     
-    move_buffer.pop();
-    
-    THEKERNEL->streams->printf("C\n"); // Compact: Compensating move
+    // Compact debug removed // Compact: Compensating move
     
     output_move = move1;
     
@@ -109,22 +142,25 @@ bool CompensationPreprocessor::get_compensated_move(ParsedMove& output_move) {
     if (move1.mode == MOTION_LINEAR || move1.mode == MOTION_SEEK) {
         if (move2.mode == MOTION_LINEAR || move2.mode == MOTION_SEEK) {
             // move2 geometry already calculated from move1.xyz during buffering
-            // But recalculate to ensure it's relative to move1's compensated endpoint
-            ParsedMove temp_move2 = move2;
-            calculate_move_geometry(temp_move2, move1.xyz);
+            // Calculate direction dot product without making a full copy
+            float dx2 = move2.xyz[0] - move1.xyz[0];
+            float dy2 = move2.xyz[1] - move1.xyz[1];
+            float len2 = sqrtf(dx2*dx2 + dy2*dy2);
+            float dir2_x = (len2 > 0.001f) ? dx2/len2 : move2.direction[0];
+            float dir2_y = (len2 > 0.001f) ? dy2/len2 : move2.direction[1];
             
-            float dir_dot = output_move.direction[0] * temp_move2.direction[0] + 
-                          output_move.direction[1] * temp_move2.direction[1];
+            float dir_dot = output_move.direction[0] * dir2_x + 
+                          output_move.direction[1] * dir2_y;
             
             if (dir_dot < 0.9999f) {
                 // Corner detected
-                THEKERNEL->streams->printf("K\n"); // Compact: Corner detected
+                // Compact debug removed // Compact: Corner detected
                 
                 float intersection[2];
-                if (calculate_corner_intersection(output_move, temp_move2, intersection)) {
+                if (calculate_corner_intersection(output_move, move2, intersection)) {
                     output_move.xyz[0] = intersection[0];
                     output_move.xyz[1] = intersection[1];
-                    THEKERNEL->streams->printf("I\n"); // Compact: Intersection applied
+                    // Compact debug removed // Compact: Intersection applied
                 } else {
                     THEKERNEL->streams->printf("W01\n"); // Warning: corner calc failed
                     float offset[2];
@@ -133,14 +169,14 @@ bool CompensationPreprocessor::get_compensated_move(ParsedMove& output_move) {
                     output_move.xyz[1] = offset[1];
                 }
             } else {
-                THEKERNEL->streams->printf("L\n"); // Compact: coLlinear moves
+                // Compact debug removed // Compact: coLlinear moves
                 float offset[2];
                 calculate_perpendicular_offset(move1, last_position, offset);
                 output_move.xyz[0] = offset[0];
                 output_move.xyz[1] = offset[1];
             }
         } else {
-            THEKERNEL->streams->printf("S\n"); // Compact: Simple offset
+            // Compact debug removed // Compact: Simple offset
             float offset[2];
             calculate_perpendicular_offset(move1, last_position, offset);
             output_move.xyz[0] = offset[0];
@@ -148,25 +184,42 @@ bool CompensationPreprocessor::get_compensated_move(ParsedMove& output_move) {
         }
         
     } else if (move1.mode == MOTION_CW_ARC || move1.mode == MOTION_CCW_ARC) {
-        THEKERNEL->streams->printf("A\n"); // Compact: Arc compensation
+        // Compact debug removed // Compact: Arc compensation
         compensate_arc(output_move);
     }
     
+    // Update last_position with COMPENSATED coordinates (for next move's geometry calc)
     last_position[0] = output_move.xyz[0];
     last_position[1] = output_move.xyz[1];
     last_position[2] = output_move.xyz[2];
     
-    THEKERNEL->streams->printf("X\n"); // Compact: eXecuting move
+    // CRITICAL: Update uncompensated position with ORIGINAL move endpoint
+    // This is where we ACTUALLY are in G-code space after this move
+    last_uncompensated_position[0] = move1.xyz[0];
+    last_uncompensated_position[1] = move1.xyz[1];
+    last_uncompensated_position[2] = move1.xyz[2];
+    
+    // Debug: Show what we're returning to Robot
+    THEKERNEL->streams->printf("  CP_Out: X%.1f Y%.1f Z%.1f\n", output_move.xyz[0], output_move.xyz[1], output_move.xyz[2]);
+    THEKERNEL->streams->printf("  CP_Orig: X%.1f Y%.1f Z%.1f\n", move1.xyz[0], move1.xyz[1], move1.xyz[2]);
+    
+    // Compact debug removed // Compact: eXecuting move
     
     return true;
 }
 
 void CompensationPreprocessor::flush_buffer(std::queue<ParsedMove>& flushed_moves) {
-    THEKERNEL->streams->printf("F%d\n", move_buffer.size()); // Compact: Flushing N moves
+    // DEPRECATED: This function uses std::queue which allocates heap memory
+    // Use get_flushed_move() instead for embedded systems
+    if (buffer_is_empty()) {
+        return;
+    }
     
-    while (!move_buffer.empty()) {
-        ParsedMove move = move_buffer.front();
-        move_buffer.pop();
+    THEKERNEL->streams->printf("W03:OldFlush\n"); // Warning: deprecated flush method
+    
+    while (!buffer_is_empty()) {
+        ParsedMove move = buffer_at(0);
+        buffer_pop();
         
         if (move.mode == MOTION_LINEAR || move.mode == MOTION_SEEK) {
             calculate_move_geometry(move, last_position);
@@ -183,8 +236,35 @@ void CompensationPreprocessor::flush_buffer(std::queue<ParsedMove>& flushed_move
         }
         
         flushed_moves.push(move);
-        // Silent - no flushed move output
     }
+}
+
+bool CompensationPreprocessor::get_flushed_move(ParsedMove& output_move) {
+    if (buffer_is_empty()) {
+        return false; // No more moves to flush
+    }
+    
+    // Get the front move from buffer
+    output_move = buffer_at(0);
+    buffer_pop();
+    
+    // Apply simple compensation without corner intersection (flushing end of path)
+    if (output_move.mode == MOTION_LINEAR || output_move.mode == MOTION_SEEK) {
+        calculate_move_geometry(output_move, last_position);
+        float offset[2];
+        calculate_perpendicular_offset(output_move, last_position, offset);
+        output_move.xyz[0] = offset[0];
+        output_move.xyz[1] = offset[1];
+        
+        // Update last_position for next flushed move
+        last_position[0] = output_move.xyz[0];
+        last_position[1] = output_move.xyz[1];
+        last_position[2] = output_move.xyz[2];
+    } else if (output_move.mode == MOTION_CW_ARC || output_move.mode == MOTION_CCW_ARC) {
+        compensate_arc(output_move);
+    }
+    
+    return true; // Move successfully flushed
 }
 
 // ============================================================================
@@ -259,8 +339,9 @@ bool CompensationPreprocessor::calculate_corner_intersection(
     float p1y = move1.xyz[1] + n1y * comp_radius;
     
     // Start point of second line (at start of move2, which is end of move1)
-    float p2x = move2.xyz[0] - move2.direction[0] * move2.length_2d + n2x * comp_radius;
-    float p2y = move2.xyz[1] - move2.direction[1] * move2.length_2d + n2y * comp_radius;
+    // CRITICAL FIX: move2 starts where move1 ends, so use move1.xyz[] not move2.xyz[]
+    float p2x = move1.xyz[0] + n2x * comp_radius;
+    float p2y = move1.xyz[1] + n2y * comp_radius;
     
     float det = u1x * u2y - u1y * u2x;
     

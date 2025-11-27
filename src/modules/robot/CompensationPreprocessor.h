@@ -69,14 +69,18 @@ public:
     bool get_compensated_move(ParsedMove& output_move);
     
     // Check if there are buffered moves waiting
-    bool has_buffered_moves() const { return !move_buffer.empty(); }
-    int buffer_size() const { return move_buffer.size(); }
+    bool has_buffered_moves() const { return buffer_count > 0; }
+    int buffer_size() const { return buffer_count; }
     
-    // Flush all buffered moves (call on G40, M2, program end, etc.)
+    // Flush buffered moves one at a time (call on G40, M2, program end, etc.)
+    // Returns true if a flushed move was retrieved, false if buffer is empty
+    bool get_flushed_move(ParsedMove& output_move);
+    
+    // DEPRECATED: Old flush using std::queue (causes heap allocation)
     void flush_buffer(std::queue<ParsedMove>& flushed_moves);
     
     // Compensation control
-    void enable_compensation(CompSide side, float diameter);
+    void enable_compensation(CompSide side, float diameter, const float current_position[3]);
     void disable_compensation();
     bool is_active() const { return comp_side != Compensation::NONE; }
     CompSide get_side() const { return comp_side; }
@@ -84,10 +88,40 @@ public:
 
 private:
     // ============================================================================
+    // Circular Buffer Helpers (inline for performance)
+    // ============================================================================
+    inline bool buffer_is_full() const { return buffer_count >= MAX_BUFFER_SIZE; }
+    inline bool buffer_is_empty() const { return buffer_count == 0; }
+    
+    inline void buffer_push(const ParsedMove& move) {
+        move_buffer[buffer_head] = move;
+        buffer_head = (buffer_head + 1) % MAX_BUFFER_SIZE;
+        buffer_count++;
+    }
+    
+    inline void buffer_pop() {
+        buffer_tail = (buffer_tail + 1) % MAX_BUFFER_SIZE;
+        buffer_count--;
+    }
+    
+    inline const ParsedMove& buffer_at(int index) const {
+        return move_buffer[(buffer_tail + index) % MAX_BUFFER_SIZE];
+    }
+    
+    inline void buffer_clear() {
+        buffer_head = buffer_tail = buffer_count = 0;
+    }
+    // ============================================================================
     // Lookahead Buffer Management
     // ============================================================================
     static const int LOOKAHEAD_DEPTH = 3;  // Need 3 moves for proper corner calculation
-    std::queue<ParsedMove> move_buffer;     // FIFO queue for incoming moves
+    static const int MAX_BUFFER_SIZE = 10; // Safety limit to prevent runaway memory usage
+    
+    // Fixed circular buffer (NO heap allocation - embedded system safety)
+    ParsedMove move_buffer[MAX_BUFFER_SIZE];
+    int buffer_head;  // Write index
+    int buffer_tail;  // Read index
+    int buffer_count; // Number of elements
     
     // Current compensation state
     CompSide comp_side;

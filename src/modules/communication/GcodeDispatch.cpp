@@ -217,18 +217,17 @@ try_again:
 								return;
 							}
 						}
-						// makes it handle the parameters as a machine position
-						THEROBOT->next_command_is_MCS= true;
+					// makes it handle the parameters as a machine position
+					THEROBOT->next_command_is_MCS= true;
 
-					} else if(gcode->g == 1) {
-						// optimize G1 to send ok immediately (one per line) before it is planned
-						if(!sent_ok) {
-							sent_ok= true;
-							new_message.stream->printf("ok\n");
-						}
+				} else if(gcode->g == 1) {
+					// optimize G1 to send ok immediately (one per line) before it is planned
+					// BUT: Don't send early ok when cutter compensation is active (buffering delays)
+					if(!sent_ok && !THEROBOT->is_compensation_active()) {
+						sent_ok= true;
+						new_message.stream->printf("ok\n");
 					}
-
-					// remember last modal group 1 code
+				}					// remember last modal group 1 code
 					if(gcode->g < 4) {
 						modal_group_1= gcode->g;
 					}

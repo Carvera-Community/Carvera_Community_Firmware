@@ -557,6 +557,11 @@ void Robot::set_current_wcs_by_mpos(float x, float y, float z, float a, float b)
 void Robot::on_gcode_received(void *argument)
 {
     Gcode *gcode = static_cast<Gcode *>(argument);
+    
+    //DEBUG: Confirm this function is called - EVERY G-code
+    if(gcode->has_g) {
+        gcode->stream->printf(">>ROBOT: G%d\n", gcode->g);
+    }
 
     enum MOTION_MODE_T motion_mode= NONE;
 
@@ -570,14 +575,10 @@ void Robot::on_gcode_received(void *argument)
             case 40: // G40: Cancel cutter compensation
                 // Flush any buffered moves before disabling
                 if(comp_preprocessor && comp_preprocessor->is_active()) {
-                    std::queue<CompensationPreprocessor::ParsedMove> flushed_moves;
-                    comp_preprocessor->flush_buffer(flushed_moves);
-                    
-                    // Process all flushed moves
-                    while(!flushed_moves.empty()) {
-                        CompensationPreprocessor::ParsedMove move = flushed_moves.front();
-                        flushed_moves.pop();
-                        process_parsed_move(move);
+                    // Process remaining buffered moves directly without copying to queue
+                    CompensationPreprocessor::ParsedMove flushed_move;
+                    while(comp_preprocessor->get_flushed_move(flushed_move)) {
+                        process_parsed_move(flushed_move);
                     }
                 }
                 set_compensation(static_cast<Compensation::Side>(Compensation::NONE), 0.0f);
@@ -1202,6 +1203,11 @@ void Robot::on_gcode_received(void *argument)
     if( motion_mode != NONE) {
         is_g123= motion_mode != SEEK;
         
+        //DEBUG: Check compensation state
+        gcode->stream->printf(">>CHK: ptr=%d active=%d\n", 
+            (comp_preprocessor != nullptr ? 1 : 0),
+            (comp_preprocessor && comp_preprocessor->is_active() ? 1 : 0));
+        
         // If compensation is active, use buffering system
         if(comp_preprocessor && comp_preprocessor->is_active()) {
             // Parse the move
@@ -1209,8 +1215,13 @@ void Robot::on_gcode_received(void *argument)
             parse_move_for_compensation(gcode, motion_mode, parsed_move);
             
             if(parsed_move.valid) {
-                // Buffer the move
+                //DEBUG: Confirm we're buffering
+                gcode->stream->printf(">>BUF\n");
+                
+                // Buffer the move - MARKER: This is from on_gcode_received compensation path
+                gcode->stream->printf(">>CALLING_BUFFER_FROM_ONGCODE\n");
                 comp_preprocessor->buffer_move(parsed_move);
+                gcode->stream->printf(">>BUFFER_RETURNED\n");
                 
                 // Try to get compensated moves from the buffer
                 CompensationPreprocessor::ParsedMove compensated_move;
@@ -1218,9 +1229,15 @@ void Robot::on_gcode_received(void *argument)
                     // Process the compensated move
                     process_parsed_move(compensated_move);
                 }
+                
+                //DEBUG: Confirm we finished processing
+                gcode->stream->printf(">>DONE\n");
             }
+            // NOTE: GcodeDispatch.cpp line 227 already sends "ok" for G1 commands
+            // before Robot processes them, so we don't need to send it here
         } else {
             // No compensation - use normal path
+            gcode->stream->printf(">>NORM\n");  //DEBUG
             process_move(gcode, motion_mode);
         }
         // THEKERNEL->streams->printf("GCode: [%s], mode:[%d]\n", gcode->get_command(), motion_mode);
@@ -1245,6 +1262,9 @@ int Robot::get_active_extruder() const
 // process a G0/G1/G2/G3
 void Robot::process_move(Gcode *gcode, enum MOTION_MODE_T motion_mode)
 {
+    //DEBUG: Track if this is called
+    gcode->stream->printf(">>PROCESS_MOVE_CALLED mode=%d\n", motion_mode);
+    
     // we have a G0/G1/G2/G3 so extract parameters and apply offsets to get machine coordinate target
     // get XYZ and one E (which goes to the selected extruder)/A and B
     float param[5]{NAN, NAN, NAN, NAN, NAN};
@@ -2138,12 +2158,15 @@ void Robot::set_compensation(COMPENSATION_SIDE_T side, float radius) {
 
     // Then update preprocessor
     if (compensation_active) {
-        comp_preprocessor->enable_compensation(side, 2 * radius); // preprocessor takes diameter
+        // Pass current G-code position (not machine position) to preprocessor
+        float current_gcode_pos[3];
+        current_gcode_pos[0] = from_millimeters(machine_position[X_AXIS]) - std::get<X_AXIS>(wcs_offsets[current_wcs]) + std::get<X_AXIS>(g92_offset) - std::get<X_AXIS>(tool_offset);
+        current_gcode_pos[1] = from_millimeters(machine_position[Y_AXIS]) - std::get<Y_AXIS>(wcs_offsets[current_wcs]) + std::get<Y_AXIS>(g92_offset) - std::get<Y_AXIS>(tool_offset);
+        current_gcode_pos[2] = from_millimeters(machine_position[Z_AXIS]) - std::get<Z_AXIS>(wcs_offsets[current_wcs]) + std::get<Z_AXIS>(g92_offset) - std::get<Z_AXIS>(tool_offset);
+        comp_preprocessor->enable_compensation(side, 2 * radius, current_gcode_pos); // preprocessor takes diameter
     } else {
         comp_preprocessor->disable_compensation();
     }
-    
-    // Silent - compensation state changed
 }
 
 // Parse a G-code move into a ParsedMove structure for compensation preprocessing
@@ -2232,23 +2255,53 @@ void Robot::process_parsed_move(const CompensationPreprocessor::ParsedMove& move
     
     THEKERNEL->streams->printf("P\n"); // Compact: Processing move
     
-    // The move coordinates are already compensated but still in G-code space
-    // Apply WCS transforms to get machine coordinates
-    float target[n_motors];
-    memcpy(target, machine_position, n_motors*sizeof(float));
+    // Debug: Show what CompensationPreprocessor gave us
+    THEKERNEL->streams->printf("  R_In: X%.1f Y%.1f Z%.1f\n", move.xyz[X_AXIS], move.xyz[Y_AXIS], move.xyz[Z_AXIS]);
     
-    // Apply WCS, G92, and tool offsets (same as process_move does)
+    // The move coordinates are from CompensationPreprocessor in work coordinate space
+    // Apply WCS transforms to get machine coordinates (same logic as process_move)
+    // IMPORTANT: For rotary axes (A/B/C), preserve machine_position. For XYZ, transform from work space.
+    float target[n_motors];
+    
+    // Initialize rotary/extruder axes from current machine position
+    for(int i = 0; i < n_motors; i++) {
+        target[i] = machine_position[i];
+    }
+    
+    // Transform work coordinates to machine coordinates for XYZ only
+    // Note: move.xyz[] contains work space coords (like G-code params), not machine coords
     if(!next_command_is_MCS) {
-        target[X_AXIS] = ROUND_NEAR_HALF(move.xyz[X_AXIS] + std::get<X_AXIS>(wcs_offsets[current_wcs]) - 
-                                        std::get<X_AXIS>(g92_offset) + std::get<X_AXIS>(tool_offset));
-        target[Y_AXIS] = ROUND_NEAR_HALF(move.xyz[Y_AXIS] + std::get<Y_AXIS>(wcs_offsets[current_wcs]) - 
-                                        std::get<Y_AXIS>(g92_offset) + std::get<Y_AXIS>(tool_offset));
-        target[Z_AXIS] = ROUND_NEAR_HALF(move.xyz[Z_AXIS] + std::get<Z_AXIS>(wcs_offsets[current_wcs]) - 
-                                        std::get<Z_AXIS>(g92_offset) + std::get<Z_AXIS>(tool_offset));
+        // Debug: Show the transform components
+        THEKERNEL->streams->printf("  WCS[%d]: X%.1f Y%.1f Z%.1f\n", current_wcs,
+            std::get<X_AXIS>(wcs_offsets[current_wcs]),
+            std::get<Y_AXIS>(wcs_offsets[current_wcs]),
+            std::get<Z_AXIS>(wcs_offsets[current_wcs]));
+        THEKERNEL->streams->printf("  G92: X%.1f Y%.1f Z%.1f\n",
+            std::get<X_AXIS>(g92_offset),
+            std::get<Y_AXIS>(g92_offset),
+            std::get<Z_AXIS>(g92_offset));
+        
+        // Apply WCS, G92, and tool offsets to convert work space to machine space
+        if(!isnan(move.xyz[X_AXIS])) {
+            target[X_AXIS] = ROUND_NEAR_HALF(move.xyz[X_AXIS] + std::get<X_AXIS>(wcs_offsets[current_wcs]) - 
+                                            std::get<X_AXIS>(g92_offset) + std::get<X_AXIS>(tool_offset));
+        }
+        // If X not specified, target[X_AXIS] already has machine_position[X_AXIS] from loop above
+        
+        if(!isnan(move.xyz[Y_AXIS])) {
+            target[Y_AXIS] = ROUND_NEAR_HALF(move.xyz[Y_AXIS] + std::get<Y_AXIS>(wcs_offsets[current_wcs]) - 
+                                            std::get<Y_AXIS>(g92_offset) + std::get<Y_AXIS>(tool_offset));
+        }
+        
+        if(!isnan(move.xyz[Z_AXIS])) {
+            target[Z_AXIS] = ROUND_NEAR_HALF(move.xyz[Z_AXIS] + std::get<Z_AXIS>(wcs_offsets[current_wcs]) - 
+                                            std::get<Z_AXIS>(g92_offset) + std::get<Z_AXIS>(tool_offset));
+        }
     } else {
-        target[X_AXIS] = ROUND_NEAR_HALF(move.xyz[X_AXIS]);
-        target[Y_AXIS] = ROUND_NEAR_HALF(move.xyz[Y_AXIS]);
-        target[Z_AXIS] = ROUND_NEAR_HALF(move.xyz[Z_AXIS]);
+        // MCS mode - coordinates are already in machine space
+        if(!isnan(move.xyz[X_AXIS])) target[X_AXIS] = ROUND_NEAR_HALF(move.xyz[X_AXIS]);
+        if(!isnan(move.xyz[Y_AXIS])) target[Y_AXIS] = ROUND_NEAR_HALF(move.xyz[Y_AXIS]);
+        if(!isnan(move.xyz[Z_AXIS])) target[Z_AXIS] = ROUND_NEAR_HALF(move.xyz[Z_AXIS]);
     }
     
     // Convert feed rate from mm/min to mm/s
@@ -2261,23 +2314,51 @@ void Robot::process_parsed_move(const CompensationPreprocessor::ParsedMove& move
             rate_mm_s = seek_rate / 60.0f;
         }
         
-        append_line(nullptr, target, rate_mm_s, NAN);
+        // CRITICAL FIX: Call append_milestone directly instead of append_line
+        // append_line expects a valid Gcode* pointer and will crash on nullptr
+        // append_milestone is the lower-level function that actually queues the move
+        if (rate_mm_s <= 0.0F) {
+            THEKERNEL->streams->printf("E09:BadRate\n"); // Error: invalid feed rate
+            return;
+        }
         
-        THEKERNEL->streams->printf("M\n"); // Compact: Move executed
+        // CRITICAL: Call append_milestone and update machine_position on success
+        THEKERNEL->streams->printf("  Calling append_milestone...\n");
+        bool success = append_milestone(target, rate_mm_s, move.line_num);
+        THEKERNEL->streams->printf("  append_milestone returned: %d\n", success ? 1 : 0);
+        
+        if(success) {
+            // Update machine_position to match the target we just queued
+            // This is essential so the next move calculates from the correct starting point
+            memcpy(machine_position, target, n_motors * sizeof(float));
+            THEKERNEL->streams->printf("  machine_position updated\n");
+        } else {
+            THEKERNEL->streams->printf("E10:AppendFailed\n");
+        }
+        
+        // Debug: Print the coordinates we just executed
+        THEKERNEL->streams->printf("M: X%.1f Y%.1f Z%.1f\n", target[X_AXIS], target[Y_AXIS], target[Z_AXIS]);
             
     } else if(move.mode == CompensationPreprocessor::MOTION_CW_ARC || move.mode == CompensationPreprocessor::MOTION_CCW_ARC) {
-        // Arc move - offset is already compensated
-        float offset[3];
-        offset[0] = isnan(move.ijk[0]) ? 0 : move.ijk[0];
-        offset[1] = isnan(move.ijk[1]) ? 0 : move.ijk[1];
-        offset[2] = isnan(move.ijk[2]) ? 0 : move.ijk[2];
+        // Arc move - for now, just execute as a linear move to the endpoint
+        // TODO: Implement proper arc segmentation without requiring Gcode pointer
+        // append_arc also expects a valid Gcode* and will crash on nullptr
         
-        // Calculate radius
-        float radius = sqrtf(offset[0]*offset[0] + offset[1]*offset[1] + offset[2]*offset[2]);
+        THEKERNEL->streams->printf("W04:ArcAsLine\n"); // Warning: Arc executed as line
         
-        append_arc(nullptr, target, offset, radius, move.mode == CompensationPreprocessor::MOTION_CW_ARC);
+        if (rate_mm_s <= 0.0F) {
+            THEKERNEL->streams->printf("E09:BadRate\n");
+            return;
+        }
         
-        THEKERNEL->streams->printf("M\n"); // Compact: Move executed
+        // Execute as linear move to endpoint
+        if(append_milestone(target, rate_mm_s, move.line_num)) {
+            // Update machine_position to match the target we just queued
+            memcpy(machine_position, target, n_motors * sizeof(float));
+        }
+        
+        // Debug: Print the coordinates we just executed
+        THEKERNEL->streams->printf("M: X%.1f Y%.1f Z%.1f\n", target[X_AXIS], target[Y_AXIS], target[Z_AXIS]);
     }
 }
 

@@ -13,5 +13,7 @@ G1 X0 Y0       ; Move to start position of cut with offset
 G1 X50 Y0      ; Should offset 3mm to left
 G1 X50 Y50     ; Move to next position
 G1 X0 Y50      ; Complete the rectangle
+G1 X0 Y10
+G1 X10 Y0
 G1 X0 Y0       ; Return to start with offset
 G40            ; Cancel compensation
