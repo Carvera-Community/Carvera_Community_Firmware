@@ -428,7 +428,7 @@ void ATCHandler::calibrate_anchor2(Gcode *gcode)//M469.2
 void ATCHandler::calibrate_a_axis_headstock(Gcode *gcode)//M469.4
 {
 	float headstock_width = this->rotation_width/2 + 5;
-	float probe_height= this->rotation_offset_z - 6;
+	float probe_height= this->rotation_offset_z;
 
 	THEKERNEL->streams->printf("Calibrating A Axis Headstock Center\n");
 	char buff[100];
@@ -446,8 +446,8 @@ void ATCHandler::calibrate_a_axis_headstock(Gcode *gcode)//M469.4
 	if (gcode->has_letter('Y')){
 		headstock_width = gcode->get_value('Y')/2+5;
 	}
-	if (gcode->has_letter('E')){
-		probe_height = gcode->get_value('E');
+	if (gcode->has_letter('H')){
+		probe_height = gcode->get_value('H');
 	}
 
 	//print status
@@ -458,23 +458,7 @@ void ATCHandler::calibrate_a_axis_headstock(Gcode *gcode)//M469.4
 	snprintf(buff, sizeof(buff), "G90 G53 G0 Z%.3f", THEROBOT->from_millimeters(this->clearance_z));
 	this->script_queue.push(buff);
 
-	//move to probe position
-	// rotation_offset_x is where the 4th axis head finishes and the chuck starts. Probing 5mm back from this to ensure it touches the 4th axis module body
-	snprintf(buff, sizeof(buff), "G91 G53 G0 X%.3f", this->anchor1_x + this->rotation_offset_x - 5); 
-	this->script_queue.push(buff);
-	snprintf(buff, sizeof(buff), "G91 G53 G0 Y%.3f", this->anchor1_y + this->rotation_offset_y);
-	this->script_queue.push(buff);
-	
-	//probe -z
-	if (!invert_probe){
-		snprintf(buff, sizeof(buff), "G38.3 Z-105 F450");
-		this->script_queue.push(buff);
-	} else{
-		snprintf(buff, sizeof(buff), "G38.5 Z-105 F450");
-		this->script_queue.push(buff);
-	}
-	snprintf(buff, sizeof(buff), "G91 G54 G0 Z3");
-	this->script_queue.push(buff);
+	this->fill_zprobe_abs_scripts();
 	
 	//execute calibration with specific values
 	snprintf(buff, sizeof(buff), "M462 Y%.3f E%.3f I%i", headstock_width , probe_height, invert_probe ? 1:0);
