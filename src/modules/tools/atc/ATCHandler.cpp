@@ -191,7 +191,6 @@ void ATCHandler::load_custom_tool_slots() {
                 atc_tools[i].set_mx_mm(x_mm);
                 atc_tools[i].set_my_mm(y_mm);
                 atc_tools[i].set_mz_mm(z_mm);
-                atc_tools[i].valid = true;
             }
         }
     }
@@ -201,7 +200,7 @@ bool ATCHandler::is_custom_tool_defined(int tool_num) {
     if (tool_num < 0 || tool_num >= (int)atc_tools.size()) {
         return false;
     }
-    return atc_tools[tool_num].valid;
+    return atc_tools[tool_num].is_valid();
 }
 
 void ATCHandler::add_custom_tool_slot(int tool_num, float x_mm, float y_mm, float z_mm) {
@@ -222,12 +221,11 @@ void ATCHandler::add_custom_tool_slot(int tool_num, float x_mm, float y_mm, floa
     }
     
     // Update or add tool slot directly in atc_tools
-    bool is_update = atc_tools[tool_num].valid;
+    bool is_update = atc_tools[tool_num].is_valid();
     atc_tools[tool_num].num = tool_num;
     atc_tools[tool_num].set_mx_mm(x_mm);
     atc_tools[tool_num].set_my_mm(y_mm);
     atc_tools[tool_num].set_mz_mm(z_mm);
-    atc_tools[tool_num].valid = true;
     
     if (is_update) {
         THEKERNEL->streams->printf("Updated tool slot %d: X=%.3f Y=%.3f Z=%.3f\n", tool_num, x_mm, y_mm, z_mm);
@@ -238,7 +236,7 @@ void ATCHandler::add_custom_tool_slot(int tool_num, float x_mm, float y_mm, floa
     // Count valid tool slots
     int valid_count = 0;
     for (const auto& tool : atc_tools) {
-        if (tool.valid) {
+        if (tool.is_valid()) {
             valid_count++;
         }
     }
@@ -1313,7 +1311,6 @@ void ATCHandler::on_config_reload(void *argument)
 				tool.set_mx_mm(this->anchor1_x + this->toolrack_offset_x);
 				tool.set_my_mm(this->anchor1_y + this->toolrack_offset_y -5 + (i == 0 ? 219 : (8 - i) * 25));
 				tool.set_mz_mm(this->toolrack_z - 4.5);
-				tool.valid = true;
 				atc_tools.push_back(tool);
 			}
 			// Calculate probe position - use configured absolute MCS coordinates if available, otherwise use hardcoded values
@@ -1337,7 +1334,6 @@ void ATCHandler::on_config_reload(void *argument)
 				tool.set_mx_mm(this->anchor1_x + this->toolrack_offset_x);
 				tool.set_my_mm(this->anchor1_y + this->toolrack_offset_y + (i == 0 ? 210 : (6 - i) * 30));
 				tool.set_mz_mm(this->toolrack_z);
-				tool.valid = true;
 				atc_tools.push_back(tool);
 			}
 			// Calculate probe position - use configured absolute MCS coordinates if available, otherwise use hardcoded values
@@ -2462,7 +2458,7 @@ void ATCHandler::on_gcode_received(void *argument)
 			// M889 - Display current tool configuration
 			gcode->stream->printf("Tool Slots Configuration:\n");
 			for (const auto& tool : this->atc_tools) {
-				if (tool.valid) {
+				if (tool.is_valid()) {
 					gcode->stream->printf("Tool %d: X=%.3f Y=%.3f Z=%.3f\n", 
 						tool.num, tool.get_mx_mm(), tool.get_my_mm(), tool.get_mz_mm());
 				}

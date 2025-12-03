@@ -210,14 +210,18 @@ private:
     bool skip_path_origin;
 
     struct atc_tool {
-    	short int num;
-    	int16_t mx_mm;  // Stored as 0.01mm units (e.g., -25000 = -250.00mm)
-    	int16_t my_mm;  // Stored as 0.01mm units
-    	int16_t mz_mm;  // Stored as 0.01mm units
-    	bool valid;     // Indicates if this tool slot is configured
+    	uint8_t num;    // Tool number (0-255)
+    	int16_t mx_mm;  // Stored as 0.01mm units (e.g., -25000 = -250.00mm), -1 = invalid
+    	int16_t my_mm;  // Stored as 0.01mm units, -1 = invalid
+    	int16_t mz_mm;  // Stored as 0.01mm units, -1 = invalid
     	
-    	// Default constructor to initialize to 0
-    	atc_tool() : num(0), mx_mm(0), my_mm(0), mz_mm(0), valid(false) {}
+    	// Default constructor to initialize to invalid state
+    	atc_tool() : num(0), mx_mm(-1), my_mm(-1), mz_mm(-1) {}
+    	
+    	// Check if tool is valid (all coordinates are set, not -1)
+    	bool is_valid() const {
+    		return (mx_mm != -1 && my_mm != -1 && mz_mm != -1);
+    	}
     	
     	// Helper functions to convert to/from float (in millimeters)
     	float get_mx_mm() const { return mx_mm / 100.0f; }
@@ -226,7 +230,7 @@ private:
     	void set_mx_mm(float val) {
     		// Handle NaN and invalid values
     		if (std::isnan(val) || val > 1000.0f || val < -1000.0f) {
-    			mx_mm = 0;
+    			mx_mm = -1;
     			return;
     		}
     		float fixed = val * 100.0f;
@@ -238,7 +242,7 @@ private:
     	void set_my_mm(float val) {
     		// Handle NaN and invalid values
     		if (std::isnan(val) || val > 1000.0f || val < -1000.0f) {
-    			my_mm = 0;
+    			my_mm = -1;
     			return;
     		}
     		float fixed = val * 100.0f;
@@ -250,7 +254,7 @@ private:
     	void set_mz_mm(float val) {
     		// Handle NaN and invalid values
     		if (std::isnan(val) || val > 1000.0f || val < -1000.0f) {
-    			mz_mm = 0;
+    			mz_mm = -1;
     			return;
     		}
     		float fixed = val * 100.0f;
