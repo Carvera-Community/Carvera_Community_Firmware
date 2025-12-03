@@ -205,6 +205,77 @@ bool ATCHandler::is_custom_tool_defined(int tool_num) {
     return false;
 }
 
+void ATCHandler::add_custom_tool_slot(int tool_num, float x_mm, float y_mm, float z_mm) {
+    // Validate inputs
+    if (tool_num < 0 || tool_num > 99) {
+        THEKERNEL->streams->printf("ERROR: Tool number must be between 0 and 99\n");
+        return;
+    }
+    
+    if (isnan(x_mm) || isnan(y_mm) || isnan(z_mm)) {
+        THEKERNEL->streams->printf("ERROR: All coordinates (X, Y, Z) must be valid numbers\n");
+        return;
+    }
+    
+    // Enable custom tool slots if not already enabled
+    if (!this->use_custom_tool_slots) {
+        this->use_custom_tool_slots = true;
+        // Clear default tool slots if switching to custom
+        this->atc_tools.clear();
+    }
+    
+    // Find existing slot or create new one
+    bool found = false;
+    for (auto& slot : this->custom_tool_slots) {
+        if (slot.tool_number == tool_num) {
+            // Update existing slot
+            slot.x_mm = x_mm;
+            slot.y_mm = y_mm;
+            slot.z_mm = z_mm;
+            slot.valid = true;
+            found = true;
+            THEKERNEL->streams->printf("Updated tool slot %d: X=%.3f Y=%.3f Z=%.3f\n", tool_num, x_mm, y_mm, z_mm);
+            break;
+        }
+    }
+    
+    if (!found) {
+        // Add new slot
+        ToolSlot new_slot;
+        new_slot.tool_number = tool_num;
+        new_slot.x_mm = x_mm;
+        new_slot.y_mm = y_mm;
+        new_slot.z_mm = z_mm;
+        new_slot.valid = true;
+        this->custom_tool_slots.push_back(new_slot);
+        THEKERNEL->streams->printf("Added tool slot %d: X=%.3f Y=%.3f Z=%.3f\n", tool_num, x_mm, y_mm, z_mm);
+    }
+    
+    // Rebuild atc_tools vector to match custom_tool_slots
+    // Find the maximum tool number
+    int max_tool_num = 0;
+    for (const auto& slot : this->custom_tool_slots) {
+        if (slot.tool_number > max_tool_num) {
+            max_tool_num = slot.tool_number;
+        }
+    }
+    
+    // Resize atc_tools to accommodate the highest tool number
+    if (max_tool_num >= (int)atc_tools.size()) {
+        atc_tools.resize(max_tool_num + 1);
+    }
+    
+    // Update atc_tools entry for this tool
+    if (tool_num >= 0 && tool_num <= max_tool_num) {
+        atc_tools[tool_num].num = tool_num;
+        atc_tools[tool_num].set_mx_mm(x_mm);
+        atc_tools[tool_num].set_my_mm(y_mm);
+        atc_tools[tool_num].set_mz_mm(z_mm);
+    }
+    
+    THEKERNEL->streams->printf("Total custom tool slots: %d\n", (int)this->custom_tool_slots.size());
+}
+
 
 void ATCHandler::fill_calibrate_probe_anchor_scripts(bool invert_probe){
 	THEKERNEL->streams->printf("Calibrating Probe Tip With Anchor 2\n");
@@ -2456,6 +2527,21 @@ void ATCHandler::on_gcode_received(void *argument)
 						tool.num, tool.get_mx_mm(), tool.get_my_mm(), tool.get_mz_mm());
 				}
 			}
+		} else if ( gcode->m == 890 ) {
+			// M890 - Add or update custom tool slot in memory
+			// Usage: M890 T<tool_number> X<x_mm> Y<y_mm> Z<z_mm>
+			if (!gcode->has_letter('T') || !gcode->has_letter('X') || !gcode->has_letter('Y') || !gcode->has_letter('Z')) {
+				gcode->stream->printf("ERROR: M890 requires T, X, Y, and Z parameters\n");
+				gcode->stream->printf("Usage: M890 T<tool_number> X<x_mm> Y<y_mm> Z<z_mm>\n");
+				return;
+			}
+			
+			int tool_num = (int)gcode->get_value('T');
+			float x_mm = gcode->get_value('X');
+			float y_mm = gcode->get_value('Y');
+			float z_mm = gcode->get_value('Z');
+			
+			this->add_custom_tool_slot(tool_num, x_mm, y_mm, z_mm);
 		}
 
     } else if (gcode->has_g && gcode->g == 28 && gcode->subcode == 0) {
