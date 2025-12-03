@@ -214,9 +214,10 @@ private:
     	int16_t mx_mm;  // Stored as 0.01mm units (e.g., -25000 = -250.00mm)
     	int16_t my_mm;  // Stored as 0.01mm units
     	int16_t mz_mm;  // Stored as 0.01mm units
+    	bool valid;     // Indicates if this tool slot is configured
     	
     	// Default constructor to initialize to 0
-    	atc_tool() : num(0), mx_mm(0), my_mm(0), mz_mm(0) {}
+    	atc_tool() : num(0), mx_mm(0), my_mm(0), mz_mm(0), valid(false) {}
     	
     	// Helper functions to convert to/from float (in millimeters)
     	float get_mx_mm() const { return mx_mm / 100.0f; }
@@ -260,19 +261,7 @@ private:
     	}
     };
 
-    struct ToolSlot {
-        int tool_number;
-        float x_mm;
-        float y_mm; 
-        float z_mm;
-        bool valid;
-        
-        ToolSlot() : tool_number(0), x_mm(0), y_mm(0), z_mm(0), valid(false) {}
-    };
-
     vector<struct atc_tool> atc_tools;
-    vector<struct ToolSlot> custom_tool_slots;
-    bool use_custom_tool_slots;
 
     int active_tool;
     int target_tool;
@@ -290,7 +279,7 @@ private:
     int beep_state;
     int beep_count;
 
-    // Custom tool slots functions
+    // Tool slots functions
     void load_custom_tool_slots();
     bool is_custom_tool_defined(int tool_num);
     void add_custom_tool_slot(int tool_num, float x_mm, float y_mm, float z_mm);
