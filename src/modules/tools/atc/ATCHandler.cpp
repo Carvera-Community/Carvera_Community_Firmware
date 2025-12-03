@@ -142,7 +142,10 @@ void ATCHandler::load_custom_tool_slots() {
 
     // Check for custom tool slot configurations
     // Look for tool_slots.0.x, tool_slots.1.x, etc. to find defined slots
+    // Z coordinate is optional - if not provided, use the Z value from the previous tool slot
     int max_tool_num = -1;
+    float last_valid_z = NAN;  // Track the last valid Z value to use for subsequent tools
+    
     for (int i = 0; i < 99; i++) {
         char config_key[64];
         snprintf(config_key, sizeof(config_key), "tool_slots.%d.x", i);
@@ -167,22 +170,35 @@ void ATCHandler::load_custom_tool_slots() {
             ConfigValue *z_cv = THEKERNEL->config->value(enable_checksums);
             float z_mm = z_cv ? z_cv->by_default(NAN)->as_number() : NAN;
             
-            // Validate that all coordinates are defined in configuration
+            // Validate that X and Y coordinates are defined (Z is optional)
             // A coordinate is considered defined if it's not NAN
             bool x_defined = !isnan(x_mm);
             bool y_defined = !isnan(y_mm);
             bool z_defined = !isnan(z_mm);
             
-            bool valid = x_defined && y_defined && z_defined;
+            // Only require X and Y to be valid
+            bool valid = x_defined && y_defined;
             
-            // Track maximum tool number to size the vector appropriately
-            if (i > max_tool_num) {
-                max_tool_num = i;
-            }
-            
-            // Only add slots that have ALL three coordinates defined
-            // This prevents showing slots with partial or no configuration
             if (valid) {
+                // If Z is not provided, use the last valid Z value
+                if (!z_defined) {
+                    if (!isnan(last_valid_z)) {
+                        z_mm = last_valid_z;  // Use previous tool's Z value
+                    } else {
+                        // First tool without Z - skip this tool (or could use a default)
+                        // For now, skip it to maintain safety
+                        continue;
+                    }
+                } else {
+                    // Z is provided, update last_valid_z for future tools
+                    last_valid_z = z_mm;
+                }
+                
+                // Track maximum tool number to size the vector appropriately
+                if (i > max_tool_num) {
+                    max_tool_num = i;
+                }
+                
                 // Ensure vector is large enough
                 if (i >= (int)atc_tools.size()) {
                     atc_tools.resize(i + 1);
