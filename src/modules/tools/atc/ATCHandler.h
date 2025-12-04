@@ -287,6 +287,8 @@ private:
     void load_custom_tool_slots();
     bool is_custom_tool_defined(int tool_num);
     void add_custom_tool_slot(int tool_num, float x_mm, float y_mm, float z_mm);
+    void remove_custom_tool_slot(int tool_num);
+    void save_custom_tool_slots_to_file();
 
 };
 
