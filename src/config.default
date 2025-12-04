@@ -271,13 +271,13 @@ zprobe.calibration_safety_margin              0.1             # max distance to 
 # Leveling strategy
 leveling-strategy.rectangular-grid.enable					true
 leveling-strategy.rectangular-grid.size						15
-leveling-strategy.rectangular-grid.x_size					50
-leveling-strategy.rectangular-grid.y_size					50
+leveling-strategy.rectangular-grid.x_size					20
+leveling-strategy.rectangular-grid.y_size					20
 leveling-strategy.rectangular-grid.human_readable			true
 leveling-strategy.rectangular-grid.only_by_two_corners		true
 
 # Flex part
-leveling-strategy.rectangular-grid.flex_grid_x_size    				60
+leveling-strategy.rectangular-grid.flex_grid_x_size    				30
 leveling-strategy.rectangular-grid.flex_compensation_always_active 	false
 
 ## Network settings
@@ -465,7 +465,7 @@ temperatureswitch.spindle.cooldown_power_laser 80.0		# cooldown power for laser 
 laser_module_clustering false				#
 
 # Z-probe
-zprobe.slow_feedrate 1.5				# Z probe slow speed (mm/s)
+zprobe.slow_feedrate 0.8				# Z probe slow speed (mm/s)
 zprobe.fast_feedrate 5					# Z probe fast speed (mm/s)
 zprobe.return_feedrate 20				# Z probe return speed (mm/s)
 zprobe.probe_height 2					# How much above bed to start probe
