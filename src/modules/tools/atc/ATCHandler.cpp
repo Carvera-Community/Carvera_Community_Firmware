@@ -128,7 +128,6 @@ ATCHandler::ATCHandler()
     probe_oneoff_y = 0.0;
     probe_oneoff_z = 0.0;
     probe_oneoff_configured = false;
-    use_custom_tool_slots = false;
 }
 
 void ATCHandler::clear_script_queue(){
@@ -138,71 +137,248 @@ void ATCHandler::clear_script_queue(){
 }
 
 void ATCHandler::load_custom_tool_slots() {
-    // Clear existing custom tool slots
-    this->custom_tool_slots.clear();
-    this->use_custom_tool_slots = false;
+    // Clear existing tool slots
+    this->atc_tools.clear();
 
-    // Check for custom tool slot configurations
-    // Look for tool_slots.0.x, tool_slots.1.x, etc. to find defined slots
-    for (int i = 0; i < 99; i++) {
-        char config_key[64];
-        snprintf(config_key, sizeof(config_key), "tool_slots.%d.x", i);
-        
-        uint16_t enable_checksums[3];
-        get_checksums(enable_checksums, config_key);
-        
-        ConfigValue *x_cv = THEKERNEL->config->value(enable_checksums);
-        if (x_cv) {
-            // This slot has at least an X coordinate, load its configuration
-            ToolSlot slot;
-            slot.tool_number = i; // Configuration index is the tool number
-            slot.valid = false;
-            
-            // Load X coordinate
-            slot.x_mm = x_cv->by_default(NAN)->as_number();
-            
-            // Load Y coordinate
-            snprintf(config_key, sizeof(config_key), "tool_slots.%d.y", i);
-            get_checksums(enable_checksums, config_key);
-            ConfigValue *y_cv = THEKERNEL->config->value(enable_checksums);
-            slot.y_mm = y_cv ? y_cv->by_default(NAN)->as_number() : NAN;
-            
-            // Load Z coordinate
-            snprintf(config_key, sizeof(config_key), "tool_slots.%d.z", i);
-            get_checksums(enable_checksums, config_key);
-            ConfigValue *z_cv = THEKERNEL->config->value(enable_checksums);
-            slot.z_mm = z_cv ? z_cv->by_default(NAN)->as_number() : NAN;
-            
-            // Validate that all coordinates are defined in configuration
-            // Check if all three coordinates were actually loaded from config
-            // A coordinate is considered defined if it's not NAN
-            bool x_defined = !isnan(slot.x_mm);
-            bool y_defined = !isnan(slot.y_mm);
-            bool z_defined = !isnan(slot.z_mm);
-            
-            slot.valid = x_defined && y_defined && z_defined;
-            
-            // Only add slots that have ALL three coordinates defined
-            // This prevents showing slots with partial or no configuration
-            if (slot.valid) {
-                this->custom_tool_slots.push_back(slot);
-                this->use_custom_tool_slots = true;
-            }
-        }
+    // Read from custom_tool_slots.txt file on SD card
+    string filename = "/sd/custom_tool_slots.txt";
+    
+    // printf("DEBUG: Loading custom tool slots from %s...\n", filename.c_str());
+    // Check if file exists first
+    if (!file_exists(filename)) {
+        // File doesn't exist, no custom tool slots to load
+        // printf("DEBUG: Custom tool slots file not found: %s\n", filename.c_str());
+        return;
     }
+    
+    FILE *fp = fopen(filename.c_str(), "r");
+    if (fp == NULL) {
+        printf("WARNING: Failed to open %s for reading\n", filename.c_str());
+        return;
+    }
+
+    // Parse the file line by line
+    // Format: tool_num x y [z]
+    // Example: 10 -3.526 -61.643 -119.1
+    //          (Z is optional, uses previous tool's Z if not provided)
+    int max_tool_num = -1;
+    float last_valid_z = NAN;  // Track the last valid Z value to use for subsequent tools
+    
+    char buf[132];
+    while (fgets(buf, sizeof(buf)-1, fp) != NULL) {
+        string line(buf);
+        
+        // Skip comments and blank lines
+        size_t begin = line.find_first_not_of(" \t");
+        if (begin == string::npos || line[begin] == '#') {
+            continue;
+        }
+        
+        // Parse: tool_num x y [z]
+        // Find tool number (first number)
+        size_t end_tool = line.find_first_of(" \t", begin);
+        if (end_tool == string::npos) {
+            continue;
+        }
+        string tool_num_str = line.substr(begin, end_tool - begin);
+        int tool_num = atoi(tool_num_str.c_str());
+        
+        if (tool_num < 0 || tool_num > 255) {
+            continue;  // Invalid tool number (uint8_t range: 0-255)
+        }
+        
+        // Find X coordinate
+        size_t begin_x = line.find_first_not_of(" \t", end_tool);
+        if (begin_x == string::npos || line[begin_x] == '#') {
+            continue;
+        }
+        size_t end_x = line.find_first_of(" \t\r\n#", begin_x);
+        if (end_x == string::npos) {
+            continue;
+        }
+        string x_str = line.substr(begin_x, end_x - begin_x);
+        float x_mm = strtof(x_str.c_str(), NULL);
+        
+        // Find Y coordinate
+        size_t begin_y = line.find_first_not_of(" \t", end_x);
+        if (begin_y == string::npos || line[begin_y] == '#') {
+            continue;
+        }
+        size_t end_y = line.find_first_of(" \t\r\n#", begin_y);
+        if (end_y == string::npos) {
+            continue;
+        }
+        string y_str = line.substr(begin_y, end_y - begin_y);
+        float y_mm = strtof(y_str.c_str(), NULL);
+        
+        // Find Z coordinate (optional)
+        size_t begin_z = line.find_first_not_of(" \t", end_y);
+        float z_mm = NAN;
+        if (begin_z != string::npos && line[begin_z] != '#' && line[begin_z] != '\r' && line[begin_z] != '\n') {
+            size_t end_z = line.find_first_of(" \t\r\n#", begin_z);
+            size_t z_len = (end_z == string::npos) ? line.length() - begin_z : end_z - begin_z;
+            string z_str = line.substr(begin_z, z_len);
+            z_mm = strtof(z_str.c_str(), NULL);
+        }
+        
+        // If Z is not provided, use the last valid Z value
+        if (isnan(z_mm)) {
+            if (!isnan(last_valid_z)) {
+                z_mm = last_valid_z;  // Use previous tool's Z value
+            } else {
+                // First tool without Z - skip this tool (or could use a default)
+                // For now, skip it to maintain safety
+                continue;
+            }
+        } else {
+            // Z is provided, update last_valid_z for future tools
+            last_valid_z = z_mm;
+        }
+        
+        // Track maximum tool number
+        if (tool_num > max_tool_num) {
+            max_tool_num = tool_num;
+        }
+        
+        // Ensure vector is large enough
+        if (tool_num >= (int)atc_tools.size()) {
+            atc_tools.resize(tool_num + 1);
+        }
+        
+        // Store tool slot immediately (no temporary maps needed)
+        atc_tools[tool_num].num = tool_num;
+        atc_tools[tool_num].set_mx_mm(x_mm);
+        atc_tools[tool_num].set_my_mm(y_mm);
+        atc_tools[tool_num].set_mz_mm(z_mm);
+    }
+    fclose(fp);
 }
 
 bool ATCHandler::is_custom_tool_defined(int tool_num) {
-    if (!this->use_custom_tool_slots) {
+    if (tool_num < 0 || tool_num >= (int)atc_tools.size()) {
         return false;
     }
+    return atc_tools[tool_num].is_valid();
+}
+
+void ATCHandler::add_custom_tool_slot(int tool_num, float x_mm, float y_mm, float z_mm) {
+    // Validate inputs
+    if (tool_num < 0 || tool_num > 255) {
+        THEKERNEL->streams->printf("ERROR: Tool number must be between 0 and 255\n");
+        return;
+    }
     
-    for (const auto& slot : this->custom_tool_slots) {
-        if (slot.valid && slot.tool_number == tool_num) {
-            return true;
+    if (isnan(x_mm) || isnan(y_mm)) {
+        THEKERNEL->streams->printf("ERROR: X and Y coordinates must be valid numbers\n");
+        return;
+    }
+    
+    // If Z is not provided (NAN), find the previous valid tool slot's Z value
+    if (isnan(z_mm)) {
+        // Search backwards from the current tool number to find the last valid Z
+        float last_valid_z = NAN;
+        for (int i = tool_num - 1; i >= 0; i--) {
+            if (i < (int)atc_tools.size() && atc_tools[i].is_valid()) {
+                last_valid_z = atc_tools[i].get_mz_mm();
+                break;
+            }
+        }
+        
+        if (isnan(last_valid_z)) {
+            THEKERNEL->streams->printf("ERROR: Z coordinate is required for the first tool slot (no previous Z value found)\n");
+            return;
+        }
+        
+        z_mm = last_valid_z;
+        THEKERNEL->streams->printf("Using Z from previous tool slot: %.3f\n", z_mm);
+    }
+    
+    // Ensure vector is large enough
+    if (tool_num >= (int)atc_tools.size()) {
+        atc_tools.resize(tool_num + 1);
+    }
+    
+    // Update or add tool slot directly in atc_tools
+    bool is_update = atc_tools[tool_num].is_valid();
+    atc_tools[tool_num].num = tool_num;
+    atc_tools[tool_num].set_mx_mm(x_mm);
+    atc_tools[tool_num].set_my_mm(y_mm);
+    atc_tools[tool_num].set_mz_mm(z_mm);
+    
+    if (is_update) {
+        THEKERNEL->streams->printf("Updated tool slot %d: X=%.3f Y=%.3f Z=%.3f\n", tool_num, x_mm, y_mm, z_mm);
+    } else {
+        THEKERNEL->streams->printf("Added tool slot %d: X=%.3f Y=%.3f Z=%.3f\n", tool_num, x_mm, y_mm, z_mm);
+    }
+    
+    // Count valid tool slots
+    int valid_count = 0;
+    for (const auto& tool : atc_tools) {
+        if (tool.is_valid()) {
+            valid_count++;
         }
     }
-    return false;
+    THEKERNEL->streams->printf("Total custom tool slots: %d\n", valid_count);
+}
+
+void ATCHandler::remove_custom_tool_slot(int tool_num) {
+    // Validate input
+    if (tool_num < 0 || tool_num > 255) {
+        THEKERNEL->streams->printf("ERROR: Tool number must be between 0 and 255\n");
+        return;
+    }
+    
+    // Check if tool exists
+    if (tool_num >= (int)atc_tools.size() || !atc_tools[tool_num].is_valid()) {
+        THEKERNEL->streams->printf("Tool slot %d is not defined\n", tool_num);
+        return;
+    }
+    
+    // Since the vector is indexed by tool number, we can't remove from the middle
+    // without breaking indexing. Instead, we'll mark it as invalid
+    
+    // Mark tool as invalid by setting internal coordinates directly to -1
+    // (Don't use set_mx_mm() etc. as they convert -1.0mm to -100, not the invalid marker -1)
+    atc_tools[tool_num].mx_mm = -1;
+    atc_tools[tool_num].my_mm = -1;
+    atc_tools[tool_num].mz_mm = -1;
+    
+    THEKERNEL->streams->printf("Removed tool slot %d\n", tool_num);
+}
+
+void ATCHandler::save_custom_tool_slots_to_file() {
+    // Write to SD card
+    string filename = "/sd/custom_tool_slots.txt";
+    FILE *fp = fopen(filename.c_str(), "w");
+    
+    if (fp == NULL) {
+        THEKERNEL->streams->printf("ERROR: Failed to open %s for writing\n", filename.c_str());
+        return;
+    }
+    
+    // Write header comment
+    fprintf(fp, "# Custom tool slot configuration\n");
+    fprintf(fp, "# Format: tool_num x y [z]\n");
+    fprintf(fp, "# Example: 10 -3.526 -61.643 -119.1\n");
+    fprintf(fp, "#          (Z is optional, uses previous tool's Z if not provided)\n");
+    fprintf(fp, "# This file is automatically generated. Do not edit manually.\n\n");
+    
+    // Write all valid tool slots (one line per tool)
+    bool wrote_any = false;
+    for (const auto& tool : atc_tools) {
+        if (tool.is_valid()) {
+            fprintf(fp, "%d %.3f %.3f %.3f\n", tool.num, tool.get_mx_mm(), tool.get_my_mm(), tool.get_mz_mm());
+            wrote_any = true;
+        }
+    }
+    
+    fclose(fp);
+    
+    if (wrote_any) {
+        THEKERNEL->streams->printf("Saved custom tool slot config to %s\n", filename.c_str());
+    } else {
+        THEKERNEL->streams->printf("No custom tool slot config to save\n");
+    }
 }
 
 
@@ -742,18 +918,18 @@ void ATCHandler::fill_drop_scripts(int old_tool) {
 	snprintf(buff, sizeof(buff), "G53 G0 Z%.3f", THEROBOT->from_millimeters(this->clearance_z));
 	this->script_queue.push(buff);
     // move x and y to active tool position
-	snprintf(buff, sizeof(buff), "G53 G0 X%.3f Y%.3f", THEROBOT->from_millimeters(current_tool->mx_mm), THEROBOT->from_millimeters(current_tool->my_mm));
+	snprintf(buff, sizeof(buff), "G53 G0 X%.3f Y%.3f", THEROBOT->from_millimeters(current_tool->get_mx_mm()), THEROBOT->from_millimeters(current_tool->get_my_mm()));
 	this->script_queue.push(buff);
 	// move around to see if tool rack is empty
 	this->script_queue.push("M492.2");
     // move x and y to reseted tool position
-	snprintf(buff, sizeof(buff), "G53 G0 X%.3f Y%.3f", THEROBOT->from_millimeters(current_tool->mx_mm), THEROBOT->from_millimeters(current_tool->my_mm));
+	snprintf(buff, sizeof(buff), "G53 G0 X%.3f Y%.3f", THEROBOT->from_millimeters(current_tool->get_mx_mm()), THEROBOT->from_millimeters(current_tool->get_my_mm()));
 	this->script_queue.push(buff);
     // drop z axis to z position with fast speed
-	snprintf(buff, sizeof(buff), "G53 G1 Z%.3f F%.3f", THEROBOT->from_millimeters(current_tool->mz_mm + safe_z_offset_mm), THEROBOT->from_millimeters(fast_z_rate));
+	snprintf(buff, sizeof(buff), "G53 G1 Z%.3f F%.3f", THEROBOT->from_millimeters(current_tool->get_mz_mm() + safe_z_offset_mm), THEROBOT->from_millimeters(fast_z_rate));
 	this->script_queue.push(buff);
     // drop z axis with slow speed
-	snprintf(buff, sizeof(buff), "G53 G1 Z%.3f F%.3f", THEROBOT->from_millimeters(current_tool->mz_mm), THEROBOT->from_millimeters(slow_z_rate));
+	snprintf(buff, sizeof(buff), "G53 G1 Z%.3f F%.3f", THEROBOT->from_millimeters(current_tool->get_mz_mm()), THEROBOT->from_millimeters(slow_z_rate));
 	this->script_queue.push(buff);
 	// loose tool
 	this->script_queue.push("M490.2");
@@ -778,20 +954,20 @@ void ATCHandler::fill_pick_scripts(int new_tool, bool clear_z) {
 	snprintf(buff, sizeof(buff), "G53 G0 Z%.3f", THEROBOT->from_millimeters(clear_z ? this->clearance_z : this->safe_z_empty_mm));
 	this->script_queue.push(buff);
 	// move x and y to new tool position
-	snprintf(buff, sizeof(buff), "G53 G0 X%.3f Y%.3f", THEROBOT->from_millimeters(current_tool->mx_mm), THEROBOT->from_millimeters(current_tool->my_mm));
+	snprintf(buff, sizeof(buff), "G53 G0 X%.3f Y%.3f", THEROBOT->from_millimeters(current_tool->get_mx_mm()), THEROBOT->from_millimeters(current_tool->get_my_mm()));
 	this->script_queue.push(buff);
 	// move around to see if tool rack is filled
 	this->script_queue.push("M492.1");
 	// loose tool
 	this->script_queue.push("M490.2");
 	// move x and y to reseted tool position
-	snprintf(buff, sizeof(buff), "G53 G0 X%.3f Y%.3f", THEROBOT->from_millimeters(current_tool->mx_mm), THEROBOT->from_millimeters(current_tool->my_mm));
+	snprintf(buff, sizeof(buff), "G53 G0 X%.3f Y%.3f", THEROBOT->from_millimeters(current_tool->get_mx_mm()), THEROBOT->from_millimeters(current_tool->get_my_mm()));
 	this->script_queue.push(buff);
     // drop z axis to z position with fast speed
-	snprintf(buff, sizeof(buff), "G53 G1 Z%.3f F%.3f", THEROBOT->from_millimeters(current_tool->mz_mm + safe_z_offset_mm), THEROBOT->from_millimeters(fast_z_rate));
+	snprintf(buff, sizeof(buff), "G53 G1 Z%.3f F%.3f", THEROBOT->from_millimeters(current_tool->get_mz_mm() + safe_z_offset_mm), THEROBOT->from_millimeters(fast_z_rate));
 	this->script_queue.push(buff);
     // drop z axis with slow speed
-	snprintf(buff, sizeof(buff), "G53 G1 Z%.3f F%.3f", THEROBOT->from_millimeters(current_tool->mz_mm), THEROBOT->from_millimeters(slow_z_rate));
+	snprintf(buff, sizeof(buff), "G53 G1 Z%.3f F%.3f", THEROBOT->from_millimeters(current_tool->get_mz_mm()), THEROBOT->from_millimeters(slow_z_rate));
 	this->script_queue.push(buff);
 	// clamp tool
 	this->script_queue.push("M490.1");
@@ -1232,30 +1408,9 @@ void ATCHandler::on_config_reload(void *argument)
 	// Delay loading to ensure system is fully initialized
 	this->load_custom_tool_slots();
 	
-	atc_tools.clear();
-	
 	// Use custom tool slots if any are enabled, otherwise use default configuration
-	if (this->use_custom_tool_slots) {
-		// Find the maximum tool number to determine array size
-		int max_tool_num = 0;
-		for (const auto& slot : this->custom_tool_slots) {
-			if (slot.tool_number > max_tool_num) {
-				max_tool_num = slot.tool_number;
-			}
-		}
-		
-		// Resize atc_tools to accommodate the highest tool number
-		atc_tools.resize(max_tool_num + 1);
-		
-		// Set custom configurations (only for valid slots)
-		for (const auto& slot : this->custom_tool_slots) {
-			if (slot.valid && slot.tool_number >= 0 && slot.tool_number <= max_tool_num) {
-				atc_tools[slot.tool_number].num = slot.tool_number;
-				atc_tools[slot.tool_number].mx_mm = slot.x_mm;
-				atc_tools[slot.tool_number].my_mm = slot.y_mm;
-				atc_tools[slot.tool_number].mz_mm = slot.z_mm;
-			}
-		}
+	if (!atc_tools.empty()) {
+		// Custom tool slots were loaded from config
 		// Calculate probe position - use configured absolute MCS coordinates if available, otherwise use hardcoded values
 		if (this->probe_position_configured) {
 			probe_mx_mm = isnan(this->probe_mcs_x) ? (this->anchor1_x + this->toolrack_offset_x) : this->probe_mcs_x;
@@ -1275,9 +1430,9 @@ void ATCHandler::on_config_reload(void *argument)
 				tool.num = i;
 			    // lift z axis to atc start position
 				snprintf(buff, sizeof(buff), "tool%d", i);
-				tool.mx_mm = this->anchor1_x + this->toolrack_offset_x;
-				tool.my_mm = this->anchor1_y + this->toolrack_offset_y -5 + (i == 0 ? 219 : (8 - i) * 25);
-				tool.mz_mm = this->toolrack_z - 4.5;
+				tool.set_mx_mm(this->anchor1_x + this->toolrack_offset_x);
+				tool.set_my_mm(this->anchor1_y + this->toolrack_offset_y -5 + (i == 0 ? 219 : (8 - i) * 25));
+				tool.set_mz_mm(this->toolrack_z - 4.5);
 				atc_tools.push_back(tool);
 			}
 			// Calculate probe position - use configured absolute MCS coordinates if available, otherwise use hardcoded values
@@ -1298,9 +1453,9 @@ void ATCHandler::on_config_reload(void *argument)
 				tool.num = i;
 			    // lift z axis to atc start position
 				snprintf(buff, sizeof(buff), "tool%d", i);
-				tool.mx_mm = this->anchor1_x + this->toolrack_offset_x;
-				tool.my_mm = this->anchor1_y + this->toolrack_offset_y + (i == 0 ? 210 : (6 - i) * 30);
-				tool.mz_mm = this->toolrack_z;
+				tool.set_mx_mm(this->anchor1_x + this->toolrack_offset_x);
+				tool.set_my_mm(this->anchor1_y + this->toolrack_offset_y + (i == 0 ? 210 : (6 - i) * 30));
+				tool.set_mz_mm(this->toolrack_z);
 				atc_tools.push_back(tool);
 			}
 			// Calculate probe position - use configured absolute MCS coordinates if available, otherwise use hardcoded values
@@ -1724,10 +1879,10 @@ void ATCHandler::on_gcode_received(void *argument)
 					THEKERNEL->call_event(ON_HALT, nullptr);
 					THEKERNEL->set_halt_reason(ATC_TOOL_INVALID);
 					gcode->stream->printf("ALARM: Invalid tool: T%d\r\n", new_tool);
-				} else if (this->use_custom_tool_slots && new_tool >= 0 && !this->is_custom_tool_defined(new_tool) && new_tool <= this->tool_number) {
+				} else if (new_tool >= 0 && !this->is_custom_tool_defined(new_tool) && new_tool <= this->tool_number) {
 					THEKERNEL->call_event(ON_HALT, nullptr);
 					THEKERNEL->set_halt_reason(ATC_TOOL_INVALID);
-					gcode->stream->printf("ALARM: Tool T%d not defined in custom tool slots\r\n", new_tool);
+					gcode->stream->printf("ALARM: Tool T%d not defined in tool slots\r\n", new_tool);
 				} else if (new_tool != active_tool) {
 					if (new_tool > -1 && THEKERNEL->get_laser_mode()) {
 						THEKERNEL->streams->printf("ALARM: Can not do ATC in laser mode!\n");
@@ -2395,7 +2550,7 @@ void ATCHandler::on_gcode_received(void *argument)
 			{
 				THEKERNEL->streams->printf("probe (MCS) -- X:%1.1f Y:%1.1f Z:%1.1f\n", probe_mx_mm, probe_my_mm, probe_mz_mm);
 				for (int i = 0; i <=  tool_number; i ++) {
-					THEKERNEL->streams->printf("tool%d -- mx:%1.1f my:%1.1f mz:%1.1f\n", atc_tools[i].num, atc_tools[i].mx_mm, atc_tools[i].my_mm, atc_tools[i].mz_mm);
+					THEKERNEL->streams->printf("tool%d -- mx:%1.1f my:%1.1f mz:%1.1f\n", atc_tools[i].num, atc_tools[i].get_mx_mm(), atc_tools[i].get_my_mm(), atc_tools[i].get_mz_mm());
 				}
 			}
 			else if (gcode->subcode == 3) 
@@ -2423,21 +2578,42 @@ void ATCHandler::on_gcode_received(void *argument)
 			THEKERNEL->streams->printf("Home Check Enabled\n");
 		} else if ( gcode->m == 889 ) {
 			// M889 - Display current tool configuration
-			if (this->use_custom_tool_slots) {
-				gcode->stream->printf("Custom Tool Slots Configuration:\n");
-				for (const auto& slot : this->custom_tool_slots) {
-					if (slot.valid) {
-						gcode->stream->printf("Tool %d: X=%.3f Y=%.3f Z=%.3f\n", 
-							slot.tool_number, slot.x_mm, slot.y_mm, slot.z_mm);
-					}
-				}
-			} else {
-				gcode->stream->printf("Default Tool Slots Configuration:\n");
-				for (const auto& tool : this->atc_tools) {
+			gcode->stream->printf("Tool Slots Configuration:\n");
+			for (const auto& tool : this->atc_tools) {
+				if (tool.is_valid()) {
 					gcode->stream->printf("Tool %d: X=%.3f Y=%.3f Z=%.3f\n", 
-						tool.num, tool.mx_mm, tool.my_mm, tool.mz_mm);
+						tool.num, tool.get_mx_mm(), tool.get_my_mm(), tool.get_mz_mm());
 				}
 			}
+		} else if ( gcode->m == 890 ) {
+			// M890 - Add or update custom tool slot and save to file
+			// Usage: M890 T<tool_number> X<x_mm> Y<y_mm> [Z<z_mm>]
+			// Z is optional - if not provided, uses the previous slot's Z position
+			if (!gcode->has_letter('T') || !gcode->has_letter('X') || !gcode->has_letter('Y')) {
+				gcode->stream->printf("ERROR: M890 requires T, X, and Y parameters\n");
+				gcode->stream->printf("Usage: M890 T<tool_number> X<x_mm> Y<y_mm> [Z<z_mm>]\n");
+				return;
+			}
+			
+			int tool_num = (int)gcode->get_value('T');
+			float x_mm = gcode->get_value('X');
+			float y_mm = gcode->get_value('Y');
+			float z_mm = gcode->has_letter('Z') ? gcode->get_value('Z') : NAN;
+			
+			this->add_custom_tool_slot(tool_num, x_mm, y_mm, z_mm);
+			this->save_custom_tool_slots_to_file();
+		} else if ( gcode->m == 891 ) {
+			// M891 - Remove custom tool slot and save to file
+			// Usage: M891 T<tool_number>
+			if (!gcode->has_letter('T')) {
+				gcode->stream->printf("ERROR: M891 requires T parameter\n");
+				gcode->stream->printf("Usage: M891 T<tool_number>\n");
+				return;
+			}
+			
+			int tool_num = (int)gcode->get_value('T');
+			this->remove_custom_tool_slot(tool_num);
+			this->save_custom_tool_slots_to_file();
 		}
 
     } else if (gcode->has_g && gcode->g == 28 && gcode->subcode == 0) {
