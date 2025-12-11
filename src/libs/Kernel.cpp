@@ -352,8 +352,8 @@ std::string Kernel::get_query_string()
 
     // current spindle rpm and request rpm and override
     struct spindle_status ss;
-    ok = PublicData::get_value(pwm_spindle_control_checksum, get_spindle_status_checksum, &ss);
-    if (ok) {
+    bool pwm_spindle = PublicData::get_value(pwm_spindle_control_checksum, get_spindle_status_checksum, &ss);
+    if (pwm_spindle) {
         n= snprintf(buf, sizeof(buf), "|S:%1.1f,%1.1f,%1.1f,%d", ss.current_rpm, ss.target_rpm, ss.factor, int(this->get_vacuum_mode()));
         if(n > sizeof(buf)) n= sizeof(buf);
         str.append(buf, n);
@@ -463,6 +463,13 @@ std::string Kernel::get_query_string()
     n = snprintf(buf, sizeof(buf), "|C:%d,%d,%d,%d", THEKERNEL->factory_set->MachineModel,THEKERNEL->factory_set->FuncSetting,THEROBOT->inch_mode,THEROBOT->absolute_mode);
     if(n > sizeof(buf)) n = sizeof(buf);
     str.append(buf, n);
+
+    // PWM value for PWM spindle (similar to M957 output)
+    if (pwm_spindle) {
+        n = snprintf(buf, sizeof(buf), "|PWM:%5.3f", ss.current_pwm_value);
+        if(n > sizeof(buf)) n = sizeof(buf);
+        str.append(buf, n);
+    }
 
     str.append(">\n");
     return str;
