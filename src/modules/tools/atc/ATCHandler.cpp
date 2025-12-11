@@ -380,7 +380,8 @@ void ATCHandler::calibrate_a_axis_headstock(Gcode *gcode)//M469.4
 	this->script_queue.push(buff);
 
 	//move to probe position
-	snprintf(buff, sizeof(buff), "G91 G53 G0 X%.3f", this->anchor1_x + this->rotation_offset_x);
+	// rotation_offset_x is where the 4th axis head finishes and the chuck starts. Probing 5mm back from this to ensure it touches the 4th axis module body
+	snprintf(buff, sizeof(buff), "G91 G53 G0 X%.3f", this->anchor1_x + this->rotation_offset_x - 5); 
 	this->script_queue.push(buff);
 	snprintf(buff, sizeof(buff), "G91 G53 G0 Y%.3f", this->anchor1_y + this->rotation_offset_y);
 	this->script_queue.push(buff);
@@ -440,28 +441,13 @@ void ATCHandler::calibrate_a_axis_height(Gcode *gcode) //M469.5
 	snprintf(buff, sizeof(buff), ";This code uses variables #116-120\n");
 	this->script_queue.push(buff);
 
-	//move to clearance
-	snprintf(buff, sizeof(buff), "G90 G53 G0 Z%.3f", THEROBOT->from_millimeters(this->clearance_z));
+	// First Z probe at anchor position using fill_zprobe_abs_scripts
+	this->fill_zprobe_abs_scripts();
+
+	// Store location to variable
+	snprintf(buff, sizeof(buff), "#120 = #5023");
 	this->script_queue.push(buff);
 
-	//move to probe position
-	snprintf(buff, sizeof(buff), "G91 G53 G0 X%.3f", this->anchor1_x + this->rotation_offset_x);
-	this->script_queue.push(buff);
-	snprintf(buff, sizeof(buff), "G91 G53 G0 Y%.3f", this->anchor1_y + this->rotation_offset_y);
-	this->script_queue.push(buff);
-	
-	//probe -z
-	if (!invert_probe){
-		snprintf(buff, sizeof(buff), "G38.3 Z-105 F450");
-		this->script_queue.push(buff);
-		snprintf(buff, sizeof(buff), "#120 = #5023");
-		this->script_queue.push(buff);
-	} else{
-		snprintf(buff, sizeof(buff), "G38.5 Z-105 F450");
-		this->script_queue.push(buff);
-		snprintf(buff, sizeof(buff), "#120 = #5023");
-		this->script_queue.push(buff);
-	}
 	//move to clearance
 	snprintf(buff, sizeof(buff), "G90 G53 G0 Z%.3f", THEROBOT->from_millimeters(this->clearance_z));
 	this->script_queue.push(buff);
@@ -495,7 +481,7 @@ void ATCHandler::calibrate_a_axis_height(Gcode *gcode) //M469.5
 	this->script_queue.push(buff);
 	snprintf(buff, sizeof(buff), "G91 G0 A90");
 	this->script_queue.push(buff);
-
+	
 	if (!invert_probe){
 		snprintf(buff, sizeof(buff), "G38.3 Z-4 F150");
 		this->script_queue.push(buff);
@@ -511,7 +497,7 @@ void ATCHandler::calibrate_a_axis_height(Gcode *gcode) //M469.5
 	this->script_queue.push(buff);
 	snprintf(buff, sizeof(buff), "G91 G0 A90");
 	this->script_queue.push(buff);
-
+	
 	if (!invert_probe){
 		snprintf(buff, sizeof(buff), "G38.3 Z-4 F150");
 		this->script_queue.push(buff);
@@ -527,7 +513,7 @@ void ATCHandler::calibrate_a_axis_height(Gcode *gcode) //M469.5
 	this->script_queue.push(buff);
 	snprintf(buff, sizeof(buff), "G91 G0 A90");
 	this->script_queue.push(buff);
-
+	
 	if (!invert_probe){
 		snprintf(buff, sizeof(buff), "G38.3 Z-4 F150");
 		this->script_queue.push(buff);
@@ -1221,7 +1207,7 @@ void ATCHandler::on_config_reload(void *argument)
 		this->clearance_y = THEKERNEL->config->value(coordinate_checksum, clearance_y_checksum)->by_default(-21  )->as_number();
 		this->clearance_z = THEKERNEL->config->value(coordinate_checksum, clearance_z_checksum)->by_default(-5  )->as_number();
 	}
-	this->rotation_width = THEKERNEL->config->value(coordinate_checksum, rotation_width_checksum)->by_default(45  )->as_number();
+	this->rotation_width = THEKERNEL->config->value(coordinate_checksum, rotation_width_checksum)->by_default(100 )->as_number();
 
 	this->skip_path_origin = THEKERNEL->config->value(atc_checksum, skip_path_origin_checksum)->by_default(false)->as_bool();
 }

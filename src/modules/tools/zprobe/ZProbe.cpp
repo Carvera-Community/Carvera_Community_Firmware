@@ -1193,7 +1193,7 @@ bool ZProbe::fast_slow_probe_sequence(int axis, int direction){
     THEROBOT->delta_move(moveBuffer, param.feed_rate, 3);
     //slow probe
     memset(&this->buff, 0 , sizeof(this->buff));
-    std::sprintf(this->buff, "G38.%i X%.3f Y%.3f Z%.3f F%.3f", 2 + param.probe_g38_subcode,THEROBOT->from_millimeters(x), THEROBOT->from_millimeters(y), THEROBOT->from_millimeters(z), param.slowZprobeRate);
+    std::sprintf(this->buff, "G38.%i X%.3f Y%.3f Z%.3f", 2 + param.probe_g38_subcode,THEROBOT->from_millimeters(x), THEROBOT->from_millimeters(y), THEROBOT->from_millimeters(z));
     this->gcodeBuffer = new Gcode(this->buff, &StreamOutput::NullStream);
     probe_XYZ(this->gcodeBuffer);
     delete gcodeBuffer;
@@ -1370,8 +1370,7 @@ void ZProbe::init_parameters_and_out_coords(){
     param.retract_distance = 1.5;                      //R
     param.clearance_height = 2;                        //C
     param.side_depth = 2;                              //E
-    param.probe_g38_subcode = 0;                       //I
-    param.slowZprobeRate = 50;                         
+    param.probe_g38_subcode = 0;                       //I                         
     param.extra_probe_distance = 4;                    //J
 }
 
@@ -1556,7 +1555,11 @@ void ZProbe::probe_boss(bool calibration) //M462
                 return;
             }
             //probe z no hit no alarm -side_depth, retract slightly if probe point hit
-            z_probe_move_with_retract(param.probe_g38_subcode, -(param.side_depth + param.clearance_height), 1.0, param.rapid_rate);
+            if (param.probe_height != 0){
+                z_probe_move_with_retract(param.probe_g38_subcode, -(param.side_depth + param.clearance_height + param.tool_dia/2.0), 1.0, param.rapid_rate);
+            }else{
+                z_probe_move_with_retract(param.probe_g38_subcode, -(param.side_depth + param.tool_dia/2.0), 1.0, param.rapid_rate);
+            }
 
             // probe in negative x direction
             fast_slow_probe_sequence(X_AXIS, NEG);
@@ -1574,7 +1577,11 @@ void ZProbe::probe_boss(bool calibration) //M462
             }
 
             //probe z no hit no alarm -side_depth, retract slightly if probe point hit
-            z_probe_move_with_retract(param.probe_g38_subcode, -(param.side_depth + param.clearance_height), 1.0, param.rapid_rate);
+            if (param.probe_height != 0){
+                z_probe_move_with_retract(param.probe_g38_subcode, -(param.side_depth + param.clearance_height + param.tool_dia/2.0), 1.0, param.rapid_rate);
+            }else{
+                z_probe_move_with_retract(param.probe_g38_subcode, -(param.side_depth + param.tool_dia/2.0), 1.0, param.rapid_rate);
+            }
 
             // probe in positive x direction
             fast_slow_probe_sequence(X_AXIS, POS);
@@ -1605,7 +1612,11 @@ void ZProbe::probe_boss(bool calibration) //M462
             }
 
             //probe z no hit no alarm -side_depth, retract slightly if probe point hit
-            z_probe_move_with_retract(param.probe_g38_subcode, -(param.side_depth + param.clearance_height), 1.0, param.rapid_rate);
+            if (param.probe_height != 0){
+                z_probe_move_with_retract(param.probe_g38_subcode, -(param.side_depth + param.clearance_height + param.tool_dia/2.0), 1.0, param.rapid_rate);
+            }else{
+                z_probe_move_with_retract(param.probe_g38_subcode, -(param.side_depth + param.tool_dia/2.0), 1.0, param.rapid_rate);
+            }
             
             // probe in negative y direction
             fast_slow_probe_sequence(Y_AXIS, NEG);
@@ -1623,7 +1634,11 @@ void ZProbe::probe_boss(bool calibration) //M462
             }
 
             //probe z no hit no alarm -side_depth, retract slightly if probe point hit
-            z_probe_move_with_retract(param.probe_g38_subcode, -(param.side_depth + param.clearance_height), 1.0, param.rapid_rate);
+            if (param.probe_height != 0){
+                z_probe_move_with_retract(param.probe_g38_subcode, -(param.side_depth + param.clearance_height + param.tool_dia/2.0), 1.0, param.rapid_rate);
+            }else{
+                z_probe_move_with_retract(param.probe_g38_subcode, -(param.side_depth + param.tool_dia/2.0), 1.0, param.rapid_rate);
+            }
 
             // probe in positive y direction
             fast_slow_probe_sequence(Y_AXIS, POS);
@@ -1796,8 +1811,12 @@ void ZProbe::probe_outsideCorner() //M464
         }
         
         //probe z no hit no alarm -side_depth, retract slightly if probe point hit
-        z_probe_move_with_retract(param.probe_g38_subcode, -(param.side_depth + param.clearance_height), 1.0, param.rapid_rate);
-
+        if (param.probe_height != 0){
+            z_probe_move_with_retract(param.probe_g38_subcode, -(param.side_depth + param.clearance_height + param.tool_dia/2.0), 1.0, param.rapid_rate);
+        }else{
+            z_probe_move_with_retract(param.probe_g38_subcode, -(param.side_depth + param.tool_dia/2.0), 1.0, param.rapid_rate);
+        }
+        
         // probe in positive x direction
         fast_slow_probe_sequence(X_AXIS, POS);
 
@@ -1818,7 +1837,11 @@ void ZProbe::probe_outsideCorner() //M464
         }
 
         //probe z no hit no alarm -side_depth, retract slightly if probe point hit
-        z_probe_move_with_retract(param.probe_g38_subcode, -(param.side_depth + param.clearance_height), 1.0, param.rapid_rate);
+        if (param.probe_height != 0){
+            z_probe_move_with_retract(param.probe_g38_subcode, -(param.side_depth + param.clearance_height + param.tool_dia/2.0), 1.0, param.rapid_rate);
+        }else{
+            z_probe_move_with_retract(param.probe_g38_subcode, -(param.side_depth + param.tool_dia/2.0), 1.0, param.rapid_rate);
+        }
 
         // probe in positive y direction
         fast_slow_probe_sequence(Y_AXIS, POS);
@@ -1956,6 +1979,8 @@ void ZProbe::probe_axisangle(bool probe_a_axis, bool probe_with_offset) //M465
     out_coords.origin_y = mpos[1];
     param.clearance_world_pos = mpos[2];
 
+    // Vector to collect all angle measurements for averaging
+    vector<float> angle_measurements;
 
 	//setup repeat
 	for(int i=0; i< param.repeat; i++) {
@@ -1969,7 +1994,12 @@ void ZProbe::probe_axisangle(bool probe_a_axis, bool probe_with_offset) //M465
             coordinated_move(out_coords.origin_x, out_coords.origin_y, NAN, param.rapid_rate );
 
             // probe along x axis to second position, alarm if hit
-            xy_probe_move_alarm_when_hit(POS, param.probe_g38_subcode, 0.0, param.y_rotated_y, param.rapid_rate);
+            if (xy_probe_move_alarm_when_hit(POS, param.probe_g38_subcode, 0.0, param.y_rotated_y, param.rapid_rate) == 1) {
+                THEKERNEL->streams->printf("ALARM: Probe fail: hit wall during first move\n");
+                THEKERNEL->call_event(ON_HALT, nullptr);
+                THEKERNEL->set_halt_reason(PROBE_FAIL);
+                return;
+            }
             
             fast_slow_probe_sequence(Z_AXIS, NEG);
             if (check_last_probe_ok()){
@@ -1981,7 +2011,12 @@ void ZProbe::probe_axisangle(bool probe_a_axis, bool probe_with_offset) //M465
                 return;
             }
             
-            xy_probe_move_alarm_when_hit(NEG, param.probe_g38_subcode, 0.0, 2 * param.y_rotated_y, param.rapid_rate);
+            if (xy_probe_move_alarm_when_hit(NEG, param.probe_g38_subcode, 0.0, 2 * param.y_rotated_y, param.rapid_rate) == 1) {
+                THEKERNEL->streams->printf("ALARM: Probe fail: hit wall during second move\n");
+                THEKERNEL->call_event(ON_HALT, nullptr);
+                THEKERNEL->set_halt_reason(PROBE_FAIL);
+                return;
+            }
             fast_slow_probe_sequence(Z_AXIS, NEG);
             if (check_last_probe_ok()){
                 out_coords.y_negative_y_out = out_coords.z_negative_z_out;
@@ -1993,14 +2028,22 @@ void ZProbe::probe_axisangle(bool probe_a_axis, bool probe_with_offset) //M465
                 return;
             }
 
-            THEKERNEL->probe_outputs[2] = atan (  (out_coords.y_positive_y_out - out_coords.y_negative_y_out) 
+            float current_angle = atan (  (out_coords.y_positive_y_out - out_coords.y_negative_y_out) 
                                                 / (2 * param.y_axis_distance)) * 180 /pi;
-            THEKERNEL->streams->printf("Angle from A Axis is: %.3f degrees or %.3f radians and is stored in radians at variable #153\n" , THEKERNEL->probe_outputs[2] , THEKERNEL->probe_outputs[2] * pi / 180 );
+            angle_measurements.push_back(current_angle);
+            THEKERNEL->streams->printf("Measurement %d: Angle from A Axis is: %.3f degrees or %.3f radians\n" , i+1, current_angle, current_angle * pi / 180 );
 
         }else if (probe_x) {
             
             fast_slow_probe_sequence(Y_AXIS, POS);
             THECONVEYOR->wait_for_idle();
+            
+            if (!check_last_probe_ok()) {
+                THEKERNEL->streams->printf("ALARM: Probe fail: first point not found\n");
+                THEKERNEL->call_event(ON_HALT, nullptr);
+                THEKERNEL->set_halt_reason(PROBE_FAIL);
+                return;
+            }
 
             // save the first point in the x_positive output
             out_coords.x_positive_x_out = out_coords.y_positive_x_out;
@@ -2009,11 +2052,23 @@ void ZProbe::probe_axisangle(bool probe_a_axis, bool probe_with_offset) //M465
             //return to center position
             coordinated_move(out_coords.origin_x, out_coords.origin_y, NAN, param.rapid_rate );
             //probe along x axis to second position, alarm if hit
-            xy_probe_move_alarm_when_hit(POS, param.probe_g38_subcode, param.x_rotated_x, param.x_rotated_y, param.rapid_rate);
+            if (xy_probe_move_alarm_when_hit(POS, param.probe_g38_subcode, param.x_rotated_x, param.x_rotated_y, param.rapid_rate) == 1) {
+                THEKERNEL->streams->printf("ALARM: Probe fail: hit wall during move to second position\n");
+                THEKERNEL->call_event(ON_HALT, nullptr);
+                THEKERNEL->set_halt_reason(PROBE_FAIL);
+                return;
+            }
 
             //probe along y axis to find second point
             fast_slow_probe_sequence(Y_AXIS, POS);
             THECONVEYOR->wait_for_idle();
+            
+            if (!check_last_probe_ok()) {
+                THEKERNEL->streams->printf("ALARM: Probe fail: second point not found\n");
+                THEKERNEL->call_event(ON_HALT, nullptr);
+                THEKERNEL->set_halt_reason(PROBE_FAIL);
+                return;
+            }
 
             //return to x axis probe position 2
             coordinated_move(out_coords.origin_x + param.x_rotated_x, out_coords.origin_y + param.x_rotated_y, NAN, param.rapid_rate );
@@ -2024,12 +2079,20 @@ void ZProbe::probe_axisangle(bool probe_a_axis, bool probe_with_offset) //M465
             
             //calculate angle
             //inverse tan ( (Point 2 y - Point 1 Y) / (Point 2 x - point 1 X) )
-            THEKERNEL->probe_outputs[2] = atan (  (out_coords.y_positive_y_out - out_coords.x_positive_y_out) 
+            float current_angle = atan (  (out_coords.y_positive_y_out - out_coords.x_positive_y_out) 
                                                 / (out_coords.y_positive_x_out - out_coords.x_positive_x_out)) * 180 /pi;
-            THEKERNEL->streams->printf("Angle from X Axis is: %.3f degrees or %.3f radians and is stored in radians at variable #153\n" , THEKERNEL->probe_outputs[2] , THEKERNEL->probe_outputs[2] * pi / 180 );
+            angle_measurements.push_back(current_angle);
+            THEKERNEL->streams->printf("Measurement %d: Angle from X Axis is: %.3f degrees or %.3f radians\n" , i+1, current_angle, current_angle * pi / 180 );
         }else{
             fast_slow_probe_sequence(X_AXIS, POS);
             THECONVEYOR->wait_for_idle();
+            
+            if (!check_last_probe_ok()) {
+                THEKERNEL->streams->printf("ALARM: Probe fail: first point not found\n");
+                THEKERNEL->call_event(ON_HALT, nullptr);
+                THEKERNEL->set_halt_reason(PROBE_FAIL);
+                return;
+            }
 
             // save the first point in the x_positive output
             out_coords.y_positive_x_out = out_coords.x_positive_x_out;
@@ -2038,11 +2101,23 @@ void ZProbe::probe_axisangle(bool probe_a_axis, bool probe_with_offset) //M465
             //return to center position
             coordinated_move(out_coords.origin_x, out_coords.origin_y, NAN, param.rapid_rate );
             //probe along x axis to second position, alarm if hit
-            xy_probe_move_alarm_when_hit(POS, param.probe_g38_subcode, param.y_rotated_x, param.y_rotated_y, param.rapid_rate);
+            if (xy_probe_move_alarm_when_hit(POS, param.probe_g38_subcode, param.y_rotated_x, param.y_rotated_y, param.rapid_rate) == 1) {
+                THEKERNEL->streams->printf("ALARM: Probe fail: hit wall during move to second position\n");
+                THEKERNEL->call_event(ON_HALT, nullptr);
+                THEKERNEL->set_halt_reason(PROBE_FAIL);
+                return;
+            }
 
             //probe along y axis to find second point
             fast_slow_probe_sequence(X_AXIS, POS);
             THECONVEYOR->wait_for_idle();
+            
+            if (!check_last_probe_ok()) {
+                THEKERNEL->streams->printf("ALARM: Probe fail: second point not found\n");
+                THEKERNEL->call_event(ON_HALT, nullptr);
+                THEKERNEL->set_halt_reason(PROBE_FAIL);
+                return;
+            }
 
             //return to y axis probe position 2
             coordinated_move(out_coords.origin_x + param.y_rotated_x, out_coords.origin_y + param.y_rotated_y, NAN, param.rapid_rate );
@@ -2053,13 +2128,36 @@ void ZProbe::probe_axisangle(bool probe_a_axis, bool probe_with_offset) //M465
             
             //calculate angle
             //inverse tan ( (Point 2 y - Point 1 Y) / (Point 2 x - point 1 X) )
-            THEKERNEL->probe_outputs[2] = atan (  (out_coords.y_positive_x_out - out_coords.x_positive_x_out) 
+            float current_angle = atan (  (out_coords.y_positive_x_out - out_coords.x_positive_x_out) 
                                                 / (out_coords.x_positive_y_out - out_coords.y_positive_y_out)) * 180 /pi;
-            THEKERNEL->streams->printf("Angle from Y Axis is: %.3f degrees or %.3f radians and is stored in radians at variable #153\n" , THEKERNEL->probe_outputs[2] , THEKERNEL->probe_outputs[2] * pi / 180 );
+            angle_measurements.push_back(current_angle);
+            THEKERNEL->streams->printf("Measurement %d: Angle from Y Axis is: %.3f degrees or %.3f radians\n" , i+1, current_angle, current_angle * pi / 180 );
         }
 
 		
 	}
+
+    // Calculate average angle from all measurements
+    if (!angle_measurements.empty()) {
+        float sum = 0.0;
+        for (const auto& angle : angle_measurements) {
+            sum += angle;
+        }
+        float average_angle = sum / angle_measurements.size();
+        THEKERNEL->probe_outputs[2] = average_angle;
+        
+        // Display the average result
+        if (probe_a_axis) {
+            THEKERNEL->streams->printf("Average angle from A Axis is: %.3f degrees or %.3f radians and is stored in radians at variable #153\n", 
+                                      average_angle, average_angle * pi / 180);
+        } else if (probe_x) {
+            THEKERNEL->streams->printf("Average angle from X Axis is: %.3f degrees or %.3f radians and is stored in radians at variable #153\n", 
+                                      average_angle, average_angle * pi / 180);
+        } else {
+            THEKERNEL->streams->printf("Average angle from Y Axis is: %.3f degrees or %.3f radians and is stored in radians at variable #153\n", 
+                                      average_angle, average_angle * pi / 180);
+        }
+    }
 
     if (param.visualize_path_distance != 0) {
         if (probe_a_axis){
