@@ -664,7 +664,7 @@ void Robot::on_gcode_received(void *argument)
                         std::tie(x, y, z, a, b) = wcs_offsets[n];
                         wcs_t pos= mcs2selected_wcs(machine_position, n);
                         // notify atc module to change ref tool mcs if Z wcs offset is chaned
-                        if (gcode->has_letter('Z')) {
+                        if (gcode->has_letter('Z') && gcode->get_int('L') == 20) {
                             if (probe_tool_not_calibrated && (THEKERNEL->eeprom_data->TOOL == 0 || THEKERNEL->eeprom_data->TOOL >= 999990)){
                                 THEKERNEL->streams->printf("ALARM: Probe not calibrated. Please calibrate probe before probing.\n");
                                 THEKERNEL->call_event(ON_HALT, nullptr);
@@ -677,7 +677,6 @@ void Robot::on_gcode_received(void *argument)
                             }
                         	PublicData::set_value(atc_handler_checksum, set_ref_tool_mz_checksum, nullptr);
                         	this->clearToolOffset();
-                            
                         }
                         if(gcode->has_letter('R')){
                             this->r[n] = gcode->get_value('R');
