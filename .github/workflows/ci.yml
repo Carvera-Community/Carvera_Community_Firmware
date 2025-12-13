@@ -173,13 +173,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Download firmware artifact
+      - name: Download firmware artifacts
         uses: actions/download-artifact@v4
         with:
-          name: firmware-${{ needs.build.outputs.version }}-ARM64
+          name: firmware-${{ needs.build.outputs.version }}-arm64
           path: release-assets
 
-      - name: Download debug symbols artifact
+      - name: Download debug symbols artifacts
         uses: actions/download-artifact@v4
         with:
           name: firmware-debug-symbols-${{ needs.build.outputs.version }}-ARM64
