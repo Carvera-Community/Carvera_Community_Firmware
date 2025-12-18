@@ -9,6 +9,8 @@
 - Enhancement: Added M891 to remove a tool slot defintion. Parameter is T for the tool slot to remove. This immediately removes the config from memory and file. If /sd/custom_tool_slots.txt doesn't exist it will be created and populated.
 - Enhancement: Added the current spindle PWM value to the status response (? command)
 - Enhancement: If flex compensation file is missing and autoload is active, new error informs user
+- Enhancement: Changed the TLO system, so that the value now represents the stickout of the cutter from the spindle. 
+               WCS Z offsets will be more consistent now.
 - Fix: Active measurement of flex compensation will be aborted if the machine goes to a halt
 - Fix: Restored the stock Makera probing laser behaviour if tool 0 is NOT the 3d probe
 
