@@ -880,7 +880,7 @@ void CartGridStrategy::doCompensation(float *target, bool inverse, bool debug)
         int rod_distance_int = 900000;
         int triangle_y_int = 900000;            // Y distance between the plane through both rods to the center of the spindle (90.0 * 10000)
         int machine_offset_z_int = 510000;      // Z distance between the centerplane between the rods and the end of the spindle (51.0 * 10000)
-        int sensor_machine_z_int = -1153600;   // Z machine coordinate if the tool length would be 0 (-115.36 * 10000)
+        int sensor_machine_z_int = -1167500;   // Z machine coordinate if the tool length would be 0 (-115.36 * 10000)
         int refmz_int = (int)(THEKERNEL->eeprom_data->REFMZ * 10000.0f);                  
         int TLO_int = (int)(THEKERNEL->eeprom_data->TLO * 10000.0f);
         float interpolated_delta = 0.0;
@@ -1147,7 +1147,7 @@ bool CartGridStrategy::doFlexMeasurement(Gcode *gc)
 
     int rod_distance_int = 900000;
     int machine_offset_z_int = 510000;      // Z distance between the centerplane between the rods and the end of the spindle (51.0 * 10000)
-    int sensor_machine_z_int = -1153600;   // Z machine coordinate if the tool length would be 0 (-115.36 * 10000)
+    int sensor_machine_z_int = -1167500;   // Z machine coordinate if the tool length would be 0 (-115.36 * 10000)
     int refmz_int = (int)(THEKERNEL->eeprom_data->REFMZ * 10000.0f);                  
     int TLO_int = (int)(THEKERNEL->eeprom_data->TLO * 10000.0f);
 
@@ -1261,7 +1261,7 @@ void CartGridStrategy::print_flex_compensation_data(StreamOutput *stream)
     
     int rod_distance_int = 900000;
     int machine_offset_z_int = 510000;      // Z distance between the centerplane between the rods and the end of the spindle (51.0 * 10000)
-    int sensor_machine_z_int = -1153600;   // Z machine coordinate if the tool length would be 0 (-115.36 * 10000)
+    int sensor_machine_z_int = -1167500;   // Z machine coordinate if the tool length would be 0 (-115.36 * 10000)
     int refmz_int = (int)(THEKERNEL->eeprom_data->REFMZ * 10000.0f);                  
     int TLO_int = (int)(THEKERNEL->eeprom_data->TLO * 10000.0f);
  
