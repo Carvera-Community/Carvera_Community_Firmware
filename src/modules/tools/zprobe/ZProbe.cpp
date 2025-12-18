@@ -199,9 +199,14 @@ void ZProbe::on_main_loop(void *argument)
         if (CARVERA_AIR == THEKERNEL->factory_set->MachineModel) {
             bool ignore_on_halt = true;
             PublicData::set_value( switch_checksum, detector_switch_checksum, ignore_on_halt_checksum, &ignore_on_halt );
+            bool on = true;
+            PublicData::set_value( switch_checksum, detector_switch_checksum, state_checksum, &on );
         }
-    }
-    else{
+    }else{
+        if(is_3dprobe_active) {
+            bool off = false;
+            PublicData::set_value( switch_checksum, detector_switch_checksum, state_checksum, &off );
+        }
         is_3dprobe_active = false;    
         if (CARVERA_AIR == THEKERNEL->factory_set->MachineModel) {
             bool ignore_on_halt = false;
@@ -263,10 +268,6 @@ void ZProbe::on_main_loop(void *argument)
 
 uint32_t ZProbe::read_probe(uint32_t dummy)
 {
-    if (CARVERA_AIR == THEKERNEL->factory_set->MachineModel && (is_3dprobe_active || probing || calibrating)){
-        bool b = true;
-		PublicData::set_value( switch_checksum, detector_switch_checksum, state_checksum, &b );
-    }
 
     if (probe_triggered && !(this->pin.get() != invert_probe)) {
         probe_triggered = false;
