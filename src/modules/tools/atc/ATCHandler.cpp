@@ -1340,7 +1340,16 @@ void ATCHandler::on_module_loaded()
 
     // load data from eeprom
     this->active_tool = THEKERNEL->eeprom_data->TOOL;
-    this->ref_tool_mz = THEKERNEL->eeprom_data->REFMZ;
+	if(CARVERA == THEKERNEL->factory_set->MachineModel || CARVERA_AIR == THEKERNEL->factory_set->MachineModel){
+		this->ref_tool_mz = -116.75; // Represents the machine Z coordinate when the tool length is 0
+	}else{
+		this->ref_tool_mz = -116.75; // In preparation for the Z1. Update this value when the Z1 is implemented
+	}
+    if (THEKERNEL->eeprom_data->REFMZ != this->ref_tool_mz)
+    {
+        THEKERNEL->eeprom_data->REFMZ = this->ref_tool_mz;
+        THEKERNEL->write_eeprom_data();
+    }
     this->cur_tool_mz = THEKERNEL->eeprom_data->TOOLMZ;
     this->tool_offset = THEKERNEL->eeprom_data->TLO;
 	
@@ -3015,13 +3024,11 @@ void ATCHandler::on_set_public_data(void* argument)
     if(!pdr->starts_with(atc_handler_checksum)) return;
 
     if(pdr->second_element_is(set_ref_tool_mz_checksum)) {
-        this->ref_tool_mz = cur_tool_mz;
         // update eeprom data if needed
         if (this->ref_tool_mz != THEKERNEL->eeprom_data->REFMZ) {
         	THEKERNEL->eeprom_data->REFMZ = this->ref_tool_mz;
 		    THEKERNEL->write_eeprom_data();
         }
-        this->tool_offset = 0.0;
         pdr->set_taken();
     } else if (pdr->second_element_is(abort_checksum)) {
 		this->abort();
