@@ -1203,7 +1203,10 @@ void SimpleShell::model_command( string parameters, StreamOutput *stream )
 			break;
 		case CARVERA_AIR:			
 			stream->printf("model = %s, %d, %d, %d\n", "CA1", THEKERNEL->factory_set->MachineModel, THEKERNEL->factory_set->FuncSetting, THEKERNEL->probe_addr);
-			break;
+            if(THEKERNEL->is_flex_compensation_load_error()) {
+                stream->printf("ERROR: Could not load flex compensation data\n");
+            }
+            break;
 		default:			
 			stream->printf("model = %s, %d, %d, %d\n", "C1", THEKERNEL->factory_set->MachineModel, THEKERNEL->factory_set->FuncSetting, THEKERNEL->probe_addr);
 			break;

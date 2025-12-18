@@ -93,6 +93,7 @@ Kernel::Kernel()
     cachewait = false;
     disable_serial_console = false;
     keep_alive_request = false;
+    flex_compensation_load_error = false;
 
     instance = this; // setup the Singleton instance of the kernel    
     
