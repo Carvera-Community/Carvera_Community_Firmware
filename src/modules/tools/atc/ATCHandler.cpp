@@ -1031,7 +1031,7 @@ void ATCHandler::fill_cali_scripts(bool is_probe, bool clear_z) {
 	else	//Manual Tool Change
 	{
 		// Use one-off Z offset if configured, otherwise use toolrack Z position
-		float probe_z = toolrack_z + (this->probe_oneoff_configured ? this->probe_oneoff_z : 0.0);
+		float probe_z = toolrack_z - 10 + (this->probe_oneoff_configured ? this->probe_oneoff_z : 0.0);
 		snprintf(buff, sizeof(buff), "G38.6 Z%.3f F%.3f", probe_z, probe_fast_rate);
 	}
 	this->script_queue.push(buff);
