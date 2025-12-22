@@ -1341,9 +1341,9 @@ void ATCHandler::on_module_loaded()
     // load data from eeprom
     this->active_tool = THEKERNEL->eeprom_data->TOOL;
 	if(CARVERA == THEKERNEL->factory_set->MachineModel || CARVERA_AIR == THEKERNEL->factory_set->MachineModel){
-		this->ref_tool_mz = -116.75; // Represents the machine Z coordinate when the tool length is 0
+		this->ref_tool_mz = -115.34; // Represents the machine Z coordinate when the tool length is 0
 	}else{
-		this->ref_tool_mz = -116.75; // In preparation for the Z1. Update this value when the Z1 is implemented
+		this->ref_tool_mz = -115.34; // In preparation for the Z1. Update this value when the Z1 is implemented
 	}
     if (THEKERNEL->eeprom_data->REFMZ != this->ref_tool_mz)
     {
