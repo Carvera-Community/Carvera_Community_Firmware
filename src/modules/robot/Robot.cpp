@@ -769,7 +769,14 @@ void Robot::on_gcode_received(void *argument)
             case 17: this->select_plane(X_AXIS, Y_AXIS, Z_AXIS);   break;
             case 18: this->select_plane(X_AXIS, Z_AXIS, Y_AXIS);   break;
             case 19: this->select_plane(Y_AXIS, Z_AXIS, X_AXIS);   break;
-            case 20: this->inch_mode = true;   break;
+            // Inch mode is broken see https://github.com/Carvera-Community/Carvera_Community_Firmware/issues/209
+            // case 20: this->inch_mode = true;   break;
+            case 20: {
+                THEKERNEL->streams->printf("ALARM: Imperial Units are unsupported\n");
+                THEKERNEL->call_event(ON_HALT, nullptr);
+                THEKERNEL->set_halt_reason(MANUAL);
+                return;
+            }
             case 21: this->inch_mode = false;   break;
 
             case 54: case 55: case 56: case 57: case 58: case 59:
