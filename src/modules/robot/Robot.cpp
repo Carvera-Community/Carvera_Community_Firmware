@@ -125,6 +125,7 @@ Robot::Robot()
     this->inch_mode = false;
     this->absolute_mode = true;
     this->e_absolute_mode = true;
+    this->inverse_time_mode = false;
     this->select_plane(X_AXIS, Y_AXIS, Z_AXIS);
     memset(this->machine_position, 0, sizeof machine_position);
     memset(this->compensated_machine_position, 0, sizeof compensated_machine_position);
@@ -395,7 +396,8 @@ void  Robot::push_state()
     bool em = this->e_absolute_mode;
     bool im = this->inch_mode;
     bool g123 = this->is_g123;
-    saved_state_t s(this->feed_rate, this->seek_rate, am, em, im, g123, current_wcs);
+    bool itm = this->inverse_time_mode;
+    saved_state_t s(this->feed_rate, this->seek_rate, am, em, im, g123, itm, current_wcs);
     state_stack.push(s);
 }
 
@@ -410,7 +412,8 @@ void Robot::pop_state()
         this->e_absolute_mode = std::get<3>(s);
         this->inch_mode = std::get<4>(s);
         this->is_g123 = std::get<5>(s);
-        this->current_wcs = std::get<6>(s);
+        this->inverse_time_mode = std::get<6>(s);
+        this->current_wcs = std::get<7>(s);
     }
 }
 
@@ -729,7 +732,14 @@ void Robot::on_gcode_received(void *argument)
             case 17: this->select_plane(X_AXIS, Y_AXIS, Z_AXIS);   break;
             case 18: this->select_plane(X_AXIS, Z_AXIS, Y_AXIS);   break;
             case 19: this->select_plane(Y_AXIS, Z_AXIS, X_AXIS);   break;
-            case 20: this->inch_mode = true;   break;
+            // Inch mode is broken see https://github.com/Carvera-Community/Carvera_Community_Firmware/issues/209
+            // case 20: this->inch_mode = true;   break;
+            case 20: {
+                THEKERNEL->streams->printf("ALARM: Imperial Units are unsupported\n");
+                THEKERNEL->call_event(ON_HALT, nullptr);
+                THEKERNEL->set_halt_reason(MANUAL);
+                return;
+            }
             case 21: this->inch_mode = false;   break;
 
             case 54: case 55: case 56: case 57: case 58: case 59:
@@ -786,7 +796,7 @@ void Robot::on_gcode_received(void *argument)
                     		float delta[A_AXIS+1];
                     		for (size_t j = 0; j <= A_AXIS; ++j) delta[j]= 0;
                     		delta[A_AXIS]= mc - ma; // we go the max
-                    		THEROBOT->delta_move(delta, this->seek_rate, A_AXIS+1);
+                    		THEROBOT->delta_move(delta, actuators[A_AXIS]->get_max_rate(), A_AXIS+1);
                     		// wait for A moving
         					THECONVEYOR->wait_for_idle();
                     		// third
@@ -871,6 +881,9 @@ void Robot::on_gcode_received(void *argument)
 */
                 return;
             }
+            break;
+            case 93: this->inverse_time_mode = true; break;
+            case 94: this->inverse_time_mode = false;
         }
 
     } else if( gcode->has_m) {
@@ -885,6 +898,7 @@ void Robot::on_gcode_received(void *argument)
             case 2: // M2 end of program
                 //current_wcs = 0;
                 absolute_mode = true;
+                inverse_time_mode = false;
                 seconds_per_minute= 60;
                 break;
             case 17:
@@ -1398,15 +1412,27 @@ void Robot::process_move(Gcode *gcode, enum MOTION_MODE_T motion_mode)
     #endif
 
     if( gcode->has_letter('F') ) {
+        float f_value = this->to_millimeters( gcode->get_value('F') );
+        if (f_value <= 0.0F) {
+            gcode->is_error = true;
+            gcode->txt_after_ok = (f_value == 0 ? "Undefined feed rate\n" : "feed rate < 0\n");
+            THEKERNEL->streams->printf(f_value == 0 ? "Alarm:Undefined feed rate\n" : "Alarm:feed rate < 0\n");
+            return;
+        }
         if( motion_mode == SEEK )
-            this->seek_rate = this->to_millimeters( gcode->get_value('F') );
+            this->seek_rate = f_value;
         else
-            this->feed_rate = this->to_millimeters( gcode->get_value('F') );
+            this->feed_rate = f_value;
     } else if( motion_mode == SEEK ) {
         // For G0 (SEEK) commands without F parameter, reset to default seek rate
         if (THEKERNEL->config->is_config_cache_loaded()) {
             this->seek_rate = THEKERNEL->config->value(default_seek_rate_checksum)->by_default(3000.0F)->as_number();
         }
+    } else if (this->inverse_time_mode) {
+        THEKERNEL->set_halt_reason(MANUAL);
+        THEKERNEL->call_event(ON_HALT, nullptr);
+        THEKERNEL->streams->printf("Inverse-time feed mode requires F parameter on every G01/G02/G03 line.\n");
+        return;
     }
 
     if(gcode->has_letter('S')) {
@@ -1484,11 +1510,17 @@ void Robot::process_move(Gcode *gcode, enum MOTION_MODE_T motion_mode)
         case NONE: break;
 
         case SEEK:
-            moved = this->append_line(gcode, target, this->seek_rate / seconds_per_minute, delta_e );
+            {
+                // rapid moves are always in mm/min
+                bool saved_itm = this->inverse_time_mode;
+                this->inverse_time_mode = false;
+                moved = this->append_line(gcode, target, this->seek_rate, delta_e );
+                this->inverse_time_mode = saved_itm;
+            }
             break;
 
         case LINEAR:
-            moved = this->append_line(gcode, target, this->feed_rate / seconds_per_minute, delta_e );
+            moved = this->append_line(gcode, target, this->feed_rate, delta_e );
             break;
 
         case CW_ARC:
@@ -1625,7 +1657,7 @@ void Robot::reset_compensated_machine_position()
 // Convert target (in machine coordinates) to machine_position, then convert to actuator position and append this to the planner
 // target is in machine coordinates without the compensation transform, however we save a compensated_machine_position that includes
 // all transforms and is what we actually convert to actuator positions
-bool Robot::append_milestone(const float target[], float rate_mm_s, unsigned int line)
+bool Robot::append_milestone(const float target[], float feed_rate, unsigned int line)
 {
     float deltas[n_motors];
     float transformed_target[n_motors]; // adjust target for bed compensation
@@ -1708,30 +1740,6 @@ bool Robot::append_milestone(const float target[], float rate_mm_s, unsigned int
     // as the last milestone won't be updated we do not actually lose any moves as they will be accounted for in the next move
     if (!auxilliary_move && distance < 0.00001F) return false;
 
-    if (!auxilliary_move) {
-         for (size_t i = X_AXIS; i < N_PRIMARY_AXIS; i++) {
-            // find distance unit vector for primary axis only
-            unit_vec[i] = deltas[i] / distance;
-
-            // Do not move faster than the configured cartesian limits for XYZ
-            if ( i <= Z_AXIS && max_speeds[i] > 0 ) {
-                float axis_speed = fabsf(unit_vec[i] * rate_mm_s);
-
-                if (axis_speed > max_speeds[i]) {
-                	//float last_rate_mm_s = rate_mm_s;
-                    rate_mm_s *= ( max_speeds[i] / axis_speed );
-                    // THEKERNEL->streams->printf("Reduce Speed of %d from %1.2f to %1.2f\n", i, last_rate_mm_s, rate_mm_s);
-                }
-            }
-        }
-
-        if(this->max_speed > 0 && rate_mm_s > this->max_speed) {
-        	// float last_rate_mm_s = rate_mm_s;
-            rate_mm_s = this->max_speed;
-            // THEKERNEL->streams->printf("Reduce Total Speed from %1.2f to %1.2f\n", last_rate_mm_s, rate_mm_s);
-        }
-    }
-
     // find actuator position given the machine position, use actual adjusted target
     ActuatorCoordinates actuator_pos;
     if(!disable_arm_solution) {
@@ -1767,7 +1775,39 @@ bool Robot::append_milestone(const float target[], float rate_mm_s, unsigned int
     }
 #endif
 
-    DEBUG_PRINTF("distance: %f, aux_move: %d\n", distance, auxilliary_move);
+    if (this->inverse_time_mode) {
+        // in G93/inverse time mode, the feed rate is given as 1/min,
+        // by multiplying it with the distance we get mm/min, the same as in G94
+        feed_rate *= distance;
+    }
+
+    float rate_mm_s = feed_rate / seconds_per_minute;
+
+    if (!auxilliary_move) {
+         for (size_t i = X_AXIS; i < N_PRIMARY_AXIS; i++) {
+            // find distance unit vector for primary axis only
+            unit_vec[i] = deltas[i] / distance;
+
+            // Do not move faster than the configured cartesian limits for XYZ
+            if ( i <= Z_AXIS && max_speeds[i] > 0 ) {
+                float axis_speed = fabsf(unit_vec[i] * rate_mm_s);
+
+                if (axis_speed > max_speeds[i]) {
+                    //float last_rate_mm_s = rate_mm_s;
+                    rate_mm_s *= ( max_speeds[i] / axis_speed );
+                    // THEKERNEL->streams->printf("Reduce Speed of %d from %1.2f to %1.2f\n", i, last_rate_mm_s, rate_mm_s);
+                }
+            }
+        }
+
+        if(this->max_speed > 0 && rate_mm_s > this->max_speed) {
+            // float last_rate_mm_s = rate_mm_s;
+            rate_mm_s = this->max_speed;
+            // THEKERNEL->streams->printf("Reduce Total Speed from %1.2f to %1.2f\n", last_rate_mm_s, rate_mm_s);
+        }
+    }
+
+    DEBUG_PRINTF("distance: %f, rate_mm_s: %f, aux_move: %d\n", distance, rate_mm_s, auxilliary_move);
 
     // use default acceleration to start with
     float acceleration = default_acceleration;
@@ -1795,9 +1835,9 @@ bool Robot::append_milestone(const float target[], float rate_mm_s, unsigned int
 				a_perimeter = PI * 2 * rotation_radius + 30;
 		    }
 			if (auxilliary_move) {
-				// A axis move only, speed up if necessary
+				// A axis move only, speed up if necessary, but only in mm/min G94 mode
 				float mm_per_sec = a_perimeter * (rate_mm_s / 360);
-				if (mm_per_sec < rate_mm_s) {
+				if (!this->inverse_time_mode && mm_per_sec < rate_mm_s) {
 					// speed up
 					rate_mm_s *= (rate_mm_s / mm_per_sec);
 				}
@@ -1809,9 +1849,9 @@ bool Robot::append_milestone(const float target[], float rate_mm_s, unsigned int
 				// THEKERNEL->streams->printf("only A: %1.4f, %1.4f, %1.4f, %1.4f\r\n", abs_y_wcs, abs_z_wcs, rate_mm_s, a_perimeter);
 				continue;
 			} else {
-				// A axis move along with other axis, speed down if necessary
+				// A axis move along with other axis, speed down if necessary, but only in mm/min G94 mode
 				float mm_per_sec = actuator_rate * a_perimeter / 360;
-				if (mm_per_sec > rate_mm_s) {
+				if (!this->inverse_time_mode && mm_per_sec > rate_mm_s) {
 					// speed down
 					actuator_rate *= (rate_mm_s / mm_per_sec);
 					rate_mm_s *= (rate_mm_s / mm_per_sec);
@@ -1894,23 +1934,27 @@ bool Robot::delta_move(const float *delta, float rate_mm_s, uint8_t naxis)
     }
 
     is_g123= false; // we don't want the laser to fire
-    // submit for planning and if moved update machine_position
-    if(append_milestone(target, rate_mm_s, 0)) {
-         memcpy(machine_position, target, n_motors*sizeof(float));
-         return true;
-    }
 
-    return false;
+    bool saved_itm = this->inverse_time_mode;
+    this->inverse_time_mode = false; // force G94 since delta feedrates are always in mm/sec
+    // submit for planning and if moved update machine_position
+    bool moved = append_milestone(target, rate_mm_s * seconds_per_minute, 0);
+    if(moved) {
+        memcpy(machine_position, target, n_motors*sizeof(float));
+    }
+    this->inverse_time_mode = saved_itm; // restore G93/G94
+
+    return moved;
 }
 
 // Append a move to the queue ( cutting it into segments if needed )
-bool Robot::append_line(Gcode *gcode, const float target[], float rate_mm_s, float delta_e)
+bool Robot::append_line(Gcode *gcode, const float target[], float feed_rate, float delta_e)
 {
     // catch negative or zero feed rates and return the same error as GRBL does
-    if(rate_mm_s <= 0.0F) {
+    if(feed_rate <= 0.0F) {
         gcode->is_error= true;
-        gcode->txt_after_ok= (rate_mm_s == 0 ? "Undefined feed rate\n" : "feed rate < 0\n");
-        THEKERNEL->streams->printf(rate_mm_s == 0 ? "Alarm:Undefined feed rate\n" : "Alarm:feed rate < 0\n");
+        gcode->txt_after_ok= (feed_rate == 0 ? "Undefined feed rate\n" : "feed rate < 0\n");
+        THEKERNEL->streams->printf(feed_rate == 0 ? "Alarm:Undefined feed rate\n" : "Alarm:feed rate < 0\n");
         return false;
     }
 
@@ -1919,7 +1963,7 @@ bool Robot::append_line(Gcode *gcode, const float target[], float rate_mm_s, flo
 
     if(millimeters_of_travel < 0.00001F) {
         // we have no movement in XYZ, probably E only extrude or retract
-        return this->append_milestone(target, rate_mm_s, gcode->line);
+        return this->append_milestone(target, feed_rate, gcode->line);
     }
 
     /*
@@ -1949,7 +1993,11 @@ bool Robot::append_line(Gcode *gcode, const float target[], float rate_mm_s, flo
         // segment based on current speed and requested segments per second
         // the faster the travel speed the fewer segments needed
         // NOTE rate is mm/sec and we take into account any speed override
-        float seconds = millimeters_of_travel / rate_mm_s;
+        float seconds = seconds_per_minute / feed_rate;
+        if (!this->inverse_time_mode) {
+            // in G94 mode, the feed rate is per mm
+            seconds *= millimeters_of_travel;
+        }
         segments = max(1.0F, ceilf(this->delta_segments_per_second * seconds));
         // TODO if we are only moving in Z on a delta we don't really need to segment at all
 
@@ -1959,6 +2007,12 @@ bool Robot::append_line(Gcode *gcode, const float target[], float rate_mm_s, flo
         } else {
             segments = ceilf( millimeters_of_travel / this->mm_per_line_segment);
         }
+    }
+
+    if (this->inverse_time_mode) {
+        // in inverse-time G93 mode, we need to divide the total time between segments
+        // the feed_rate is an inverse of time, so we multiply to divide
+        feed_rate *= segments;
     }
 
     bool moved= false;
@@ -1981,13 +2035,13 @@ bool Robot::append_line(Gcode *gcode, const float target[], float rate_mm_s, flo
 
             // Append the end of this segment to the queue
             // this can block waiting for free block queue or if in feed hold
-            bool b= this->append_milestone(segment_end, rate_mm_s, gcode->line);
+            bool b= this->append_milestone(segment_end, feed_rate, gcode->line);
             moved= moved || b;
         }
     }
 
     // Append the end of this full move to the queue
-    if(this->append_milestone(target, rate_mm_s, gcode->line)) moved= true;
+    if(this->append_milestone(target, feed_rate, gcode->line)) moved= true;
 
     this->next_command_is_MCS = false; // always reset this
 
@@ -1999,12 +2053,11 @@ bool Robot::append_line(Gcode *gcode, const float target[], float rate_mm_s, flo
 // TODO does not support any E parameters so cannot be used for 3D printing.
 bool Robot::append_arc(Gcode * gcode, const float target[], const float rotated_target[], const float offset[], float radius, bool is_clockwise )
 {
-    float rate_mm_s= this->feed_rate / seconds_per_minute;
     // catch negative or zero feed rates and return the same error as GRBL does
-    if(rate_mm_s <= 0.0F) {
+    if(this->feed_rate <= 0.0F) {
         gcode->is_error= true;
-        gcode->txt_after_ok= (rate_mm_s == 0 ? "Undefined feed rate" : "feed rate < 0");
-        THEKERNEL->streams->printf(rate_mm_s == 0 ? "Alarm:Undefined feed rate\n" : "Alarm:feed rate < 0\n");
+        gcode->txt_after_ok= (this->feed_rate == 0 ? "Undefined feed rate" : "feed rate < 0");
+        THEKERNEL->streams->printf(this->feed_rate == 0 ? "Alarm:Undefined feed rate\n" : "Alarm:feed rate < 0\n");
         return false;
     }
     float offset_rotated[3]{0, 0, 0};
@@ -2080,6 +2133,16 @@ bool Robot::append_arc(Gcode * gcode, const float target[], const float rotated_
     uint16_t segments = floorf(millimeters_of_travel / arc_segment);
     bool moved= false;
 
+    // Note: for arcs, we handle the G93 transform here rather than in append_milestone
+    // because we divide time by segment count, not by linear distance.
+    // The rate_mm_s passed to append_milestone is already in mm/min.
+    float rate_mm_s = this->feed_rate;
+    if (this->inverse_time_mode) {
+        // in inverse-time/G93 mode, we need to divide the total time between segments
+        // the rate_mm_s is an inverse of time, so we multiply to divide
+        rate_mm_s *= segments;
+    }
+
     if(segments > 1) {
         float theta_per_segment = angular_travel / segments;
         linear_vector[this->plane_axis_0] = linear_vector[this->plane_axis_0] / segments;
@@ -2151,6 +2214,11 @@ bool Robot::append_arc(Gcode * gcode, const float target[], const float rotated_
             arc_target[this->plane_axis_0] = arc_center[this->plane_axis_0] + arc_target_vector[this->plane_axis_0] + i * linear_vector[this->plane_axis_0];
             arc_target[this->plane_axis_1] = arc_center[this->plane_axis_1] + arc_target_vector[this->plane_axis_1] + i * linear_vector[this->plane_axis_1];
             arc_target[this->plane_axis_2] = arc_center[this->plane_axis_2] + arc_target_vector[this->plane_axis_2] + i * linear_vector[this->plane_axis_2];
+
+            for (int j = A_AXIS; j < n_motors; j++) {
+                arc_target[j] = machine_position[j] + i * (target[j] - machine_position[j]) / segments;
+            }
+
             // Append this segment to the queue
             bool b= this->append_milestone(arc_target, rate_mm_s, gcode->line);
             moved= moved || b;
