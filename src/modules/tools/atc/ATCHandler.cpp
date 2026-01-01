@@ -1031,7 +1031,7 @@ void ATCHandler::fill_cali_scripts(bool is_probe, bool clear_z) {
 	else	//Manual Tool Change
 	{
 		// Use one-off Z offset if configured, otherwise use toolrack Z position
-		float probe_z = toolrack_z + (this->probe_oneoff_configured ? this->probe_oneoff_z : 0.0);
+		float probe_z = toolrack_z - 10 + (this->probe_oneoff_configured ? this->probe_oneoff_z : 0.0);
 		snprintf(buff, sizeof(buff), "G38.6 Z%.3f F%.3f", probe_z, probe_fast_rate);
 	}
 	this->script_queue.push(buff);
@@ -1340,7 +1340,16 @@ void ATCHandler::on_module_loaded()
 
     // load data from eeprom
     this->active_tool = THEKERNEL->eeprom_data->TOOL;
-    this->ref_tool_mz = THEKERNEL->eeprom_data->REFMZ;
+	if(CARVERA == THEKERNEL->factory_set->MachineModel || CARVERA_AIR == THEKERNEL->factory_set->MachineModel){
+		this->ref_tool_mz = -115.34; // Represents the machine Z coordinate when the tool length is 0
+	}else{
+		this->ref_tool_mz = -115.34; // In preparation for the Z1. Update this value when the Z1 is implemented
+	}
+    if (THEKERNEL->eeprom_data->REFMZ != this->ref_tool_mz)
+    {
+        THEKERNEL->eeprom_data->REFMZ = this->ref_tool_mz;
+        THEKERNEL->write_eeprom_data();
+    }
     this->cur_tool_mz = THEKERNEL->eeprom_data->TOOLMZ;
     this->tool_offset = THEKERNEL->eeprom_data->TLO;
 	
@@ -3015,13 +3024,11 @@ void ATCHandler::on_set_public_data(void* argument)
     if(!pdr->starts_with(atc_handler_checksum)) return;
 
     if(pdr->second_element_is(set_ref_tool_mz_checksum)) {
-        this->ref_tool_mz = cur_tool_mz;
         // update eeprom data if needed
         if (this->ref_tool_mz != THEKERNEL->eeprom_data->REFMZ) {
         	THEKERNEL->eeprom_data->REFMZ = this->ref_tool_mz;
 		    THEKERNEL->write_eeprom_data();
         }
-        this->tool_offset = 0.0;
         pdr->set_taken();
     } else if (pdr->second_element_is(abort_checksum)) {
 		this->abort();
