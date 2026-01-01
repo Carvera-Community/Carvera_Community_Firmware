@@ -1881,6 +1881,26 @@ void ATCHandler::on_gcode_received(void *argument)
     	    	}
     	    }
 
+			// Handle one-off probe position offsets
+
+			this->probe_oneoff_x = 0.0;
+			this->probe_oneoff_y = 0.0;
+			this->probe_oneoff_z = 0.0;
+			this->probe_oneoff_configured = false;
+
+			if (gcode->has_letter('X')) {
+				this->probe_oneoff_x = gcode->get_value('X');
+				this->probe_oneoff_configured = true;
+			}
+			if (gcode->has_letter('Y')) {
+				this->probe_oneoff_y = gcode->get_value('Y');
+				this->probe_oneoff_configured = true;
+			}
+			if (gcode->has_letter('Z')) {
+				this->probe_oneoff_z = gcode->get_value('Z');
+				this->probe_oneoff_configured = true;
+			}
+
             int new_tool = gcode->get_value('T');
             if(THEKERNEL->factory_set->FuncSetting & (1<<2))	//ATC 
 			{
