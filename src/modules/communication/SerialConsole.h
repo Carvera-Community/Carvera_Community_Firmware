@@ -16,10 +16,10 @@
 using std::string;
 #include "libs/RingBuffer.h"
 #include "libs/StreamOutput.h"
+#include "libs/CommonEnums.h"
 
 
 #define baud_rate_setting_checksum CHECKSUM("baud_rate")
-enum ParseState { WAIT_HEADER, READ_LENGTH, READ_DATA, CHECK_FOOTER };
 
 class SerialConsole : public Module, public StreamOutput {
     public:

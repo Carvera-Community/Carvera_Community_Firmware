@@ -18,12 +18,11 @@ using namespace std;
 
 #include "M8266WIFIDrv.h"
 #include "libs/RingBuffer.h"
+#include "libs/CommonEnums.h"
 
 #define WIFI_DATA_MAX_SIZE 1460
 #define WIFI_DATA_TIMEOUT_MS 10
 #define MAX_WLAN_SIGNALS 8
-
-enum ParseState { WAIT_HEADER, READ_LENGTH, READ_DATA, CHECK_FOOTER };
 class WifiProvider : public Module, public StreamOutput
 {
 public:
@@ -60,8 +59,8 @@ private:
     void query_wifi_status();
 
     uint32_t ip_to_int(char* ip_addr);
-    void int_to_ip(uint32_t i_ip, char *ip_addr, size_t buffer_size);
-    void get_broadcast_from_ip_and_netmask(char *broadcast_addr, size_t broadcast_buffer_size, char *ip_addr, char *netmask);
+    void int_to_ip(uint32_t i_ip, char *ip_addr);
+    void get_broadcast_from_ip_and_netmask(char *broadcast_addr, char *ip_addr, char *netmask);
 
     void on_pin_rise();
     void receive_wifi_data();

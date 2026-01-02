@@ -16,6 +16,7 @@
 - Fix: Active measurement of flex compensation will be aborted if the machine goes to a halt
 - Fix: Restored the stock Makera probing laser behaviour if tool 0 is NOT the 3d probe
 - Change: Inch Mode (G20) now raises a machine halt. This is because there are outstanding bugs preventing it's use.
+- Enhancement: Updated to Makera 1.0.5 Firmware
 
 [v2.0.0c]
 - Enhancement: The side depth parameter takes the probe tip diameter into account to precisely specify where the probe should make contact instead of where the end of the stylus will be

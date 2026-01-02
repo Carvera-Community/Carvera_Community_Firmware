@@ -271,11 +271,9 @@ void WifiProvider::receive_wifi_data() {
         	}
 			else if(WifiSerialbuff[5] == 'Y' - 'A' + 1) { // ^Y
 	            THEKERNEL->set_stop_request(true); // generic stop what you are doing request
-	            continue;
 	        }
 			else if(WifiSerialbuff[5] == 'Z' - 'A' + 1) { // ^Z
 				THEKERNEL->set_keep_alive_request(true);
-				continue;
 			}
         	else if(THEKERNEL->is_feed_hold_enabled()) {
 	            if(WifiSerialbuff[5] == '!') { // safe pause
@@ -326,26 +324,26 @@ bool WifiProvider::ready() {
 	return M8266WIFI_SPI_Has_DataReceived();
 }
 
-void WifiProvider::get_broadcast_from_ip_and_netmask(char *broadcast_addr, size_t broadcast_buffer_size, char *ip_addr, char *netmask)
+void WifiProvider::get_broadcast_from_ip_and_netmask(char *broadcast_addr, char *ip_addr, char *netmask)
 {
 	uint32_t i_ip = ip_to_int(ip_addr);
 	uint32_t i_mask = ip_to_int(netmask);
 	uint32_t i_broadcast = i_ip | (i_mask ^ 0xffffffff);
-	int_to_ip(i_broadcast, broadcast_addr, broadcast_buffer_size);
+	int_to_ip(i_broadcast, broadcast_addr);
 }
 
-void WifiProvider::int_to_ip(uint32_t i_ip, char *ip_addr, size_t buffer_size) {
+void WifiProvider::int_to_ip(uint32_t i_ip, char *ip_addr) {
     unsigned char bytes[4];
     bytes[0] = i_ip & 0xFF;
     bytes[1] = (i_ip >> 8) & 0xFF;
     bytes[2] = (i_ip >> 16) & 0xFF;
     bytes[3] = (i_ip >> 24) & 0xFF;
-	snprintf(ip_addr, buffer_size, "%d.%d.%d.%d", bytes[3], bytes[2], bytes[1], bytes[0]);
+	snprintf(ip_addr, 16, "%d.%d.%d.%d", bytes[3], bytes[2], bytes[1], bytes[0]);
 }
 
 uint32_t WifiProvider::ip_to_int(char* ip_addr) {
   unsigned char bytes[4];
-  sscanf(ip_addr, "%u.%u.%u.%u", &bytes[0], &bytes[1], &bytes[2], &bytes[3]);
+  sscanf(ip_addr, "%hhu.%hhu.%hhu.%hhu", &bytes[0], &bytes[1], &bytes[2], &bytes[3]);
   return bytes[0] * 16777216 + bytes[1] * 65536 + bytes[2] * 256 + bytes[3];
 }
 
@@ -370,7 +368,7 @@ void WifiProvider::on_second_tick(void *)
 				M8266WIFI_SPI_Query_STA_Param(STA_PARAM_TYPE_NETMASK_ADDR, (u8 *)this->sta_netmask, &param_len, &status);
 				// send data to sta broadcast address
 				get_broadcast_from_ip_and_netmask(address, this->sta_address, this->sta_netmask);
-				snprintf(udp_buff, sizeof(udp_buff), "%s,%s,%d,%d", this->machine_name.c_str(), this->sta_address, this->tcp_port, client_num > 0 ? 1 : 0);
+				snprintf(udp_buff, sizeof(udp_buff), "%s,%s,%d,%d", this->machine_name, this->sta_address, this->tcp_port, client_num > 0 ? 1 : 0);
 				if (M8266WIFI_SPI_Send_Udp_Data((u8 *)udp_buff, strlen(udp_buff), udp_link_no, address, this->udp_send_port, &status) < strlen(udp_buff)) {
 					// THEKERNEL->streams->printf("Send UDP through STA ERROR, status: %d, high: %d, low: %d!\n", status, int(status >> 8), int(status & 0xff));
 				} else {
@@ -393,8 +391,8 @@ void WifiProvider::on_second_tick(void *)
 		
 			// send ap info through UDP
 			memset(udp_buff, 0, sizeof(udp_buff));
-			get_broadcast_from_ip_and_netmask(address, this->ap_address, this->ap_netmask);
-			snprintf(udp_buff, sizeof(udp_buff), "%s,%s,%d,%d", this->machine_name.c_str(), this->ap_address, this->tcp_port, client_num > 0 ? 1 : 0);
+			get_broadcast_from_ip_and_netmask(address,this->ap_address, this->ap_netmask);
+			snprintf(udp_buff, sizeof(udp_buff), "%s,%s,%d,%d", this->machine_name, this->ap_address, this->tcp_port, client_num > 0 ? 1 : 0);
 			if (M8266WIFI_SPI_Send_Udp_Data((u8 *)udp_buff, strlen(udp_buff), udp_link_no, address, this->udp_send_port, &status) < strlen(udp_buff)) {
 				// THEKERNEL->streams->printf("Send UDP through AP ERROR, status: %d, high: %d, low: %d!\n", status, int(status >> 8), int(status & 0xff));
 			}

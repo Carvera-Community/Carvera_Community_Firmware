@@ -161,26 +161,14 @@ void SerialConsole::on_serial_char_received() {
             case PTYPE_CTRL_SINGLE: { 
                 if(Serialbuff[5] == '?') {
 	            	query_flag = true;
-                    this->previous_char = received;
-                } else if (this->previous_char == '?' && received == '1') {
-                    // Found ?1 pattern
-                    query_flag = true;
-                    THEKERNEL->set_keep_alive_request(true);
-                    this->previous_char = 0; // Reset
                 }
 	        	else if(Serialbuff[5] == 'X' - 'A' + 1) {
 	            	halt_flag = true;
 	        	}
-                else if(received == 'Y' - 'A' + 1) { // ^Y
-                    if(THEKERNEL->get_internal_stop_request()) {
-                        THEKERNEL->set_internal_stop_request(false);
-                    } else {
-                        THEKERNEL->set_stop_request(true); // generic stop what you are doing request
-                        THEKERNEL->set_stop_request_time(us_ticker_read() / 1000);
-                    }
-                }
-                else if(received == 'Z' - 'A' + 1) { // ^Z
-                    THEKERNEL->set_keep_alive_request(true);
+                else if(Serialbuff[5] == 'Y' - 'A' + 1) { // ^Y
+                    THEKERNEL->set_stop_request(true);
+                    THEKERNEL->streams->printf("^Y\n");
+                    return;
                 }
 	        	else if(THEKERNEL->is_feed_hold_enabled()) {
 		            if(Serialbuff[5] == '!') { // safe pause
@@ -194,8 +182,14 @@ void SerialConsole::on_serial_char_received() {
                 break;
             }
             case PTYPE_CTRL_MULTI: {
+                
                 struct SerialMessage message;
-                message.message.assign(Serialbuff+5, data_len-3);
+                message.message.assign(Serialbuff+5,data_len- 3);
+                if (message.message == "?!") {
+                    query_flag = true;
+                    THEKERNEL->set_keep_alive_request(true);
+                    return;
+                }
                 message.stream = this;
                 THEKERNEL->call_event(ON_CONSOLE_LINE_RECEIVED, &message );
                 break;
