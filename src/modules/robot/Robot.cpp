@@ -777,10 +777,24 @@ void Robot::on_gcode_received(void *argument)
                     if(gcode->has_letter('A')){
                     	if (gcode->has_letter('S')) {
                     		// shrink A value
-                    		float ma = actuators[A_AXIS]->get_current_position();
-                    		if (fabs(ma) > 360) {
-                    			THEROBOT->reset_axis_position(fmodf(ma, 360.0), A_AXIS);
-                    		}
+							float mpos[5];
+							mpos[X_AXIS] = 0;
+							mpos[Y_AXIS] = 0;
+							mpos[Z_AXIS] = 0;
+							mpos[B_AXIS] = 0;
+				    		
+							mpos[A_AXIS] = THEROBOT->actuators[A_AXIS]->get_current_position();
+							Robot::wcs_t pos = THEROBOT->mcs2wcs(mpos);
+							float wa = THEROBOT->from_millimeters(std::get<A_AXIS>(pos));
+							float ma = THEROBOT->actuators[A_AXIS]->get_current_position();
+							
+							if(fabs(wa) > 360)
+							{
+								float deltwa = wa - fmodf(wa, 360.0);
+								ma = ma - deltwa;
+								
+								THEROBOT->reset_axis_position(ma, A_AXIS);
+							}
                     	} else if(gcode->has_letter('R')){                    		 
                     		float x, y, z, a, b;
                         	std::tie(x, y, z, a, b) = wcs_offsets[current_wcs];    

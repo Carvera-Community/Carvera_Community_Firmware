@@ -257,7 +257,7 @@ void Switch::on_config_reload(void *argument)
 
         } else if(this->output_type == SWPWM) {
             // default is 50Hz
-            float p= THEKERNEL->config->value(switch_checksum, this->name_checksum, pwm_period_ms_checksum )->by_default(20)->as_number(); // ms fractions are not allowed
+            float p= THEKERNEL->config->value(switch_checksum, this->name_checksum, pwm_period_ms_checksum )->by_default(10)->as_number(); // ms fractions are not allowed
             this->swpwm_pin->period_ms(p);
 
             // default is 0% duty cycle
@@ -463,6 +463,7 @@ void Switch::on_get_public_data(void *argument)
     pad->name = this->name_checksum;
     pad->state = this->switch_state;
     pad->value = this->switch_value;
+    pad->defaultvalue = this->default_on_value;
     pdr->set_taken();
 }
 

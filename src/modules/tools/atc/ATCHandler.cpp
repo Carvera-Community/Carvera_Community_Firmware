@@ -1291,6 +1291,831 @@ void ATCHandler::fill_xyzprobe_scripts(float tool_dia, float probe_height) {
 
 }
 
+void ATCHandler::fill_OutCorner_scripts(float tool_dia, float X_distance, float Y_distance, float Z_distance) {
+	char buff[100];
+	float mpos[3];
+    THEROBOT->get_current_machine_position(mpos);
+	
+	// open wired probe laser
+	this->script_queue.push("M494.1");
+	
+	// set atc status
+	this->script_queue.push("M497.5");
+
+	// do z probe with slow speed
+	if(THEKERNEL->factory_set->FuncSetting & (1<<2))	//ATC 
+    {
+		snprintf(buff, sizeof(buff), "G38.2 Z%.3f F%.3f", probe_mz_mm, probe_slow_rate);
+	}
+	else	//Manual Tool Change
+	{
+		snprintf(buff, sizeof(buff), "G38.2 Z%.3f F%.3f", toolrack_z, probe_slow_rate);
+	}
+	this->script_queue.push(buff);
+
+	// set Z origin first
+	snprintf(buff, sizeof(buff), "G10 L20 P0 Z0");
+	this->script_queue.push(buff);
+	
+	// lift a bit
+	snprintf(buff, sizeof(buff), "G91 G0 Z%.3f", THEROBOT->from_millimeters(probe_retract_mm));
+	this->script_queue.push(buff);
+	
+	// do z probe with slow speed again
+	if(THEKERNEL->factory_set->FuncSetting & (1<<2))	//ATC 
+    {
+		snprintf(buff, sizeof(buff), "G38.2 Z%.3f F%.3f", probe_mz_mm, probe_slow_rate);
+	}
+	else	//Manual Tool Change
+	{
+		snprintf(buff, sizeof(buff), "G38.2 Z%.3f F%.3f", toolrack_z, probe_slow_rate);
+	}
+	this->script_queue.push(buff);
+
+	// set Z origin again
+	snprintf(buff, sizeof(buff), "G10 L20 P0 Z0");
+	this->script_queue.push(buff);
+
+	// lift Z begining pos
+	snprintf(buff, sizeof(buff), "G53 G0 Z%.3f", THEROBOT->from_millimeters(mpos[2]));
+	this->script_queue.push(buff);
+	
+	// move x outside
+	snprintf(buff, sizeof(buff), "G91 G0 X%.3f", THEROBOT->from_millimeters(-X_distance));
+	this->script_queue.push(buff);
+    
+    // lower move speed
+    snprintf(buff, sizeof(buff), "M220S10"); 	 
+	this->script_queue.push(buff);
+	
+	// lower Z a bit
+	snprintf(buff, sizeof(buff), "G90 G0 Z%.3f", THEROBOT->from_millimeters(-Z_distance));
+	this->script_queue.push(buff);
+    
+    // recover move speed
+    snprintf(buff, sizeof(buff), "M220S100"); 	 
+	this->script_queue.push(buff);
+	// do x probe with fast speed
+	snprintf(buff, sizeof(buff), "G38.2 X%.3f F%.3f", X_distance, probe_fast_rate);
+	this->script_queue.push(buff);
+	
+	// retract X
+	if(X_distance > 0)
+		snprintf(buff, sizeof(buff), "G91 G0 X-%.3f", THEROBOT->from_millimeters(probe_retract_mm));
+	else
+		snprintf(buff, sizeof(buff), "G91 G0 X%.3f", THEROBOT->from_millimeters(probe_retract_mm));
+	this->script_queue.push(buff);
+	
+	// do x probe with slow speed
+	snprintf(buff, sizeof(buff), "G38.2 X%.3f F%.3f", X_distance, probe_slow_rate);
+	this->script_queue.push(buff);
+
+	// set x origin
+	if(X_distance > 0)
+		snprintf(buff, sizeof(buff), "G10 L20 P0 X-%.3f", THEROBOT->from_millimeters(tool_dia / 2));
+	else
+		snprintf(buff, sizeof(buff), "G10 L20 P0 X%.3f", THEROBOT->from_millimeters(tool_dia / 2));
+	this->script_queue.push(buff);	
+	
+	// retract X
+	if(X_distance > 0)
+		snprintf(buff, sizeof(buff), "G91 G0 X-%.3f", THEROBOT->from_millimeters(probe_retract_mm));
+	else
+		snprintf(buff, sizeof(buff), "G91 G0 X%.3f", THEROBOT->from_millimeters(probe_retract_mm));
+	this->script_queue.push(buff);
+
+	// lift Z to begining pos
+	snprintf(buff, sizeof(buff), "G53 G0 Z%.3f", THEROBOT->from_millimeters(mpos[2]));
+	this->script_queue.push(buff);
+
+	// move X to begining pos
+	snprintf(buff, sizeof(buff), "G53 G0 X%.3f", THEROBOT->from_millimeters(mpos[0]));
+	this->script_queue.push(buff);
+	
+	// move Y outside
+	snprintf(buff, sizeof(buff), "G91 G0 Y%.3f", THEROBOT->from_millimeters(Y_distance));
+	this->script_queue.push(buff);
+    
+    // lower move speed	
+    snprintf(buff, sizeof(buff), "M220S10"); 	 
+	this->script_queue.push(buff);
+	
+	// lower Z a bit
+	snprintf(buff, sizeof(buff), "G90 G0 Z%.3f", THEROBOT->from_millimeters(-Z_distance));
+	this->script_queue.push(buff);
+    
+    // recover move speed
+    snprintf(buff, sizeof(buff), "M220S100"); 	 
+	this->script_queue.push(buff);
+
+	// do Y probe with fast speed
+	snprintf(buff, sizeof(buff), "G38.2 Y%.3f F%.3f", -Y_distance, probe_fast_rate);
+	this->script_queue.push(buff);
+	
+	// retract Y
+	if(Y_distance > 0)
+		snprintf(buff, sizeof(buff), "G91 G0 Y%.3f", THEROBOT->from_millimeters(probe_retract_mm));
+	else
+		snprintf(buff, sizeof(buff), "G91 G0 Y-%.3f", THEROBOT->from_millimeters(probe_retract_mm));
+	this->script_queue.push(buff);
+	
+	// do Y probe with slow speed
+	snprintf(buff, sizeof(buff), "G38.2 Y%.3f F%.3f", -Y_distance, probe_slow_rate);
+	this->script_queue.push(buff);
+
+	// set Y origin
+	if(Y_distance > 0)
+		snprintf(buff, sizeof(buff), "G10 L20 P0 Y%.3f", THEROBOT->from_millimeters(tool_dia / 2));
+	else
+		snprintf(buff, sizeof(buff), "G10 L20 P0 Y-%.3f", THEROBOT->from_millimeters(tool_dia / 2));
+	this->script_queue.push(buff);	
+	
+	// retract Y
+	if(Y_distance > 0)
+		snprintf(buff, sizeof(buff), "G91 G0 Y%.3f", THEROBOT->from_millimeters(probe_retract_mm));
+	else
+		snprintf(buff, sizeof(buff), "G91 G0 Y-%.3f", THEROBOT->from_millimeters(probe_retract_mm));
+	this->script_queue.push(buff);
+	
+	// lift Z to begining pos
+	snprintf(buff, sizeof(buff), "G53 G0 Z%.3f", THEROBOT->from_millimeters(mpos[2]));
+	this->script_queue.push(buff);
+	
+	// move to XY zero
+	snprintf(buff, sizeof(buff), "G90 G0 X0.0Y0.0");
+	this->script_queue.push(buff);	
+	
+	// close wired probe laser
+	this->script_queue.push("M494.2");
+}
+void ATCHandler::fill_InCorner_scripts(float tool_dia, float X_distance, float Y_distance, float Z_distance) {
+	char buff[100];
+	float mpos[3],mpos2[3];
+	struct SerialMessage message;
+    THEROBOT->get_current_machine_position(mpos);
+    
+	// open wired probe laser
+    message.message.assign("M494.1", 6);
+    message.stream = THEKERNEL->streams;
+    THEKERNEL->call_event(ON_CONSOLE_LINE_RECEIVED, &message );
+
+	// set atc status
+    message.message.assign("M497.5", 6);
+    THEKERNEL->call_event(ON_CONSOLE_LINE_RECEIVED, &message );
+
+	// do z probe with slow speed
+	if(THEKERNEL->factory_set->FuncSetting & (1<<2))	//ATC 
+    {
+		snprintf(buff, sizeof(buff), "G38.2 Z%.3f F%.3f", probe_mz_mm, probe_slow_rate);
+	}
+	else	//Manual Tool Change
+	{
+		snprintf(buff, sizeof(buff), "G38.2 Z%.3f F%.3f", toolrack_z, probe_slow_rate);
+	}
+	message.message.assign(buff, sizeof(buff));
+    THEKERNEL->call_event(ON_CONSOLE_LINE_RECEIVED, &message );
+
+	// set Z origin first
+	snprintf(buff, sizeof(buff), "G10 L20 P0 Z0");
+	message.message.assign(buff, sizeof(buff));
+    THEKERNEL->call_event(ON_CONSOLE_LINE_RECEIVED, &message );
+	
+	// lift a bit
+	snprintf(buff, sizeof(buff), "G91 G0 Z%.3f", THEROBOT->from_millimeters(probe_retract_mm));
+	message.message.assign(buff, sizeof(buff));
+    THEKERNEL->call_event(ON_CONSOLE_LINE_RECEIVED, &message );
+	
+	// do z probe with slow speed again
+	if(THEKERNEL->factory_set->FuncSetting & (1<<2))	//ATC 
+    {
+		snprintf(buff, sizeof(buff), "G38.2 Z%.3f F%.3f", probe_mz_mm, probe_slow_rate);
+	}
+	else	//Manual Tool Change
+	{
+		snprintf(buff, sizeof(buff), "G38.2 Z%.3f F%.3f", toolrack_z, probe_slow_rate);
+	}
+	message.message.assign(buff, sizeof(buff));
+    THEKERNEL->call_event(ON_CONSOLE_LINE_RECEIVED, &message );
+
+	// set Z origin again
+	snprintf(buff, sizeof(buff), "G10 L20 P0 Z0");
+	message.message.assign(buff, sizeof(buff));
+    THEKERNEL->call_event(ON_CONSOLE_LINE_RECEIVED, &message );
+
+	// lift Z begining pos
+	snprintf(buff, sizeof(buff), "G53 G0 Z%.3f", THEROBOT->from_millimeters(mpos[2]));
+	message.message.assign(buff, sizeof(buff));
+    THEKERNEL->call_event(ON_CONSOLE_LINE_RECEIVED, &message );
+	
+	// move X/Y Inside
+	snprintf(buff, sizeof(buff), "G91 G0 X%.3f Y%.3f", THEROBOT->from_millimeters(X_distance), THEROBOT->from_millimeters(-Y_distance));
+	message.message.assign(buff, sizeof(buff));
+    THEKERNEL->call_event(ON_CONSOLE_LINE_RECEIVED, &message );
+    
+    // lower move speed
+	snprintf(buff, sizeof(buff), "M220S10");
+	message.message.assign(buff, sizeof(buff));
+    THEKERNEL->call_event(ON_CONSOLE_LINE_RECEIVED, &message );
+	
+	// lower Z a bit
+	snprintf(buff, sizeof(buff), "G90 G0 Z%.3f", THEROBOT->from_millimeters(-Z_distance));
+	message.message.assign(buff, sizeof(buff));
+    THEKERNEL->call_event(ON_CONSOLE_LINE_RECEIVED, &message );
+    
+    // recover move speed
+	snprintf(buff, sizeof(buff), "M220S100");
+	message.message.assign(buff, sizeof(buff));
+    THEKERNEL->call_event(ON_CONSOLE_LINE_RECEIVED, &message );
+    
+    
+    THECONVEYOR->wait_for_idle();
+    THEROBOT->get_current_machine_position(mpos2);
+	
+	// do x probe with fast speed
+	snprintf(buff, sizeof(buff), "G38.2 X%.3f F%.3f", -X_distance, probe_fast_rate);
+	message.message.assign(buff, sizeof(buff));
+    THEKERNEL->call_event(ON_CONSOLE_LINE_RECEIVED, &message );
+	
+	// retract X  2mm
+	if(X_distance > 0)
+		snprintf(buff, sizeof(buff), "G91 G0 X%.3f", THEROBOT->from_millimeters(probe_retract_mm));
+	else
+		snprintf(buff, sizeof(buff), "G91 G0 X-%.3f", THEROBOT->from_millimeters(probe_retract_mm));
+	message.message.assign(buff, sizeof(buff));
+    THEKERNEL->call_event(ON_CONSOLE_LINE_RECEIVED, &message );
+	
+	// do x probe with slow speed
+	snprintf(buff, sizeof(buff), "G38.2 X%.3f F%.3f", -X_distance, probe_slow_rate);
+	message.message.assign(buff, sizeof(buff));
+    THEKERNEL->call_event(ON_CONSOLE_LINE_RECEIVED, &message );
+
+	// set x origin
+	if(X_distance > 0)
+		snprintf(buff, sizeof(buff), "G10 L20 P0 X%.3f", THEROBOT->from_millimeters(tool_dia / 2));
+	else
+		snprintf(buff, sizeof(buff), "G10 L20 P0 X-%.3f", THEROBOT->from_millimeters(tool_dia / 2));
+	message.message.assign(buff, sizeof(buff));
+    THEKERNEL->call_event(ON_CONSOLE_LINE_RECEIVED, &message );
+	
+	// move X to start point
+	snprintf(buff, sizeof(buff), "G53 G0 X%.3f", THEROBOT->from_millimeters(mpos2[0]));
+		
+	message.message.assign(buff, sizeof(buff));
+    THEKERNEL->call_event(ON_CONSOLE_LINE_RECEIVED, &message );
+    
+	// do Y probe with fast speed
+	snprintf(buff, sizeof(buff), "G38.2 Y%.3f F%.3f", Y_distance, probe_fast_rate);
+	message.message.assign(buff, sizeof(buff));
+    THEKERNEL->call_event(ON_CONSOLE_LINE_RECEIVED, &message );
+	
+	// retract Y  2mm
+	if(Y_distance > 0)
+		snprintf(buff, sizeof(buff), "G91 G0 Y-%.3f", THEROBOT->from_millimeters(probe_retract_mm));
+	else
+		snprintf(buff, sizeof(buff), "G91 G0 Y%.3f", THEROBOT->from_millimeters(probe_retract_mm));
+	message.message.assign(buff, sizeof(buff));
+    THEKERNEL->call_event(ON_CONSOLE_LINE_RECEIVED, &message );
+	
+	// do Y probe with slow speed
+	snprintf(buff, sizeof(buff), "G38.2 Y%.3f F%.3f", Y_distance, probe_slow_rate);
+	message.message.assign(buff, sizeof(buff));
+    THEKERNEL->call_event(ON_CONSOLE_LINE_RECEIVED, &message );
+
+	// set Y origin
+	if(Y_distance > 0)
+		snprintf(buff, sizeof(buff), "G10 L20 P0 Y-%.3f", THEROBOT->from_millimeters(tool_dia / 2));
+	else
+		snprintf(buff, sizeof(buff), "G10 L20 P0 Y%.3f", THEROBOT->from_millimeters(tool_dia / 2));
+	message.message.assign(buff, sizeof(buff));
+    THEKERNEL->call_event(ON_CONSOLE_LINE_RECEIVED, &message );
+	
+	// retract Y  2mm
+	if(Y_distance > 0)
+		snprintf(buff, sizeof(buff), "G91 G0 Y-%.3f", THEROBOT->from_millimeters(probe_retract_mm));
+	else
+		snprintf(buff, sizeof(buff), "G91 G0 Y%.3f", THEROBOT->from_millimeters(probe_retract_mm));
+	message.message.assign(buff, sizeof(buff));
+    THEKERNEL->call_event(ON_CONSOLE_LINE_RECEIVED, &message );
+	
+	// lift Z to begining pos
+	snprintf(buff, sizeof(buff), "G53 G0 Z%.3f", THEROBOT->from_millimeters(mpos[2]));
+	message.message.assign(buff, sizeof(buff));
+    THEKERNEL->call_event(ON_CONSOLE_LINE_RECEIVED, &message );
+	
+	// move to XY zero
+	snprintf(buff, sizeof(buff), "G90 G0 X0.0Y0.0");
+	message.message.assign(buff, sizeof(buff));
+    THEKERNEL->call_event(ON_CONSOLE_LINE_RECEIVED, &message );
+    
+	// close wired probe laser
+    message.message.assign("M494.2", 6);
+    THEKERNEL->call_event(ON_CONSOLE_LINE_RECEIVED, &message );
+}
+
+void ATCHandler::fill_InPocket_scripts(float tool_dia, float X_distance, float Y_distance, float Z_distance) {
+	char buff[100];
+	float mpos[3],mleftpos[3],mrightpos[3];
+    struct SerialMessage message;
+    THEROBOT->get_current_machine_position(mpos);
+    
+	// open wired probe laser
+    message.message.assign("M494.1", 6);
+    message.stream = THEKERNEL->streams;
+    THEKERNEL->call_event(ON_CONSOLE_LINE_RECEIVED, &message );
+    
+    message.message.assign("M497.5", 6);
+    THEKERNEL->call_event(ON_CONSOLE_LINE_RECEIVED, &message );
+
+	if( fabs(X_distance) > 0){
+		// do x probe with fast speed
+		snprintf(buff, sizeof(buff), "G38.2 X%.3f F%.3f", -X_distance, probe_fast_rate);
+		message.message.assign(buff, sizeof(buff));
+	    THEKERNEL->call_event(ON_CONSOLE_LINE_RECEIVED, &message );
+		
+		// retract X
+		if(X_distance > 0){
+			snprintf(buff, sizeof(buff), "G91 G0 X%.3f", THEROBOT->from_millimeters(probe_retract_mm));
+			message.message.assign(buff, sizeof(buff));
+	    	THEKERNEL->call_event(ON_CONSOLE_LINE_RECEIVED, &message );
+	    }
+		else {
+			snprintf(buff, sizeof(buff), "G91 G0 X-%.3f", THEROBOT->from_millimeters(probe_retract_mm));
+			message.message.assign(buff, sizeof(buff));
+	    	THEKERNEL->call_event(ON_CONSOLE_LINE_RECEIVED, &message );
+	    }
+		
+		// do x probe with slow speed
+		snprintf(buff, sizeof(buff), "G38.2 X%.3f F%.3f", -X_distance, probe_slow_rate);
+		message.message.assign(buff, sizeof(buff));
+	    THEKERNEL->call_event(ON_CONSOLE_LINE_RECEIVED, &message );
+		
+    	THECONVEYOR->wait_for_idle();
+	    THEROBOT->get_current_machine_position(mleftpos);
+	    
+	    // retract X
+		if(X_distance > 0){
+			snprintf(buff, sizeof(buff), "G91 G0 X%.3f", THEROBOT->from_millimeters(probe_retract_mm));
+			message.message.assign(buff, sizeof(buff));
+	    	THEKERNEL->call_event(ON_CONSOLE_LINE_RECEIVED, &message );
+	    }
+		else {
+			snprintf(buff, sizeof(buff), "G91 G0 X-%.3f", THEROBOT->from_millimeters(probe_retract_mm));
+			message.message.assign(buff, sizeof(buff));
+	    	THEKERNEL->call_event(ON_CONSOLE_LINE_RECEIVED, &message );
+	    }
+	    
+	    // do x probe with fast speed
+		snprintf(buff, sizeof(buff), "G38.2 X%.3f F%.3f", 2*X_distance, probe_fast_rate);
+		message.message.assign(buff, sizeof(buff));
+	    THEKERNEL->call_event(ON_CONSOLE_LINE_RECEIVED, &message );  
+	    
+	    // retract X  2mm
+		if(X_distance > 0){
+			snprintf(buff, sizeof(buff), "G91 G0 X-%.3f", THEROBOT->from_millimeters(probe_retract_mm));
+			message.message.assign(buff, sizeof(buff));
+	    	THEKERNEL->call_event(ON_CONSOLE_LINE_RECEIVED, &message );
+	    }
+		else {
+			snprintf(buff, sizeof(buff), "G91 G0 X%.3f", THEROBOT->from_millimeters(probe_retract_mm));
+			message.message.assign(buff, sizeof(buff));
+	    	THEKERNEL->call_event(ON_CONSOLE_LINE_RECEIVED, &message );
+	    }
+	    
+	    
+	    // do x probe with slow speed
+		snprintf(buff, sizeof(buff), "G38.2 X%.3f F%.3f", X_distance, probe_slow_rate);
+		message.message.assign(buff, sizeof(buff));
+	    THEKERNEL->call_event(ON_CONSOLE_LINE_RECEIVED, &message );  
+	    
+    	THECONVEYOR->wait_for_idle();
+	    THEROBOT->get_current_machine_position(mrightpos);
+	    
+	    snprintf(buff, sizeof(buff), "G53 G0 X%.3f", THEROBOT->from_millimeters(mleftpos[0] - (mleftpos[0] - mrightpos[0])/2));
+		message.message.assign(buff, sizeof(buff));
+	    THEKERNEL->call_event(ON_CONSOLE_LINE_RECEIVED, &message );    
+	    
+	    snprintf(buff, sizeof(buff), "G10 L20 P0 X0");
+		message.message.assign(buff, sizeof(buff));
+	    THEKERNEL->call_event(ON_CONSOLE_LINE_RECEIVED, &message );    
+	}
+    
+    
+    if( fabs(Y_distance) > 0){
+    
+	    // do y probe with fast speed
+		snprintf(buff, sizeof(buff), "G38.2 Y%.3f F%.3f", -Y_distance, probe_fast_rate);
+		message.message.assign(buff, sizeof(buff));
+	    THEKERNEL->call_event(ON_CONSOLE_LINE_RECEIVED, &message );
+		
+		// retract Y
+		if(Y_distance > 0){
+			snprintf(buff, sizeof(buff), "G91 G0 Y%.3f", THEROBOT->from_millimeters(probe_retract_mm));
+			message.message.assign(buff, sizeof(buff));
+	    	THEKERNEL->call_event(ON_CONSOLE_LINE_RECEIVED, &message );
+	    }
+		else {
+			snprintf(buff, sizeof(buff), "G91 G0 Y-%.3f", THEROBOT->from_millimeters(probe_retract_mm));
+			message.message.assign(buff, sizeof(buff));
+	    	THEKERNEL->call_event(ON_CONSOLE_LINE_RECEIVED, &message );
+	    }
+		
+		// do Y probe with slow speed
+		snprintf(buff, sizeof(buff), "G38.2 Y%.3f F%.3f", -Y_distance, probe_slow_rate);
+		message.message.assign(buff, sizeof(buff));
+	    THEKERNEL->call_event(ON_CONSOLE_LINE_RECEIVED, &message );
+		
+    	THECONVEYOR->wait_for_idle();
+	    THEROBOT->get_current_machine_position(mleftpos);
+	    
+	    // retract Y
+		if(Y_distance > 0){
+			snprintf(buff, sizeof(buff), "G91 G0 Y%.3f", THEROBOT->from_millimeters(probe_retract_mm));
+			message.message.assign(buff, sizeof(buff));
+	    	THEKERNEL->call_event(ON_CONSOLE_LINE_RECEIVED, &message );
+	    }
+		else {
+			snprintf(buff, sizeof(buff), "G91 G0 Y-%.3f", THEROBOT->from_millimeters(probe_retract_mm));
+			message.message.assign(buff, sizeof(buff));
+	    	THEKERNEL->call_event(ON_CONSOLE_LINE_RECEIVED, &message );
+	    }
+	    
+	    // do Y probe with fast speed
+		snprintf(buff, sizeof(buff), "G38.2 Y%.3f F%.3f", 2*Y_distance, probe_fast_rate);
+		message.message.assign(buff, sizeof(buff));
+	    THEKERNEL->call_event(ON_CONSOLE_LINE_RECEIVED, &message );  
+	    
+	    // retract Y
+		if(Y_distance > 0){
+			snprintf(buff, sizeof(buff), "G91 G0 Y-%.3f", THEROBOT->from_millimeters(probe_retract_mm));
+			message.message.assign(buff, sizeof(buff));
+	    	THEKERNEL->call_event(ON_CONSOLE_LINE_RECEIVED, &message );
+	    }
+		else {
+			snprintf(buff, sizeof(buff), "G91 G0 Y%.3f", THEROBOT->from_millimeters(probe_retract_mm));
+			message.message.assign(buff, sizeof(buff));
+	    	THEKERNEL->call_event(ON_CONSOLE_LINE_RECEIVED, &message );
+	    }
+	    
+	    
+	    // do Y probe with slow speed
+		snprintf(buff, sizeof(buff), "G38.2 Y%.3f F%.3f", Y_distance, probe_slow_rate);
+		message.message.assign(buff, sizeof(buff));
+	    THEKERNEL->call_event(ON_CONSOLE_LINE_RECEIVED, &message );  
+	    
+    	THECONVEYOR->wait_for_idle();
+	    THEROBOT->get_current_machine_position(mrightpos);
+	    
+	    snprintf(buff, sizeof(buff), "G53 G0 Y%.3f", THEROBOT->from_millimeters(mleftpos[1] - (mleftpos[1] - mrightpos[1])/2));
+		message.message.assign(buff, sizeof(buff));
+	    THEKERNEL->call_event(ON_CONSOLE_LINE_RECEIVED, &message );    
+	    
+	    snprintf(buff, sizeof(buff), "G10 L20 P0 Y0");
+		message.message.assign(buff, sizeof(buff));
+	    THEKERNEL->call_event(ON_CONSOLE_LINE_RECEIVED, &message );
+	}
+    
+	// close wired probe laser
+    message.message.assign("M494.2", 6);
+    THEKERNEL->call_event(ON_CONSOLE_LINE_RECEIVED, &message );
+	
+}
+
+void ATCHandler::fill_OutPocket_scripts(float tool_dia, float X_distance, float Y_distance, float Z_distance) {
+	char buff[100];
+	float mpos[3],mleftpos[3],mrightpos[3];
+    struct SerialMessage message;
+    THEROBOT->get_current_machine_position(mpos);    
+    
+	// open wired probe laser
+    message.message.assign("M494.1", 6);
+    message.stream = THEKERNEL->streams;
+    THEKERNEL->call_event(ON_CONSOLE_LINE_RECEIVED, &message );
+    
+    message.message.assign("M497.5", 6);
+    THEKERNEL->call_event(ON_CONSOLE_LINE_RECEIVED, &message );
+    
+    
+    // do z probe with slow speed
+	if(THEKERNEL->factory_set->FuncSetting & (1<<2))	//ATC 
+    {
+		snprintf(buff, sizeof(buff), "G38.2 Z%.3f F%.3f", probe_mz_mm, probe_slow_rate);
+	}
+	else	//Manual Tool Change
+	{
+		snprintf(buff, sizeof(buff), "G38.2 Z%.3f F%.3f", toolrack_z, probe_slow_rate);
+	}	
+	message.message.assign(buff, sizeof(buff));
+    THEKERNEL->call_event(ON_CONSOLE_LINE_RECEIVED, &message );
+
+	// set Z origin first
+	snprintf(buff, sizeof(buff), "G10 L20 P0 Z0");	
+	message.message.assign(buff, sizeof(buff));
+    THEKERNEL->call_event(ON_CONSOLE_LINE_RECEIVED, &message );
+	
+	// lift a bit
+	snprintf(buff, sizeof(buff), "G91 G0 Z%.3f", THEROBOT->from_millimeters(probe_retract_mm));	
+	message.message.assign(buff, sizeof(buff));
+    THEKERNEL->call_event(ON_CONSOLE_LINE_RECEIVED, &message );
+	
+	// do z probe with slow speed again
+	if(THEKERNEL->factory_set->FuncSetting & (1<<2))	//ATC 
+    {
+		snprintf(buff, sizeof(buff), "G38.2 Z%.3f F%.3f", probe_mz_mm, probe_slow_rate);
+	}
+	else	//Manual Tool Change
+	{
+		snprintf(buff, sizeof(buff), "G38.2 Z%.3f F%.3f", toolrack_z, probe_slow_rate);
+	}	
+	message.message.assign(buff, sizeof(buff));
+    THEKERNEL->call_event(ON_CONSOLE_LINE_RECEIVED, &message );
+
+	// set Z origin again
+	snprintf(buff, sizeof(buff), "G10 L20 P0 Z0");	
+	message.message.assign(buff, sizeof(buff));
+    THEKERNEL->call_event(ON_CONSOLE_LINE_RECEIVED, &message );
+
+	// lift Z begining pos
+	snprintf(buff, sizeof(buff), "G53 G0 Z%.3f", THEROBOT->from_millimeters(mpos[2]));	
+	message.message.assign(buff, sizeof(buff));
+    THEKERNEL->call_event(ON_CONSOLE_LINE_RECEIVED, &message );
+    
+// X center    
+    if( fabs(X_distance) > 0){
+	    // move x outside
+		snprintf(buff, sizeof(buff), "G91 G0 X%.3f", THEROBOT->from_millimeters(-X_distance));
+		message.message.assign(buff, sizeof(buff));
+	    THEKERNEL->call_event(ON_CONSOLE_LINE_RECEIVED, &message );
+    
+	    // lower move speed
+		snprintf(buff, sizeof(buff), "M220S10");
+		message.message.assign(buff, sizeof(buff));
+	    THEKERNEL->call_event(ON_CONSOLE_LINE_RECEIVED, &message );
+	    
+	    // lower Z a bit
+		snprintf(buff, sizeof(buff), "G90 G0 Z%.3f", THEROBOT->from_millimeters(-Z_distance));
+		message.message.assign(buff, sizeof(buff));
+	    THEKERNEL->call_event(ON_CONSOLE_LINE_RECEIVED, &message );    
+	
+		// do x probe with fast speed
+		snprintf(buff, sizeof(buff), "G38.2 X%.3f F%.3f", X_distance, probe_fast_rate);
+		message.message.assign(buff, sizeof(buff));
+	    THEKERNEL->call_event(ON_CONSOLE_LINE_RECEIVED, &message );
+    
+	    // recover move speed
+		snprintf(buff, sizeof(buff), "M220S100");
+		message.message.assign(buff, sizeof(buff));
+	    THEKERNEL->call_event(ON_CONSOLE_LINE_RECEIVED, &message );
+		
+		// retract X
+		if(X_distance > 0){
+			snprintf(buff, sizeof(buff), "G91 G0 X-%.3f", THEROBOT->from_millimeters(probe_retract_mm));
+			message.message.assign(buff, sizeof(buff));
+	    	THEKERNEL->call_event(ON_CONSOLE_LINE_RECEIVED, &message );
+	    }
+		else {
+			snprintf(buff, sizeof(buff), "G91 G0 X%.3f", THEROBOT->from_millimeters(probe_retract_mm));
+			message.message.assign(buff, sizeof(buff));
+	    	THEKERNEL->call_event(ON_CONSOLE_LINE_RECEIVED, &message );
+	    }
+		
+		// do x probe with slow speed
+		snprintf(buff, sizeof(buff), "G38.2 X%.3f F%.3f", X_distance, probe_slow_rate);
+		message.message.assign(buff, sizeof(buff));
+	    THEKERNEL->call_event(ON_CONSOLE_LINE_RECEIVED, &message );
+		
+	    THECONVEYOR->wait_for_idle();
+	    THEROBOT->get_current_machine_position(mleftpos);
+	    
+	    // retract X
+		if(X_distance > 0){
+			snprintf(buff, sizeof(buff), "G91 G0 X-%.3f", THEROBOT->from_millimeters(probe_retract_mm));
+			message.message.assign(buff, sizeof(buff));
+	    	THEKERNEL->call_event(ON_CONSOLE_LINE_RECEIVED, &message );
+	    }
+		else {
+			snprintf(buff, sizeof(buff), "G91 G0 X%.3f", THEROBOT->from_millimeters(probe_retract_mm));
+			message.message.assign(buff, sizeof(buff));
+	    	THEKERNEL->call_event(ON_CONSOLE_LINE_RECEIVED, &message );
+	    }
+	    
+	    // lift Z begining pos
+		snprintf(buff, sizeof(buff), "G53 G0 Z%.3f", THEROBOT->from_millimeters(mpos[2]));	
+		message.message.assign(buff, sizeof(buff));
+	    THEKERNEL->call_event(ON_CONSOLE_LINE_RECEIVED, &message );
+	    
+	    // move x outside(the other direction)
+		snprintf(buff, sizeof(buff), "G91 G0 X%.3f", THEROBOT->from_millimeters(2*X_distance+5));
+		message.message.assign(buff, sizeof(buff));
+	    THEKERNEL->call_event(ON_CONSOLE_LINE_RECEIVED, &message );
+    
+	    // lower move speed
+		snprintf(buff, sizeof(buff), "M220S10");
+		message.message.assign(buff, sizeof(buff));
+	    THEKERNEL->call_event(ON_CONSOLE_LINE_RECEIVED, &message );   	    
+	    
+	    // lower Z a bit
+		snprintf(buff, sizeof(buff), "G90 G0 Z%.3f", THEROBOT->from_millimeters(-Z_distance));
+		message.message.assign(buff, sizeof(buff));
+	    THEKERNEL->call_event(ON_CONSOLE_LINE_RECEIVED, &message );    
+    
+	    // recover move speed
+		snprintf(buff, sizeof(buff), "M220S100");
+		message.message.assign(buff, sizeof(buff));
+	    THEKERNEL->call_event(ON_CONSOLE_LINE_RECEIVED, &message );
+	
+		// do x probe with fast speed
+		snprintf(buff, sizeof(buff), "G38.2 X%.3f F%.3f", -2*X_distance, probe_fast_rate);
+		message.message.assign(buff, sizeof(buff));
+	    THEKERNEL->call_event(ON_CONSOLE_LINE_RECEIVED, &message );
+		
+		// retract X
+		if(X_distance > 0){
+			snprintf(buff, sizeof(buff), "G91 G0 X%.3f", THEROBOT->from_millimeters(probe_retract_mm));
+			message.message.assign(buff, sizeof(buff));
+	    	THEKERNEL->call_event(ON_CONSOLE_LINE_RECEIVED, &message );
+	    }
+		else {
+			snprintf(buff, sizeof(buff), "G91 G0 X-%.3f", THEROBOT->from_millimeters(probe_retract_mm));
+			message.message.assign(buff, sizeof(buff));
+	    	THEKERNEL->call_event(ON_CONSOLE_LINE_RECEIVED, &message );
+	    }
+		
+		// do x probe with slow speed
+		snprintf(buff, sizeof(buff), "G38.2 X%.3f F%.3f", -X_distance, probe_slow_rate);
+		message.message.assign(buff, sizeof(buff));
+	    THEKERNEL->call_event(ON_CONSOLE_LINE_RECEIVED, &message );
+		
+	    THECONVEYOR->wait_for_idle();
+	    THEROBOT->get_current_machine_position(mrightpos);
+		
+		// retract X
+		if(X_distance > 0){
+			snprintf(buff, sizeof(buff), "G91 G0 X%.3f", THEROBOT->from_millimeters(probe_retract_mm));
+			message.message.assign(buff, sizeof(buff));
+	    	THEKERNEL->call_event(ON_CONSOLE_LINE_RECEIVED, &message );
+	    }
+		else {
+			snprintf(buff, sizeof(buff), "G91 G0 X-%.3f", THEROBOT->from_millimeters(probe_retract_mm));
+			message.message.assign(buff, sizeof(buff));
+	    	THEKERNEL->call_event(ON_CONSOLE_LINE_RECEIVED, &message );
+	    }  
+	    
+	    // lift Z begining pos
+		snprintf(buff, sizeof(buff), "G53 G0 Z%.3f", THEROBOT->from_millimeters(mpos[2]));	
+		message.message.assign(buff, sizeof(buff));
+	    THEKERNEL->call_event(ON_CONSOLE_LINE_RECEIVED, &message );
+	        
+	    snprintf(buff, sizeof(buff), "G53 G0 X%.3f", THEROBOT->from_millimeters(mleftpos[0] - (mleftpos[0] - mrightpos[0])/2));
+		message.message.assign(buff, sizeof(buff));
+	    THEKERNEL->call_event(ON_CONSOLE_LINE_RECEIVED, &message );
+	    
+	    snprintf(buff, sizeof(buff), "G10 L20 P0 X0");
+		message.message.assign(buff, sizeof(buff));
+	    THEKERNEL->call_event(ON_CONSOLE_LINE_RECEIVED, &message );   
+	} 
+    
+// Y center
+    if( fabs(Y_distance) > 0){
+	    // move Y outside
+		snprintf(buff, sizeof(buff), "G91 G0 Y%.3f", THEROBOT->from_millimeters(-Y_distance));
+		message.message.assign(buff, sizeof(buff));
+	    THEKERNEL->call_event(ON_CONSOLE_LINE_RECEIVED, &message );
+    
+	    // lower move speed
+		snprintf(buff, sizeof(buff), "M220S10");
+		message.message.assign(buff, sizeof(buff));
+	    THEKERNEL->call_event(ON_CONSOLE_LINE_RECEIVED, &message );   	    
+	    
+	    // lower Z a bit
+		snprintf(buff, sizeof(buff), "G90 G0 Z%.3f", THEROBOT->from_millimeters(-Z_distance));
+		message.message.assign(buff, sizeof(buff));
+	    THEKERNEL->call_event(ON_CONSOLE_LINE_RECEIVED, &message );    
+    
+	    // recover move speed
+		snprintf(buff, sizeof(buff), "M220S100");
+		message.message.assign(buff, sizeof(buff));
+	    THEKERNEL->call_event(ON_CONSOLE_LINE_RECEIVED, &message );
+	
+		// do Y probe with fast speed
+		snprintf(buff, sizeof(buff), "G38.2 Y%.3f F%.3f", Y_distance, probe_fast_rate);
+		message.message.assign(buff, sizeof(buff));
+	    THEKERNEL->call_event(ON_CONSOLE_LINE_RECEIVED, &message );
+		
+		// retract Y
+		if(Y_distance > 0){
+			snprintf(buff, sizeof(buff), "G91 G0 Y-%.3f", THEROBOT->from_millimeters(probe_retract_mm));
+			message.message.assign(buff, sizeof(buff));
+	    	THEKERNEL->call_event(ON_CONSOLE_LINE_RECEIVED, &message );
+	    }
+		else {
+			snprintf(buff, sizeof(buff), "G91 G0 Y%.3f", THEROBOT->from_millimeters(probe_retract_mm));
+			message.message.assign(buff, sizeof(buff));
+	    	THEKERNEL->call_event(ON_CONSOLE_LINE_RECEIVED, &message );
+	    }
+		
+		// do Y probe with slow speed
+		snprintf(buff, sizeof(buff), "G38.2 Y%.3f F%.3f", Y_distance, probe_slow_rate);
+		message.message.assign(buff, sizeof(buff));
+	    THEKERNEL->call_event(ON_CONSOLE_LINE_RECEIVED, &message );
+		
+	    THECONVEYOR->wait_for_idle();
+	    THEROBOT->get_current_machine_position(mleftpos);
+	    
+	    // retract Y
+		if(Y_distance > 0){
+			snprintf(buff, sizeof(buff), "G91 G0 Y-%.3f", THEROBOT->from_millimeters(probe_retract_mm));
+			message.message.assign(buff, sizeof(buff));
+	    	THEKERNEL->call_event(ON_CONSOLE_LINE_RECEIVED, &message );
+	    }
+		else {
+			snprintf(buff, sizeof(buff), "G91 G0 Y%.3f", THEROBOT->from_millimeters(probe_retract_mm));
+			message.message.assign(buff, sizeof(buff));
+	    	THEKERNEL->call_event(ON_CONSOLE_LINE_RECEIVED, &message );
+	    }
+	    
+	    // lift Z begining pos
+		snprintf(buff, sizeof(buff), "G53 G0 Z%.3f", THEROBOT->from_millimeters(mpos[2]));	
+		message.message.assign(buff, sizeof(buff));
+	    THEKERNEL->call_event(ON_CONSOLE_LINE_RECEIVED, &message );
+	    
+	    // move Y outside(the other direction)
+		snprintf(buff, sizeof(buff), "G91 G0 Y%.3f", THEROBOT->from_millimeters(2*Y_distance+5));
+		message.message.assign(buff, sizeof(buff));
+	    THEKERNEL->call_event(ON_CONSOLE_LINE_RECEIVED, &message );
+    
+	    // lower move speed
+		snprintf(buff, sizeof(buff), "M220S10");
+		message.message.assign(buff, sizeof(buff));
+	    THEKERNEL->call_event(ON_CONSOLE_LINE_RECEIVED, &message );   	    	    
+	    
+	    // lower Z a bit
+		snprintf(buff, sizeof(buff), "G90 G0 Z%.3f", THEROBOT->from_millimeters(-Z_distance));
+		message.message.assign(buff, sizeof(buff));
+	    THEKERNEL->call_event(ON_CONSOLE_LINE_RECEIVED, &message );    
+    
+	    // recover move speed
+		snprintf(buff, sizeof(buff), "M220S100");
+		message.message.assign(buff, sizeof(buff));
+	    THEKERNEL->call_event(ON_CONSOLE_LINE_RECEIVED, &message );
+	
+		// do Y probe with fast speed
+		snprintf(buff, sizeof(buff), "G38.2 Y%.3f F%.3f", -2*Y_distance, probe_fast_rate);
+		message.message.assign(buff, sizeof(buff));
+	    THEKERNEL->call_event(ON_CONSOLE_LINE_RECEIVED, &message );
+		
+		// retract Y
+		if(Y_distance > 0){
+			snprintf(buff, sizeof(buff), "G91 G0 Y%.3f", THEROBOT->from_millimeters(probe_retract_mm));
+			message.message.assign(buff, sizeof(buff));
+	    	THEKERNEL->call_event(ON_CONSOLE_LINE_RECEIVED, &message );
+	    }
+		else {
+			snprintf(buff, sizeof(buff), "G91 G0 Y-%.3f", THEROBOT->from_millimeters(probe_retract_mm));
+			message.message.assign(buff, sizeof(buff));
+	    	THEKERNEL->call_event(ON_CONSOLE_LINE_RECEIVED, &message );
+	    }
+		
+		// do Y probe with slow speed
+		snprintf(buff, sizeof(buff), "G38.2 Y%.3f F%.3f", -Y_distance, probe_slow_rate);
+		message.message.assign(buff, sizeof(buff));
+	    THEKERNEL->call_event(ON_CONSOLE_LINE_RECEIVED, &message );
+		
+	    THECONVEYOR->wait_for_idle();
+	    THEROBOT->get_current_machine_position(mrightpos);
+		
+		// retract Y
+		if(Y_distance > 0){
+			snprintf(buff, sizeof(buff), "G91 G0 Y%.3f", THEROBOT->from_millimeters(probe_retract_mm));
+			message.message.assign(buff, sizeof(buff));
+	    	THEKERNEL->call_event(ON_CONSOLE_LINE_RECEIVED, &message );
+	    }
+		else {
+			snprintf(buff, sizeof(buff), "G91 G0 Y-%.3f", THEROBOT->from_millimeters(probe_retract_mm));
+			message.message.assign(buff, sizeof(buff));
+	    	THEKERNEL->call_event(ON_CONSOLE_LINE_RECEIVED, &message );
+	    }  
+	    
+	    // lift Z begining pos
+		snprintf(buff, sizeof(buff), "G53 G0 Z%.3f", THEROBOT->from_millimeters(mpos[2]));	
+		message.message.assign(buff, sizeof(buff));
+	    THEKERNEL->call_event(ON_CONSOLE_LINE_RECEIVED, &message );
+	        
+	    snprintf(buff, sizeof(buff), "G53 G0 Y%.3f", THEROBOT->from_millimeters(mleftpos[1] - (mleftpos[1] - mrightpos[1])/2));
+		message.message.assign(buff, sizeof(buff));
+	    THEKERNEL->call_event(ON_CONSOLE_LINE_RECEIVED, &message );
+	    
+	    snprintf(buff, sizeof(buff), "G10 L20 P0 Y0");
+		message.message.assign(buff, sizeof(buff));
+	    THEKERNEL->call_event(ON_CONSOLE_LINE_RECEIVED, &message );    
+	}
+	
+	// close wired probe laser
+    message.message.assign("M494.2", 6);
+    message.stream = THEKERNEL->streams;
+    THEKERNEL->call_event(ON_CONSOLE_LINE_RECEIVED, &message );
+}
+
+
 
 void ATCHandler::fill_autolevel_scripts(float x_pos, float y_pos,
 		float x_size, float y_size, int x_grids, int y_grids, float height)
@@ -2375,6 +3200,245 @@ void ATCHandler::on_gcode_received(void *argument)
 				}
 
 			}
+		} else if (gcode->m == 480) { 
+			if (!THEROBOT->is_homed_all_axes()) {
+				this->atc_status = NONE;
+        		this->clear_script_queue();
+        		this->set_inner_playing(false);
+				return;
+			};
+			if (gcode->subcode == 1) {
+				float tool_dia = 2.0;
+				float X_distance = 20.0;
+				float Y_distance = 20.0;
+				float Z_distance = 2.0;
+				if (gcode->has_letter('D')) {
+					tool_dia = gcode->get_value('D');
+				}
+				if (gcode->has_letter('X')) {
+					X_distance = gcode->get_value('X');
+				}
+				if (gcode->has_letter('Y')) {
+					Y_distance = gcode->get_value('Y');
+				}
+				if (gcode->has_letter('Z')) {
+					Z_distance = gcode->get_value('Z');
+				}
+				THEROBOT->push_state();
+				set_inner_playing(true);
+				atc_status = AUTOMATION;
+	            this->clear_script_queue();
+	            this->fill_OutCorner_scripts(tool_dia, X_distance, Y_distance, Z_distance);
+				
+			}else if (gcode->subcode == 2) {
+				float tool_dia = 2.0;
+				float X_distance = -20.0;
+				float Y_distance = 20.0;
+				float Z_distance = 2.0;
+				if (gcode->has_letter('D')) {
+					tool_dia = gcode->get_value('D');
+				}
+				if (gcode->has_letter('X')) {
+					X_distance = -gcode->get_value('X');
+				}
+				if (gcode->has_letter('Y')) {
+					Y_distance = gcode->get_value('Y');
+				}
+				if (gcode->has_letter('Z')) {
+					Z_distance = gcode->get_value('Z');
+				}
+				THEROBOT->push_state();
+				set_inner_playing(true);
+				atc_status = AUTOMATION;
+	            this->clear_script_queue();
+	            this->fill_OutCorner_scripts(tool_dia, X_distance, Y_distance, Z_distance);
+				
+			}else if (gcode->subcode == 3) {
+				float tool_dia = 2.0;
+				float X_distance = -20.0;
+				float Y_distance = -20.0;
+				float Z_distance = 2.0;
+				if (gcode->has_letter('D')) {
+					tool_dia = gcode->get_value('D');
+				}
+				if (gcode->has_letter('X')) {
+					X_distance = -gcode->get_value('X');
+				}
+				if (gcode->has_letter('Y')) {
+					Y_distance = -gcode->get_value('Y');
+				}
+				if (gcode->has_letter('Z')) {
+					Z_distance = gcode->get_value('Z');
+				}
+				THEROBOT->push_state();
+				set_inner_playing(true);
+				atc_status = AUTOMATION;
+	            this->clear_script_queue();
+	            this->fill_OutCorner_scripts(tool_dia, X_distance, Y_distance, Z_distance);
+				
+			}else if (gcode->subcode == 4) {
+				float tool_dia = 2.0;
+				float X_distance = 20.0;
+				float Y_distance = -20.0;
+				float Z_distance = 2.0;
+				if (gcode->has_letter('D')) {
+					tool_dia = gcode->get_value('D');
+				}
+				if (gcode->has_letter('X')) {
+					X_distance = gcode->get_value('X');
+				}
+				if (gcode->has_letter('Y')) {
+					Y_distance = -gcode->get_value('Y');
+				}
+				if (gcode->has_letter('Z')) {
+					Z_distance = gcode->get_value('Z');
+				}
+				THEROBOT->push_state();
+				set_inner_playing(true);
+				atc_status = AUTOMATION;
+	            this->clear_script_queue();
+	            this->fill_OutCorner_scripts(tool_dia, X_distance, Y_distance, Z_distance);
+				
+			}
+			else if (gcode->subcode == 5) {
+				float tool_dia = 2.0;
+				float X_distance = 20.0;
+				float Y_distance = 20.0;
+				float Z_distance = 2.0;
+				if (gcode->has_letter('D')) {
+					tool_dia = gcode->get_value('D');
+				}
+				if (gcode->has_letter('X')) {
+					X_distance = gcode->get_value('X');
+				}
+				if (gcode->has_letter('Y')) {
+					Y_distance = gcode->get_value('Y');
+				}
+				if (gcode->has_letter('Z')) {
+					Z_distance = gcode->get_value('Z');
+				}
+				THEROBOT->push_state();
+				set_inner_playing(true);
+				atc_status = AUTOMATION;
+	            this->clear_script_queue();
+	            this->fill_InCorner_scripts(tool_dia, X_distance, Y_distance, Z_distance);
+				
+			}else if (gcode->subcode == 6) {
+				float tool_dia = 2.0;
+				float X_distance = -20.0;
+				float Y_distance = 20.0;
+				float Z_distance = 2.0;
+				if (gcode->has_letter('D')) {
+					tool_dia = gcode->get_value('D');
+				}
+				if (gcode->has_letter('X')) {
+					X_distance = -gcode->get_value('X');
+				}
+				if (gcode->has_letter('Y')) {
+					Y_distance = gcode->get_value('Y');
+				}
+				if (gcode->has_letter('Z')) {
+					Z_distance = gcode->get_value('Z');
+				}
+				THEROBOT->push_state();
+				set_inner_playing(true);
+				atc_status = AUTOMATION;
+	            this->clear_script_queue();
+	            this->fill_InCorner_scripts(tool_dia, X_distance, Y_distance, Z_distance);
+				
+			}else if (gcode->subcode == 7) {
+				float tool_dia = 2.0;
+				float X_distance = -20.0;
+				float Y_distance = -20.0;
+				float Z_distance = 2.0;
+				if (gcode->has_letter('D')) {
+					tool_dia = gcode->get_value('D');
+				}
+				if (gcode->has_letter('X')) {
+					X_distance = -gcode->get_value('X');
+				}
+				if (gcode->has_letter('Y')) {
+					Y_distance = -gcode->get_value('Y');
+				}
+				if (gcode->has_letter('Z')) {
+					Z_distance = gcode->get_value('Z');
+				}
+				THEROBOT->push_state();
+				set_inner_playing(true);
+				atc_status = AUTOMATION;
+	            this->clear_script_queue();
+	            this->fill_InCorner_scripts(tool_dia, X_distance, Y_distance, Z_distance);
+				
+			}else if (gcode->subcode == 8) {
+				float tool_dia = 2.0;
+				float X_distance = 20.0;
+				float Y_distance = -20.0;
+				float Z_distance = 2.0;
+				if (gcode->has_letter('D')) {
+					tool_dia = gcode->get_value('D');
+				}
+				if (gcode->has_letter('X')) {
+					X_distance = gcode->get_value('X');
+				}
+				if (gcode->has_letter('Y')) {
+					Y_distance = -gcode->get_value('Y');
+				}
+				if (gcode->has_letter('Z')) {
+					Z_distance = gcode->get_value('Z');
+				}
+				THEROBOT->push_state();
+				set_inner_playing(true);
+				atc_status = AUTOMATION;
+	            this->clear_script_queue();
+	            this->fill_InCorner_scripts(tool_dia, X_distance, Y_distance, Z_distance);
+				
+			}else if (gcode->subcode == 9) {
+				float tool_dia = 2.0;
+				float X_distance = 20.0;
+				float Y_distance = 20.0;
+				float Z_distance = 2.0;
+				if (gcode->has_letter('D')) {
+					tool_dia = gcode->get_value('D');
+				}
+				if (gcode->has_letter('X')) {
+					X_distance = gcode->get_value('X');
+				}
+				if (gcode->has_letter('Y')) {
+					Y_distance = gcode->get_value('Y');
+				}
+				if (gcode->has_letter('Z')) {
+					Z_distance = gcode->get_value('Z');
+				}
+				THEROBOT->push_state();
+				set_inner_playing(true);
+				atc_status = AUTOMATION;
+	            this->clear_script_queue();
+	            this->fill_InPocket_scripts(tool_dia, X_distance, Y_distance, Z_distance);
+				
+			} else if (gcode->subcode == 10) {
+				float tool_dia = 2.0;
+				float X_distance = 20.0;
+				float Y_distance = 20.0;
+				float Z_distance = 2.0;
+				if (gcode->has_letter('D')) {
+					tool_dia = gcode->get_value('D');
+				}
+				if (gcode->has_letter('X')) {
+					X_distance = gcode->get_value('X');
+				}
+				if (gcode->has_letter('Y')) {
+					Y_distance = gcode->get_value('Y');
+				}
+				if (gcode->has_letter('Z')) {
+					Z_distance = gcode->get_value('Z');
+				}
+				THEROBOT->push_state();
+				set_inner_playing(true);
+				atc_status = AUTOMATION;
+	            this->clear_script_queue();
+	            this->fill_OutPocket_scripts(tool_dia, X_distance, Y_distance, Z_distance);
+				
+			}
 		} else if (gcode->m == 495) {
 			if (!THEROBOT->is_homed_all_axes()) {
 				this->atc_status = NONE;
@@ -2415,6 +3479,7 @@ void ATCHandler::on_gcode_received(void *argument)
 					bool zprobe = false;
 					bool zprobe_abs = false;
 					bool leveling = false;
+					bool Rotation = false;
 
 					float x_path_pos = gcode->get_value('X');
 					float y_path_pos = gcode->get_value('Y');
@@ -2441,6 +3506,9 @@ void ATCHandler::on_gcode_received(void *argument)
 		    			} else {
 			    			zprobe_abs = true;
 		    			}
+		    		}
+		    		if (gcode->has_letter('R')) {
+		    			Rotation = true;
 		    		}
 		    		if (gcode->has_letter('A') && gcode->has_letter('B') && gcode->has_letter('I') && gcode->has_letter('J') && gcode->has_letter('H')) {
 		    			leveling = true;
@@ -2498,31 +3566,42 @@ void ATCHandler::on_gcode_received(void *argument)
 			            }
 			            if (gcode->has_letter('P')) {
 			            	gcode->stream->printf("goto x and y clearance first\r\n");
-			            	if(THEKERNEL->factory_set->FuncSetting & (1<<0) )
-			            	{
-			            		if (zprobe_abs) {
-    								char buff[100];
-    								// lift z to clearance position with fast speed
+							char buff[100];
+		            		if (zprobe_abs) {
+								// lift z to clearance position with fast speed
+								snprintf(buff, sizeof(buff), "G53 G0 Z%.3f", THEROBOT->from_millimeters(this->clearance_z));
+								this->script_queue.push(buff);
+
+								// Avoid the position of the chuck
+								snprintf(buff, sizeof(buff), "G53 G90 G0 Y%.3f", THEROBOT->from_millimeters(this->clearance_y));
+								this->script_queue.push(buff);
+								
+								// goto x and y clearance
+								snprintf(buff, sizeof(buff), "G53 G90 G0 X%.3f", THEROBOT->from_millimeters(this->clearance_x));
+								this->script_queue.push(buff);
+		            		}
+		            		else
+		            		{
+		            			if(Rotation)
+		            			{
+		            				// lift z to clearance position with fast speed
 									snprintf(buff, sizeof(buff), "G53 G0 Z%.3f", THEROBOT->from_millimeters(this->clearance_z));
 									this->script_queue.push(buff);
-
-    								// Avoid the position of the chuck
+									// goto y clearance
 									snprintf(buff, sizeof(buff), "G53 G90 G0 Y%.3f", THEROBOT->from_millimeters(this->clearance_y));
 									this->script_queue.push(buff);
-									
-									// goto x and y clearance
-									snprintf(buff, sizeof(buff), "G53 G90 G0 X%.3f", THEROBOT->from_millimeters(this->clearance_x));
+									// goto x position
+									snprintf(buff, sizeof(buff), "G90 G0 X%.3f", THEROBOT->from_millimeters(x_path_pos));
 									this->script_queue.push(buff);
-			            		}
-			            		else
-			            		{
-			            			this->fill_goto_origin_scripts(x_path_pos, y_path_pos);
-			            		}
-			            	}
-			            	else
-			            	{
-			            		this->fill_goto_origin_scripts(x_path_pos, y_path_pos);
-			            	}
+									// goto y position
+									snprintf(buff, sizeof(buff), "G90 G0 Y%.3f", THEROBOT->from_millimeters(y_path_pos));
+									this->script_queue.push(buff);
+		            			}
+		            			else
+		            			{
+		            				this->fill_goto_origin_scripts(x_path_pos, y_path_pos);
+		            			}
+		            		}
 			            }
 		    		} else {
 		    			if (gcode->has_letter('P')) {
@@ -2531,7 +3610,27 @@ void ATCHandler::on_gcode_received(void *argument)
 				            this->clear_script_queue();
 		    				// goto path origin first
 			            	gcode->stream->printf("Goto path origin first\r\n");
-			            	this->fill_goto_origin_scripts(x_path_pos, y_path_pos);
+			            	
+	            			if(Rotation)
+	            			{
+	            				char buff[100];
+	            				// lift z to clearance position with fast speed
+								snprintf(buff, sizeof(buff), "G53 G0 Z%.3f", THEROBOT->from_millimeters(this->clearance_z));
+								this->script_queue.push(buff);
+								// goto y clearance
+								snprintf(buff, sizeof(buff), "G53 G90 G0 Y%.3f", THEROBOT->from_millimeters(this->clearance_y));
+								this->script_queue.push(buff);
+								// goto x position
+								snprintf(buff, sizeof(buff), "G90 G0 X%.3f", THEROBOT->from_millimeters(x_path_pos));
+								this->script_queue.push(buff);
+								// goto y position
+								snprintf(buff, sizeof(buff), "G90 G0 Y%.3f", THEROBOT->from_millimeters(y_path_pos));
+								this->script_queue.push(buff);
+	            			}
+	            			else
+	            			{
+	            				this->fill_goto_origin_scripts(x_path_pos, y_path_pos);
+	            			}
 		    			}
 		    		}
 				} else {
@@ -2748,17 +3847,25 @@ void ATCHandler::on_main_loop(void *argument)
 	        rapid_move(true, this->clearance_x, this->clearance_y, NAN, NAN, NAN);
 		} else if (goto_position == 2) {
 			// goto work origin
-			// shrink A value first before move
-    		float ma = THEROBOT->actuators[A_AXIS]->get_current_position();
-    		if (fabs(ma) > 360) {
-    			THEROBOT->reset_axis_position(fmodf(ma, 360.0), A_AXIS);
-    		}    		
-			// shrink B value first before move
-//    		ma = THEROBOT->actuators[B_AXIS]->get_current_position();
-//    		if (fabs(ma) > 360) {
-//    			THEROBOT->reset_axis_position(fmodf(ma, 360.0), B_AXIS);
-//    		}
-			//rapid_move(false, 0, 0, NAN, 0, 0);
+			float mpos[5];
+			mpos[X_AXIS] = 0;
+			mpos[Y_AXIS] = 0;
+			mpos[Z_AXIS] = 0;
+			mpos[B_AXIS] = 0;
+    		
+			mpos[A_AXIS] = THEROBOT->actuators[A_AXIS]->get_current_position();
+			Robot::wcs_t pos = THEROBOT->mcs2wcs(mpos);
+			float wa = THEROBOT->from_millimeters(std::get<A_AXIS>(pos));
+			float ma = THEROBOT->actuators[A_AXIS]->get_current_position();
+			
+			if(fabs(wa) > 360)
+			{
+				float deltwa = wa - fmodf(wa, 360.0);
+				ma = ma - deltwa;
+				
+				THEROBOT->reset_axis_position(ma, A_AXIS);
+			}
+			
 			rapid_move(false, 0, 0, NAN, 0, NAN);
 		} else if (goto_position == 3) {
 			// goto anchor 1

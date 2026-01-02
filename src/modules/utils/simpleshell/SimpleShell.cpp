@@ -58,7 +58,11 @@
 #include <strings.h> // For strncasecmp
 
 extern unsigned int g_maximumHeapAddress;
-extern unsigned char xbuff[8200];
+extern const unsigned short crc_table[256];
+
+#define XBUFF_LENGTH	8208
+extern unsigned char xbuff[XBUFF_LENGTH];
+extern unsigned char fbuff[4096];
 
 #define EOT  0x04
 #define CAN  0x16 //0x18
@@ -214,16 +218,15 @@ void SimpleShell::on_gcode_received(void *argument)
 
     if (gcode->has_m) {
         if (gcode->m == 20) { // list sd card
-            gcode->stream->printf("Begin file list\r\n");
+            PacketMessage(PTYPE_NORMAL_INFO, "Begin file list\r\n", 0, gcode->stream);
             ls_command("/sd", gcode->stream);
-            gcode->stream->printf("End file list\r\n");
+            PacketMessage(PTYPE_NORMAL_INFO, "End file list\r\n", 0, gcode->stream);
 
         } else if (gcode->m == 30) { // remove file
             if(!args.empty() && !THEKERNEL->is_grbl_mode())
                 rm_command("/sd/" + args, gcode->stream);
         } else if (gcode->m == 331) { // change to vacuum mode
-        	if(CARVERA == THEKERNEL->factory_set->MachineModel)
-        	{
+        	if (gcode->subcode == 0) {
 				THEKERNEL->set_vacuum_mode(true);
 			    // get spindle state
 			    struct spindle_status ss;
@@ -232,17 +235,28 @@ void SimpleShell::on_gcode_received(void *argument)
 			    	if (ss.state) {
 		        		// open vacuum
 		        		bool b = true;
-		                PublicData::set_value( switch_checksum, vacuum_checksum, state_checksum, &b );
-	
+		        		PublicData::set_value( switch_checksum, vacuum_checksum, state_checksum, &b );
 			    	}
 	        	}
-			    // turn on vacuum mode
-				gcode->stream->printf("turning vacuum mode on\r\n");
+	        	PacketMessage(PTYPE_NORMAL_INFO, "turning vacuum mode on\r\n", 0, gcode->stream);
 			}
-		} else if (gcode->m == 332) { // change to CNC mode
-			
-        	if(CARVERA == THEKERNEL->factory_set->MachineModel)
-        	{
+			else if (gcode->subcode == 3) {
+				THEKERNEL->set_extout_mode(true);
+			    // get spindle state
+			    struct spindle_status ss;
+			    bool ok = PublicData::get_value(pwm_spindle_control_checksum, get_spindle_status_checksum, &ss);
+			    if (ok) {
+			    	if (ss.state) {
+		        		// open vacuum
+		        		bool b = true;
+		        		PublicData::set_value( switch_checksum, extendout_checksum, state_checksum, &b );
+			    	}
+	        	}
+	        	PacketMessage(PTYPE_NORMAL_INFO, "turning extend out mode on\r\n", 0, gcode->stream);
+				
+			}
+		} else if (gcode->m == 332) { // change to CNC mode			
+			if (gcode->subcode == 0) {
 				THEKERNEL->set_vacuum_mode(false);
 			    // get spindle state
 			    struct spindle_status ss;
@@ -251,12 +265,26 @@ void SimpleShell::on_gcode_received(void *argument)
 			    	if (ss.state) {
 		        		// close vacuum
 		        		bool b = false;
-		                PublicData::set_value( switch_checksum, vacuum_checksum, state_checksum, &b );
-	
+		        		PublicData::set_value( switch_checksum, vacuum_checksum, state_checksum, &b );
 			    	}
 	        	}
 				// turn off vacuum mode
-				gcode->stream->printf("turning vacuum mode off\r\n");
+				PacketMessage(PTYPE_NORMAL_INFO, "turning vacuum mode off\r\n", 0, gcode->stream);
+			}
+			else if (gcode->subcode == 3) {
+				THEKERNEL->set_extout_mode(false);
+			    // get spindle state
+			    struct spindle_status ss;
+			    bool ok = PublicData::get_value(pwm_spindle_control_checksum, get_spindle_status_checksum, &ss);
+			    if (ok) {
+			    	if (ss.state) {
+		        		// close vacuum
+		        		bool b = false;
+		        		PublicData::set_value( switch_checksum, extendout_checksum, state_checksum, &b );
+			    	}
+	        	}
+				// turn on extend out mode
+				PacketMessage(PTYPE_NORMAL_INFO, "turning extend out mode off\r\n", 0, gcode->stream);
 			}
 
 		} else if (gcode->m == 333) { // turn off optional stop mode
@@ -289,7 +317,6 @@ bool SimpleShell::parse_command(const char *cmd, string args, StreamOutput *stre
     return false;
 }
 
-// When a new line is received, check if it is a command, and if it is, act upon it
 void SimpleShell::on_console_line_received( void *argument )
 {
     SerialMessage new_message = *static_cast<SerialMessage *>(argument);
@@ -306,7 +333,7 @@ void SimpleShell::on_console_line_received( void *argument )
             case 'G':
                 // issue get state
                 get_command("state", new_message.stream);
-                new_message.stream->printf("ok\n");
+//                new_message.stream->printf("ok\n");
                 break;
 
             case 'I':
@@ -323,7 +350,7 @@ void SimpleShell::on_console_line_received( void *argument )
 
             case '#':
                 grblDP_command("", new_message.stream);
-                new_message.stream->printf("ok\n");
+//                new_message.stream->printf("ok\n");
                 break;
 
             case 'H':
@@ -336,7 +363,7 @@ void SimpleShell::on_console_line_received( void *argument )
                     Gcode gcode("G28", new_message.stream);
                     THEKERNEL->call_event(ON_GCODE_RECEIVED, &gcode);
                 }
-                new_message.stream->printf("ok\n");
+//                new_message.stream->printf("ok\n");
                 break;
 
             case 'S':
@@ -446,27 +473,21 @@ void SimpleShell::ls_command( string parameters, StreamOutput *stream )
         	}
         	memcpy(&xbuff[npos], dirTmp, strlen(dirTmp));
         	npos += strlen(dirTmp);
-        	if(npos >= 7900)
+        	if(npos >= 4000)
         	{
-        		stream->puts((char *)xbuff, npos);
+        		PacketMessage(PTYPE_LOAD_INFO, (char *)xbuff, npos, stream);
         		npos = 0;
         	}
         	
         }
         if( npos != 0)
         {
-        	stream->puts((char *)xbuff, npos);
+        	PacketMessage(PTYPE_LOAD_INFO, (char *)xbuff, npos, stream);
         }
-        closedir(d);
-        if(opts.find("-e", 0, 2) != string::npos) {
-        	char eot = EOT;
-            stream->puts(&eot, 1);
-        }
+        closedir(d);        
+        PacketMessage(PTYPE_LOAD_FINISH, "Load directory finished.\r\n", 0, stream);
     } else {
-        if(opts.find("-e", 0, 2) != string::npos) {
-            stream->_putc(CAN);
-        }
-        stream->printf("Could not open directory %s\r\n", path.c_str());
+		PacketMessage(PTYPE_LOAD_ERROR, "Could not open directory!\r\n", 0, stream);
     }
 }
 
@@ -475,107 +496,47 @@ extern SDFAT mounter;
 void SimpleShell::remount_command( string parameters, StreamOutput *stream )
 {
     mounter.remount();
-    stream->printf("remounted\r\n");
+	PacketMessage(PTYPE_NORMAL_INFO, "remounted\r\n", 0, stream);
 }
 
 // Delete a file
 void SimpleShell::rm_command( string parameters, StreamOutput *stream )
 {
-	bool send_eof = false;
     string path = absolute_from_relative(shift_parameter( parameters ));
     string md5_path = change_to_md5_path(path);
     string lz_path = change_to_lz_path(path);
-    if(!parameters.empty() && shift_parameter(parameters) == "-e") {
-    	send_eof = true;
-    }
 
     string toRemove = absolute_from_relative(path);
     int s = remove(toRemove.c_str());
     if (s != 0) {
-        if(send_eof) {
-            stream->_putc(CAN);
-        }
-    	stream->printf("Could not delete %s \r\n", toRemove.c_str());
+        stream->printf("Could not delete %s \r\n", toRemove.c_str());
+		PacketMessage(PTYPE_LOAD_ERROR, "ok\r\n", 0, stream);
     } else {
     	string str_md5 = absolute_from_relative(md5_path);
     	s = remove(str_md5.c_str());
-/*
-		if (s != 0) {
-			if(send_eof) {
-				stream->_putc(CAN);
-			}
-			stream->printf("Could not delete %s \r\n", str_md5.c_str());
-		} 
-		else {
-			string str_lz = absolute_from_relative(lz_path);
-			s = remove(str_lz.c_str());
-			if (s != 0){
-				if(send_eof) {
-					stream->_putc(CAN);
-				}
-				stream->printf("Could not delete %s \r\n", str_lz.c_str());
-			}
-			else {
-		        if(send_eof) {
-		            stream->_putc(EOT);
-	        	}
-			
-			}
-    	}*/
     	string str_lz = absolute_from_relative(lz_path);
 		s = remove(str_lz.c_str());
-		if(send_eof) {
-            stream->_putc(EOT);
-    	}
+    	PacketMessage(PTYPE_LOAD_FINISH, "ok\r\n", 0, stream);
     }
 }
 
 // Rename a file
 void SimpleShell::mv_command( string parameters, StreamOutput *stream )
 {
-	bool send_eof = false;
     string from = absolute_from_relative(shift_parameter( parameters ));
     string md5_from = change_to_md5_path(from);
     string lz_from = change_to_lz_path(from);
     string to = absolute_from_relative(shift_parameter(parameters));
     string md5_to = change_to_md5_path(to);
     string lz_to = change_to_lz_path(to);
-    if(!parameters.empty() && shift_parameter(parameters) == "-e") {
-    	send_eof = true;
-    }
     int s = rename(from.c_str(), to.c_str());
     if (s != 0)  {
-    	if (send_eof) {
-    		stream->_putc(CAN);
-    	}
+    	PacketMessage(PTYPE_LOAD_ERROR, "ok\r\n", 0, stream);
     	stream->printf("Could not rename %s to %s\r\n", from.c_str(), to.c_str());
     } else  {
     	s = rename(md5_from.c_str(), md5_to.c_str());
-/*        if (s != 0)  {
-        	if (send_eof) {
-        		stream->_putc(CAN);
-        	}
-        	stream->printf("Could not rename %s to %s\r\n", md5_from.c_str(), md5_to.c_str());
-        }
-        else {
-        	s = rename(lz_from.c_str(), lz_to.c_str());
-        	if (s != 0)  {
-	        	if (send_eof) {
-	        		stream->_putc(CAN);
-	        	}
-	        	stream->printf("Could not rename %s to %s\r\n", lz_from.c_str(), lz_to.c_str());
-        	}
-        	else {
-        		if (send_eof) {
-				stream->_putc(EOT);
-				}
-				stream->printf("renamed %s to %s\r\n", from.c_str(), to.c_str());
-        	}
-        }*/
         s = rename(lz_from.c_str(), lz_to.c_str());
-        if (send_eof) {
-			stream->_putc(EOT);
-		}
+        PacketMessage(PTYPE_LOAD_FINISH, "ok\r\n", 0, stream);
 		stream->printf("renamed %s to %s\r\n", from.c_str(), to.c_str());
     }
 }
@@ -583,44 +544,17 @@ void SimpleShell::mv_command( string parameters, StreamOutput *stream )
 // Create a new directory
 void SimpleShell::mkdir_command( string parameters, StreamOutput *stream )
 {
-	bool send_eof = false;
     string path = absolute_from_relative(shift_parameter( parameters ));
     string md5_path = change_to_md5_path(path);
     string lz_path = change_to_lz_path(path);
-    if(!parameters.empty() && shift_parameter(parameters) == "-e") {
-    	send_eof = true;
-    }
     int result = mkdir(path.c_str(), 0);
     if (result != 0) {
-    	if (send_eof) {
-    		stream->_putc(CAN); // ^Z terminates error
-    	}
+    	PacketMessage(PTYPE_LOAD_ERROR, "ok\r\n", 0, stream);
     	stream->printf("could not create directory %s\r\n", path.c_str());
     } else {
     	result = mkdir(md5_path.c_str(), 0);
-/*        if (result != 0) {
-        	if (send_eof) {
-        		stream->_putc(CAN); // ^Z terminates error
-        	}
-        	stream->printf("could not create md5 directory %s\r\n", md5_path.c_str());
-        } 
-        else if (mkdir(lz_path.c_str(), 0) != 0) {
-        	if (send_eof) {
-        		stream->_putc(CAN); // ^Z terminates error
-        	}
-        	stream->printf("could not create lz directory %s\r\n", lz_path.c_str());
-        }    
-        else {
-        	if (send_eof) {
-            	stream->_putc(EOT); // ^D terminates the upload
-        	}
-        	stream->printf("created directory %s\r\n", path.c_str());
-        }
-*/
 		mkdir(lz_path.c_str(), 0);
-		if (send_eof) {
-            	stream->_putc(EOT); // ^D terminates the upload
-        	}
+		PacketMessage(PTYPE_LOAD_FINISH, "ok\r\n", 0, stream);
         stream->printf("created directory %s\r\n", path.c_str());
 		
     }
@@ -898,8 +832,8 @@ void SimpleShell::ap_command( string parameters, StreamOutput *stream)
     		}
     	} else if (s == "ssid") {
     		if (!parameters.empty()) {
-    	    	if (parameters.length() > 27) {
-    	    		stream->printf("WiFi AP SSID length should between 1 to 27\n");
+    	    	if (parameters.length() > 32) {
+    	    		stream->printf("WiFi AP SSID length should between 1 to 32\n");
     	    	} else {
     	    		strcpy(buff, parameters.c_str());
     	            PublicData::set_value( wlan_checksum, ap_set_ssid_checksum, buff );
@@ -934,7 +868,9 @@ void SimpleShell::wlan_command( string parameters, StreamOutput *stream)
 	bool send_eof = false;
 	bool disconnect = false;
     string ssid, password;
-
+	ssid = "";
+	password = "";
+	
     while (!parameters.empty()) {
         string s = shift_parameter( parameters );
         if(s == "-e") {
@@ -957,15 +893,15 @@ void SimpleShell::wlan_command( string parameters, StreamOutput *stream)
         bool ok = PublicData::get_value( wlan_checksum, get_wlan_checksum, &returned_data );
         if (ok) {
             char *str = (char *)returned_data;
-            stream->printf("%s", str);
-            AHB.dealloc(str);
+			PacketMessage(PTYPE_LOAD_INFO, str, 0, stream);
+            free(str);
         	if (send_eof) {
-            	stream->_putc(EOT);
+				PacketMessage(PTYPE_LOAD_FINISH, "ok\r\n", 0, stream);
         	}
 
         } else {
         	if (send_eof) {
-        		stream->_putc(CAN);
+        		PacketMessage(PTYPE_LOAD_ERROR, "No wlan detected\r\n", 0, stream);
         	} else {
                 stream->printf("No wlan detected\n");
         	}
@@ -987,24 +923,30 @@ void SimpleShell::wlan_command( string parameters, StreamOutput *stream)
         bool ok = PublicData::set_value( wlan_checksum, set_wlan_checksum, &t );
         if (ok) {
         	if (t.has_error) {
-                stream->printf("Error: %s\n", t.error_info);
+        		char error_msg[64];
+				memset(error_msg, 0, sizeof(error_msg));
+        		sprintf(error_msg, "Error: %s\n", t.error_info );
+        		PacketMessage(PTYPE_LOAD_INFO, error_msg, 0, stream);
             	if (send_eof) {
-            		stream->_putc(CAN);
+            		PacketMessage(PTYPE_LOAD_ERROR, "Connect or Disconnect error.\r\n", 0, stream);
             	}
         	} else {
         		if (t.disconnect) {
-            		stream->printf("Wifi Disconnected!\n");
+            		PacketMessage(PTYPE_LOAD_INFO, "Wifi Disconnected!\n", 0, stream);
         		} else {
-            		stream->printf("Wifi connected, ip: %s\n", t.ip_address);
+            		char error_msg[64];
+					memset(error_msg, 0, sizeof(error_msg));
+	        		sprintf(error_msg, "Wifi connected, ip: %s\n", t.ip_address );
+	        		PacketMessage(PTYPE_LOAD_INFO, error_msg, 0, stream);
         		}
             	if (send_eof) {
-                	stream->_putc(EOT);
+                	PacketMessage(PTYPE_LOAD_FINISH, "ok\r\n", 0, stream);
             	}
         	}
         } else {
-            stream->printf("%s\n", "Parameter error when setting wlan!");
+            PacketMessage(PTYPE_LOAD_INFO, "Parameter error when setting wlan!\n", 0, stream);
         	if (send_eof) {
-        		stream->_putc(CAN);
+        		PacketMessage(PTYPE_LOAD_ERROR, "Parameter error when setting wlan!\r\n", 0, stream);
         	}
         }
     }
@@ -1066,21 +1008,20 @@ void SimpleShell::diagnose_command( string parameters, StreamOutput *stream)
         if(n > sizeof(buf)) n = sizeof(buf);
         str.append(buf, n);
     }
-    if(CARVERA_AIR == THEKERNEL->factory_set->MachineModel)
-	{	
-    	bool ok2 = false;
-    	bool ok3 = false;
-    	struct pad_switch pad2,pad3;
-	    ok = PublicData::get_value(switch_checksum, get_checksum("beep"), 0, &pad);
-	    ok2 = PublicData::get_value(switch_checksum, get_checksum("extendin"), 0, &pad2);
-	   	ok3 = PublicData::get_value(switch_checksum, get_checksum("extendout"), 0, &pad3);
-	    if (ok&&ok2&&ok3) {
-	        n = snprintf(buf, sizeof(buf), ",%d,%d,%d,%d", (int)pad.state, (int)pad2.state, (int)pad3.state, (int)pad3.value);
-	        if(n > sizeof(buf)) n = sizeof(buf);
-	        str.append(buf, n);
-	    }
-	    
-	}
+    
+    bool ok2 = false;
+	bool ok3 = false;
+	struct pad_switch pad2,pad3;
+    ok = PublicData::get_value(switch_checksum, get_checksum("beep"), 0, &pad);
+    ok2 = PublicData::get_value(switch_checksum, get_checksum("extendin"), 0, &pad2);
+   	ok3 = PublicData::get_value(switch_checksum, get_checksum("extendout"), 0, &pad3);
+    if(!ok) pad.state = false;
+    if(!ok2) pad2.state = false;
+    if(!ok3) {pad3.state = false; pad3.value = 0;}
+    n = snprintf(buf, sizeof(buf), ",%d,%d,%d,%d", (int)pad.state, (int)pad2.state, (int)pad3.state, (int)pad3.value);
+    if(n > sizeof(buf)) n = sizeof(buf);
+    str.append(buf, n);
+    
     ok = PublicData::get_value(switch_checksum, get_checksum("toolsensor"), 0, &pad);
     if (ok) {
         n = snprintf(buf, sizeof(buf), "|T:%d", (int)pad.state);
@@ -1144,9 +1085,18 @@ void SimpleShell::diagnose_command( string parameters, StreamOutput *stream)
         if(n > sizeof(buf)) n = sizeof(buf);
         str.append(buf, n);
     }
+    
+    // get wifi rssi
+    signed char rssidata;
+    ok = PublicData::get_value(wlan_checksum, get_rssi_checksum, 0, &rssidata);
+    if (ok) {
+        n = snprintf(buf, sizeof(buf), "|RSSI:%d", rssidata);
+        if(n > sizeof(buf)) n = sizeof(buf);
+        str.append(buf, n);
+    }
 
     str.append("}\n");
-    stream->printf("%s", str.c_str());
+    stream->printfcmd(PTYPE_DIAG_RES, "%s", str.c_str());
 
 }
 
@@ -1198,10 +1148,10 @@ void SimpleShell::model_command( string parameters, StreamOutput *stream )
 {		    	
 	switch (THEKERNEL->factory_set->MachineModel)
 	{
-		case CARVERA:			
+		case CARVERA:
 			stream->printf("model = %s, %d, %d, %d\n", "C1", THEKERNEL->factory_set->MachineModel, THEKERNEL->factory_set->FuncSetting, THEKERNEL->probe_addr);
 			break;
-		case CARVERA_AIR:			
+		case CARVERA_AIR:
 			stream->printf("model = %s, %d, %d, %d\n", "CA1", THEKERNEL->factory_set->MachineModel, THEKERNEL->factory_set->FuncSetting, THEKERNEL->probe_addr);
             if(THEKERNEL->is_flex_compensation_load_error()) {
                 stream->printf("ERROR: Could not load flex compensation data\n");
@@ -2560,4 +2510,40 @@ void SimpleShell::config_default_command( string parameters, StreamOutput *strea
     fclose(default_lp);
 
     stream->printf("Settings save as default complete.\n");
+}
+
+void SimpleShell::PacketMessage(char cmd, const char* s, int size, StreamOutput *stream)
+{
+	int crc = 0;
+    unsigned int len = 0;
+	size_t total_length = size == 0 ? strlen(s) : size;
+	
+	fbuff[0] = (HEADER>>8)&0xFF;
+	fbuff[1] = HEADER&0xFF;
+	fbuff[4] = cmd;
+	
+	memcpy(&fbuff[5], s, total_length);
+	len = total_length + 3;
+	fbuff[2] = (len>>8)&0xFF;
+	fbuff[3] = len&0xFF;
+	crc = crc16_ccitt(&fbuff[2], len);
+	fbuff[total_length+5] = (crc>>8)&0xFF;
+	fbuff[total_length+6] = crc&0xFF;
+	fbuff[total_length+7] = (FOOTER>>8)&0xFF;
+	fbuff[total_length+8] = FOOTER&0xFF;
+	
+	stream->puts((char *)fbuff, len+6);
+}
+
+unsigned int SimpleShell::crc16_ccitt(unsigned char *data, unsigned int len)
+{
+	unsigned char tmp;
+	unsigned short crc = 0;
+
+	for (unsigned int i = 0; i < len; i ++) {
+        tmp = ((crc >> 8) ^ data[i]) & 0xff;
+        crc = ((crc << 8) ^ crc_table[tmp]) & 0xffff;
+	}
+
+	return crc & 0xffff;
 }

@@ -13,6 +13,7 @@
 #include "libs/Module.h"
 #include "libs/Kernel.h"
 #include "SlowTicker.h"
+#include "Ticker.h"
 #include "Tool.h"
 #include "PublicDataRequest.h"
 #include "Config.h"
@@ -51,6 +52,47 @@
 #define udp_recv_port_checksum		      CHECKSUM("udp_recv_port")
 #define tcp_timeout_s_checksum			  CHECKSUM("tcp_timeout_s")
 
+#define XBUFF_LENGTH	8208
+extern unsigned char xbuff[XBUFF_LENGTH];
+extern unsigned char fbuff[4096];
+__attribute__((section("AHBSRAM1"), aligned(4))) char WifiSerialbuff[544];
+
+
+
+unsigned short crc_table[] = {
+	0x0000, 0x1021, 0x2042, 0x3063, 0x4084, 0x50a5, 0x60c6, 0x70e7,
+	0x8108, 0x9129, 0xa14a, 0xb16b, 0xc18c, 0xd1ad, 0xe1ce, 0xf1ef,
+	0x1231, 0x0210, 0x3273, 0x2252, 0x52b5, 0x4294, 0x72f7, 0x62d6,
+	0x9339, 0x8318, 0xb37b, 0xa35a, 0xd3bd, 0xc39c, 0xf3ff, 0xe3de,
+	0x2462, 0x3443, 0x0420, 0x1401, 0x64e6, 0x74c7, 0x44a4, 0x5485,
+	0xa56a, 0xb54b, 0x8528, 0x9509, 0xe5ee, 0xf5cf, 0xc5ac, 0xd58d,
+	0x3653, 0x2672, 0x1611, 0x0630, 0x76d7, 0x66f6, 0x5695, 0x46b4,
+	0xb75b, 0xa77a, 0x9719, 0x8738, 0xf7df, 0xe7fe, 0xd79d, 0xc7bc,
+	0x48c4, 0x58e5, 0x6886, 0x78a7, 0x0840, 0x1861, 0x2802, 0x3823,
+	0xc9cc, 0xd9ed, 0xe98e, 0xf9af, 0x8948, 0x9969, 0xa90a, 0xb92b,
+	0x5af5, 0x4ad4, 0x7ab7, 0x6a96, 0x1a71, 0x0a50, 0x3a33, 0x2a12,
+	0xdbfd, 0xcbdc, 0xfbbf, 0xeb9e, 0x9b79, 0x8b58, 0xbb3b, 0xab1a,
+	0x6ca6, 0x7c87, 0x4ce4, 0x5cc5, 0x2c22, 0x3c03, 0x0c60, 0x1c41,
+	0xedae, 0xfd8f, 0xcdec, 0xddcd, 0xad2a, 0xbd0b, 0x8d68, 0x9d49,
+	0x7e97, 0x6eb6, 0x5ed5, 0x4ef4, 0x3e13, 0x2e32, 0x1e51, 0x0e70,
+	0xff9f, 0xefbe, 0xdfdd, 0xcffc, 0xbf1b, 0xaf3a, 0x9f59, 0x8f78,
+	0x9188, 0x81a9, 0xb1ca, 0xa1eb, 0xd10c, 0xc12d, 0xf14e, 0xe16f,
+	0x1080, 0x00a1, 0x30c2, 0x20e3, 0x5004, 0x4025, 0x7046, 0x6067,
+	0x83b9, 0x9398, 0xa3fb, 0xb3da, 0xc33d, 0xd31c, 0xe37f, 0xf35e,
+	0x02b1, 0x1290, 0x22f3, 0x32d2, 0x4235, 0x5214, 0x6277, 0x7256,
+	0xb5ea, 0xa5cb, 0x95a8, 0x8589, 0xf56e, 0xe54f, 0xd52c, 0xc50d,
+	0x34e2, 0x24c3, 0x14a0, 0x0481, 0x7466, 0x6447, 0x5424, 0x4405,
+	0xa7db, 0xb7fa, 0x8799, 0x97b8, 0xe75f, 0xf77e, 0xc71d, 0xd73c,
+	0x26d3, 0x36f2, 0x0691, 0x16b0, 0x6657, 0x7676, 0x4615, 0x5634,
+	0xd94c, 0xc96d, 0xf90e, 0xe92f, 0x99c8, 0x89e9, 0xb98a, 0xa9ab,
+	0x5844, 0x4865, 0x7806, 0x6827, 0x18c0, 0x08e1, 0x3882, 0x28a3,
+	0xcb7d, 0xdb5c, 0xeb3f, 0xfb1e, 0x8bf9, 0x9bd8, 0xabbb, 0xbb9a,
+	0x4a75, 0x5a54, 0x6a37, 0x7a16, 0x0af1, 0x1ad0, 0x2ab3, 0x3a92,
+	0xfd2e, 0xed0f, 0xdd6c, 0xcd4d, 0xbdaa, 0xad8b, 0x9de8, 0x8dc9,
+	0x7c26, 0x6c07, 0x5c64, 0x4c45, 0x3ca2, 0x2c83, 0x1ce0, 0x0cc1,
+	0xef1f, 0xff3e, 0xcf5d, 0xdf7c, 0xaf9b, 0xbfba, 0x8fd9, 0x9ff8,
+	0x6e17, 0x7e36, 0x4e55, 0x5e74, 0x2e93, 0x3eb2, 0x0ed1, 0x1ef0,
+};
 
 WifiProvider::WifiProvider()
 {
@@ -119,70 +161,165 @@ void WifiProvider::on_pin_rise()
 
 void WifiProvider::receive_wifi_data() {
 	u8 link_no;
-	u16 received = 0;
+	u16 revcnt = 0;
 	u16 status;
-
-	while (true)
-	{
-		received = M8266WIFI_SPI_RecvData(WifiData, WIFI_DATA_MAX_SIZE, WIFI_DATA_TIMEOUT_MS, &link_no, &status);
-		if (link_no == udp_link_no) {
-			return;
+	u16 errorcnt = 0;
+	uint8_t headerBuffer[2];	
+    uint32_t received = 0;
+    uint32_t timeout_ms = 100000;	//100 ms
+    uint32_t starttime = 0;
+    u8 RecvData;
+    
+    // wait head
+    starttime = us_ticker_read();
+    while ((received < 2) && ((us_ticker_read() - starttime) < timeout_ms) ) {
+    	revcnt = M8266WIFI_SPI_RecvData(&RecvData, 1, WIFI_DATA_TIMEOUT_MS, &link_no, &status);
+		if ((link_no == udp_link_no) || (revcnt == 0)) {
+			continue;
 		}
-		for (int i = 0; i < received; i ++) {
-			if(THEKERNEL->is_cachewait()) {
-				continue;
-			}
-	        // Check for "?1" pattern
-			if (i < received - 1 && WifiData[i] == '?' && WifiData[i + 1] == '1') {
-				query_flag = true;
-				THEKERNEL->set_keep_alive_request(true);
-				i++; // Skip both characters
-				continue;
-			}
-
-			// Check for single "?" pattern
-			if(WifiData[i] == '?') {
-				query_flag = true;
-				continue;
-			}
-			//if (WifiData[i] == '*') {
-			//	diagnose_flag = true;
+		
+		headerBuffer[0] = headerBuffer[1];
+		received++;
+        headerBuffer[1] = RecvData;
+        if (received >= 2 && (headerBuffer[0] != ((HEADER >> 8) & 0xFF) || 
+                             headerBuffer[1] != (HEADER & 0xFF))) {
+            received = 1;
+            errorcnt ++;
+        }
+    }
+    if( errorcnt > 20)
+    {
+    	THEKERNEL->streams->puts("Please use Controller version V0.9.12 or later to connect.\r\n", 124); 
+    	return;
+    }
+	    
+    if (received < 2){
+//	    PacketMessage(PTYPE_NORMAL_INFO, "ALARM: Abort receive header\r\n", 0);
+    	return;
+    }
+    
+    // receive length	    
+    starttime = us_ticker_read();
+    while ((received < 4) && ((us_ticker_read() - starttime) < timeout_ms) ) {
+    	revcnt = M8266WIFI_SPI_RecvData(&RecvData, 1, WIFI_DATA_TIMEOUT_MS, &link_no, &status);
+		if ((link_no == udp_link_no) || (revcnt == 0)) {
+			continue;
+		}
+    	WifiSerialbuff[received] = RecvData;
+        received ++;
+    }
+    
+    if (received < 4){
+//	    	PacketMessage(PTYPE_NORMAL_INFO, "ALARM: Abort receive length\r\n", 0);
+    	return;
+    }
+    
+    uint16_t data_len = (WifiSerialbuff[2]<<8) | WifiSerialbuff[3];
+    uint16_t total_len = 4 + data_len + 2; // header + data + crc + tail
+    
+    if (data_len > 513 || total_len > sizeof(WifiSerialbuff)){
+//	    	PacketMessage(PTYPE_NORMAL_INFO, "ALARM: Abort receive datalen error\r\n", 0);
+    	 return; 
+    }
+    
+    starttime = us_ticker_read();
+    while ((received < total_len) && ((us_ticker_read() - starttime) < timeout_ms) ) {	    	
+    	revcnt = M8266WIFI_SPI_RecvData(&RecvData, 1, WIFI_DATA_TIMEOUT_MS, &link_no, &status);
+		if ((link_no == udp_link_no) || (revcnt == 0)) {
+			continue;
+		}
+    	WifiSerialbuff[received] = RecvData;
+        received ++;
+    }
+    
+    if (received < total_len) {
+//	    PacketMessage(PTYPE_NORMAL_INFO, "ALARM: Abort receive data body\r\n", 0);
+    	return;
+    }    
+	    
+    // check tail
+    uint16_t tail = (WifiSerialbuff[total_len-2]<<8) | WifiSerialbuff[total_len-1];
+    if (tail != FOOTER) {
+//	    	PacketMessage(PTYPE_NORMAL_INFO, "ALARM: Abort receive footer\r\n", 0);
+    	return;
+    }
+    
+/*	    
+    // check CRC
+    uint16_t received_crc = (WifiSerialbuff[total_len-4] << 8) | WifiSerialbuff[total_len-3];
+	uint16_t calculated_crc = crc16_ccitt((unsigned char *)&WifiSerialbuff[2], data_len);
+    if (received_crc != calculated_crc) {
+//	    	PacketMessage(PTYPE_NORMAL_INFO, "ALARM: Abort receive wrong crc\r\n", 0);
+        return;
+    }
+*/
+	uint8_t cmdType = WifiSerialbuff[4];
+    switch(cmdType) {
+        case PTYPE_CTRL_SINGLE: { 
+			// Check for "?1" pattern
+			//if (i < received - 1 && WifiData[i] == '?' && WifiData[i + 1] == '1') {
+			//	query_flag = true;
+			//	THEKERNEL->set_keep_alive_request(true);
+			//	i++; // Skip both characters
 			//	continue;
 			//}
-	        if(WifiData[i] == 'X' - 'A' + 1) { // ^X
-	            halt_flag = true;
-	            continue;
-	        }
-			if(WifiData[i] == 'Y' - 'A' + 1) { // ^Y
+            if(WifiSerialbuff[5] == '?') {
+            	query_flag = true;
+        	}
+        	else if(WifiSerialbuff[5] == 'X' - 'A' + 1) {
+            	halt_flag = true;
+        	}
+			else if(WifiSerialbuff[5] == 'Y' - 'A' + 1) { // ^Y
 	            THEKERNEL->set_stop_request(true); // generic stop what you are doing request
 	            continue;
 	        }
-			if(WifiData[i] == 'Z' - 'A' + 1) { // ^Z
+			else if(WifiSerialbuff[5] == 'Z' - 'A' + 1) { // ^Z
 				THEKERNEL->set_keep_alive_request(true);
 				continue;
 			}
-	        if(THEKERNEL->is_feed_hold_enabled()) {
-	            if(WifiData[i] == '!') { // safe pause
+        	else if(THEKERNEL->is_feed_hold_enabled()) {
+	            if(WifiSerialbuff[5] == '!') { // safe pause
 	                THEKERNEL->set_feed_hold(true);
-	                continue;
 	            }
-
-	            if(WifiData[i] == '~') { // safe resume
+	            else if(WifiSerialbuff[5] == '~') { // safe resume
 	                THEKERNEL->set_feed_hold(false);
-	                continue;
 	            }
 	        }
-	        // convert CR to NL (for host OSs that don't send NL)
-	        if( WifiData[i] == '\r' ) {
-//	        	received = '\n';
-				WifiData[i] = '\n';
-	        }
-	        this->buffer.push_back(char(WifiData[i]));
-		}
-		if (received < WIFI_DATA_MAX_SIZE) {
-			return;
-		}
+            break;
+        }
+        case PTYPE_CTRL_MULTI: {
+            struct SerialMessage message;
+            message.message.assign(WifiSerialbuff+5, data_len-3);
+            message.stream = this;
+            THEKERNEL->call_event(ON_CONSOLE_LINE_RECEIVED, &message );
+            break;
+        }
+        case PTYPE_FILE_START: {
+            struct SerialMessage message;
+            message.message.assign(WifiSerialbuff+5,data_len-3);
+            message.stream = this;
+            THEKERNEL->call_event(ON_CONSOLE_LINE_RECEIVED, &message );
+            break;
+        }
+        	
+        default:
+        	break;
+    }
+
+}
+
+
+unsigned int WifiProvider::crc16_ccitt(unsigned char *data, unsigned int len)
+{
+	unsigned char tmp;
+	unsigned short crc = 0;
+
+	for (unsigned int i = 0; i < len; i ++) {
+        tmp = ((crc >> 8) ^ data[i]) & 0xff;
+        crc = ((crc << 8) ^ crc_table[tmp]) & 0xffff;
 	}
+
+	return crc & 0xffff;
 }
 
 bool WifiProvider::ready() {
@@ -224,79 +361,44 @@ void WifiProvider::on_second_tick(void *)
 
 	if (!wifi_init_ok || THEKERNEL->is_uploading()) return;
 
-	M8266WIFI_SPI_List_Clients_On_A_TCP_Server(tcp_link_no, &client_num, RemoteClients, &status);
+	if (M8266WIFI_SPI_List_Clients_On_A_TCP_Server(tcp_link_no, &client_num, RemoteClients, &status)) {
 
-	M8266WIFI_SPI_Get_STA_Connection_Status(&connection_status, &status);
-	// THEKERNEL->streams->printf("M8266WIFI_SPI_Get_STA_Connection_Status: [%d]!\n", connection_status);
-	if (connection_status == 5) {
-		// get ip and netmask
-		if (M8266WIFI_SPI_Query_STA_Param(STA_PARAM_TYPE_IP_ADDR, (u8 *)this->sta_address, &param_len, &status) == 0) {
-			THEKERNEL->streams->printf("ERROR: Failed to query STA IP Addr, status: %u\n", status);
-			this->sta_address[0] = '\0'; // Ensure buffer is empty on failure
-		}
-		this->sta_address[sizeof(this->sta_address) - 1] = '\0'; // Ensure null termination regardless
-
-		if (M8266WIFI_SPI_Query_STA_Param(STA_PARAM_TYPE_NETMASK_ADDR, (u8 *)this->sta_netmask, &param_len, &status) == 0) {
-			THEKERNEL->streams->printf("ERROR: Failed to query STA Netmask, status: %u\n", status);
-			this->sta_netmask[0] = '\0'; // Ensure buffer is empty on failure
-		}
-		this->sta_netmask[sizeof(this->sta_netmask) - 1] = '\0'; // Ensure null termination regardless
-
-		// send data to sta broadcast address
-		{
-			// Inlined get_broadcast_from_ip_and_netmask
-			uint32_t i_ip = ip_to_int(this->sta_address);
-			uint32_t i_mask = ip_to_int(this->sta_netmask);
-			uint32_t i_broadcast = i_ip | (i_mask ^ 0xffffffff);
-			// Inlined int_to_ip
-			unsigned char bytes[4];
-			bytes[0] = i_broadcast & 0xFF;
-			bytes[1] = (i_broadcast >> 8) & 0xFF;
-			bytes[2] = (i_broadcast >> 16) & 0xFF;
-			bytes[3] = (i_broadcast >> 24) & 0xFF;
-			snprintf(address, sizeof(address), "%d.%d.%d.%d", bytes[3], bytes[2], bytes[1], bytes[0]);
-		}
-
-		snprintf(udp_buff, sizeof(udp_buff), "%s,%s,%d,%d", this->machine_name, this->sta_address, this->tcp_port, client_num > 0 ? 1 : 0);
-		if (M8266WIFI_SPI_Send_Udp_Data((u8 *)udp_buff, strlen(udp_buff), udp_link_no, address, this->udp_send_port, &status) < strlen(udp_buff)) {
-			// THEKERNEL->streams->printf("Send UDP through STA ERROR, status: %d, high: %d, low: %d!\n", status, int(status >> 8), int(status & 0xff));
-		} else {
-			// THEKERNEL->streams->printf("Send UDP through STA Success!\n");
-		}
-		connection_fail_count = 0;
-	} else if (connection_status == 2 || connection_status == 3 || connection_status == 4) {
-		// wrong password or can not find STA or fail to connect
-		connection_fail_count ++;
-		if (connection_fail_count > 10) {
-			// disconnect Wifi
-			if (M8266WIFI_SPI_STA_DisConnect_Ap(&status)) {
-				THEKERNEL->streams->printf("STA connection timeout, disconnected!\n");
+		if (M8266WIFI_SPI_Get_STA_Connection_Status(&connection_status, &status)) {
+			if (connection_status == 5) {
+				// get ip and netmask
+				M8266WIFI_SPI_Query_STA_Param(STA_PARAM_TYPE_IP_ADDR, (u8 *)this->sta_address, &param_len, &status);
+				M8266WIFI_SPI_Query_STA_Param(STA_PARAM_TYPE_NETMASK_ADDR, (u8 *)this->sta_netmask, &param_len, &status);
+				// send data to sta broadcast address
+				get_broadcast_from_ip_and_netmask(address, this->sta_address, this->sta_netmask);
+				snprintf(udp_buff, sizeof(udp_buff), "%s,%s,%d,%d", this->machine_name.c_str(), this->sta_address, this->tcp_port, client_num > 0 ? 1 : 0);
+				if (M8266WIFI_SPI_Send_Udp_Data((u8 *)udp_buff, strlen(udp_buff), udp_link_no, address, this->udp_send_port, &status) < strlen(udp_buff)) {
+					// THEKERNEL->streams->printf("Send UDP through STA ERROR, status: %d, high: %d, low: %d!\n", status, int(status >> 8), int(status & 0xff));
+				} else {
+					// THEKERNEL->streams->printf("Send UDP through STA Success!\n");
+				}
+				connection_fail_count = 0;
+			} else if (connection_status == 2 || connection_status == 3 || connection_status == 4) {
+				// wrong password or can not find STA or fail to connect
+				connection_fail_count ++;
+				if (connection_fail_count > 30) {
+					// disconnect Wifi
+					if (M8266WIFI_SPI_STA_DisConnect_Ap(&status)) {
+						THEKERNEL->streams->printf("STA connection timeout, disconnected!\n");
+					}
+					connection_fail_count = 0;
+				}
+			} else {
+				connection_fail_count = 0;
 			}
-			connection_fail_count = 0;
+		
+			// send ap info through UDP
+			memset(udp_buff, 0, sizeof(udp_buff));
+			get_broadcast_from_ip_and_netmask(address, this->ap_address, this->ap_netmask);
+			snprintf(udp_buff, sizeof(udp_buff), "%s,%s,%d,%d", this->machine_name.c_str(), this->ap_address, this->tcp_port, client_num > 0 ? 1 : 0);
+			if (M8266WIFI_SPI_Send_Udp_Data((u8 *)udp_buff, strlen(udp_buff), udp_link_no, address, this->udp_send_port, &status) < strlen(udp_buff)) {
+				// THEKERNEL->streams->printf("Send UDP through AP ERROR, status: %d, high: %d, low: %d!\n", status, int(status >> 8), int(status & 0xff));
+			}
 		}
-	} else {
-		connection_fail_count = 0;
-	}
-
-	// send ap info through UDP
-	memset(udp_buff, 0, sizeof(udp_buff));
-	{
-		// Inlined get_broadcast_from_ip_and_netmask
-		uint32_t i_ip = ip_to_int(this->ap_address);
-		uint32_t i_mask = ip_to_int(this->ap_netmask);
-		uint32_t i_broadcast = i_ip | (i_mask ^ 0xffffffff);
-		// Inlined int_to_ip
-		unsigned char bytes[4];
-		bytes[0] = i_broadcast & 0xFF;
-		bytes[1] = (i_broadcast >> 8) & 0xFF;
-		bytes[2] = (i_broadcast >> 16) & 0xFF;
-		bytes[3] = (i_broadcast >> 24) & 0xFF;
-		snprintf(address, sizeof(address), "%d.%d.%d.%d", bytes[3], bytes[2], bytes[1], bytes[0]);
-	}
-
-	snprintf(udp_buff, sizeof(udp_buff), "%s,%s,%d,%d", this->machine_name, this->ap_address, this->tcp_port, client_num > 0 ? 1 : 0);
-	if (M8266WIFI_SPI_Send_Udp_Data((u8 *)udp_buff, strlen(udp_buff), udp_link_no, address, this->udp_send_port, &status) < strlen(udp_buff)) {
-		// THEKERNEL->streams->printf("Send UDP through AP ERROR, status: %d, high: %d, low: %d!\n", status, int(status >> 8), int(status & 0xff));
 	}
 
 	// check AP and disconnect every 5 seconds
@@ -323,12 +425,12 @@ void WifiProvider::on_idle(void *argument)
 
     if (query_flag) {
         query_flag = false;
-        puts(THEKERNEL->get_query_string().c_str());
+		PacketMessage(PTYPE_STATUS_RES,THEKERNEL->get_query_string().c_str(),0);
     }
 
     if (diagnose_flag) {
     	diagnose_flag = false;
-    	puts(THEKERNEL->get_diagnose_string().c_str(), 0);
+    	PacketMessage(PTYPE_DIAG_RES,THEKERNEL->get_diagnose_string().c_str(),0);
     }
 
     if (halt_flag) {
@@ -336,32 +438,92 @@ void WifiProvider::on_idle(void *argument)
         THEKERNEL->set_halt_reason(MANUAL);
         THEKERNEL->call_event(ON_HALT, nullptr);
         if(THEKERNEL->is_grbl_mode()) {
-            puts("ALARM: Abort during cycle\r\n");
+            PacketMessage(PTYPE_NORMAL_INFO, "ALARM: Abort during cycle\r\n", 0);
         } else {
-            puts("HALTED, M999 or $X to exit HALT state\r\n");
+            PacketMessage(PTYPE_NORMAL_INFO, "HALTED, M999 or $X to exit HALT state\r\n", 0);
         }
     }
 }
 
 void WifiProvider::on_main_loop(void *argument)
 {
-    if( this->has_char('\n') ){
-        string received;
-        received.reserve(20);
-        while(1){
-           char c;
-           this->buffer.pop_front(c);
-           if( c == '\n' ){
-                struct SerialMessage message;
-                message.message = received;
-                message.stream = this;
-                THEKERNEL->call_event(ON_CONSOLE_LINE_RECEIVED, &message );
-                return;
-            }else{
-                received += c;
-            }
-        }
+    
+}
+
+void WifiProvider::PacketMessage(char cmd, const char* s, int size)
+{
+	int crc = 0;
+    unsigned int len = 0;
+	size_t total_length = size == 0 ? strlen(s) : size;
+	
+	fbuff[0] = (HEADER>>8)&0xFF;
+	fbuff[1] = HEADER&0xFF;
+	fbuff[4] = cmd;
+	
+	memcpy(&fbuff[5], s, total_length);
+	len = total_length + 3;
+	fbuff[2] = (len>>8)&0xFF;
+	fbuff[3] = len&0xFF;
+	crc = crc16_ccitt(&fbuff[2], len);
+	fbuff[total_length+5] = (crc>>8)&0xFF;
+	fbuff[total_length+6] = crc&0xFF;
+	fbuff[total_length+7] = (FOOTER>>8)&0xFF;
+	fbuff[total_length+8] = FOOTER&0xFF;
+	
+	puts((char *)fbuff, len+6);
+}
+
+int WifiProvider::printfcmd(const char cmd, const char *format, ...)
+{
+	char b[64];
+    char *buffer;
+    // Make the message
+    va_list args;
+    va_start(args, format);
+
+    int size = vsnprintf(b, 64, format, args) + 1; // we add one to take into account space for the terminating \0
+
+    if (size < 64) {
+        buffer = b;
+    } else {
+        buffer = new char[size];
+        vsnprintf(buffer, size, format, args);
     }
+    va_end(args);
+
+//    puts(buffer, strlen(buffer));
+	PacketMessage(PTYPE_DIAG_RES, buffer, strlen(buffer));
+
+    if (buffer != b)
+        delete[] buffer;
+
+    return size - 1;
+}
+
+int WifiProvider::printf(const char *format, ...)
+{
+	char b[64];
+    char *buffer;
+    // Make the message
+    va_list args;
+    va_start(args, format);
+
+    int size = vsnprintf(b, 64, format, args) + 1; // we add one to take into account space for the terminating \0
+
+    if (size < 64) {
+        buffer = b;
+    } else {
+        buffer = new char[size];
+        vsnprintf(buffer, size, format, args);
+    }
+    va_end(args);
+
+	PacketMessage(PTYPE_NORMAL_INFO, buffer, strlen(buffer));
+
+    if (buffer != b)
+        delete[] buffer;
+
+    return size - 1;
 }
 
 int WifiProvider::puts(const char* s, int size)
@@ -381,7 +543,7 @@ int WifiProvider::puts(const char* s, int size)
 		// 	0x18: No clients connecting to this TCP server
 		// 	0x1E: too many errors ecountered during sending can not fixed
 		// 	0x1F: Other errors
-    	sent = M8266WIFI_SPI_Send_BlockData(WifiData, to_send, 5000, tcp_link_no, NULL, 0, &status);
+    	sent = M8266WIFI_SPI_Send_BlockData(WifiData, to_send, 500, tcp_link_no, NULL, 0, &status);
     	sent_index += sent;
 		if (sent == to_send) {
 			continue;
@@ -413,32 +575,131 @@ int WifiProvider::_getc()
 
 int WifiProvider::gets(char** buf, int size)
 {
-	u16 status;
 	u8 link_no;
-	u16 received = M8266WIFI_SPI_RecvData(WifiData,
-			(size == 0 || size > WIFI_DATA_MAX_SIZE) ? WIFI_DATA_MAX_SIZE : size, WIFI_DATA_TIMEOUT_MS, &link_no, &status);
-	if (link_no == udp_link_no) {
-		// THEKERNEL->streams->printf("gets, data from udp");
-		return 0;
+	static u16 received = 0;
+	u16 status;
+	static uint8_t headerBuffer[2];
+    static uint8_t footerBuffer[2];
+    static uint16_t bytesNeeded = 2;
+    uint16_t expectedLength = 0;
+    uint16_t checksum;
+    
+	if(this->ptrData == 0)
+	{
+		received = M8266WIFI_SPI_RecvData(WifiData,
+				(size == 0 || size > WIFI_DATA_MAX_SIZE) ? WIFI_DATA_MAX_SIZE : size, WIFI_DATA_TIMEOUT_MS, &link_no, &status);
+		if (link_no == udp_link_no) {
+			// THEKERNEL->streams->printf("gets, data from udp");
+			return 0;
+		}
+		if (int(status & 0xff) == 0x20 || int(status & 0xff) == 0x22 || int(status & 0xff) == 0x2f) {
+			THEKERNEL->streams->printf("gets, received: %d, status:%d, high: %d, low: %d!\n", received, status, int(status >> 8), int(status & 0xff));
+			return 0;
+		}
 	}
-	if (int(status & 0xff) == 32 || int(status & 0xff) == 34 || int(status & 0xff) == 47) {
-		THEKERNEL->streams->printf("gets, received: %d, status:%d, high: %d, low: %d!\n", received, status, int(status >> 8), int(status & 0xff));
+	
+	for (int i = this->ptrData; i < received; i ++) {
+		uint8_t byte;
+		byte = WifiData[i];
+		if(i == received -1)
+		{
+			this->ptrData = 0;
+		}
+		else
+			this->ptrData = i;
+		switch(this->currentState) {
+            case WAIT_HEADER:
+                headerBuffer[0] = headerBuffer[1];
+                headerBuffer[1] = byte;
+                checksum = (headerBuffer[0] << 8) | headerBuffer[1];
+                if(checksum == HEADER) {
+                    this->currentState = READ_LENGTH;
+                    bytesNeeded = 2;
+                    memset(xbuff, 0, sizeof(xbuff));
+                }
+                break;
+            case READ_LENGTH:
+	            xbuff[this->ptr_xbuff] = byte;
+	            if(++this->ptr_xbuff >= XBUFF_LENGTH) 
+	            {
+	            	this->ptr_xbuff = 0;
+	            	this->currentState = WAIT_HEADER;
+	            	return 0;
+	            }
+	            
+	            if(--bytesNeeded == 0) {
+	                expectedLength = (xbuff[0] << 8) | xbuff[1];
+	                if(expectedLength >=0 && expectedLength<=XBUFF_LENGTH)
+	                {
+	                    this->currentState = READ_DATA;
+	                    bytesNeeded = expectedLength;
+	                }
+	                else
+	                {
+	                	this->currentState = WAIT_HEADER;
+	                }
+	            }
+            	break;
+            
+            case READ_DATA:
+	            xbuff[this->ptr_xbuff] = byte;
+	            if(++this->ptr_xbuff >= XBUFF_LENGTH) this->ptr_xbuff = XBUFF_LENGTH -1;
+	            
+                if(--bytesNeeded == 0) {
+                    this->currentState = CHECK_FOOTER;
+                    bytesNeeded = 2;
+                }
+                break;
+                
+            case CHECK_FOOTER:
+                footerBuffer[0] = footerBuffer[1];
+                footerBuffer[1] = byte;
+                if(--bytesNeeded == 0) {
+                    this->currentState = WAIT_HEADER;
+                	checksum = (footerBuffer[0] << 8) | footerBuffer[1];
+                    if(checksum == FOOTER) {
+                        return CheckFilePacket(buf);
+                    }
+                }
+                break;
+        }
 	}
-	*buf = (char *)&WifiData;
-	return received;
+	return 0;	
+	
 }
 
-// Does the queue have a given char ?
-bool WifiProvider::has_char(char letter) {
-    int index = this->buffer.tail;
-    while( index != this->buffer.head ){
-        if( this->buffer.buffer[index] == letter ){
-            return true;
+int WifiProvider::CheckFilePacket(char** buf) {
+	uint8_t cmdType = 0;
+	// CRC校验
+    uint16_t calcCRC = 0;
+    uint16_t receivedCRC = 0;
+    calcCRC = crc16_ccitt(xbuff, this->ptr_xbuff-2); // 最后两个字节是CRC
+    receivedCRC = (xbuff[this->ptr_xbuff-2] << 8) | xbuff[this->ptr_xbuff-1];
+    this->ptr_xbuff = 0;
+    
+    if(calcCRC == receivedCRC) {
+    	cmdType = xbuff[2];
+        switch(cmdType) {
+            case PTYPE_FILE_MD5:
+            case PTYPE_FILE_CAN:
+            case PTYPE_FILE_VIEW:
+            case PTYPE_FILE_DATA:
+            case PTYPE_FILE_END:
+            case PTYPE_FILE_RETRY:
+            case 0xA0:
+            case 0xA1:
+            case 0xA2:
+            	*buf = (char*) &xbuff[0];
+            	break;
+            default:
+            	cmdType = 0;
+            	break;
+            	
         }
-        index = this->buffer.next_block_index(index);
     }
-    return false;
+    return cmdType;
 }
+
 
 void WifiProvider::on_gcode_received(void *argument)
 {
@@ -495,7 +756,6 @@ void WifiProvider::on_gcode_received(void *argument)
 				gcode->stream->printf("broadcast: %s\n", broadcast);
 			} else if (gcode->subcode == 7) {
 				gcode->stream->printf("aaaaaaa\n");
-				gcode->stream->printf("test buffer: %s\n", test_buffer.c_str());
 			}
 
 		} else if (gcode->m == 482) {
@@ -624,81 +884,113 @@ void WifiProvider::set_wifi_op_mode(u8 op_mode) {
 void WifiProvider::on_get_public_data(void* argument) {
     PublicDataRequest* pdr = static_cast<PublicDataRequest*>(argument);
     if(!pdr->starts_with(wlan_checksum)) return;
-    if(!pdr->second_element_is(get_wlan_checksum)) return;
-
-	u8 signals = 0;
-	u16 status = 0;
-	char ssid[32];
-	u8 ssid_len = 0;
-	u8 connection_status = 0;
-
-	// get current connected information
-	M8266WIFI_SPI_Query_STA_Param(STA_PARAM_TYPE_SSID, (u8 *)ssid, &ssid_len, &status);
-
-	M8266WIFI_SPI_Get_STA_Connection_Status(&connection_status, &status);
-
-	ScannedSigs wlans[MAX_WLAN_SIGNALS];
-	M8266WIFI_SPI_STA_Scan_Signals(wlans, MAX_WLAN_SIGNALS, 0xff, 0, &status);
-	// wait for scan finish
-	while (true) {
-		signals = M8266WIFI_SPI_STA_Fetch_Last_Scanned_Signals(wlans, MAX_WLAN_SIGNALS, &status);
-		if (signals == 0) {
-			// 0x25: If not start scan before
-			// 0x26: If currently module is scanning
-			// 0x27: If last scan result has failure
-			// 0x29: Other failure
-			if ((status & 0xff) == 0x26) {
-				THEKERNEL->call_event(ON_IDLE, this);
-				// wait 1 ms
-				M8266WIFI_Module_delay_ms(1);
-				continue;
+    if(!pdr->second_element_is(get_wlan_checksum)
+    	&& !pdr->second_element_is(get_rssi_checksum)) return;
+	
+	if(pdr->second_element_is(get_wlan_checksum)) {
+		u8 signals = 0;
+		u16 status = 0;
+		char ssid[32];
+		u8 ssid_len = 0;
+		u8 connection_status = 0;
+	
+		// get current connected information
+		M8266WIFI_SPI_Query_STA_Param(STA_PARAM_TYPE_SSID, (u8 *)ssid, &ssid_len, &status);
+	
+		M8266WIFI_SPI_Get_STA_Connection_Status(&connection_status, &status);
+	
+		ScannedSigs wlans[MAX_WLAN_SIGNALS];
+		M8266WIFI_SPI_STA_Scan_Signals(wlans, MAX_WLAN_SIGNALS, 0xff, 0, &status);
+		// wait for scan finish
+		while (true) {
+			signals = M8266WIFI_SPI_STA_Fetch_Last_Scanned_Signals(wlans, MAX_WLAN_SIGNALS, &status);
+			if (signals == 0) {
+				// 0x25: If not start scan before
+				// 0x26: If currently module is scanning
+				// 0x27: If last scan result has failure
+				// 0x29: Other failure
+				if ((status & 0xff) == 0x26) {
+					THEKERNEL->call_event(ON_IDLE, this);
+					// wait 1 ms
+					M8266WIFI_Module_delay_ms(1);
+					continue;
+				} else {
+					// scan fail
+					return;
+				}
 			} else {
-				// scan fail
+				// NOTE caller must free the returned string when done
+				size_t n;
+				std::string str;
+				std::string ssid_str;
+				char buf[10];
+				for (int i = 0; i < signals; i ++) {
+					ssid_str = "";
+					for (size_t j = 0; j < strlen(wlans[i].ssid); j ++ ) {
+						if(j <32 ){
+							ssid_str += wlans[i].ssid[j] == ' ' ? 0x01 : wlans[i].ssid[j];
+						}
+					}
+					ssid_str.append(",");
+					// ignore same ssid
+				    if (str.find(ssid_str) != string::npos) {
+				    	continue;
+				    }
+					str.append(ssid_str);
+					str.append(wlans[i].authmode == 0 ? "0" : "1");
+					str.append(",");
+					n = snprintf(buf, sizeof(buf), "%d", wlans[i].rssi);
+					if(n > sizeof(buf)) n = sizeof(buf);
+					str.append(buf, n);
+					str.append(",");
+					if (strncmp(ssid, wlans[i].ssid, ssid_len <= 32 ? ssid_len : 32) == 0 && connection_status == 5) {
+						str.append("1\n");
+					} else {
+						str.append("0\n");
+					}
+				}
+				char *temp_buf = (char *)malloc(str.length() + 1);
+				memcpy(temp_buf, str.c_str(), str.length());
+				temp_buf[str.length()]= '\0';
+				pdr->set_data_ptr(temp_buf);
+				pdr->set_taken();
 				return;
 			}
-		} else {
-			// NOTE caller must free the returned string when done
-			size_t n;
-			std::string str;
-			std::string ssid_str;
-			char buf[10];
-			for (int i = 0; i < signals; i ++) {
-				ssid_str = "";
-				for (size_t j = 0; j < strlen(wlans[i].ssid); j ++ ) {
-					ssid_str += wlans[i].ssid[j] == ' ' ? 0x01 : wlans[i].ssid[j];
-				}
-				ssid_str.append(",");
-				// ignore same ssid
-			    if (str.find(ssid_str) != string::npos) {
-			    	continue;
-			    }
-				str.append(ssid_str);
-				str.append(wlans[i].authmode == 0 ? "0" : "1");
-				str.append(",");
-				n = snprintf(buf, sizeof(buf), "%d", wlans[i].rssi);
-				if(n > sizeof(buf)) n = sizeof(buf);
-				str.append(buf, n);
-				str.append(",");
-				if (strncmp(ssid, wlans[i].ssid, ssid_len <= 32 ? ssid_len : 32) == 0 && connection_status == 5) {
-					str.append("1\n");
-				} else {
-					str.append("0\n");
-				}
-			}
-			char *temp_buf = (char *)AHB.alloc(str.length() + 1);
-            if (temp_buf == nullptr) {
-                THEKERNEL->streams->printf("ERROR: Failed to allocate memory in on_get_public_data\n");
-                // Cannot proceed without buffer, return early.
-                return;
-            }
-			memcpy(temp_buf, str.c_str(), str.length());
-			temp_buf[str.length()]= '\0';
-			pdr->set_data_ptr(temp_buf);
+		}
+	}
+	else if( pdr->second_element_is(get_rssi_checksum) ) {
+		u8 ssid[32];
+		signed char rssi;
+		u16 status;
+		if(M8266WIFI_SPI_STA_Query_Current_SSID_And_RSSI(ssid, &rssi, &status))
+		{
+			s8 *data = static_cast<s8 *>(pdr->get_data_ptr());
+			data[0] = rssi;
 			pdr->set_taken();
 			return;
 		}
 	}
 }
+
+int parse_ip(const char *ip, int fields[4]) {
+    char *copy = strdup(ip);
+    char *token = strtok(copy, ".");
+    for (int i = 0; i < 4; i++) {
+        if (!token) { free(copy); return 0; }
+       
+        for (int j = 0; token[j]; j++) {
+            if (!isdigit(token[j])) { free(copy); return 0; }
+        }
+        
+        int num = atoi(token);
+        if (num < 0 || num > 255) { free(copy); return 0; }
+        fields[i] = num;
+        token = strtok(NULL, ".");
+    }
+    free(copy);
+    return 1;
+}
+
 
 void WifiProvider::on_set_public_data(void *argument)
 {
@@ -755,7 +1047,27 @@ void WifiProvider::on_set_public_data(void *argument)
 
     		// get ip address if no error
     		if (!s->has_error) {
-    			M8266WIFI_SPI_Get_STA_IP_Addr(s->ip_address, &status);
+    			u16 status = 0;
+				u8 param_len = 0;
+    			char sta_address[16];
+    			char ap_address[16];
+    			M8266WIFI_SPI_Get_STA_IP_Addr(sta_address, &status);
+    			memcpy(s->ip_address,sta_address,16);
+    			
+    			if( M8266WIFI_SPI_Query_AP_Param(AP_PARAM_TYPE_IP_ADDR, (u8 *)ap_address, &param_len, &status) )
+    			{
+    				int ip_fields[4], ap_fields[4];
+    				if (parse_ip(sta_address, ip_fields) && parse_ip(ap_address, ap_fields)) 
+    				{
+				        if ((ip_fields[0] == ap_fields[0]) && (ip_fields[1] == ap_fields[1]) && (ip_fields[2] == ap_fields[2])) 
+				        {
+					    	ap_fields[2] = (ap_fields[2] + 1) % 256; 
+						    snprintf(ap_address, 16, "%d.%d.%d.%d", ap_fields[0], ap_fields[1], ap_fields[2], ap_fields[3]);
+						    M8266WIFI_SPI_Config_AP_Param(AP_PARAM_TYPE_IP_ADDR, (u8*)ap_address, strlen(ap_address), 1, &status);
+						}
+				    }
+    			}
+    			
     		}
 
     	}
@@ -769,8 +1081,13 @@ void WifiProvider::on_set_public_data(void *argument)
 		}
     } else if (pdr->second_element_is(ap_set_ssid_checksum)) {
     	u16 status = 0;
+    	u16 len =0;
+    	u8  ssid2[33];
     	char *ssid = static_cast<char *>(pdr->get_data_ptr());
-		if (M8266WIFI_SPI_Config_AP_Param(AP_PARAM_TYPE_SSID, (u8 *)ssid, strlen(ssid), 1, &status) == 0) {
+    	memcpy(ssid2, ssid, 32);
+    	ssid2[32] = '\0';
+    	len = strlen(ssid);
+		if (M8266WIFI_SPI_Config_AP_Param(AP_PARAM_TYPE_SSID, ssid2, len, 1, &status) == 0) {
 			THEKERNEL->streams->printf("WiFi set AP SSID ERROR, status:%d, high: %d, low: %d!\n", status, int(status >> 8), int(status & 0xff));
 		} else {
 			THEKERNEL->streams->printf("WiFi AP SSID has been changed to %s\n", ssid);
@@ -961,6 +1278,7 @@ u8 WifiProvider::M8266WIFI_Module_Init_Via_SPI()
 		return 0;
 	}
 
+#if 0 //只在硬件测试阶段打开，测试SPI总线可靠性
 	// Step 4: Used to evaluate the high-speed spi communication. Changed to #if 0 to comment it for formal release
 	//(Chinese: 第四步，开发阶段和测试阶段，用于测试评估主机板在当前频率下进行高速SPI读写访问时的可靠性。
 	//          如果足够可靠，则可以适当提高SPI频率；如果不可靠，则可能需要检查主机板连线或者降低SPI频率。
@@ -981,7 +1299,7 @@ u8 WifiProvider::M8266WIFI_Module_Init_Via_SPI()
 		THEKERNEL->streams->printf("Wifi Module Stress test ERROR!\n");
 		return 0;
 	}
-
+#endif
 	/////////////////////////////////////////////////////////////////////////////////////////////////////
 	// Step 5: Conifiguration to module
 	// (Chinese:第5步：配置模组)
@@ -993,6 +1311,15 @@ u8 WifiProvider::M8266WIFI_Module_Init_Via_SPI()
 		THEKERNEL->streams->printf("M8266WIFI_SPI_Set_Tx_Max_Power ERROR, status:%d, high: %d, low: %d!\n", status, int(status >> 8), int(status & 0xff));
 		return 0;                                          // (Chinese: tx_max_power=68表示将发射最大功率设置为出厂缺省数值的一般，即50mW或者17dBm。具体数值含义可以查看这个API函数的头文件声明里的注释
 	}
+
+#if 0
+    //u8 M8266WIFI_SPI_Set_WebServer(u8 open_not_shutdown, u16 server_port, u8 saved, u16* status)
+    if(M8266WIFI_SPI_Set_WebServer(1, 80, 0, &status)==0) 
+	{
+		THEKERNEL->streams->printf("M8266WIFI_SPI_Set_Tx_Max_Power ERROR, status:%d, high: %d, low: %d!\n", status, int(status >> 8), int(status & 0xff));
+		return 0;                                          // (Chinese: tx_max_power=68表示将发射最大功率设置为出厂缺省数值的一般，即50mW或者17dBm。具体数值含义可以查看这个API函数的头文件声明里的注释
+	}    
+#endif
 
 	return 1;
 }

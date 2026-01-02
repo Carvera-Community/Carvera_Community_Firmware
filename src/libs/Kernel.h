@@ -168,6 +168,9 @@ class Kernel {
         void set_vacuum_mode(bool f) { vacuum_mode = f; }
         bool get_vacuum_mode() const { return vacuum_mode; }
 
+        void set_extout_mode(bool f) { extout_mode = f; }
+        bool get_extout_mode() const { return extout_mode; }
+
         void set_optional_stop_mode(bool f) { optional_stop_mode = f; }
         bool get_optional_stop_mode() const { return optional_stop_mode; }
         void set_line_by_line_exec_mode(bool f) { line_by_line_exec_mode = f; }
@@ -279,6 +282,7 @@ class Kernel {
             volatile bool uploading:1;
             bool laser_mode:1;
             bool vacuum_mode:1;
+            bool extout_mode:1;
             bool optional_stop_mode:1;
             bool line_by_line_exec_mode:1;
             bool sleeping:1;

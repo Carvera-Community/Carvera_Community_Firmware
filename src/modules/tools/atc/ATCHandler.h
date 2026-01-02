@@ -117,6 +117,19 @@ private:
     void home_machine_with_pin(Gcode *gcode);
     void calibrate_set_value(Gcode *gcode);
 
+    void fill_calibrate_probe_anchor_scripts(bool invert_probe);
+    void calibrate_anchor1(Gcode *gcode);
+    void calibrate_anchor2(Gcode *gcode);
+    void calibrate_a_axis_headstock(Gcode *gcode);
+    void calibrate_a_axis_height(Gcode *gcode);
+    void home_machine_with_pin(Gcode *gcode);
+    void calibrate_set_value(Gcode *gcode);
+
+    void fill_OutCorner_scripts(float tool_dia, float X_distance, float Y_distance, float Z_distance);
+    void fill_InCorner_scripts(float tool_dia, float X_distance, float Y_distance, float Z_distance);
+    void fill_InPocket_scripts(float tool_dia, float X_distance, float Y_distance, float Z_distance);
+    void fill_OutPocket_scripts(float tool_dia, float X_distance, float Y_distance, float Z_distance);
+    void fill_Autoclean_scripts(float Clean_cycles, float Clean_tap);
     void clear_script_queue();
 
     void rapid_move(bool mc, float x, float y, float z, float a, float b);

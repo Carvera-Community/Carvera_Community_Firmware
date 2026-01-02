@@ -153,6 +153,34 @@ controller. Use the community controller for the most up to date features.
 [0.9.9]
 Firmware compatible with Carvera and Carvera Air
 
+[1.0.5]
+Important Notes
+The firmware version v1.0.5 requires v0.9.13 Controller or higher.
+​​Please follow these steps:​​
+
+1.Use the v0.9.11 Controller to upgrade the firmware to v1.0.5.
+2.Then update the Controller to v0.9.13.
+(Note: This ensures compatibility between the Controller and firmware versions.)
+
+Overview of this upgrade
+1.​​Bug Fix​​: Fixed an issue where a line in G-code containing a line number (N) but no G-command would be ignored.
+2.​​Bug Fix​​: Resolved an issue where the hotspot subnet might overlap with the router subnet.
+3.​​Bug Fix​​: Corrected the Shrink Acommand, changing it from compressing machine coordinates to compressing work coordinates.
+4.​​Optimization​​: Improved firmware-Controller communication for more reliable file transfers.
+5.​​Optimization​​: Paused the lid detection alarm function during tool changes on the ​​Carvera Air​​.
+6.​​Optimization​​: Optimized the path movement to the work origin before machining to prevent collisions with the workpiece or fixture.
+7.​​Optimization​​: Updated the Wi-Fi driver.
+8.Optimization:Add conrner positioning and center positioning functions for the 3D probe.
+
+[1.0.4]
+1.​​Bug Fix​​: Fixed an issue where a line in G-code containing a line number (N) but no G-command would be ignored.
+2.​​Bug Fix​​: Resolved an issue where the hotspot subnet might overlap with the router subnet.
+3.​​Bug Fix​​: Corrected the Shrink Acommand, changing it from compressing machine coordinates to compressing work coordinates.
+4.​​Optimization​​: Improved firmware-Controller communication for more reliable file transfers.
+5.​​Optimization​​: Paused the lid detection alarm function during tool changes on the ​​Carvera Air​​.
+6.​​Optimization​​: Optimized the path movement to the work origin before machining to prevent collisions with the workpiece or fixture.
+7.​​Optimization​​: Updated the Wi-Fi driver.
+
 [1.0.3]
 1. Bug fixing: When the distance between the start and end points of an arc is less than 0.00025, the actual machining process results in a full circle instead of the intended arc.
 2. Bug fixing: Resolved the issue where Carvera AIR triggers a manual alarm when the tool number exceeds 255.
