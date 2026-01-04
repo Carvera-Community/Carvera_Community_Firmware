@@ -189,7 +189,13 @@ void Player::goto_line_number(unsigned long line_number)
     played_lines = 0;
     played_cnt   = 0;
 
-    while (fgets(buf, sizeof(buf), this->current_file_handler) != NULL) {
+    // Read lines until we've positioned at the target line
+    // We want to break BEFORE reading the target line, so the file pointer is at the target
+    while (played_lines < this->goto_line - 1) {
+        if (fgets(buf, sizeof(buf), this->current_file_handler) == NULL) {
+            break; // EOF reached
+        }
+        
         if (played_lines % 100 == 0) {
             THEKERNEL->call_event(ON_IDLE);
         }
@@ -198,9 +204,6 @@ void Player::goto_line_number(unsigned long line_number)
 
         played_lines += 1;
         played_cnt += len;
-        if (played_lines >= this->goto_line) {
-            break;
-        }
     }
 }
 
