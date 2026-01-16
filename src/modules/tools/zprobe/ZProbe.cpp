@@ -2361,6 +2361,10 @@ void ZProbe::calibrate_probe_boss() //M460.2
     THEKERNEL->streams->printf("Calibrating Probe With Boss\n");
 
     float knownDiameter = 0;
+    // Save original axis distances before they get modified by probe_boss()
+    float original_x_axis_distance = param.x_axis_distance;
+    float original_y_axis_distance = param.y_axis_distance;
+    
     if (param.x_axis_distance != 0){
         knownDiameter = param.x_axis_distance;
     }
@@ -2378,10 +2382,15 @@ void ZProbe::calibrate_probe_boss() //M460.2
     THEKERNEL->probe_outputs[1] = 0;
 
     for(int i=0; i< param.repeat; i++) {
+            // Restore original axis distances before each probe_boss() call
+            // since probe_boss() modifies them by dividing by 2
+            param.x_axis_distance = original_x_axis_distance;
+            param.y_axis_distance = original_y_axis_distance;
+            
             probe_boss(true);
             THECONVEYOR->wait_for_idle();
             
-            if (param.x_axis_distance != 0){
+            if (original_x_axis_distance != 0){
                 probe_position_stack.push_back(THEKERNEL->probe_outputs[0]);
             }else{
                 probe_position_stack.push_back(THEKERNEL->probe_outputs[1]);
