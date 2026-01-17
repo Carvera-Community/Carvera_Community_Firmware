@@ -9,6 +9,8 @@
 #include "libs/Kernel.h"
 
 #include "Robot.h"
+#include "CompensationPreprocessor.h"
+#include "CompensationTypes.h"
 #include "Planner.h"
 #include "Conveyor.h"
 #include "Pin.h"
@@ -143,6 +145,9 @@ Robot::Robot()
     this->n_motors= 0;
     memset(this->sin_r, 0, sizeof sin_r);
     memset(this->r, 0, sizeof r);
+    
+    // Initialize cutter compensation preprocessor (v2.0)
+    this->compensation_preprocessor = new CompensationPreprocessor();
 }
 
 //Called when the module has just been loaded
@@ -748,6 +753,23 @@ void Robot::on_gcode_received(void *argument)
                 return;
             }
             case 21: this->inch_mode = false;   break;
+            
+            // Cutter compensation (v2.0 bolt-on architecture)
+            case 40: // G40 - Compensation Off
+                compensation_preprocessor->set_compensation(CompensationType::NONE, 0.0f);
+                break;
+                
+            case 41: // G41 - Compensation Left
+            case 42: // G42 - Compensation Right
+            {
+                float radius = 0.0f;
+                if (gcode->has_letter('D')) {
+                    radius = gcode->get_value('D');
+                }
+                CompensationType type = (gcode->g == 41) ? CompensationType::LEFT : CompensationType::RIGHT;
+                compensation_preprocessor->set_compensation(type, radius);
+            }
+            break;
 
             case 54: case 55: case 56: case 57: case 58: case 59:
                 // select WCS 0-8: G54..G59, G59.1, G59.2, G59.3
@@ -1234,9 +1256,29 @@ void Robot::on_gcode_received(void *argument)
         }
     }
 
+    // Cutter compensation v2.0: Buffer or process moves
     if( motion_mode != NONE) {
         is_g123= motion_mode != SEEK;
-        process_move(gcode, motion_mode);
+        
+        if (compensation_preprocessor->is_active()) {
+            // Compensation is active - buffer the G-code
+            if (compensation_preprocessor->buffer_gcode(gcode)) {
+                // Successfully buffered - now try to get compensated output
+                Gcode* compensated = compensation_preprocessor->get_compensated_gcode();
+                if (compensated != nullptr) {
+                    // Process the compensated G-code through normal path
+                    process_move(compensated, motion_mode);
+                    delete compensated;  // Clean up after processing
+                }
+            } else {
+                // Buffer full - this shouldn't happen with 10 slots
+                THEKERNEL->streams->printf("ERROR: Compensation buffer full\n");
+                process_move(gcode, motion_mode);  // Fall back to uncompensated
+            }
+        } else {
+            // No compensation - normal path
+            process_move(gcode, motion_mode);
+        }
         // THEKERNEL->streams->printf("GCode: [%s], mode:[%d]\n", gcode->get_command(), motion_mode);
     } else {
         is_g123= false;
