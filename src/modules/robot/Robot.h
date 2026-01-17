@@ -23,6 +23,7 @@ using std::string;
 class Gcode;
 class BaseSolution;
 class StepperMotor;
+class CompensationPreprocessor;
 
 // 9 WCS offsets
 #define MAX_WCS 9UL
@@ -207,6 +208,9 @@ class Robot : public Module {
         float rotary_clearance_y_min;
 
         uint8_t n_motors;                                    //count of the motors/axis registered
+        
+        // Cutter compensation preprocessor (v2.0 bolt-on architecture)
+        CompensationPreprocessor* compensation_preprocessor;
 
         // Used by Planner
         friend class Planner;
