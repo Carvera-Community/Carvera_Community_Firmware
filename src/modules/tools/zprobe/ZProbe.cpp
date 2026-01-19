@@ -368,6 +368,9 @@ uint32_t ZProbe::read_calibrate(uint32_t dummy)
 
 uint32_t ZProbe::probe_doubleHit(uint32_t dummy)
 {
+
+    if (is_3dprobe_active) return 0;
+
 	if (this->pin.get()) 
 	{
 		if(!bfirstHitDetected)
