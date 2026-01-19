@@ -18,6 +18,7 @@
 #include "modules/tools/temperatureswitch/TemperatureSwitch.h"
 #include "modules/tools/drillingcycles/Drillingcycles.h"
 #include "modules/tools/atc/ATCHandler.h"
+#include "modules/tools/pitchcompensation/PitchCompensation.h"
 #include "modules/utils/wifi/WifiProvider.h"
 #include "modules/robot/Conveyor.h"
 #include "modules/utils/simpleshell/SimpleShell.h"
@@ -155,6 +156,9 @@ void init() {
 
     // ATC Handler
     kernel->add_module( new(AHB) ATCHandler() );
+
+    // Pitch Compensation
+    kernel->add_module( new(AHB) PitchCompensation() );
 
     // MSC File System Handler
     kernel->add_module( new(AHB) MSCFileSystem("ud") );
