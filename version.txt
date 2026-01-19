@@ -17,6 +17,7 @@
 - Fixed: Restored the stock Makera probing laser behaviour if tool 0 is NOT the 3d probe
 - Fixed: goto now skips to the specified line instead of the +1 of the specified line. Eg after goto 9 the next line played will be 9 and not 10.
 - Fixed: If the repeat parameter (L) is greater than 1 on probe_boss (M462) or any M commands that use probe_boss(), an incorrect location is probed after the first on the cycle
+- Fixed: The probe_doubleHit function can no longer disable the probe power if the 3d probe is active
 - Change: Inch Mode (G20) now raises a machine halt. This is because there are outstanding bugs preventing it's use.
 
 [v2.0.0c]
