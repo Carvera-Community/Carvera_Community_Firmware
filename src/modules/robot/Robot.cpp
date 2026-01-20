@@ -1554,6 +1554,11 @@ void Robot::reset_axis_position(float x, float y, float z)
     compensated_machine_position[Y_AXIS]= machine_position[Y_AXIS] = y;
     compensated_machine_position[Z_AXIS]= machine_position[Z_AXIS] = z;
 
+    if(pitchCompensationTransform) {
+        // apply inverse transform to get machine_position
+        pitchCompensationTransform(machine_position, true, false);
+    }
+
     if(compensationTransform) {
         // apply inverse transform to get machine_position
         compensationTransform(machine_position, true, false);

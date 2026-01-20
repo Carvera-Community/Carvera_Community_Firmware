@@ -1817,6 +1817,7 @@ void ATCHandler::set_tlo_by_offset(float z_axis_offset){
 	Robot::wcs_t pos;
 	THEROBOT->get_current_machine_position(mpos);
 	// current_position/mpos includes the compensation transform so we need to get the inverse to get actual position
+	if(THEROBOT->pitchCompensationTransform) THEROBOT->pitchCompensationTransform(mpos, true, false); // get inverse pitch compensation transform
 	if(THEROBOT->compensationTransform) THEROBOT->compensationTransform(mpos, true, false); // get inverse compensation transform
 	pos = THEROBOT->mcs2wcs(mpos);
 	cur_tool_mz = cur_tool_mz + THEROBOT->from_millimeters(std::get<Z_AXIS>(pos)) - z_axis_offset;

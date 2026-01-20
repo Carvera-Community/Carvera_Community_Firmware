@@ -268,6 +268,7 @@ std::string Kernel::get_query_string()
         float mpos[5];
         robot->get_current_machine_position(mpos);
         // current_position/mpos includes the compensation transform so we need to get the inverse to get actual position
+        if(robot->pitchCompensationTransform) robot->pitchCompensationTransform(mpos, true, false); // get inverse pitch compensation transform
         if(robot->compensationTransform) robot->compensationTransform(mpos, true, false); // get inverse compensation transform
 
         // machine position
