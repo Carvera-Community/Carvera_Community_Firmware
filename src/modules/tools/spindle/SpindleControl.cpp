@@ -60,12 +60,6 @@ void SpindleControl::on_gcode_received(void *argument)
             	}
 
                 THECONVEYOR->wait_for_idle();
-                // open vacuum if set
-            	if (THEKERNEL->get_vacuum_mode()) {
-            		// open vacuum
-            		bool b = true;
-                    PublicData::set_value( switch_checksum, vacuum_checksum, state_checksum, &b );
-            	}
 
                 // M3 with S value provided: set speed
                 if (gcode->has_letter('S'))
@@ -77,23 +71,51 @@ void SpindleControl::on_gcode_received(void *argument)
                     turn_on();
                 }
         	}
+        	
+            // open vacuum if set
+        	if (THEKERNEL->get_vacuum_mode()) {
+        		// open vacuum
+        		bool b = true;
+        		PublicData::set_value( switch_checksum, vacuum_checksum, state_checksum, &b );
+        	}
+        	
+            // open extout if set
+        	if (THEKERNEL->get_extout_mode()) {
+        		// open extout
+        		bool b = true;
+        		struct pad_switch pad;
+			    bool ok = false;
+            	PublicData::set_value( switch_checksum, extendout_checksum, state_checksum, &b );
+			    ok = PublicData::get_value(switch_checksum, vacuum_checksum, 0, &pad);
+			    if (ok) {
+			    	pad.state = true;
+			    	pad.value = pad.defaultvalue;
+			    	PublicData::set_value( switch_checksum, extendout_checksum, state_value_checksum, &pad );
+			    }
+        	}
         }
         else if (gcode->m == 5)
         {
         	if (!THEKERNEL->get_laser_mode()) {
                 THECONVEYOR->wait_for_idle();
-
-                // close vacuum if set
-            	if (THEKERNEL->get_vacuum_mode()) {
-            		// close vacuum
-            		bool b = false;
-                    PublicData::set_value( switch_checksum, vacuum_checksum, state_checksum, &b );
-            	}
-
                 // M5: spindle off
                 if (spindle_on) {
                     turn_off();
                 }
+        	}
+        	
+            // close vacuum if set
+        	if (THEKERNEL->get_vacuum_mode()) {
+        		// close vacuum
+        		bool b = false;
+                PublicData::set_value( switch_checksum, vacuum_checksum, state_checksum, &b );
+        	}
+        	
+            // close extout if set
+        	if (THEKERNEL->get_extout_mode()) {
+        		// close extout
+        		bool b = false;
+                PublicData::set_value( switch_checksum, extendout_checksum, state_checksum, &b );
         	}
         }
         else if (gcode->m == 223)

@@ -8,6 +8,27 @@
 #ifndef PUBLICDATA_H
 #define PUBLICDATA_H
 
+
+#define HEADER        0x8668
+#define FOOTER        0x55AA
+#define PTYPE_CTRL_SINGLE	0xA1
+#define	PTYPE_CTRL_MULTI	0xA2
+#define PTYPE_FILE_START	0xB0
+#define PTYPE_FILE_MD5		0xB1
+#define PTYPE_FILE_VIEW		0xB2
+#define PTYPE_FILE_DATA		0xB3
+#define PTYPE_FILE_END		0xB4
+#define PTYPE_FILE_CAN		0xB5
+#define PTYPE_FILE_RETRY	0xB6
+
+#define PTYPE_STATUS_RES	0x81
+#define PTYPE_DIAG_RES		0x82
+#define PTYPE_LOAD_INFO		0x83
+#define PTYPE_LOAD_FINISH	0x84
+#define PTYPE_LOAD_ERROR	0x85
+
+#define PTYPE_NORMAL_INFO	0x90
+
 class PublicData {
     public:
         // there are two ways to get data from a module

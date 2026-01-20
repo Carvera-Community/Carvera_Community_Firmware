@@ -38,6 +38,7 @@
 #include "MainButtonPublicAccess.h"
 #include "mbed.h"
 #include "utils.h"
+#include "WifiPublicAccess.h"
 
 #ifndef NO_TOOLS_LASER
 #include "Laser.h"
@@ -77,6 +78,7 @@ Kernel::Kernel()
     uploading = false;
     laser_mode = false;
     vacuum_mode = false;
+    extout_mode = false;
     optional_stop_mode = false;
     line_by_line_exec_mode = false;
     sleeping = false;
@@ -371,11 +373,15 @@ std::string Kernel::get_query_string()
 	
     // get power temperature
     ok = PublicData::get_value( temperature_control_checksum, current_temperature_checksum, power_temperature_checksum, &temp );
-	if (ok) {
-        n= snprintf(buf, sizeof(buf), ",%1.1f", temp.current_temperature);
-        if(n > sizeof(buf)) n= sizeof(buf);
-        str.append(buf, n);
-	}
+	if (!ok) temp.current_temperature = 0;
+    n= snprintf(buf, sizeof(buf), ",%1.1f", temp.current_temperature);
+    if(n > sizeof(buf)) n= sizeof(buf);
+    str.append(buf, n);
+	
+	// get extout_mode 
+	n= snprintf(buf, sizeof(buf), ",%d,%d,%d", 0, 0, int(this->get_extout_mode()));
+    if(n > sizeof(buf)) n= sizeof(buf);
+    str.append(buf, n);
 
     // current tool number and tool offset
     struct tool_status tool;
@@ -533,21 +539,21 @@ std::string Kernel::get_diagnose_string()
         if(n > sizeof(buf)) n = sizeof(buf);
         str.append(buf, n);
     }
-    if(CARVERA_AIR == THEKERNEL->factory_set->MachineModel)
-	{	
-    	bool ok2 = false;
-    	bool ok3 = false;
-    	struct pad_switch pad2,pad3;
-	    ok = PublicData::get_value(switch_checksum, get_checksum("beep"), 0, &pad);
-	    ok2 = PublicData::get_value(switch_checksum, get_checksum("extendin"), 0, &pad2);
-	   	ok3 = PublicData::get_value(switch_checksum, get_checksum("extendout"), 0, &pad3);
-	    if (ok&&ok2&&ok3) {
-	        n = snprintf(buf, sizeof(buf), ",%d,%d,%d,%d", (int)pad.state, (int)pad2.state, (int)pad3.state, (int)pad3.value);
-	        if(n > sizeof(buf)) n = sizeof(buf);
-	        str.append(buf, n);
-	    }
+    	
+	bool ok2 = false;
+	bool ok3 = false;
+	struct pad_switch pad2,pad3;
+    ok = PublicData::get_value(switch_checksum, get_checksum("beep"), 0, &pad);
+    ok2 = PublicData::get_value(switch_checksum, get_checksum("extendin"), 0, &pad2);
+   	ok3 = PublicData::get_value(switch_checksum, get_checksum("extendout"), 0, &pad3);
+    if(!ok) pad.state = false;
+    if(!ok2) pad2.state = false;
+    if(ok3) pad3.state = false; pad3.value = 0;
+    n = snprintf(buf, sizeof(buf), ",%d,%d,%d,%d", (int)pad.state, (int)pad2.state, (int)pad3.state, (int)pad3.value);
+    if(n > sizeof(buf)) n = sizeof(buf);
+    str.append(buf, n);
 	    
-	}
+	    
     ok = PublicData::get_value(switch_checksum, get_checksum("toolsensor"), 0, &pad);
     if (ok) {
         n = snprintf(buf, sizeof(buf), "|T:%d", (int)pad.state);
@@ -608,6 +614,15 @@ std::string Kernel::get_diagnose_string()
     ok = PublicData::get_value(main_button_checksum, get_e_stop_state_checksum, 0, &data[10]);
     if (ok) {
         n = snprintf(buf, sizeof(buf), "|I:%d", data[10]);
+        if(n > sizeof(buf)) n = sizeof(buf);
+        str.append(buf, n);
+    }
+    
+    // get wifi rssi
+    signed char rssidata;
+    ok = PublicData::get_value(wlan_checksum, get_rssi_checksum, 0, &rssidata);
+    if (ok) {
+        n = snprintf(buf, sizeof(buf), "|RSSI:%d", rssidata);
         if(n > sizeof(buf)) n = sizeof(buf);
         str.append(buf, n);
     }

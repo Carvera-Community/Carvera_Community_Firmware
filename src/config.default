@@ -167,12 +167,11 @@ switch.probecharger.ignore_on_halt			true			# ignore on halt
 switch.probecharger.startup_state			true			# wireless probe startup state
 
 
-switch.extend.enable						true			# Enable this module
-# switch.extend.input_pin						0.21			# Pin this module controls
-switch.extend.output_pin					2.2				# Pin this module controls
-switch.extend.output_type					hwpwm			# Digital means this is just an on or off pin
-switch.extend.input_on_command				M851			# Command that will turn this switch on
-switch.extend.input_off_command				M852			# Command that will turn this switch off
+switch.extendout.enable						true			# Enable this module
+switch.extendout.output_pin					0.29			# Pin this module controls
+switch.extendout.output_type				swpwm			# Digital means this is just an on or off pin
+switch.extendout.input_on_command			M851			# Command that will turn this switch on
+switch.extendout.input_off_command			M852			# Command that will turn this switch off
 
 switch.air.enable							true			# Enable this module
 switch.air.output_pin						0.11				# Pin this module controls

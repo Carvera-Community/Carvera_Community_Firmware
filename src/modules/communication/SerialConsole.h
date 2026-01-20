@@ -16,6 +16,7 @@
 using std::string;
 #include "libs/RingBuffer.h"
 #include "libs/StreamOutput.h"
+#include "libs/CommonEnums.h"
 
 
 #define baud_rate_setting_checksum CHECKSUM("baud_rate")
@@ -38,10 +39,15 @@ class SerialConsole : public Module, public StreamOutput {
         int gets(char** buf, int size = 0);
         bool ready();
         char getc_result;
+		void reset(void){ptrData=0;ptr_xbuff=0;currentState = WAIT_HEADER;};
+		int printfcmd(const char cmd, const char *format, ...);
+		int printf(const char *format, ...) __attribute__ ((format(printf, 2, 3)));
 
-        //string receive_buffer;                 // Received chars are stored here until a newline character is received
-        //vector<std::string> received_lines;    // Received lines are stored here until they are requested
-        RingBuffer<char,256> buffer;             // Receive buffer
+   private:
+   		
+    	void PacketMessage(char cmd, const char* s, int size);
+    	int CheckFilePacket(char** buf);
+	    unsigned int crc16_ccitt(unsigned char *data, unsigned int len);
         mbed::Serial* serial;
         char previous_char;                       // Track previous character for ?1 detection
         struct {
@@ -49,6 +55,10 @@ class SerialConsole : public Module, public StreamOutput {
           bool halt_flag:1;
           bool diagnose_flag:1;
         };
+    	ParseState currentState = WAIT_HEADER;    
+    	
+	    int ptrData;
+	    int ptr_xbuff;
 };
 
 #endif
