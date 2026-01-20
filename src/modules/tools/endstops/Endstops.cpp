@@ -1060,6 +1060,10 @@ void Endstops::process_home_command(Gcode* gcode)
     auto savect= THEROBOT->compensationTransform;
     THEROBOT->compensationTransform= nullptr;
 
+    // also turn off pitch compensation during homing
+    auto savepct = THEROBOT->pitchCompensationTransform;
+    THEROBOT->pitchCompensationTransform = nullptr;
+
     // deltas always home Z axis only, which moves all three actuators
     bool home_in_z_only = this->is_delta || this->is_rdelta;
 
@@ -1145,6 +1149,9 @@ void Endstops::process_home_command(Gcode* gcode)
 
     // restore compensationTransform
     THEROBOT->compensationTransform= savect;
+
+    // restore pitchCompensationTransform
+    THEROBOT->pitchCompensationTransform = savepct;
 
     // check if on_halt (eg kill or fail)
     if(THEKERNEL->is_halted()) {
