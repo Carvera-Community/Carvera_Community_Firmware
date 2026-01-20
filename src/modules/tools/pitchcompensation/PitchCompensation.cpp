@@ -94,9 +94,9 @@ void PitchCompensation::config_load() {
 void PitchCompensation::precompute_integrals(AxisCompensation& axis_comp) {
     if(axis_comp.points.empty()) return;
 
-    // We set integral at P0 to be P0. This implies C(P0) = P0.
+    // First pass: compute integrals starting from 0 at the first point
     CompensationPoint& first = axis_comp.points[0];
-    double integral = first.pos;
+    double integral = 0.0;
     first.integral = integral;
 
     float prev_pos = first.pos;
@@ -112,6 +112,14 @@ void PitchCompensation::precompute_integrals(AxisCompensation& axis_comp) {
 
         prev_pos = cp.pos;
         prev_mul = cp.multiplier;
+    }
+
+    // Normalize so that C(0) = 0
+    // This ensures homing works correctly - when the machine homes to physical
+    // position 0, the compensated position should also be 0
+    double c_at_zero = integrate(axis_comp, 0.0f);
+    for(auto& cp : axis_comp.points) {
+        cp.integral -= c_at_zero;
     }
 }
 
