@@ -1,13 +1,12 @@
 #include "PitchCompensation.h"
 #include "libs/Kernel.h"
-#include "libs/nuts_bolts.h"
 #include "libs/utils.h"
 #include "Config.h"
 #include "checksumm.h"
 #include "modules/robot/Robot.h"
 #include "ConfigValue.h"
-#include "StreamOutput.h"
-#include "libs/StreamOutputPool.h"
+#include "StreamOutputPool.h"
+#include "Gcode.h"
 
 #include <string>
 #include <cmath>
@@ -15,79 +14,269 @@
 #include <algorithm>
 #include <cstring>
 
+#define PITCH_COMPENSATION_FILE "/sd/pitch_compensation.dat"
+#define EPSILON 1e-6f
+
 #define pitch_compensation_checksum CHECKSUM("pitch_compensation")
 #define enable_checksum             CHECKSUM("enable")
-#define points_checksum             CHECKSUM("points")
 
 using namespace std;
 
 PitchCompensation::PitchCompensation() {
-    this->enable = false;
+    this->enabled = false;
 }
 
 void PitchCompensation::on_module_loaded() {
     this->config_load();
-
-    if(this->enable) {
-        // Register compensation transform
-        using std::placeholders::_1;
-        using std::placeholders::_2;
-        using std::placeholders::_3;
-        THEROBOT->pitchCompensationTransform = std::bind(&PitchCompensation::do_compensation, this, _1, _2, _3);
-    }
+    this->register_for_event(ON_GCODE_RECEIVED);
 }
 
 void PitchCompensation::config_load() {
-    this->enable = THEKERNEL->config->value(pitch_compensation_checksum, enable_checksum)->by_default(false)->as_bool();
+    this->enabled = THEKERNEL->config->value(pitch_compensation_checksum, enable_checksum)->by_default(false)->as_bool();
+    if (this->enabled) {
+        load_points_from_file();
+        update_compensation_transform();
+    }
+}
 
-    if(!this->enable) return;
+void PitchCompensation::on_gcode_received(void* argument)
+{
+    Gcode *gcode = static_cast<Gcode *>(argument);
+    if(gcode->has_m && gcode->m == 381) {
+        const char axes[] = "XYZ";
 
-    // Load axis configurations
-    // pitch_compensation.points.x_axis = ...
-    string axes = "XYZ";
-    for(char c : axes) {
-        uint16_t axis_chk = 0;
-        if(c == 'X') axis_chk = CHECKSUM("x_axis");
-        else if(c == 'Y') axis_chk = CHECKSUM("y_axis");
-        else if(c == 'Z') axis_chk = CHECKSUM("z_axis");
-
-        string points_str = THEKERNEL->config->value(pitch_compensation_checksum, points_checksum, axis_chk)->by_default("")->as_string();
-
-        if(!points_str.empty()) {
-            AxisCompensation axis_comp;
-
-            // Parse the points string into a series of position:multiplier pairs
-            const char* str = points_str.c_str();
-            const char* start = str;
-            const char* end = str + points_str.length();
-
-            while(start < end) {
-                // Find next comma or end of string
-                const char* comma = start;
-                while(comma < end && *comma != ',') comma++;
-
-                // Find colon within this segment
-                const char* colon = start;
-                while(colon < comma && *colon != ':') colon++;
-
-                if(colon < comma) {
-                    float pos = strtof(start, NULL);
-                    float mul = strtof(colon + 1, NULL);
-                    axis_comp.points.push_back({pos, mul, 0.0});
-                }
-
-                // Move to next segment
-                start = comma + 1;
+        // M381: Disable pitch compensation
+        // M381.1: Display current pitch compensation data
+        // M381.2: Save current pitch compensation data
+        // M381.3: Load pitch compensation data and enable compensation
+        // M381.4: Delete compensation data for all axes and save
+        // M381.5: Add point (ex: M381.5 X10 C1.00034)
+        // M381.6: Remove point (ex: M381.6 X10)
+        // M381.7: Remove all points for the given axes (ex: M381.7 X Y)
+        if(gcode->subcode == 1) {
+            // Display current pitch compensation data
+            print_compensation_data(gcode->stream);
+        } else if(gcode->subcode == 2) {
+            // Save pitch compensation data
+            save_points_to_file();
+        } else if(gcode->subcode == 3) {
+            // Load pitch compensation data and enable compensation
+            load_points_from_file();
+            this->enabled = true;
+            update_compensation_transform();
+        } else if(gcode->subcode == 4) {
+            // Delete pitch compensation data for all axes and save
+            for(char axis : axes) {
+                clear_points(axis);
+            }
+            save_points_to_file();
+        } else if(gcode->subcode == 5) {
+            if (!gcode->has_letter('C')) {
+                gcode->stream->printf("Pitch compensation: missing compensation value\n");
+                return;
             }
 
-            if(!axis_comp.points.empty()) {
-                // Sort points by position and precompute integrals
-                std::sort(axis_comp.points.begin(), axis_comp.points.end());
-                precompute_integrals(axis_comp);
-                axis_comp.points.shrink_to_fit();
-                axis_compensations[c] = axis_comp;
+            // Add point
+            for(char axis : axes) {
+                if(gcode->has_letter(axis)) {
+                    add_point(axis, gcode->get_value(axis), gcode->get_value('C'));
+                }
+            }
+        } else if(gcode->subcode == 6) {
+            // Remove point
+            for (char axis : axes) {
+                if(gcode->has_letter(axis)) {
+                    remove_point(axis, gcode->get_value(axis));
+                }
+            }
+        } else if(gcode->subcode == 7) {
+            // Remove all points
+            for(char axis : axes) {
+                if (gcode->has_letter(axis)) {
+                    clear_points(axis);
+                }
+            }
+        } else {
+            // Disable pitch compensation
+            this->enabled = false;
+            update_compensation_transform();
+            gcode->stream->printf("Pitch compensation disabled\n");
+        }
+    }
+}
+
+void PitchCompensation::print_compensation_data(StreamOutput *stream) {
+    const char axes[] = "XYZ";
+    for(char axis : axes) {
+        if (!axis_compensations.count(axis)) continue;
+        stream->printf("Pitch compensation data for %c:\n", axis);
+        for(const CompensationPoint& cp : axis_compensations[axis].points) {
+            stream->printf("  %f: %f\n", cp.pos, cp.multiplier);
+        }
+    }
+}
+
+void PitchCompensation::add_point(char axis, float pos, float multiplier) {
+    if (multiplier < 0.5f || multiplier > 1.5f) {
+        THEKERNEL->streams->printf("Pitch compensation: Multiplier %f out of range [0.5, 1.5]\n", multiplier);
+        return;
+    }
+
+    AxisCompensation& axis_comp = axis_compensations[axis];
+
+    // Remove the point if it already exists
+    auto it = std::remove_if(axis_comp.points.begin(), axis_comp.points.end(),
+        [pos](const CompensationPoint& cp) {
+            return abs(cp.pos - pos) < EPSILON;
+        });
+
+    bool existed = (it != axis_comp.points.end());
+    axis_comp.points.erase(it, axis_comp.points.end());
+
+    // Add the new point
+    axis_comp.points.push_back({pos, multiplier, 0.0});
+    update_compensation_transform();
+
+    if (existed) {
+        THEKERNEL->streams->printf("Pitch compensation: updated point %c%f (compensation: %f)\n", axis, pos, multiplier);
+    } else {
+        THEKERNEL->streams->printf("Pitch compensation: added point %c%f (compensation: %f)\n", axis, pos, multiplier);
+    }
+}
+
+void PitchCompensation::remove_point(char axis, float pos) {
+    AxisCompensation& axis_comp = axis_compensations[axis];
+    auto it = std::remove_if(axis_comp.points.begin(), axis_comp.points.end(),
+        [pos](const CompensationPoint& cp) {
+            return abs(cp.pos - pos) < EPSILON;
+        });
+
+    if (it != axis_comp.points.end()) {
+        axis_comp.points.erase(it, axis_comp.points.end());
+        update_compensation_transform();
+        THEKERNEL->streams->printf("Pitch compensation: removed point %c%f\n", axis, pos);
+    } else {
+        THEKERNEL->streams->printf("Pitch compensation: point %c%f not found\n", axis, pos);
+    }
+}
+
+void PitchCompensation::clear_points(char axis) {
+    AxisCompensation& axis_comp = axis_compensations[axis];
+    axis_comp.points.clear();
+    update_compensation_transform();
+    THEKERNEL->streams->printf("Pitch compensation: cleared points for %c\n", axis);
+}
+
+void PitchCompensation::save_points_to_file() {
+    FILE *file = fopen(PITCH_COMPENSATION_FILE, "w");
+    if(!file) {
+        THEKERNEL->streams->printf("error: Failed to open pitch compensation file %s\n", PITCH_COMPENSATION_FILE);
+        return;
+    }
+
+    const char axes[] = "XYZ";
+    for(char axis : axes) {
+        if (!axis_compensations.count(axis)) continue;
+        for(const CompensationPoint& cp : axis_compensations[axis].points) {
+            // Format: <axis> <position> <multiplier>
+            // Example: X 10.5 1.00034
+            int retval = fprintf(file, "%c %f %f\n", axis, cp.pos, cp.multiplier);
+            if(retval == EOF) {
+                THEKERNEL->streams->printf("Pitch compensation: Failed to write point %c%f %f to file (errno: %d)\n", axis, cp.pos, cp.multiplier, errno);
+                fclose(file);
+                return;
             }
         }
+    }
+
+    THEKERNEL->streams->printf("Pitch compensation data saved to %s\n", PITCH_COMPENSATION_FILE);
+    fclose(file);
+}
+
+void PitchCompensation::load_points_from_file() {
+    FILE *file = fopen(PITCH_COMPENSATION_FILE, "r");
+    if(!file) {
+        THEKERNEL->streams->printf("error: Failed to open pitch compensation file %s\n", PITCH_COMPENSATION_FILE);
+        return;
+    }
+
+    // Clear existing points before loading
+    const char axes[] = "XYZ";
+    for(char axis : axes) {
+        if(axis_compensations.count(axis)) {
+            axis_compensations[axis].points.clear();
+        }
+    }
+
+    int line_num = 0;
+    int points_loaded = 0;
+    char current_axis;
+    float pos, multiplier;
+
+    int read_result;
+    while((read_result = fscanf(file, " %c %f %f", &current_axis, &pos, &multiplier)) != EOF) {
+        line_num++;
+
+        if(read_result != 3) {
+            THEKERNEL->streams->printf("Pitch comp.: Failed to read line %d (needed 3 values, got %d), skipped\n", line_num, read_result);
+            continue;
+        }
+
+        if(current_axis != 'X' && current_axis != 'Y' && current_axis != 'Z') {
+            THEKERNEL->streams->printf("Pitch comp.: Invalid axis '%c' on line %d, skipped\n", current_axis, line_num);
+            continue;
+        }
+
+        if(!isfinite(pos) || !isfinite(multiplier)) {
+            THEKERNEL->streams->printf("Pitch comp.: Invalid values (pos=%f, mult=%f) on line %d, skipped\n", pos, multiplier, line_num);
+            continue;
+        }
+
+        if(multiplier < 0.5f || multiplier > 1.5f) {
+            THEKERNEL->streams->printf("Pitch comp.: Multiplier %f out of range [0.5, 1.5] on line %d, skipped\n", multiplier, line_num);
+            continue;
+        }
+
+        // Add point to the axis compensation data
+        AxisCompensation& axis_comp = axis_compensations[current_axis];
+        axis_comp.points.push_back({pos, multiplier, 0.0});
+        points_loaded++;
+    }
+
+    // Apply the compensation data
+    update_compensation_transform();
+
+    if(points_loaded > 0) {
+        THEKERNEL->streams->printf("Pitch compensation: loaded %d points from %s\n", points_loaded, PITCH_COMPENSATION_FILE);
+    } else {
+        THEKERNEL->streams->printf("Pitch compensation: No valid point loaded from %s\n", PITCH_COMPENSATION_FILE);
+    }
+
+    fclose(file);
+}
+
+void PitchCompensation::update_compensation_transform() {
+    if(this->enabled) {
+        if (!THEROBOT->pitchCompensationTransform) {
+            // Bind the compensation function
+            using std::placeholders::_1;
+            using std::placeholders::_2;
+            using std::placeholders::_3;
+            THEROBOT->pitchCompensationTransform = std::bind(&PitchCompensation::do_compensation, this, _1, _2, _3);
+        }
+
+        // Precompute the integrals for each axis
+        const char axes[] = "XYZ";
+        for(char axis : axes) {
+            if (!axis_compensations.count(axis)) continue;
+
+            std::sort(axis_compensations[axis].points.begin(), axis_compensations[axis].points.end());
+            precompute_integrals(axis_compensations[axis]);
+            axis_compensations[axis].points.shrink_to_fit();
+        }
+    } else {
+        // Unbind the compensation function
+        THEROBOT->pitchCompensationTransform = nullptr;
     }
 }
 
@@ -217,7 +406,7 @@ float PitchCompensation::inverse_integrate(const AxisCompensation& axis_comp, do
 }
 
 void PitchCompensation::do_compensation(float* target, bool inverse, bool debug) {
-    if(!enable) return;
+    if(!enabled) return;
 
     // X axis
     if(axis_compensations.count('X')) {

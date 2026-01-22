@@ -281,10 +281,7 @@ leveling-strategy.rectangular-grid.flex_grid_x_size    				30
 leveling-strategy.rectangular-grid.flex_compensation_always_active 	false
 
 # Pitch compensation
-pitch_compensation.enable					false			# Enable screw pitch compensation
-#pitch_compensation.points.x_axis
-#pitch_compensation.points.y_axis
-#pitch_compensation.points.z_axis
+pitch_compensation.enable					false			# Enable screw pitch compensation on boot
 
 ## Network settings
 #network.enable								false			# Enable the ethernet network services
