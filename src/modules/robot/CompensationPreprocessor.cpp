@@ -28,6 +28,7 @@ CompensationPreprocessor::CompensationPreprocessor()
     compensation_type = CompensationType::NONE;
     compensation_radius = 0.0f;
     memset(uncompensated_position, 0, sizeof(uncompensated_position));
+    memset(compensated_position, 0, sizeof(compensated_position));
     
     // Initialize buffer
     for (int i = 0; i < BUFFER_SIZE; i++) {
@@ -86,6 +87,11 @@ void CompensationPreprocessor::clone_and_extract(Gcode* gcode, BufferedGcode& sl
         slot.has_ijk = false;
         return;
     }
+    
+    // Store uncompensated start position (current position before this move)
+    slot.uncomp_start[X_AXIS] = uncompensated_position[X_AXIS];
+    slot.uncomp_start[Y_AXIS] = uncompensated_position[Y_AXIS];
+    slot.uncomp_start[Z_AXIS] = uncompensated_position[Z_AXIS];
     
     // Extract endpoint (update uncompensated position)
     if (gcode->has_letter('X')) {
@@ -154,6 +160,11 @@ Gcode* CompensationPreprocessor::get_compensated_gcode()
     // Create new Gcode with compensated coordinates
     BufferedGcode& slot = buffer[buffer_tail];
     
+    // Update compensated position tracker
+    compensated_position[X_AXIS] = slot.endpoint[X_AXIS];
+    compensated_position[Y_AXIS] = slot.endpoint[Y_AXIS];
+    compensated_position[Z_AXIS] = slot.endpoint[Z_AXIS];
+    
     // Build compensated G-code string
     char cmd_buffer[256];
     char* ptr = cmd_buffer;
@@ -208,9 +219,12 @@ void CompensationPreprocessor::apply_compensation(int index)
     
     if (current.has_ijk) {
         // Arc move - apply arc compensation
-        float uncomp_start[2] = {uncompensated_position[X_AXIS], uncompensated_position[Y_AXIS]};
+        // Use the stored uncompensated start position from when this move was buffered
+        float uncomp_start[2] = {current.uncomp_start[X_AXIS], current.uncomp_start[Y_AXIS]};
+        float comp_start[2] = {compensated_position[X_AXIS], compensated_position[Y_AXIS]};
         compensate_arc_endpoint(
             uncomp_start,
+            comp_start,
             new_endpoint,
             new_ijk,
             compensation_radius,
@@ -312,6 +326,17 @@ void CompensationPreprocessor::apply_compensation(int index)
                 new_endpoint
             );
         }
+    }
+    
+    // Copy compensated values back to buffer slot
+    current.endpoint[X_AXIS] = new_endpoint[X_AXIS];
+    current.endpoint[Y_AXIS] = new_endpoint[Y_AXIS];
+    current.endpoint[Z_AXIS] = new_endpoint[Z_AXIS];
+    
+    if (current.has_ijk) {
+        current.ijk[0] = new_ijk[0];
+        current.ijk[1] = new_ijk[1];
+        current.ijk[2] = new_ijk[2];
     }
     
     // Modify G-code with new coordinates
@@ -417,6 +442,7 @@ bool CompensationPreprocessor::is_inside_corner(
 
 bool CompensationPreprocessor::compensate_arc_endpoint(
     const float uncomp_start[2],
+    const float comp_start[2],
     float arc_endpoint[2],
     float arc_ij[2],
     float comp_radius,
@@ -466,9 +492,9 @@ bool CompensationPreprocessor::compensate_arc_endpoint(
     arc_endpoint[0] += offset_x;
     arc_endpoint[1] += offset_y;
     
-    // Recalculate I/J: offsets from center to new endpoint
-    arc_ij[0] = arc_endpoint[0] - center_x;
-    arc_ij[1] = arc_endpoint[1] - center_y;
+    // Recalculate I/J: offsets from COMPENSATED START to center
+    arc_ij[0] = center_x - comp_start[0];
+    arc_ij[1] = center_y - comp_start[1];
     
     return true;
 }
@@ -547,4 +573,9 @@ void CompensationPreprocessor::set_initial_position(const float position[3])
     uncompensated_position[X_AXIS] = position[X_AXIS];
     uncompensated_position[Y_AXIS] = position[Y_AXIS];
     uncompensated_position[Z_AXIS] = position[Z_AXIS];
+    
+    // Initialize compensated position to same as uncompensated at start
+    compensated_position[X_AXIS] = position[X_AXIS];
+    compensated_position[Y_AXIS] = position[Y_AXIS];
+    compensated_position[Z_AXIS] = position[Z_AXIS];
 }

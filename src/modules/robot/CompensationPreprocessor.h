@@ -86,6 +86,7 @@ private:
     struct BufferedGcode {
         Gcode* gcode;          // Cloned G-code object
         float endpoint[3];     // Endpoint in XYZ
+        float uncomp_start[3]; // Uncompensated start position (for arc center calculation)
         float ijk[3];          // I/J/K for arcs
         bool has_ijk;          // True if arc move
         bool is_cw;            // True for G2, false for G3
@@ -104,6 +105,7 @@ private:
     CompensationType compensation_type;
     float compensation_radius;
     float uncompensated_position[3];  // Track uncompensated position for I/J calculation
+    float compensated_position[3];    // Track compensated position (where we actually are)
     bool is_flushing;  // True when flushing remaining moves (ignore lookahead requirements)
     
     // Helper functions
@@ -161,6 +163,7 @@ private:
      */
     bool compensate_arc_endpoint(
         const float uncomp_start[2],
+        const float comp_start[2],
         float arc_endpoint[2],
         float arc_ij[2],
         float comp_radius,
