@@ -800,6 +800,7 @@ void Robot::on_gcode_received(void *argument)
             {
                 gcode->stream->printf(">>G40: Flushing buffer (count=%d)\n", compensation_preprocessor->get_buffer_count());
                 // CRITICAL: Flush all buffered moves BEFORE disabling compensation
+                compensation_preprocessor->flush();  // Set is_flushing flag to bypass lookahead requirement
                 int flush_count = 0;
                 while (compensation_preprocessor->get_buffer_count() > 0) {
                     Gcode* compensated = compensation_preprocessor->get_compensated_gcode();
