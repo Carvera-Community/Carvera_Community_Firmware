@@ -58,6 +58,12 @@ public:
     Gcode* get_compensated_gcode();
     
     /**
+     * Get current buffer count
+     * @return Number of moves currently buffered
+     */
+    int get_buffer_count() const { return buffer_count; }
+    
+    /**
      * Flush remaining buffered moves
      * Called when compensation is turned off (G40)
      */
@@ -67,6 +73,13 @@ public:
      * Clear all buffered moves
      */
     void clear();
+    
+    /**
+     * Set initial uncompensated position
+     * Called when compensation is activated (G41/G42) to initialize position tracking
+     * @param position - Current machine position [X, Y, Z]
+     */
+    void set_initial_position(const float position[3]);
     
 private:
     // Buffered G-code structure
@@ -91,6 +104,7 @@ private:
     CompensationType compensation_type;
     float compensation_radius;
     float uncompensated_position[3];  // Track uncompensated position for I/J calculation
+    bool is_flushing;  // True when flushing remaining moves (ignore lookahead requirements)
     
     // Helper functions
     bool buffer_has_space() const { return buffer_count < BUFFER_SIZE; }
