@@ -140,13 +140,14 @@ Gcode* CompensationPreprocessor::get_compensated_gcode()
     }
     
     // Need at least 3 moves for lookahead (current + 2 ahead)
-    // If we have less, don't output yet (unless flushing)
-    if (buffer_count < 3 && compensation_type != CompensationType::NONE) {
+    // UNLESS we're flushing (is_flushing == true), then output whatever we have
+    if (buffer_count < 3 && compensation_type != CompensationType::NONE && !is_flushing) {
         return nullptr;
     }
     
     // Apply compensation to the tail move (oldest in buffer)
-    if (buffer_count >= 3) {
+    // When flushing with < 3 moves, we still try to apply compensation but with limited lookahead
+    if (buffer_count >= 3 || is_flushing) {
         apply_compensation(buffer_tail);
     }
     
@@ -515,14 +516,14 @@ void CompensationPreprocessor::modify_gcode_coordinates(
 
 void CompensationPreprocessor::flush()
 {
+    // Set flushing flag to bypass lookahead requirements
+    is_flushing = true;
+    
     // Output all remaining buffered moves
-    while (buffer_count > 0) {
-        Gcode* gcode = get_compensated_gcode();
-        if (gcode != nullptr) {
-            // The caller will handle the gcode
-            // For now, we just remove it from buffer
-        }
-    }
+    // NOTE: The caller (Robot.cpp G40 handler) must call get_compensated_gcode() in a loop
+    // This function just sets the flag so get_compensated_gcode() will return remaining moves
+    
+    // Clear flag after flush (actually cleared in set_compensation when called with NONE)
 }
 
 void CompensationPreprocessor::clear()
@@ -538,4 +539,12 @@ void CompensationPreprocessor::clear()
     buffer_head = 0;
     buffer_tail = 0;
     buffer_count = 0;
+    is_flushing = false;  // Clear flushing flag
+}
+
+void CompensationPreprocessor::set_initial_position(const float position[3])
+{
+    uncompensated_position[X_AXIS] = position[X_AXIS];
+    uncompensated_position[Y_AXIS] = position[Y_AXIS];
+    uncompensated_position[Z_AXIS] = position[Z_AXIS];
 }
