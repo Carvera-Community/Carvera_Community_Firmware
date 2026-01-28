@@ -4,6 +4,7 @@
 #include "Config.h"
 #include "checksumm.h"
 #include "modules/robot/Robot.h"
+#include "modules/robot/Conveyor.h"
 #include "ConfigValue.h"
 #include "StreamOutputPool.h"
 #include "Gcode.h"
@@ -61,11 +62,13 @@ void PitchCompensation::on_gcode_received(void* argument)
             save_points_to_file();
         } else if(gcode->subcode == 3) {
             // Load pitch compensation data and enable compensation
+            THEKERNEL->conveyor->wait_for_idle();
             load_points_from_file();
             this->enabled = true;
             update_compensation_transform();
         } else if(gcode->subcode == 4) {
             // Delete pitch compensation data for all axes and save
+            THEKERNEL->conveyor->wait_for_idle();
             for(char axis : axes) {
                 clear_points(axis);
             }
@@ -77,6 +80,7 @@ void PitchCompensation::on_gcode_received(void* argument)
             }
 
             // Add point
+            THEKERNEL->conveyor->wait_for_idle();
             for(char axis : axes) {
                 if(gcode->has_letter(axis)) {
                     add_point(axis, gcode->get_value(axis), gcode->get_value('C'));
@@ -84,6 +88,7 @@ void PitchCompensation::on_gcode_received(void* argument)
             }
         } else if(gcode->subcode == 6) {
             // Remove point
+            THEKERNEL->conveyor->wait_for_idle();
             for (char axis : axes) {
                 if(gcode->has_letter(axis)) {
                     remove_point(axis, gcode->get_value(axis));
@@ -91,6 +96,7 @@ void PitchCompensation::on_gcode_received(void* argument)
             }
         } else if(gcode->subcode == 7) {
             // Remove all points
+            THEKERNEL->conveyor->wait_for_idle();
             for(char axis : axes) {
                 if (gcode->has_letter(axis)) {
                     clear_points(axis);
@@ -98,6 +104,7 @@ void PitchCompensation::on_gcode_received(void* argument)
             }
         } else {
             // Disable pitch compensation
+            THEKERNEL->conveyor->wait_for_idle();
             this->enabled = false;
             update_compensation_transform();
             gcode->stream->printf("Pitch compensation disabled\n");
@@ -277,6 +284,12 @@ void PitchCompensation::update_compensation_transform() {
     } else {
         // Unbind the compensation function
         THEROBOT->pitchCompensationTransform = nullptr;
+    }
+
+    // Update current position to reflect the new compensation
+    // Only applies if arm_solution is set to make sure that initialization is complete
+    if(THEROBOT->arm_solution) {
+        THEROBOT->reset_position_from_current_actuator_position();
     }
 }
 
