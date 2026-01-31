@@ -647,7 +647,7 @@ void ATCHandler::calibrate_a_axis_headstock(Gcode *gcode)//M469.4
 
 void ATCHandler::calibrate_a_axis_height(Gcode *gcode) //M469.5
 {
-	float retract_height = 3.0;  // Default retract height between probes
+	float retract_height = 4.0;  // Default retract height between probes
 	float x_axis_offset = 60;
 	float pin_diameter = 6;
 
@@ -667,8 +667,8 @@ void ATCHandler::calibrate_a_axis_height(Gcode *gcode) //M469.5
 	if (gcode->has_letter('X')){
 		x_axis_offset = gcode->get_value('X');
 	}
-	if (gcode->has_letter('E')){
-		retract_height = gcode->get_value('E');
+	if (gcode->has_letter('C')){
+		retract_height = gcode->get_value('C');
 	}
 	if (gcode->has_letter('R')){
 		pin_diameter = gcode->get_value('R');
@@ -698,7 +698,7 @@ void ATCHandler::calibrate_a_axis_height(Gcode *gcode) //M469.5
 	
 	//probe -z
 	if (!invert_probe){
-		snprintf(buff, sizeof(buff), "G38.3 Z%.3f F450", -retract_height);
+		snprintf(buff, sizeof(buff), "G38.3 Z-105 F450");
 		this->script_queue.push(buff);
 		snprintf(buff, sizeof(buff), "G91 G0 Z%.3f", retract_height);
 		this->script_queue.push(buff);
@@ -707,7 +707,7 @@ void ATCHandler::calibrate_a_axis_height(Gcode *gcode) //M469.5
 		snprintf(buff, sizeof(buff), "#119 = #5023");
 		this->script_queue.push(buff);
 	} else{
-		snprintf(buff, sizeof(buff), "G38.5 Z%.3f F450", -retract_height);
+		snprintf(buff, sizeof(buff), "G38.5 Z-105 F450");
 		this->script_queue.push(buff);
 		snprintf(buff, sizeof(buff), "G91 G0 Z%.3f", retract_height);
 		this->script_queue.push(buff);
