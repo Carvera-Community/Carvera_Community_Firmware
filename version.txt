@@ -19,6 +19,7 @@
 - Fixed: If the repeat parameter (L) is greater than 1 on probe_boss (M462) or any M commands that use probe_boss(), an incorrect location is probed after the first on the cycle
 - Fixed: The probe_doubleHit function can no longer disable the probe power if the 3d probe is active
 - Change: Inch Mode (G20) now raises a machine halt. This is because there are outstanding bugs preventing it's use.
+- Change: Status query response now continues to contain playback details after playback has completed
 
 [v2.0.0c]
 - Enhancement: The side depth parameter takes the probe tip diameter into account to precisely specify where the probe should make contact instead of where the end of the stylus will be
