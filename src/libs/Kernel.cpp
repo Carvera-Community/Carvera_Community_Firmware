@@ -415,7 +415,7 @@ std::string Kernel::get_query_string()
 	ok = PublicData::get_value( player_checksum, get_progress_checksum, &returned_data );
 	if (ok) {
 		struct pad_progress p =  *static_cast<struct pad_progress *>(returned_data);
-		n= snprintf(buf, sizeof(buf), "|P:%lu,%d,%lu", p.played_lines, p.percent_complete, p.elapsed_secs);
+		n= snprintf(buf, sizeof(buf), "|P:%lu,%d,%lu,%d", p.played_lines, p.percent_complete, p.elapsed_secs, p.is_playing ? 1 : 0);
 		if(n > sizeof(buf)) n= sizeof(buf);
 		str.append(buf, n);
 	}
