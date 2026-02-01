@@ -141,7 +141,7 @@ main() {
     # We need eval here to correctly handle potential spaces or special chars
     # in make_extra_args if they were quoted on the command line.
     make_cmd=(make "-j${cpu_count}" ${BASE_MAKE_ARGS})
-    make_cmd+=("${make_extra_args[@]}") # Append extra args
+    make_cmd+=(${make_extra_args[@]+"${make_extra_args[@]}"}) # Append extra args
 
     # --- Execution ---
     # Use a subshell to isolate the PATH modification
