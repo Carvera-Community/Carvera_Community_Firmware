@@ -961,6 +961,7 @@ void Player::on_get_public_data(void *argument)
             float pcnt = (((float)file_size - (file_size - played_cnt)) * 100.0F) / file_size;
             p.percent_complete = roundf(pcnt);
             p.filename = this->filename;
+            p.is_playing = true;
             pdr->set_data_ptr(&p);
             pdr->set_taken();
         } else if(file_size > 0 && !playing_file) {
@@ -970,6 +971,7 @@ void Player::on_get_public_data(void *argument)
             float pcnt = (file_size > 0) ? (((float)file_size - (file_size - played_cnt)) * 100.0F) / file_size : 0;
             p.percent_complete = (unsigned int)roundf(pcnt);
             p.filename = this->filename;
+            p.is_playing = false;
             pdr->set_data_ptr(&p);
             pdr->set_taken();
         } else if(this->has_last_progress) {
@@ -978,6 +980,7 @@ void Player::on_get_public_data(void *argument)
             p.percent_complete = this->last_percent_complete;
             p.elapsed_secs = this->last_elapsed_secs;
             p.filename = this->last_filename;
+            p.is_playing = false;
             pdr->set_data_ptr(&p);
             pdr->set_taken();
         }
