@@ -297,8 +297,8 @@ void SimpleShell::on_console_line_received( void *argument )
     SerialMessage new_message = *static_cast<SerialMessage *>(argument);
     string possible_command = new_message.message;
 
-    // ignore anything that is not lowercase, $ or B (for BAUD) as it is not a command
-    if(possible_command.size() == 0 || (!islower(possible_command[0]) && possible_command[0] != '$' && possible_command[0] != 'B')) {
+    // ignore anything that is not lowercase or a $ as it is not a command
+    if(possible_command.size() == 0 || (!islower(possible_command[0]) && possible_command[0] != '$')) {
         return;
     }
 
