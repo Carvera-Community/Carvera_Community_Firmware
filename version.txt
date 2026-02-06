@@ -19,6 +19,7 @@
 - Fixed: If the repeat parameter (L) is greater than 1 on probe_boss (M462) or any M commands that use probe_boss(), an incorrect location is probed after the first on the cycle
 - Fixed: The probe_doubleHit function can no longer disable the probe power if the 3d probe is active
 - Fixed: small typo in line 2552 of atchandler.cpp, issue #218 in the community firmware
+- Fixed: temperture overheat warnings now include info on if it is overheat, too cold, or undefined and most likely a wiring issue
 - Change: Inch Mode (G20) now raises a machine halt. This is because there are outstanding bugs preventing it's use.
 - Change: In M469.5 use the E parameter as the probe/retract distance
 

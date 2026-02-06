@@ -127,20 +127,50 @@ void TemperatureControl::on_main_loop(void *argument)
 {
 	if(THEKERNEL->is_halted()) return;
     if (this->temp_violated) {
+
+        if (isinf(this->get_temperature())){ //undefined
+            if(this->name_checksum == spindle_temperature_checksum )
+            {
+                THEKERNEL->streams->printf("ERROR: Spindle temperature undefined, check wiring, max - %f°C, current - %f°C !\n", max_temp, get_temperature());
+                THEKERNEL->set_halt_reason(SPINDLE_OVERHEATED);
+                THEKERNEL->call_event(ON_HALT, nullptr);
+            }
+            else if(this->name_checksum == power_temperature_checksum )
+            {
+                THEKERNEL->streams->printf("ERROR: Power cabinet temperature undefined, check wiring, max - %f°C, current - %f°C !\n", max_temp, get_temperature());
+                THEKERNEL->set_halt_reason(POWER_OVERHEATED);
+                THEKERNEL->call_event(ON_HALT, nullptr);
+            }
+        }
+        else if (this->get_temperature() < this->min_temp){ //cold
+            if(this->name_checksum == spindle_temperature_checksum )
+            {
+                THEKERNEL->streams->printf("ERROR: Spindle too cold, max - %f°C, current - %f°C !\n", max_temp, get_temperature());
+                THEKERNEL->set_halt_reason(SPINDLE_OVERHEATED);
+                THEKERNEL->call_event(ON_HALT, nullptr);
+            }
+            else if(this->name_checksum == power_temperature_checksum )
+            {
+                THEKERNEL->streams->printf("ERROR: Power cabinet too cold, max - %f°C, current - %f°C !\n", max_temp, get_temperature());
+                THEKERNEL->set_halt_reason(POWER_OVERHEATED);
+                THEKERNEL->call_event(ON_HALT, nullptr);
+            }
+        }
+        else { // hot
+            if(this->name_checksum == spindle_temperature_checksum )
+            {
+                THEKERNEL->streams->printf("ERROR: Spindle overheated, max - %f°C, current - %f°C !\n", max_temp, get_temperature());
+                THEKERNEL->set_halt_reason(SPINDLE_OVERHEATED);
+                THEKERNEL->call_event(ON_HALT, nullptr);
+            }
+            else if(this->name_checksum == power_temperature_checksum )
+            {
+                THEKERNEL->streams->printf("ERROR: Power cabinet overheated, max - %f°C, current - %f°C !\n", max_temp, get_temperature());
+                THEKERNEL->set_halt_reason(POWER_OVERHEATED);
+                THEKERNEL->call_event(ON_HALT, nullptr);
+            }
+        }
         this->temp_violated = false;
-        
-        if(this->name_checksum == spindle_temperature_checksum )
-        {
-	        THEKERNEL->streams->printf("ERROR: Spindle overheated, max - %f°C, current - %f°C !\n", max_temp, get_temperature());
-	        THEKERNEL->set_halt_reason(SPINDLE_OVERHEATED);
-	        THEKERNEL->call_event(ON_HALT, nullptr);
-	    }
-	    else if(this->name_checksum == power_temperature_checksum )
-        {
-	        THEKERNEL->streams->printf("ERROR: Power cabinet overheated, max - %f°C, current - %f°C !\n", max_temp, get_temperature());
-	        THEKERNEL->set_halt_reason(POWER_OVERHEATED);
-	        THEKERNEL->call_event(ON_HALT, nullptr);
-	    }
     }
 }
 
@@ -487,7 +517,7 @@ uint32_t TemperatureControl::thermistor_read_tick(uint32_t dummy)
 {
     float temperature = sensor->get_temperature();
     if(!this->readonly && target_temperature > 2) {
-        if (isinf(temperature) || temperature < min_temp || temperature > max_temp) {
+        if (isinf(temperature) || temperature < min_temp || temperature > max_temp){ 
             this->temp_violated = true;
             target_temperature = UNDEFINED;
             heater_pin.set((this->o = 0));
