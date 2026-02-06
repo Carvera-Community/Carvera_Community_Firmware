@@ -2549,7 +2549,7 @@ void ATCHandler::on_gcode_received(void *argument)
 				position_a = gcode->get_value('A');
 			}
 			if (gcode->has_letter('B')) {
-				position_a = gcode->get_value('B');
+				position_b = gcode->get_value('B');
 			}
 
 		} else if (gcode->m == 497) {
