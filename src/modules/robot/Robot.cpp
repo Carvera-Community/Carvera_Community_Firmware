@@ -1824,7 +1824,7 @@ bool Robot::append_milestone(const float target[], float feed_rate, unsigned int
 
 		if (actuator == A_AXIS) {
 		    // THEKERNEL->streams->printf("d: %f, rate: %f, distance: %f, aux_move: %d, acc: %f, isecs: %f, line: %d\n", d, actuator_rate, distance, auxilliary_move, acceleration, isecs, line);
-		    float a_perimeter = PI * 2 + 30;
+		    float a_perimeter = PI * 2;
 			// A Axis moved, calculate real A Axis speed based on Y and Z wcs
 	        wcs_t curr_mpos = wcs_t(target[X_AXIS], target[Y_AXIS], target[Z_AXIS], 0, 0);
 	        wcs_t curr_wpos = this->mcs2wcs(curr_mpos);
@@ -1832,7 +1832,7 @@ bool Robot::append_milestone(const float target[], float feed_rate, unsigned int
 			float abs_z_wcs = fabsf(std::get<Z_AXIS>(curr_wpos));
 			float rotation_radius = (abs_y_wcs > 0.00001 || abs_z_wcs > 0.00001) ? sqrtf(powf(abs_y_wcs, 2) + powf(abs_z_wcs, 2)) : 0;
 			if (rotation_radius > 1.0) {
-				a_perimeter = PI * 2 * rotation_radius + 30;
+				a_perimeter = PI * 2 * rotation_radius;
 		    }
 			if (auxilliary_move) {
 				// A axis move only, speed up if necessary, but only in mm/min G94 mode
