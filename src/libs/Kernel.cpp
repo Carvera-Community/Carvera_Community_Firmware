@@ -637,6 +637,12 @@ void Kernel::call_event(_EVENT_ENUM id_event, void * argument)
         this->halted = (argument == nullptr);
         if(!this->halted && this->feed_hold) this->feed_hold= false; // also clear feed hold
         was_idle = conveyor->is_idle(); // see if we were doing anything like printing
+        void *returned_data;
+        bool ok = PublicData::get_value( player_checksum, get_progress_checksum, &returned_data );
+        if (ok) {
+            struct pad_progress p =  *static_cast<struct pad_progress *>(returned_data);
+            this->streams->printf("Halt Happened at Line: %lu,percent: %d, time: %lu \n", p.played_lines, p.percent_complete, p.elapsed_secs);
+        }
     }
 
     // send to all registered modules

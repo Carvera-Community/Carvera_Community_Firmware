@@ -13,6 +13,7 @@
 - Enhancement: Added G93 (Inverse Time Feed Mode) - Sets feed rate mode where F parameter specifies 1/min (inverse time). The feed rate is multiplied by move distance to calculate mm/min. Useful for maintaining consistent time per move regardless of distance.
 - Enhancement: Added G94 (Feed Rate Per Minute Mode) - Sets feed rate mode to mm/min (default mode). The F parameter directly specifies feed rate in millimeters per minute.
 - Enhancement: Added the calibration offset function to the M6 toolchange command too
+- Enhancement: Added improved callbacks to the estop command that includes information on line triggered
 - Fixed: Remove artificial 30mm padding from A-axis by CCS86
 - Fixed: Active measurement of flex compensation will be aborted if the machine goes to a halt
 - Fixed: Restored the stock Makera probing laser behaviour if tool 0 is NOT the 3d probe
