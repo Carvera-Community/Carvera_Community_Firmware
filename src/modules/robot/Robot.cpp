@@ -320,8 +320,7 @@ void Robot::load_config()
         if((THEKERNEL->factory_set->FuncSetting & (1<<0)) && (a == 3))
 		{
 			uint16_t s = THEKERNEL->config->value(motor_checksums[a][4])->by_default(3000.0F)->as_number();
-			if(s > 1800) s=1800;
-        	actuators[a]->set_max_rate( s/60.0F); // it is in mm/min and converted to mm/sec
+			actuators[a]->set_max_rate( s/60.0F); // it is in mm/min and converted to mm/sec
         	float steps = THEKERNEL->config->value(motor_checksums[a][3])->by_default(a == 2 ? 2560.0F : 80.0F)->as_number();
         	if(CARVERA == THEKERNEL->factory_set->MachineModel)
         	{
