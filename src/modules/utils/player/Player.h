@@ -91,6 +91,11 @@ class Player : public Module {
         unsigned long played_lines;
         unsigned long goto_line;
         unsigned int playing_lines;
+        // last progress when playback finished or was interrupted (for status ? to keep showing |P:...)
+        bool has_last_progress;
+        unsigned long last_played_lines;
+        unsigned int last_percent_complete;
+        unsigned long last_elapsed_secs;
         uint8_t current_motion_mode;
         float saved_position[3]; // only saves XYZ
         float slope;
