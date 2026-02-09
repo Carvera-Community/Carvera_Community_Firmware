@@ -142,7 +142,8 @@ Kernel::Kernel()
     this->halt_on_error_debug = this->config->value( halt_on_error_debug_checksum )->by_default(false)->as_bool();
 
     if (!this->disable_serial_console) {
-        this->serial = new(AHB) SerialConsole(P2_8, P2_9, 115200);
+        int uart_baud = this->config->value(uart_checksum, baud_rate_setting_checksum)->by_default(115200)->as_number();
+        this->serial = new(AHB) SerialConsole(P2_8, P2_9, uart_baud);
         this->add_module( this->serial );
     }
 

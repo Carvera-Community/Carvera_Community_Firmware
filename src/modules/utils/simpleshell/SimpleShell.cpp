@@ -53,6 +53,7 @@
 #include "LPC17xx.h"
 #include "MSCFileSystemPublicAccess.h"
 #include "WifiPublicAccess.h"
+#include "SerialConsole.h"
 
 #include "mbed.h" // for wait_ms()
 #include <strings.h> // For strncasecmp
@@ -124,6 +125,7 @@ const SimpleShell::ptentry_t SimpleShell::commands_table[] = {
     {"fset",  SimpleShell::fset_command},
     {"enable_4th_hd", SimpleShell::enable_4th_hd},
     {"disable_4th_hd", SimpleShell::disable_4th_hd},
+    {"baud",         SimpleShell::baud_command},
 
     // unknown command
     {NULL, NULL}
@@ -1487,6 +1489,28 @@ void SimpleShell::disable_4th_hd( string parameters, StreamOutput *stream)
 		stream->printf("Failed! This command is only for Carvera!\n");
 	}
 }
+
+void SimpleShell::baud_command(string parameters, StreamOutput *stream)
+{
+    if (THEKERNEL->serial == nullptr) {
+        stream->printf("error:Serial console not available\n");
+        return;
+    }
+    string arg = shift_parameter(parameters);
+    if (arg.empty()) {
+        stream->printf("%d\n", THEKERNEL->serial->get_baud());
+        return;
+    }
+    char *end = nullptr;
+    long new_baud = strtol(arg.c_str(), &end, 10);
+    if (end == arg.c_str() || *end != '\0' || new_baud <= 0 || new_baud > 4000000) {
+        stream->printf("error:Invalid baud rate\n");
+        return;
+    }
+    stream->printf("ok\n");
+    static_cast<SerialConsole *>(THEKERNEL->serial)->set_baud_temporary(static_cast<int>(new_baud));
+}
+
 // go into dfu boot mode
 void SimpleShell::dfu_command( string parameters, StreamOutput *stream)
 {
