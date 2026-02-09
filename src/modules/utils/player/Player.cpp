@@ -76,6 +76,10 @@ Player::Player()
     this->reply_stream = nullptr;
     this->inner_playing = false;
     this->slope = 0.0;
+    this->has_last_progress = false;
+    this->last_played_lines = 0;
+    this->last_percent_complete = 0;
+    this->last_elapsed_secs = 0;
 }
 
 void Player::on_module_loaded()
@@ -547,6 +551,7 @@ void Player::play_command( string parameters, StreamOutput *stream )
     this->elapsed_secs = 0;
     this->playing_lines = 0;
     this->goto_line = 0;
+    this->has_last_progress = false;  // new job started, stop reporting previous job's last progress
 
     // force into absolute mode
     THEROBOT->absolute_mode = true;
@@ -631,6 +636,13 @@ void Player::abort_command( string parameters, StreamOutput *stream )
         stream->printf("Not currently playing\r\n");
         return;
     }
+
+    // save last progress so status (?) continues to show |P:played_lines,percent_complete,elapsed_secs|
+    this->last_played_lines = this->played_lines;
+    this->last_percent_complete = (file_size > 0) ? (unsigned int)roundf((played_cnt * 100.0F) / file_size) : 0;
+    this->last_elapsed_secs = this->elapsed_secs;
+    this->last_filename = this->filename;
+    this->has_last_progress = true;
 
     this->playing_file = false;
     this->played_cnt = 0;
@@ -857,6 +869,13 @@ void Player::on_main_loop(void *argument)
             }
         }
 
+        // save last progress so status (?) continues to show |P:played_lines,percent_complete,elapsed_secs|
+        this->last_played_lines = this->played_lines;
+        this->last_percent_complete = (file_size > 0) ? (unsigned int)roundf((played_cnt * 100.0F) / file_size) : 100;
+        this->last_elapsed_secs = this->elapsed_secs;
+        this->last_filename = this->filename;
+        this->has_last_progress = true;
+
         this->playing_file = false;
         this->filename = "";
         played_cnt = 0;
@@ -940,6 +959,26 @@ void Player::on_get_public_data(void *argument)
             float pcnt = (((float)file_size - (file_size - played_cnt)) * 100.0F) / file_size;
             p.percent_complete = roundf(pcnt);
             p.filename = this->filename;
+            p.is_playing = true;
+            pdr->set_data_ptr(&p);
+            pdr->set_taken();
+        } else if(file_size > 0 && !playing_file) {
+            // paused: show current progress (elapsed_secs does not increment while paused)
+            p.played_lines = this->played_lines;
+            p.elapsed_secs = this->elapsed_secs;
+            float pcnt = (file_size > 0) ? (((float)file_size - (file_size - played_cnt)) * 100.0F) / file_size : 0;
+            p.percent_complete = (unsigned int)roundf(pcnt);
+            p.filename = this->filename;
+            p.is_playing = false;
+            pdr->set_data_ptr(&p);
+            pdr->set_taken();
+        } else if(this->has_last_progress) {
+            // playback finished or was interrupted: show last progress (elapsed_secs frozen at stop time)
+            p.played_lines = this->last_played_lines;
+            p.percent_complete = this->last_percent_complete;
+            p.elapsed_secs = this->last_elapsed_secs;
+            p.filename = this->last_filename;
+            p.is_playing = false;
             pdr->set_data_ptr(&p);
             pdr->set_taken();
         }
