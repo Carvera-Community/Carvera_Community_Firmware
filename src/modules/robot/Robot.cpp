@@ -1821,6 +1821,7 @@ bool Robot::append_milestone(const float target[], float feed_rate, unsigned int
 
 		float actuator_rate = d / isecs;
 
+        // FIX: Only check compensation for G1/G2/G3, ignore for G0
 		if (actuator == A_AXIS && this->is_g123) {
 		    // THEKERNEL->streams->printf("d: %f, rate: %f, distance: %f, aux_move: %d, acc: %f, isecs: %f, line: %d\n", d, actuator_rate, distance, auxilliary_move, acceleration, isecs, line);
 		    float a_perimeter = PI * 2;
@@ -1830,7 +1831,9 @@ bool Robot::append_milestone(const float target[], float feed_rate, unsigned int
 			float abs_y_wcs = fabsf(std::get<Y_AXIS>(curr_wpos));
 			float abs_z_wcs = fabsf(std::get<Z_AXIS>(curr_wpos));
 			float rotation_radius = (abs_y_wcs > 0.00001 || abs_z_wcs > 0.00001) ? sqrtf(powf(abs_y_wcs, 2) + powf(abs_z_wcs, 2)) : 0;
-			if (rotation_radius > 1.0) {
+            
+            // FIX: Changed 1.0 to 0.1 to allow small radius compensation
+			if (rotation_radius > 0.1) {
 				a_perimeter = PI * 2 * rotation_radius;
 		    }
 			if (auxilliary_move) {
@@ -1848,14 +1851,19 @@ bool Robot::append_milestone(const float target[], float feed_rate, unsigned int
 				// THEKERNEL->streams->printf("only A: %1.4f, %1.4f, %1.4f, %1.4f\r\n", abs_y_wcs, abs_z_wcs, rate_mm_s, a_perimeter);
 				continue;
 			} else {
-				// A axis move along with other axis, speed down if necessary, but only in mm/min G94 mode
+				// A axis move along with other axis
+                // Fix: Speed UP or DOWN to match surface speed
 				float mm_per_sec = actuator_rate * a_perimeter / 360;
-				if (!this->inverse_time_mode && mm_per_sec > rate_mm_s) {
-					// speed down
-					actuator_rate *= (rate_mm_s / mm_per_sec);
-					rate_mm_s *= (rate_mm_s / mm_per_sec);
+                
+                // Allow compensation in BOTH directions if the difference is significant
+				if (!this->inverse_time_mode && fabsf(mm_per_sec - rate_mm_s) > 0.001 && mm_per_sec > 0.00001) {
+                    // Calculate ratio to match target surface speed
+                    float ratio = rate_mm_s / mm_per_sec;
+                    
+					actuator_rate *= ratio;
+					rate_mm_s *= ratio;
 					isecs = d / rate_mm_s;
-					// THEKERNEL->streams->printf("Speed down to : %1.4f, %1.4f, %1.4f\n", isecs, rate_mm_s, actuator_rate);
+					// THEKERNEL->streams->printf("Adjusting Speed to : %1.4f, %1.4f, %1.4f\n", isecs, rate_mm_s, actuator_rate);
 				}
 				// if (rate_mm_s < 1)  rate_mm_s = 1;
 				// THEKERNEL->streams->printf("Not only A: %1.4f, %1.4f, %1.4f, %1.4f, %1.4f\r\n", abs_y_wcs, abs_z_wcs, actuator_rate, rate_mm_s, a_perimeter);
