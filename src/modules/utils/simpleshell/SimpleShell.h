@@ -92,6 +92,8 @@ private:
     
     static void disable_4th_hd( string parameters, StreamOutput *stream);
 
+    static void baud_command(string parameters, StreamOutput *stream);
+
     typedef void (*PFUNC)(string parameters, StreamOutput *stream);
     typedef struct {
         const char *command;
