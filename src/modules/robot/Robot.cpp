@@ -1821,7 +1821,7 @@ bool Robot::append_milestone(const float target[], float feed_rate, unsigned int
 
 		float actuator_rate = d / isecs;
 
-		if (actuator == A_AXIS) {
+		if (actuator == A_AXIS && this->is_g123) {
 		    // THEKERNEL->streams->printf("d: %f, rate: %f, distance: %f, aux_move: %d, acc: %f, isecs: %f, line: %d\n", d, actuator_rate, distance, auxilliary_move, acceleration, isecs, line);
 		    float a_perimeter = PI * 2;
 			// A Axis moved, calculate real A Axis speed based on Y and Z wcs
