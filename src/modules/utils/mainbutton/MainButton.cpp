@@ -501,11 +501,38 @@ uint32_t MainButton::button_tick(uint32_t dummy)
 			this->button_pressed = true;
 			this->button_press_time = us_ticker_read();
 		}
+		if (us_ticker_read() - this->button_press_time > this->long_press_time_ms * 1000) {
+			this->hold_toggle ++;
+		} else {
+			this->hold_toggle = 0;
+		}
+		if(CARVERA == THEKERNEL->factory_set->MachineModel){
+			this->main_button_LED_R.set(this->hold_toggle % 4  < 2 ? 0 : 1);
+		} else if(CARVERA_AIR == THEKERNEL->factory_set->MachineModel){
+			switch (THEKERNEL->get_state()) {
+				case IDLE:
+					this->set_led_colors(this->hold_toggle % 4  < 2 ? 0 : 100, 0, 1);
+					break;
+				case RUN:
+					this->set_led_colors(this->hold_toggle % 4  < 2 ? 104 : 0, 100, 0);
+					break;
+				case HOME:
+					this->set_led_colors(this->hold_toggle % 4  < 2 ? 104 : 0, 20, 0);
+					break;
+				case ALARM:
+					this->set_led_colors(this->hold_toggle % 4  < 2 ? 104 : 0, 0, 0);
+					break;
+				case SLEEP:
+					this->set_led_colors(this->hold_toggle % 4  < 2 ? 104 : 0, 100, 100);
+					break;
+				}
+			}
 	} else {
 		// button up
 		if (this->button_pressed) {
 			if (us_ticker_read() - this->button_press_time > this->long_press_time_ms * 1000) {
 				button_state = BUTTON_LONG_PRESSED;
+				this->hold_toggle = 0;
 			} else {
 				button_state = BUTTON_SHORT_PRESSED;
 			}
