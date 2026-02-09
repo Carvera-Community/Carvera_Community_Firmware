@@ -15,6 +15,7 @@
 - Enhancement: Added the calibration offset function to the M6 toolchange command too
 - Enhancement: front button long press is now denoted by a flashing LED
 - Enhancement: Added improved callbacks to the estop command that includes information on line triggered
+- Enhancement: faster communication over USB now available. The community controller will negotiage a faster speed at the normal speed. Both will revert to the slow speed on disconnect
 - Fixed: Remove artificial 30mm padding from A-axis by CCS86
 - Fixed: Active measurement of flex compensation will be aborted if the machine goes to a halt
 - Fixed: Restored the stock Makera probing laser behaviour if tool 0 is NOT the 3d probe
@@ -26,7 +27,14 @@
 - Fixed: Report line position using playing_lines so that the current line doesn't jump around in the Controller
 - Change: Inch Mode (G20) now raises a machine halt. This is because there are outstanding bugs preventing it's use.
 - Change: Status query response now continues to contain playback details after playback has completed, and returns the play back state. The progress token format is now: |P:played_lines,percent_complete,elapsed_secs,is_playing|
-- Change: In M469.5 use the E parameter as the probe/retract distance
+- Change: In M469.5 use the C parameter as the probe/retract distance
+- Change: Lowered the minimum radius of A axis speed compensation to 0.1 from 1 to allow compensation on small diameters
+- Change: Fix Coordinated Speed Plateau: Added bi-directional logic to allow compound moves (Z+A or Y+A) to speed up if required to meet target surface speed.
+- Change: disable rotary-feedrate centerline-distance compensation during G0 rapid positioning moves to allow G0 A# commands to work at full speed
+- Change: there was a hardcoded max of 1800 on the A axis speed that has been removed. This value was overriding the config file max A axis speed
+
+
+
 
 [v2.0.0c]
 - Enhancement: The side depth parameter takes the probe tip diameter into account to precisely specify where the probe should make contact instead of where the end of the stylus will be
