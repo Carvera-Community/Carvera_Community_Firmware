@@ -20,7 +20,11 @@ using std::string;
 #include "ATCHandlerPublicAccess.h"
 #include "PublicDataRequest.h"
 #include "PublicData.h"
+#include "libs/Config.h"
+#include "checksumm.h"
+#include "ConfigValue.h"
 
+#define uart_checksum CHECKSUM("uart")
 
 // Serial reading module
 // Treats every received line as a command and passes it ( via event call ) to the command dispatcher.
@@ -29,6 +33,10 @@ SerialConsole::SerialConsole( PinName rx_pin, PinName tx_pin, int baud_rate ){
     this->serial = new mbed::Serial( rx_pin, tx_pin );
     this->serial->baud(baud_rate);
     this->previous_char = 0;
+    this->current_baud_rate = baud_rate;
+    this->default_baud_rate = baud_rate;
+    this->temp_baud_rate = 0;
+    this->last_activity_ms = 0;
 }
 
 // Called when the module has just been loaded
@@ -39,6 +47,8 @@ void SerialConsole::on_module_loaded() {
     diagnose_flag = false;
 	this->attach_irq(true);
 
+    default_baud_rate = THEKERNEL->config->value(uart_checksum, baud_rate_setting_checksum)->by_default(current_baud_rate)->as_number();
+
     // We only call the command dispatcher in the main loop, nowhere else
     this->register_for_event(ON_MAIN_LOOP);
     this->register_for_event(ON_IDLE);
@@ -46,6 +56,13 @@ void SerialConsole::on_module_loaded() {
 
     // Add to the pack of streams kernel can call to, for example for broadcasting
     THEKERNEL->streams->append_stream(this);
+}
+
+void SerialConsole::set_baud_temporary(int new_baud) {
+    this->temp_baud_rate = new_baud;
+    this->current_baud_rate = new_baud;
+    this->serial->baud(new_baud);
+    this->last_activity_ms = us_ticker_read() / 1000;
 }
 
 void SerialConsole::attach_irq(bool enable_irq) {
@@ -73,7 +90,8 @@ void SerialConsole::on_set_public_data(void *argument) {
 void SerialConsole::on_serial_char_received() {
 	while (this->serial->readable()) {
 		char received = this->serial->getc();
-		
+		last_activity_ms = us_ticker_read() / 1000;
+
 		if(THEKERNEL->is_cachewait()) {
 			continue;
 		}
@@ -133,6 +151,15 @@ void SerialConsole::on_serial_char_received() {
 void SerialConsole::on_idle(void * argument)
 {
 	if (THEKERNEL->is_uploading()) return;
+
+    if (temp_baud_rate != 0) {
+        uint32_t now_ms = us_ticker_read() / 1000;
+        if ((now_ms - last_activity_ms) >= 15000) {
+            this->serial->baud(default_baud_rate);
+            this->current_baud_rate = default_baud_rate;
+            this->temp_baud_rate = 0;
+        }
+    }
 
     if (query_flag ) {
         query_flag = false;

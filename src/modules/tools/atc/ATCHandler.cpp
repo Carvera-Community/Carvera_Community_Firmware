@@ -647,7 +647,7 @@ void ATCHandler::calibrate_a_axis_headstock(Gcode *gcode)//M469.4
 
 void ATCHandler::calibrate_a_axis_height(Gcode *gcode) //M469.5
 {
-	float probe_height= this->rotation_offset_z;
+	float retract_height = 4.0;  // Default retract height between probes
 	float x_axis_offset = 60;
 	float pin_diameter = 6;
 
@@ -667,8 +667,8 @@ void ATCHandler::calibrate_a_axis_height(Gcode *gcode) //M469.5
 	if (gcode->has_letter('X')){
 		x_axis_offset = gcode->get_value('X');
 	}
-	if (gcode->has_letter('E')){
-		probe_height = gcode->get_value('E');
+	if (gcode->has_letter('C')){
+		retract_height = gcode->get_value('C');
 	}
 	if (gcode->has_letter('R')){
 		pin_diameter = gcode->get_value('R');
@@ -700,66 +700,66 @@ void ATCHandler::calibrate_a_axis_height(Gcode *gcode) //M469.5
 	if (!invert_probe){
 		snprintf(buff, sizeof(buff), "G38.3 Z-105 F450");
 		this->script_queue.push(buff);
-		snprintf(buff, sizeof(buff), "G91 G0 Z3");
+		snprintf(buff, sizeof(buff), "G91 G0 Z%.3f", retract_height);
 		this->script_queue.push(buff);
-		snprintf(buff, sizeof(buff), "G38.3 Z-4 F150");
+		snprintf(buff, sizeof(buff), "G38.3 Z%.3f F150", -(retract_height + 4.0));
 		this->script_queue.push(buff);
 		snprintf(buff, sizeof(buff), "#119 = #5023");
 		this->script_queue.push(buff);
 	} else{
 		snprintf(buff, sizeof(buff), "G38.5 Z-105 F450");
 		this->script_queue.push(buff);
-		snprintf(buff, sizeof(buff), "G91 G0 Z3");
+		snprintf(buff, sizeof(buff), "G91 G0 Z%.3f", retract_height);
 		this->script_queue.push(buff);
-		snprintf(buff, sizeof(buff), "G38.5 Z-4 F150");
+		snprintf(buff, sizeof(buff), "G38.5 Z%.3f F150", -(retract_height + 4.0));
 		this->script_queue.push(buff);
 		snprintf(buff, sizeof(buff), "#119 = #5023");
 		this->script_queue.push(buff);
 	}
-	snprintf(buff, sizeof(buff), "G91 G0 Z3");
+	snprintf(buff, sizeof(buff), "G91 G0 Z%.3f", retract_height);
 	this->script_queue.push(buff);
 	snprintf(buff, sizeof(buff), "G91 G0 A90");
 	this->script_queue.push(buff);
 	
 	if (!invert_probe){
-		snprintf(buff, sizeof(buff), "G38.3 Z-4 F150");
+		snprintf(buff, sizeof(buff), "G38.3 Z%.3f F150", -(retract_height + 4.0));
 		this->script_queue.push(buff);
 		snprintf(buff, sizeof(buff), "#118 = #5023");
 		this->script_queue.push(buff);
 	} else{
-		snprintf(buff, sizeof(buff), "G38.5 Z-4 F150");
+		snprintf(buff, sizeof(buff), "G38.5 Z%.3f F150", -(retract_height + 4.0));
 		this->script_queue.push(buff);
 		snprintf(buff, sizeof(buff), "#118 = #5023");
 		this->script_queue.push(buff);
 	}
-	snprintf(buff, sizeof(buff), "G91 G0 Z3");
+	snprintf(buff, sizeof(buff), "G91 G0 Z%.3f", retract_height);
 	this->script_queue.push(buff);
 	snprintf(buff, sizeof(buff), "G91 G0 A90");
 	this->script_queue.push(buff);
 	
 	if (!invert_probe){
-		snprintf(buff, sizeof(buff), "G38.3 Z-4 F150");
+		snprintf(buff, sizeof(buff), "G38.3 Z%.3f F150", -(retract_height + 4.0));
 		this->script_queue.push(buff);
 		snprintf(buff, sizeof(buff), "#117 = #5023");
 		this->script_queue.push(buff);
 	} else{
-		snprintf(buff, sizeof(buff), "G38.5 Z-4 F150");
+		snprintf(buff, sizeof(buff), "G38.5 Z%.3f F150", -(retract_height + 4.0));
 		this->script_queue.push(buff);
 		snprintf(buff, sizeof(buff), "#117 = #5023");
 		this->script_queue.push(buff);
 	}
-	snprintf(buff, sizeof(buff), "G91 G0 Z3");
+	snprintf(buff, sizeof(buff), "G91 G0 Z%.3f", retract_height);
 	this->script_queue.push(buff);
 	snprintf(buff, sizeof(buff), "G91 G0 A90");
 	this->script_queue.push(buff);
 	
 	if (!invert_probe){
-		snprintf(buff, sizeof(buff), "G38.3 Z-4 F150");
+		snprintf(buff, sizeof(buff), "G38.3 Z%.3f F150", -(retract_height + 4.0));
 		this->script_queue.push(buff);
 		snprintf(buff, sizeof(buff), "#116 = #5023");
 		this->script_queue.push(buff);
 	} else{
-		snprintf(buff, sizeof(buff), "G38.5 Z-4 F150");
+		snprintf(buff, sizeof(buff), "G38.5 Z%.3f F150", -(retract_height + 4.0));
 		this->script_queue.push(buff);
 		snprintf(buff, sizeof(buff), "#116 = #5023");
 		this->script_queue.push(buff);
@@ -2549,7 +2549,7 @@ void ATCHandler::on_gcode_received(void *argument)
 				position_a = gcode->get_value('A');
 			}
 			if (gcode->has_letter('B')) {
-				position_a = gcode->get_value('B');
+				position_b = gcode->get_value('B');
 			}
 
 		} else if (gcode->m == 497) {

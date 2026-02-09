@@ -9,10 +9,40 @@ ORIGINAL_PWD="$PWD"
 
 # --- Configuration ---
 DEFAULT_GCC_VERSION="14.2"
-declare -A GCC_VERSIONS=(
-    ["4-8"]="gcc-arm-none-eabi-4.8"
-    ["14-2"]="gcc-arm-none-eabi-14.2"
-)
+
+# Function to map GCC version to directory name (bash 3.2 compatible)
+get_gcc_dir_name() {
+    local version="$1"
+    case "$version" in
+        "4-8")
+            echo "gcc-arm-none-eabi-4.8"
+            ;;
+        "14-2")
+            echo "gcc-arm-none-eabi-14.2"
+            ;;
+        *)
+            echo ""
+            ;;
+    esac
+}
+
+# Function to check if a GCC version is supported (bash 3.2 compatible)
+is_supported_gcc_version() {
+    local version="$1"
+    case "$version" in
+        "4-8"|"14-2")
+            return 0
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
+# Function to get all supported GCC versions (bash 3.2 compatible)
+get_supported_gcc_versions() {
+    echo "4-8 14-2"
+}
 
 # --- Helper Functions ---
 
@@ -68,7 +98,7 @@ download_and_unpack() {
     local base_path
 
     base_path="${TOOLCHAIN_DIR:-$PROJECT_ROOT}"
-    target_dir="${base_path}/${GCC_VERSIONS[$gcc_version_internal]}"
+    target_dir="${base_path}/$(get_gcc_dir_name "$gcc_version_internal")"
 
     temp_file=$(mktemp)
     trap 'rm -f "$temp_file"' EXIT # Ensure temp file is cleaned up
@@ -85,7 +115,7 @@ download_and_unpack() {
     local display_path
     if [[ "$base_path" == "$PROJECT_ROOT" ]]; then
       # If using project root, show relative path from there
-      display_path="./${GCC_VERSIONS[$gcc_version_internal]}"
+      display_path="./$(get_gcc_dir_name "$gcc_version_internal")"
     else
       # Otherwise, show the full absolute path
       display_path="$target_dir"
@@ -190,13 +220,13 @@ check_gcc() {
     # Translate internal version (dash) back to user version (dot) for messages
     local version_user="${version/-/.}"
 
-    if [[ -v GCC_VERSIONS["$version"] ]]; then
-        gcc_dir_name="${GCC_VERSIONS["$version"]}"
+    if is_supported_gcc_version "$version"; then
+        gcc_dir_name="$(get_gcc_dir_name "$version")"
         base_path="${TOOLCHAIN_DIR:-$PROJECT_ROOT}" # Determine the base path used
         gcc_path="${base_path}/${gcc_dir_name}" # Construct full path
     else
         echo "Error: Unsupported GCC version requested: $version" >&2
-        echo "Supported versions: ${!GCC_VERSIONS[*]}" >&2
+        echo "Supported versions: 4.8, 14.2" >&2
         exit 1
     fi
 
