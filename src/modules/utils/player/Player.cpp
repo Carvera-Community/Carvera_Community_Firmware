@@ -931,10 +931,8 @@ void Player::on_get_public_data(void *argument)
                 // as this is an interrupt if that flag is not clear then it cannot be cleared while this is running and the block will still be valid (albeit it may have finished)
                 if (block != nullptr && block->is_ready && block->is_g123) {
                 	this->playing_lines = block->line;
-                	p.played_lines = this->playing_lines;
-                } else {
-                	p.played_lines = this->played_lines;
                 }
+                p.played_lines = this->playing_lines;
         	} else {
         		p.played_lines = this->played_lines;
         	}
