@@ -1006,7 +1006,7 @@ void ATCHandler::fill_cali_scripts(bool is_probe, bool clear_z) {
 	snprintf(buff, sizeof(buff), "G53 G0 Z%.3f", THEROBOT->from_millimeters(clear_z ? this->clearance_z : this->safe_z_mm));
 	this->script_queue.push(buff);
 	// move x and y to calibrate position
-    if(THEKERNEL->factory_set->FuncSetting & (1<<2))	//ATC 
+    if(CARVERA == THEKERNEL->factory_set->MachineModel)	//ATC 
     {
 		// Use one-off offsets if configured, otherwise use standard probe position
 		float probe_x = probe_mx_mm + (this->probe_oneoff_configured ? this->probe_oneoff_x : 0.0);
@@ -1022,7 +1022,7 @@ void ATCHandler::fill_cali_scripts(bool is_probe, bool clear_z) {
 	}
 	this->script_queue.push(buff);
 	// do calibrate with fast speed
-    if(THEKERNEL->factory_set->FuncSetting & (1<<2))	//ATC 
+    if(CARVERA == THEKERNEL->factory_set->MachineModel)	//ATC 
     {
 		// Use one-off Z offset if configured, otherwise use standard probe Z position
 		float probe_z = probe_mz_mm + (this->probe_oneoff_configured ? this->probe_oneoff_z : 0.0);
@@ -1591,7 +1591,7 @@ uint32_t ATCHandler::read_detector(uint32_t dummy)
 // Called every second in an ISR
 uint32_t ATCHandler::countdown_probe_laser(uint32_t dummy)
 {
-	if(THEKERNEL->factory_set->FuncSetting & (1<<2))	//ATC 
+	if(CARVERA == THEKERNEL->factory_set->FuncSetting)	//ATC 
 	{
 		if (this->probe_laser_last < 120) {
 			this->probe_laser_last ++;
@@ -2344,7 +2344,7 @@ void ATCHandler::on_gcode_received(void *argument)
 				}
 			}
 		} else if (gcode->m == 494) {
-			if(THEKERNEL->factory_set->FuncSetting & (1<<2))	//ATC 
+			if(CARVERA == THEKERNEL->factory_set->MachineModel)	//ATC 
 			{
 				// control probe laser
 				if (gcode->subcode == 0 || gcode->subcode == 1) {
