@@ -835,9 +835,9 @@ void Kernel::check_eeprom_data()
 			}
 		}
 	}
-    if(!((this->eeprom_data->probe_tool_not_calibrated & ~1) == 0))
+    if(!((this->eeprom_data->tool_not_calibrated & ~1) == 0))
 	{
-		this->eeprom_data->probe_tool_not_calibrated = true;
+		this->eeprom_data->tool_not_calibrated = true;
 		needrewtite = true;
 	}
 	if(needrewtite)
