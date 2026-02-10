@@ -1421,15 +1421,29 @@ void ATCHandler::on_config_reload(void *argument)
 	if (!atc_tools.empty()) {
 		// Custom tool slots were loaded from config
 		// Calculate probe position - use configured absolute MCS coordinates if available, otherwise use hardcoded values
-		if (this->probe_position_configured) {
-			probe_mx_mm = isnan(this->probe_mcs_x) ? (this->anchor1_x + this->toolrack_offset_x) : this->probe_mcs_x;
-			probe_my_mm = isnan(this->probe_mcs_y) ? (this->anchor1_y + this->toolrack_offset_y + 180) : this->probe_mcs_y;
-			probe_mz_mm = isnan(this->probe_mcs_z) ? (this->toolrack_z - 40) : this->probe_mcs_z;
-		} else {
-			probe_mx_mm = this->anchor1_x + this->toolrack_offset_x;
-			probe_my_mm = this->anchor1_y + this->toolrack_offset_y + 180;
-			probe_mz_mm = this->toolrack_z - 40;
+		if(CARVERA == THEKERNEL->factory_set->MachineModel){
+			if (this->probe_position_configured) {
+				probe_mx_mm = isnan(this->probe_mcs_x) ? (this->anchor1_x + this->toolrack_offset_x) : this->probe_mcs_x;
+				probe_my_mm = isnan(this->probe_mcs_y) ? (this->anchor1_y + this->toolrack_offset_y + 180) : this->probe_mcs_y;
+				probe_mz_mm = isnan(this->probe_mcs_z) ? (this->toolrack_z - 40) : this->probe_mcs_z;
+			} else {
+				probe_mx_mm = this->anchor1_x + this->toolrack_offset_x;
+				probe_my_mm = this->anchor1_y + this->toolrack_offset_y + 180;
+				probe_mz_mm = this->toolrack_z - 40;
+			}
+		}else{
+			// Use one-off offsets if configured, otherwise use standard manual position
+			if (this->probe_position_configured) {
+				probe_mx_mm = isnan(this->probe_mcs_x) ? (anchor1_x + 280) : this->probe_mcs_x;
+				probe_my_mm = isnan(this->probe_mcs_y) ? (anchor1_y + 196) : this->probe_mcs_y;
+				probe_mz_mm = isnan(this->probe_mcs_z) ? (this->toolrack_z - 40) : this->probe_mcs_z;
+			} else {
+				probe_mx_mm = anchor1_x + 280;
+				probe_my_mm = anchor1_y + 196;
+				probe_mz_mm = this->toolrack_z - 40;
+			}
 		}
+		
 	} else {
 		// Use default tool slot configuration
 		if(THEKERNEL->factory_set->FuncSetting & (1<<3))	//for CE1 expand
