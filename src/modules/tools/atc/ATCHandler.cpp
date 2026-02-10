@@ -1536,6 +1536,11 @@ void ATCHandler::on_halt(void* argument)
 }
 
 void ATCHandler::abort(){
+	// Safety: If we were interrupted in the middle of calibration, mark tool as
+	// not calibrated so that TLO measurement will be re-run on next tool use
+	if (this->atc_status == CALI) {
+		THEROBOT->set_tool_not_calibrated(true);
+	}
 	this->atc_status = NONE;
 	this->clear_script_queue();
 	this->set_inner_playing(false);
@@ -1966,6 +1971,18 @@ void ATCHandler::on_gcode_received(void *argument)
 						atc_status = CALI;
 						this->fill_cali_scripts(false, true);
 					}
+				} else if (new_tool == active_tool && THEROBOT->get_tool_not_calibrated()) {
+					// Tool is already selected but needs calibration (e.g., after e-stop during previous calibration)
+					THEKERNEL->streams->printf("Tool T%d needs TLO calibration\r\n", new_tool);
+					THEROBOT->push_state();
+					THEROBOT->get_axis_position(last_pos, 3);
+					set_inner_playing(true);
+					this->clear_script_queue();
+					atc_status = CALI;
+					// Set TLO calibration flag to disable 3D probe crash detection
+					bool tlo_calibrating = true;
+					PublicData::set_value( zprobe_checksum, set_tlo_calibrating_checksum, &tlo_calibrating );
+					this->fill_cali_scripts(new_tool == 0 || new_tool >= 999990, true);
 				}
 	        }
 	        else	//Manual Tool Change for AIR
@@ -1983,7 +2000,19 @@ void ATCHandler::on_gcode_received(void *argument)
 					this->target_tool = new_tool;
 					this->fill_change_scripts(new_tool, true);
 					this->fill_cali_scripts((new_tool == 0 || new_tool >= 999990), true);
-				}
+						} else if (new_tool == active_tool && THEROBOT->get_tool_not_calibrated()) {
+							// Tool is already selected but needs calibration (e.g., after e-stop during previous calibration)
+							THEKERNEL->streams->printf("Tool T%d needs TLO calibration\r\n", new_tool);
+							THEROBOT->push_state();
+							THEROBOT->get_axis_position(last_pos, 3);
+							set_inner_playing(true);
+							this->clear_script_queue();
+							atc_status = CALI;
+							// Set TLO calibration flag to disable 3D probe crash detection
+							bool tlo_calibrating = true;
+							PublicData::set_value( zprobe_checksum, set_tlo_calibrating_checksum, &tlo_calibrating );
+							this->fill_cali_scripts((new_tool == 0 || new_tool >= 999990), true);
+						}
 	        }
 		} else if (gcode->m == 460){
 			
@@ -2270,20 +2299,13 @@ void ATCHandler::on_gcode_received(void *argument)
 			}
 		} else if (gcode->m == 493) {
 			if (gcode->subcode == 0 || gcode->subcode == 1) {
-				if (this->active_tool == 0 || this->active_tool >= 999990){
-					THEROBOT->set_tool_not_calibrated(false);
-				}
-				// set tooll offset
+				THEROBOT->set_tool_not_calibrated(false);
 				set_tool_offset();
 			} else if (gcode->subcode == 2) {
 				// set new tool
 				if (gcode->has_letter('T')) {
 		    		this->active_tool = gcode->get_value('T');
-					if (this->active_tool == 0 || this->active_tool >= 999990){
-						THEROBOT->set_tool_not_calibrated(true);
-					}else{
-						THEROBOT->set_tool_not_calibrated(false);
-					}
+					THEROBOT->set_tool_not_calibrated(true);
 		    		// save current tool data to eeprom
 		    		if (THEKERNEL->eeprom_data->TOOL != this->active_tool) {
 		        	    THEKERNEL->eeprom_data->TOOL = this->active_tool;
