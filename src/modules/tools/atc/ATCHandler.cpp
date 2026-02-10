@@ -2271,7 +2271,7 @@ void ATCHandler::on_gcode_received(void *argument)
 		} else if (gcode->m == 493) {
 			if (gcode->subcode == 0 || gcode->subcode == 1) {
 				if (this->active_tool == 0 || this->active_tool >= 999990){
-					THEROBOT->set_probe_tool_not_calibrated(false);
+					THEROBOT->set_tool_not_calibrated(false);
 				}
 				// set tooll offset
 				set_tool_offset();
@@ -2280,9 +2280,9 @@ void ATCHandler::on_gcode_received(void *argument)
 				if (gcode->has_letter('T')) {
 		    		this->active_tool = gcode->get_value('T');
 					if (this->active_tool == 0 || this->active_tool >= 999990){
-						THEROBOT->set_probe_tool_not_calibrated(true);
+						THEROBOT->set_tool_not_calibrated(true);
 					}else{
-						THEROBOT->set_probe_tool_not_calibrated(false);
+						THEROBOT->set_tool_not_calibrated(false);
 					}
 		    		// save current tool data to eeprom
 		    		if (THEKERNEL->eeprom_data->TOOL != this->active_tool) {
@@ -2403,7 +2403,7 @@ void ATCHandler::on_gcode_received(void *argument)
 	        			THEKERNEL->streams->printf("ALARM: Can not do Automatic work in laser mode!\n");
 	        			return;
 	        		}
-					if ((this->active_tool == 0 || this->active_tool >= 999990) && THEROBOT->get_probe_tool_not_calibrated()){
+					if ((this->active_tool == 0 || this->active_tool >= 999990) && THEROBOT->get_tool_not_calibrated()){
 						THEKERNEL->streams->printf("ALARM: Probe not calibrated. Please calibrate probe before probing.\n");
 						THEKERNEL->call_event(ON_HALT, nullptr);
 						THEKERNEL->set_halt_reason(CALIBRATE_FAIL);
@@ -2565,7 +2565,7 @@ void ATCHandler::on_gcode_received(void *argument)
 				for (int wcs_index = 0; wcs_index < 6; wcs_index++){
 					THEKERNEL->streams->printf("EEPRROM Data: G5%d: %1.3f, %1.3f, %1.3f, %1.3f | R:%1.3f\n", wcs_index + 4, THEKERNEL->eeprom_data->WCScoord[wcs_index][0] , THEKERNEL->eeprom_data->WCScoord[wcs_index][1] , THEKERNEL->eeprom_data->WCScoord[wcs_index][2] , THEKERNEL->eeprom_data->WCScoord[wcs_index][3], THEKERNEL->eeprom_data->WCSrotation[wcs_index]);
 				}
-				THEKERNEL->streams->printf("EEPRROM Data: Probe Tool Not Calibrated:%d\n", THEKERNEL->eeprom_data->probe_tool_not_calibrated);
+				THEKERNEL->streams->printf("EEPRROM Data: Tool Not Calibrated:%d\n", THEKERNEL->eeprom_data->tool_not_calibrated);
 				THEKERNEL->streams->printf("EEPRROM Data: Last Active WCS:%d\n", THEKERNEL->eeprom_data->current_wcs);
 			} else if (gcode->subcode == 2) {
 				// Show EEPROM DATA

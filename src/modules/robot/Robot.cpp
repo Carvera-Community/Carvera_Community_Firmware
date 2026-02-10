@@ -154,7 +154,7 @@ void Robot::on_module_loaded()
     // load tlo data from eeprom
     float tlo[3] = {0, 0, THEKERNEL->eeprom_data->TLO};
     this->loadToolOffset(tlo);
-    this->probe_tool_not_calibrated = THEKERNEL->eeprom_data->probe_tool_not_calibrated;
+    this->tool_not_calibrated = THEKERNEL->eeprom_data->tool_not_calibrated;
     this->load_last_wcs = THEKERNEL->config->value(load_last_wcs_checksum)->by_default(false)->as_bool();
     if (this->load_last_wcs)
     {
@@ -645,7 +645,7 @@ void Robot::on_gcode_received(void *argument)
                         wcs_t pos= mcs2selected_wcs(machine_position, n);
                         // notify atc module to change ref tool mcs if Z wcs offset is chaned
                         if (gcode->has_letter('Z') && gcode->get_int('L') == 20) {
-                            if (probe_tool_not_calibrated && (THEKERNEL->eeprom_data->TOOL == 0 || THEKERNEL->eeprom_data->TOOL >= 999990)){
+                            if (tool_not_calibrated && (THEKERNEL->eeprom_data->TOOL == 0 || THEKERNEL->eeprom_data->TOOL >= 999990)){
                                 THEKERNEL->streams->printf("ALARM: Probe not calibrated. Please calibrate probe before probing.\n");
                                 THEKERNEL->call_event(ON_HALT, nullptr);
                                 THEKERNEL->set_halt_reason(CALIBRATE_FAIL);
@@ -2355,14 +2355,14 @@ void Robot::override_homed_check(bool home_override_value) {
     return;
 }
 
-void Robot::set_probe_tool_not_calibrated(bool value)
+void Robot::set_tool_not_calibrated(bool value)
 {
-    probe_tool_not_calibrated = value;
-    THEKERNEL->eeprom_data->probe_tool_not_calibrated = value;
+    tool_not_calibrated = value;
+    THEKERNEL->eeprom_data->tool_not_calibrated = value;
     THEKERNEL->write_eeprom_data();
 }
 
-bool Robot::get_probe_tool_not_calibrated()
+bool Robot::get_tool_not_calibrated()
 {
-    return probe_tool_not_calibrated;
+    return tool_not_calibrated;
 }
