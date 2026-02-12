@@ -382,14 +382,8 @@ std::string Kernel::get_query_string()
     struct tool_status tool;
     ok = PublicData::get_value( atc_handler_checksum, get_tool_status_checksum, &tool );
     if (ok) {
-    	if(THEKERNEL->factory_set->FuncSetting & (1<<2))	//ATC 
-	    {
-	        n= snprintf(buf, sizeof(buf), "|T:%d,%1.3f", tool.active_tool, tool.tool_offset);
-	    }
-	    else	//Manual Tool Change
-	    {
-	    	n= snprintf(buf, sizeof(buf), "|T:%d,%1.3f,%d", tool.active_tool, tool.tool_offset, tool.target_tool);
-	    }
+
+	    n= snprintf(buf, sizeof(buf), "|T:%d,%1.3f,%d", tool.active_tool, tool.tool_offset, tool.target_tool);
         if(n > sizeof(buf)) n= sizeof(buf);
         str.append(buf, n);
     }
