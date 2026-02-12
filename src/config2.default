@@ -465,8 +465,8 @@ atc.detector.detect_rate_mm_s 20		# Tool detect speed (mm / second)
 atc.detector.detect_travel_mm 5	        # Tool detect back and forth distance (mm)
 
 atc.safe_z_mm -20.0						# Safety Z height when clamping tool
-atc.safe_z_empty_mm -50.0				# Safety Z height when not clamping tool
-atc.safe_z_offset_mm 15.0				# Z offset when slowing down ATC speed
+atc.safe_z_empty_mm -40.0				# Safety Z height when not clamping tool
+atc.safe_z_offset_mm 35.0				# Z offset when slowing down ATC speed
 atc.fast_z_rate_mm_m 1000				# Z axis fast speed When doing ATC			
 atc.slow_z_rate_mm_m 200				# Z axis slow speed when doing ATC
 atc.margin_rate_mm_m 1000.0 			# X and Y speed when scaning margin
