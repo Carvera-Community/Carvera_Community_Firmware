@@ -788,7 +788,7 @@ void ATCHandler::home_machine_with_pin(Gcode *gcode)//M469
 
 
 
-void ATCHandler::fill_change_scripts(int new_tool, bool clear_z, int old_tool, float custom_TLO = NAN) {
+void ATCHandler::fill_change_scripts(int new_tool, bool clear_z, int old_tool = NAN, bool wait_after_empty = false, float custom_TLO = NAN) {
 	char buff[100];
 
 	// move to tool change position
@@ -802,7 +802,7 @@ void ATCHandler::fill_change_scripts(int new_tool, bool clear_z, int old_tool, f
 	this->script_queue.push("M497.2");
 
 	if (THEKERNEL->factory_set->FuncSetting & (1<<2)){
-		if (old_tool != -1){
+		if (!isnan(old_tool) && old_tool != -1){
 			// Enter tool changing waiting status
 			this->script_queue.push("M490.3");
 		}
@@ -825,6 +825,10 @@ void ATCHandler::fill_change_scripts(int new_tool, bool clear_z, int old_tool, f
 			// set new tool
 			snprintf(buff, sizeof(buff), "M493.2 T%d", new_tool);
 			this->script_queue.push(buff);
+			if (wait_after_empty){
+				// Enter tool changing waiting status for calibration
+				this->script_queue.push("M490.3");
+			}
 		}
 
 		if (!isnan(custom_TLO)) {
@@ -1969,14 +1973,18 @@ void ATCHandler::on_gcode_received(void *argument)
 						THEKERNEL->streams->printf("Start manually dropping current tool: T%d\r\n", this->active_tool);
 						atc_status = CHANGE;
 						this->target_tool = -1;
-						this->fill_change_scripts(-1, true, active_tool);
+						if (new_tool >= 0 && (this->is_custom_tool_defined(new_tool) || new_tool <= this->tool_number)){
+							this->fill_change_scripts(-1, true, active_tool, true);
+						}else{
+							this->fill_change_scripts(-1, true, active_tool, false);
+						}
 					}
 					
 					//pick up new tool
 					if((new_tool > this->tool_number || new_tool < this->lowest_tool_number) && !this->is_custom_tool_defined(new_tool) && new_tool != -1){
 						THEKERNEL->streams->printf("Start manually picking new tool: T%d\r\n", new_tool);
 						atc_status = CHANGE;
-						this->fill_change_scripts(new_tool, true, -1, custom_TLO);
+						this->fill_change_scripts(new_tool, true, -1, false, custom_TLO);
 						
 						if (auto_calibrate){
 							this->fill_cali_scripts((new_tool == 0 || new_tool >= 999990), true); 
@@ -2512,7 +2520,7 @@ void ATCHandler::on_gcode_received(void *argument)
 			            	else	//Manual Tool Change
 			            	{
 			            		this->target_tool = 0;
-			            		this->fill_change_scripts(0, true, active_tool);
+			            		this->fill_change_scripts(0, true);
 			            		this->fill_cali_scripts(true, true);
 			            	}
 			            }
