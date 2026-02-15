@@ -101,7 +101,7 @@ void ZProbe::on_module_loaded()
     tlo_calibrating = false;
     THEKERNEL->slow_ticker->attach(1000, this, &ZProbe::read_probe);
     THEKERNEL->slow_ticker->attach(1000, this, &ZProbe::read_calibrate);
-	if(!(THEKERNEL->factory_set->FuncSetting & (1<<2)))	//Manual Tool change 
+	if(CARVERA_AIR == THEKERNEL->factory_set->MachineModel)	//Manual Tool change 
 	{
     	THEKERNEL->slow_ticker->attach(100, this, &ZProbe::probe_doubleHit);
     }
