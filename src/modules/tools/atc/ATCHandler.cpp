@@ -1412,6 +1412,12 @@ void ATCHandler::on_config_reload(void *argument)
 		this->toolrack_offset_x = THEKERNEL->config->value(coordinate_checksum, toolrack_offset_x_checksum)->by_default(126  )->as_number();
 		this->toolrack_offset_y = THEKERNEL->config->value(coordinate_checksum, toolrack_offset_y_checksum)->by_default(196  )->as_number();
 	}
+
+	// Load configurable probe position (absolute MCS coordinates) before first use
+	this->probe_mcs_x = THEKERNEL->config->value(coordinate_checksum, probe_mcs_x_checksum)->by_default(NAN)->as_number();
+	this->probe_mcs_y = THEKERNEL->config->value(coordinate_checksum, probe_mcs_y_checksum)->by_default(NAN)->as_number();
+	this->probe_mcs_z = THEKERNEL->config->value(coordinate_checksum, probe_mcs_z_checksum)->by_default(NAN)->as_number();
+	this->probe_position_configured = !isnan(this->probe_mcs_x) || !isnan(this->probe_mcs_y) || !isnan(this->probe_mcs_z);
 	
 	// Load custom tool slots configuration
 	// Delay loading to ensure system is fully initialized
@@ -1503,14 +1509,6 @@ void ATCHandler::on_config_reload(void *argument)
 	this->rotation_width = THEKERNEL->config->value(coordinate_checksum, rotation_width_checksum)->by_default(100 )->as_number();
 
 	this->skip_path_origin = THEKERNEL->config->value(atc_checksum, skip_path_origin_checksum)->by_default(false)->as_bool();
-
-	// Load configurable probe position (absolute MCS coordinates)
-	this->probe_mcs_x = THEKERNEL->config->value(coordinate_checksum, probe_mcs_x_checksum)->by_default(NAN)->as_number();
-	this->probe_mcs_y = THEKERNEL->config->value(coordinate_checksum, probe_mcs_y_checksum)->by_default(NAN)->as_number();
-	this->probe_mcs_z = THEKERNEL->config->value(coordinate_checksum, probe_mcs_z_checksum)->by_default(NAN)->as_number();
-	
-	// Check if probe position is configured (at least one coordinate is set)
-	this->probe_position_configured = !isnan(this->probe_mcs_x) || !isnan(this->probe_mcs_y) || !isnan(this->probe_mcs_z);
 }
 
 void ATCHandler::on_halt(void* argument)
