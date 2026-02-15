@@ -1042,7 +1042,7 @@ void SimpleShell::diagnose_command( string parameters, StreamOutput *stream)
 
     // get switchs state
     struct pad_switch pad;
-    if(THEKERNEL->factory_set->FuncSetting & (1<<2))	//ATC 
+    if(CARVERA == THEKERNEL->factory_set->MachineModel)	//ATC 
     {
     	ok = PublicData::get_value(switch_checksum, get_checksum("vacuum"), 0, &pad);
     }
