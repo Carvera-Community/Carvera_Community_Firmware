@@ -1410,6 +1410,15 @@ void Robot::process_move(Gcode *gcode, enum MOTION_MODE_T motion_mode)
     
     #endif
 
+    // G0 is non-modal for feed: without F use default seek rate; F on G0 applies only to that line
+    if (motion_mode == SEEK) {
+        if (THEKERNEL->config->is_config_cache_loaded()) {
+            this->seek_rate = THEKERNEL->config->value(default_seek_rate_checksum)->by_default(3000.0F)->as_number();
+        } else {
+            this->seek_rate = 3000.0F;
+        }
+    }
+
     if( gcode->has_letter('F') ) {
         float f_value = this->to_millimeters( gcode->get_value('F') );
         if (f_value <= 0.0F) {
@@ -1422,12 +1431,7 @@ void Robot::process_move(Gcode *gcode, enum MOTION_MODE_T motion_mode)
             this->seek_rate = f_value;
         else
             this->feed_rate = f_value;
-    } else if( motion_mode == SEEK ) {
-        // For G0 (SEEK) commands without F parameter, reset to default seek rate
-        if (THEKERNEL->config->is_config_cache_loaded()) {
-            this->seek_rate = THEKERNEL->config->value(default_seek_rate_checksum)->by_default(3000.0F)->as_number();
-        }
-    } else if (this->inverse_time_mode) {
+    } else if (motion_mode != SEEK && this->inverse_time_mode) {
         THEKERNEL->set_halt_reason(MANUAL);
         THEKERNEL->call_event(ON_HALT, nullptr);
         THEKERNEL->streams->printf("Inverse-time feed mode requires F parameter on every G01/G02/G03 line.\n");
@@ -1647,7 +1651,7 @@ void Robot::reset_compensated_machine_position()
         // we want to leave it where we have set Z, not where it ended up AFTER compensation so
         // this should correct the Z position to the machine_position
         is_g123 = false; // we don't want the laser to fire
-        if(!append_milestone(machine_position, this->seek_rate / 60.0F, 0)) {
+        if(!append_milestone(machine_position, this->seek_rate, 0)) {
             reset_axis_position(machine_position[X_AXIS], machine_position[Y_AXIS], machine_position[Z_AXIS]);
         }
     }
