@@ -15,6 +15,7 @@
 - Enhancement: Added the calibration offset function to the M6 toolchange command too
 - Enhancement: front button long press is now denoted by a flashing LED
 - Enhancement: Added improved callbacks to the estop command that includes information on line triggered
+- Enhancement: added $F S100 command to instantly override feed rate and $O S100 command to instantly override spindle speed
 - Fixed: Remove artificial 30mm padding from A-axis by CCS86
 - Fixed: Active measurement of flex compensation will be aborted if the machine goes to a halt
 - Fixed: Restored the stock Makera probing laser behaviour if tool 0 is NOT the 3d probe

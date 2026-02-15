@@ -293,8 +293,15 @@ void PWMSpindleControl::on_get_public_data(void* argument)
 void PWMSpindleControl::on_set_public_data(void* argument)
 {
     PublicDataRequest* pdr = static_cast<PublicDataRequest*>(argument);
-
-    if(!pdr->starts_with(pwm_spindle_control_checksum)) return;
+    if(!pdr->starts_with(pwm_spindle_control_checksum)){
+        return;
+    }
+    if(pdr->second_element_is(get_spindle_status_checksum)) {
+        struct spindle_status *t= static_cast<spindle_status*>(pdr->get_data_ptr());
+        this->set_factor(t->factor);
+        pdr->set_taken();
+        return;
+    }
     if(pdr->second_element_is(turn_off_spindle_checksum)) {
         this->turn_off();
         pdr->set_taken();
