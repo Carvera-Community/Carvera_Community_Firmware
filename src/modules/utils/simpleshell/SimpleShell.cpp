@@ -2440,7 +2440,6 @@ void SimpleShell::spindle_override(string parameters, StreamOutput *stream) //M2
     }
 
     while(!parameters.empty()) {
-        stream->printf("parameter test\n");
         string p= shift_parameter(parameters);
 
         char ax= toupper(p[0]);
@@ -2480,7 +2479,6 @@ void SimpleShell::feed_override(string parameters, StreamOutput *stream) //M220 
     }
 
     while(!parameters.empty()) {
-        stream->printf("parameter test\n");
         string p= shift_parameter(parameters);
 
         char ax= toupper(p[0]);
@@ -2493,7 +2491,6 @@ void SimpleShell::feed_override(string parameters, StreamOutput *stream) //M220 
             // enforce maximum 10x speed
             if (scale > 1000.0F)
                 scale = 1000.0F;
-            stream->printf("scale found\n");
             THEROBOT->set_seconds_per_minute(6000.0F / scale);
             continue;
         }
