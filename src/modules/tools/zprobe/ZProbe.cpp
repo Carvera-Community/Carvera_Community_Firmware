@@ -1288,7 +1288,7 @@ bool ZProbe::parse_parameters(Gcode *gcode, bool override_probe_check){
         THEKERNEL->call_event(ON_HALT, nullptr);
         THEKERNEL->set_halt_reason(PROBE_FAIL);
         return false;
-    }else if(THEROBOT->get_probe_tool_not_calibrated() && gcode->has_letter('S') && (gcode->has_letter('H') || gcode->has_letter('Z'))){
+    }else if(THEROBOT->get_tool_not_calibrated() && gcode->has_letter('S') && (gcode->has_letter('H') || gcode->has_letter('Z'))){
         if(gcode->get_value('S') == 2){
             THEKERNEL->streams->printf("ALARM: Probe not calibrated. Please calibrate probe before probing.\n");
             THEKERNEL->call_event(ON_HALT, nullptr);
