@@ -34,7 +34,7 @@
 - Change: Fix Coordinated Speed Plateau: Added bi-directional logic to allow compound moves (Z+A or Y+A) to speed up if required to meet target surface speed.
 - Change: disable rotary-feedrate centerline-distance compensation during G0 rapid positioning moves to allow G0 A# commands to work at full speed
 - Change: there was a hardcoded max of 1800 on the A axis speed that has been removed. This value was overriding the config file max A axis speed
-
+- Change: increased spindle speed and feed rate override values to 10-300% instead of 50-200% to match controller
 
 
 

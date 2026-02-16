@@ -2446,12 +2446,12 @@ void SimpleShell::spindle_override(string parameters, StreamOutput *stream) //M2
         if(ax == 'S') {
             // get speed scale
             float factor= strtof(p.substr(1).c_str(), NULL);
-            // enforce minimum 50% speed
-            if (factor < 50.0F)
-                factor = 50.0F;
-            // enforce maximum 2x speed
-            if (factor > 200.0F)
-                factor = 200.0F;
+            // enforce minimum 10% speed
+            if (factor < 10.0F)
+                factor = 10.0F;
+            // enforce maximum 3x speed
+            if (factor > 300.0F)
+                factor = 300.0F;
 
             struct spindle_status ss;
             bool pwm_spindle = PublicData::get_value(pwm_spindle_control_checksum, get_spindle_status_checksum, &ss);
