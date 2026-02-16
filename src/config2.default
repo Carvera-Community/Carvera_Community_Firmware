@@ -364,7 +364,7 @@ spindle.alarm_pin							0.19^			# spindle alarm trigger pin
 #spindle.stall_s								1.0				# how many seconds before report stall status
 #spindle.stall_count_rpm						8000			# don't calculate stall when lower than this RPM
 #spindle.stall_alarm_rpm						5000			# consider as stall alarm if lower than this RPM
-
+#spindle.max_rpm						   15000			#hard limit on maximum spindle speed
 
 # Light
 # light.turn_off_min							0
