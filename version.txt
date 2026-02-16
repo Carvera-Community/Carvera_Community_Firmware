@@ -16,6 +16,7 @@
 - Enhancement: front button long press is now denoted by a flashing LED
 - Enhancement: Added improved callbacks to the estop command that includes information on line triggered
 - Enhancement: added $F S100 command to instantly override feed rate and $O S100 command to instantly override spindle speed
+- Enhancement: added max_rpm value to the config file to prevent running the spindle past its rated maximum. Can be overridden like any other config variable with config-set sd spindle.max_rpm 13000. Defaults to 13000 on the air and 15000 on the C1
 - Enhancement: faster communication over USB now available. The community controller will negotiage a faster speed at the normal speed. Both will revert to the slow speed on disconnect
 - Fixed: Remove artificial 30mm padding from A-axis by CCS86
 - Fixed: Active measurement of flex compensation will be aborted if the machine goes to a halt
