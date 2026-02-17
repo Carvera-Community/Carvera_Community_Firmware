@@ -911,7 +911,7 @@ void ATCHandler::fill_manual_pickup_scripts(int new_tool, bool clear_z, bool aut
 
 	if (auto_calibrate){
 		//print status
-		snprintf(buff, sizeof(buff), ";Tool is now installed.\nRemove hands from the machine\nResume will auto calibrate the tool and continue program\n");
+		snprintf(buff, sizeof(buff), ";Tool is now installed.\nRemove hands from the machine\nResume will auto calibrate and continue\n");
 		this->script_queue.push(buff);
 		//pause
 		snprintf(buff, sizeof(buff), "M600.5");
