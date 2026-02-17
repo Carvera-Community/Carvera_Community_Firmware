@@ -72,7 +72,7 @@ delta_steps_per_mm							888.888889		# may be steps per degree for example (26.6
 
 # B axis
 epsilon_step_pin							1.22			# Pin for delta stepper step signal
-epsilon_dir_pin								1.0!			# Pin for delta stepper direction
+epsilon_dir_pin								1.0			# Pin for delta stepper direction
 epsilon_en_pin								1.10			# Pin for delta enable
 epsilon_max_rate							3600.0			# mm/min
 #epsilon_acceleration						360.0			# mm/secÂ²
