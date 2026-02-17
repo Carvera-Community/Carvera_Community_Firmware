@@ -275,7 +275,16 @@ void SimpleShell::on_gcode_received(void *argument)
 		} else if (gcode->m == 336) { // turn off optional stop mode
 			THEKERNEL->set_line_by_line_exec_mode(true);
 			gcode->stream->printf("turning line by line execute mode on.\r\nPlaying file will pause after every valid gcode line, skipping empty and commented lines\r\n");
-		}
+		}else if (gcode->m == 337){
+            struct led_rgb colors;
+            colors.r = 0;
+            colors.g = 0;
+            colors.b = 0;
+            if (gcode->has_letter('R')) colors.r = gcode->get_value('R');
+            if (gcode->has_letter('U')) colors.g = gcode->get_value('U');
+            if (gcode->has_letter('B')) colors.b = gcode->get_value('B');
+            PublicData::set_value(main_button_checksum, set_led_bar_checksum, &colors);
+        }
     }
 }
 
