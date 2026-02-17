@@ -504,29 +504,141 @@ uint32_t MainButton::button_tick(uint32_t dummy)
 		if (us_ticker_read() - this->button_press_time > this->long_press_time_ms * 1000) {
 			this->hold_toggle ++;
 		} else {
+			if(CARVERA_AIR == THEKERNEL->factory_set->MachineModel){
+				// Progress 0..1 as float (elapsed_us / long_press_us); integer division would always give 0
+				float progress = (float)(us_ticker_read() - this->button_press_time) / ((float)this->long_press_time_ms * 1000.0f);
+				switch (THEKERNEL->get_state()) {
+					case IDLE:
+						if (this->long_press_enable == "ToolChange"){
+							if (progress > 0.8f){
+								this->set_led_num(0,104,104,0,0,0,4,true);
+							}else if (progress > 0.6f){
+								this->set_led_num(0,104,104,0,0,0,3, true);
+							}else if (progress > 0.4f){
+								this->set_led_num(0,104,104,0,0,0,2, true);
+							}else if (progress > 0.2f){
+								this->set_led_num(0,104,104,0,0,0,1, true);
+							}else{
+								this->set_led_num(0,0,0,0,0,0,0, true);
+							}
+							break;
+						}else if(this->long_press_enable == "Sleep"){
+							if (progress > 0.8f){
+								this->set_led_num(104,104,104,0,0,0,4,true);
+							}else if (progress > 0.6f){
+								this->set_led_num(104,104,104,0,0,0,3, true);
+							}else if (progress > 0.4f){
+								this->set_led_num(104,104,104,0,0,0,2, true);
+							}else if (progress > 0.2f){
+								this->set_led_num(104,104,104,0,0,0,1, true);
+							}else{
+								this->set_led_num(0,0,0,0,0,0,0, true);
+							}
+							break;
+						} else if(this->long_press_enable == "Repeat"){
+							if (progress > 0.8f){
+								this->set_led_num(0,104,0,0,0,0,4, true);
+							}else if (progress > 0.6f){
+								this->set_led_num(0,104,0,0,0,0,3, true);
+							}else if (progress > 0.4f){
+								this->set_led_num(0,104,0,0,0,0,2, true);
+							}else if (progress > 0.2f){
+								this->set_led_num(0,104,0,0,0,0,1, true);
+							}else{
+								this->set_led_num(0,0,0,0,0,0,0, true);
+							}
+							break;
+						}
+						
+					case ALARM:
+						if (progress > 0.8f){
+							this->set_led_num(0,0,104,104,0,0,4, true);
+						}else if (progress > 0.6f){
+							this->set_led_num(0,0,104,104,0,0,3, true);
+						}else if (progress > 0.4f){
+							this->set_led_num(0,0,104,104,0,0,2, true);
+						}else if (progress > 0.2f){
+							this->set_led_num(0,0,104,104,0,0,1, true);
+						}else{
+							this->set_led_num(0,0,0,0,0,0,0, true);
+						}
+						break;
+					
+					case SUSPEND:
+						if (progress > 0.8f){
+							this->set_led_num(0,104,0,0,0,0,4,true);
+						}else if (progress > 0.6f){
+							this->set_led_num(0,104,0,0,0,0,3, true);
+						}else if (progress > 0.4f){
+							this->set_led_num(0,104,0,0,0,0,2, true);
+						}else if (progress > 0.2f){
+							this->set_led_num(0,104,0,0,0,0,1, true);
+						}else{
+							this->set_led_num(0,0,0,0,0,0,0, true);
+						}
+						break;
+						
+					case HOLD:
+						if (this->long_press_enable == "ToolChange"){
+							if (progress > 0.8f){
+								this->set_led_num(0,104,104,0,0,0,4,true);
+							}else if (progress > 0.6f){
+								this->set_led_num(0,104,104,0,0,0,3, true);
+							}else if (progress > 0.4f){
+								this->set_led_num(0,104,104,0,0,0,2, true);
+							}else if (progress > 0.2f){
+								this->set_led_num(0,104,104,0,0,0,1, true);
+							}else{
+								this->set_led_num(0,0,0,0,0,0,0, true);
+							}
+							break;
+						}else{
+							if (progress > 0.8f){
+								this->set_led_num(0,104,0,0,0,0,4,true);
+							}else if (progress > 0.6f){
+								this->set_led_num(0,104,0,0,0,0,3, true);
+							}else if (progress > 0.4f){
+								this->set_led_num(0,104,0,0,0,0,2, true);
+							}else if (progress > 0.2f){
+								this->set_led_num(0,104,0,0,0,0,1, true);
+							}else{
+								this->set_led_num(0,0,0,0,0,0,0, true);
+							}
+							break;
+						}
+				}
+			}
 			this->hold_toggle = 0;
 		}
 		if(CARVERA == THEKERNEL->factory_set->MachineModel){
 			this->main_button_LED_R.set(this->hold_toggle % 4  < 2 ? 0 : 1);
-		} else if(CARVERA_AIR == THEKERNEL->factory_set->MachineModel){
+		} else if(CARVERA_AIR == THEKERNEL->factory_set->MachineModel && this->hold_toggle > 0){
 			switch (THEKERNEL->get_state()) {
 				case IDLE:
-					this->set_led_colors(this->hold_toggle % 4  < 2 ? 0 : 100, 0, 1);
+					if (this->long_press_enable == "ToolChange"){
+						this->set_led_colors(0, this->hold_toggle % 4  < 2 ? 0 : 104, this->hold_toggle % 4  < 2 ? 0 : 104);
+					}else if (this->long_press_enable == "Sleep"){
+						this->set_led_colors(this->hold_toggle % 4  < 2 ? 0 : 104, this->hold_toggle % 4  < 2 ? 0 : 104, this->hold_toggle % 4  < 2 ? 0 : 104);
+					}else if (this->long_press_enable == "Repeat"){
+						this->set_led_colors(0, this->hold_toggle % 4  < 2 ? 0 : 104, 0);
+					}
 					break;
-				case RUN:
-					this->set_led_colors(this->hold_toggle % 4  < 2 ? 104 : 0, 100, 0);
+				case HOLD:
+					if (this->long_press_enable == "ToolChange"){
+						this->set_led_colors(0, this->hold_toggle % 4  < 2 ? 0 : 104, this->hold_toggle % 4  < 2 ? 0 : 104);
+					}else{
+						this->set_led_colors(0, this->hold_toggle % 4  < 2 ? 0 : 104, 0);
+					}
 					break;
-				case HOME:
-					this->set_led_colors(this->hold_toggle % 4  < 2 ? 104 : 0, 20, 0);
+				case SUSPEND:
+						this->set_led_colors(0, this->hold_toggle % 4  < 2 ? 0 : 104, 0);
 					break;
 				case ALARM:
-					this->set_led_colors(this->hold_toggle % 4  < 2 ? 104 : 0, 0, 0);
-					break;
 				case SLEEP:
-					this->set_led_colors(this->hold_toggle % 4  < 2 ? 104 : 0, 100, 100);
+					this->set_led_colors(0, 0, this->hold_toggle % 4  < 2 ? 104 : 0);
 					break;
-				}
 			}
+		}
 	} else {
 		// button up
 		if (this->button_pressed) {
@@ -574,119 +686,129 @@ void MainButton::on_set_public_data(void* argument)
 			char *state = static_cast<char *>(pdr->get_data_ptr());
     		this->switch_power_24(*state);
     	}
+		if (pdr->second_element_is(set_led_bar_checksum)) {
+			struct led_rgb *colors = static_cast<led_rgb *>(pdr->get_data_ptr());
+			THEKERNEL->streams->printf("R: %dG:%dB:%d", colors->r, colors->g, colors->b);
+			if (colors->r <= 255 && colors->g <= 255 && colors->b <= 255){
+				this->set_led_colors(colors->r, colors->g, colors->b);
+			}
+    	}
     }
 }
 uint32_t MainButton::led_tick(uint32_t dummy)
 {
 	uint8_t state = THEKERNEL->get_state();
-	switch (state) {
-		case HOLD:
-			this->hold_toggle ++;
-			this->set_led_colors(0, this->hold_toggle % 4  < 2 ? 104 : 0, 0);
-			break;
-		case SUSPEND:
-			this->hold_toggle ++;
-			this->set_led_colors(0, 0, this->hold_toggle % 4 < 2 ? 104 : 0);
-			break;
-		case WAIT:
-			this->hold_toggle ++;
-			this->set_led_colors(this->hold_toggle % 4  < 2 ? 104 : 0, this->hold_toggle % 4 <2 ? 24 : 0, 0);
-			break;
-		case TOOL:
-			this->hold_toggle ++;
-			struct tool_status tool;
-    		PublicData::get_value( atc_handler_checksum, get_tool_status_checksum, &tool );
-    		switch(tool.target_tool)
-    		{
-    			case 1:
-    				if(this->hold_toggle % 5 == 0)
-						this->set_led_num(0,104,104,0,0,0,1);
-					if(this->hold_toggle % 5 == 1)
-						this->set_led_colors(0, 0, 0);
-					if(this->hold_toggle % 5 == 2)
-						this->set_led_colors(0, 0, 0);
-					if(this->hold_toggle % 5 == 3)
-						this->set_led_colors(0, 0, 0);
-					if(this->hold_toggle % 5 == 4)
-						this->set_led_colors(0, 0, 0);
-    				break;
-    			case 2:
-    				if(this->hold_toggle % 5 == 0)
-						this->set_led_num(0,104,104,0,0,0,2);
-					if(this->hold_toggle % 5 == 1)
-						this->set_led_colors(0, 0, 0);
-					if(this->hold_toggle % 5 == 2)
-						this->set_led_colors(0, 0, 0);
-					if(this->hold_toggle % 5 == 3)
-						this->set_led_colors(0, 0, 0);
-					if(this->hold_toggle % 5 == 4)
-						this->set_led_colors(0, 0, 0);
-    				break;
-    			case 3:
-    				if(this->hold_toggle % 5 == 0)
-						this->set_led_num(0,104,104,0,0,0,3);
-					if(this->hold_toggle % 5 == 1)
-						this->set_led_colors(0, 0, 0);
-					if(this->hold_toggle % 5 == 2)
-						this->set_led_colors(0, 0, 0);
-					if(this->hold_toggle % 5 == 3)
-						this->set_led_colors(0, 0, 0);
-					if(this->hold_toggle % 5 == 4)
-						this->set_led_colors(0, 0, 0);
-    				break;
-    			case 4:
-    				if(this->hold_toggle % 5 == 0)
-						this->set_led_num(0,104,104,0,0,0,3);
-					if(this->hold_toggle % 5 == 1)
-						this->set_led_colors(0, 0, 0);
-					if(this->hold_toggle % 5 == 2)
-						this->set_led_num(0,104,104,0,0,0,1);
-					if(this->hold_toggle % 5 == 3)
-						this->set_led_colors(0, 0, 0);
-					if(this->hold_toggle % 5 == 4)
-						this->set_led_colors(0, 0, 0);
-    				break;
-    			case 5:
-    				if(this->hold_toggle % 5 == 0)
-						this->set_led_num(0,104,104,0,0,0,3);
-					if(this->hold_toggle % 5 == 1)
-						this->set_led_colors(0, 0, 0);
-					if(this->hold_toggle % 5 == 2)
-						this->set_led_num(0,104,104,0,0,0,2);
-					if(this->hold_toggle % 5 == 3)
-						this->set_led_colors(0, 0, 0);
-					if(this->hold_toggle % 5 == 4)
-						this->set_led_colors(0, 0, 0);
-    				break;
-    			case 6:
-    				if(this->hold_toggle % 5 == 0)
-						this->set_led_num(0,104,104,0,0,0,3);
-					if(this->hold_toggle % 5 == 1)
-						this->set_led_colors(0, 0, 0);
-					if(this->hold_toggle % 5 == 2)
-						this->set_led_num(0,104,104,0,0,0,3);
-					if(this->hold_toggle % 5 == 3)
-						this->set_led_colors(0, 0, 0);
-					if(this->hold_toggle % 5 == 4)
-						this->set_led_colors(0, 0, 0);
-    				break;
-    			default:
-    				if(this->hold_toggle % 5 == 0)
-						this->set_led_colors(0, 104, 104);
-					if(this->hold_toggle % 5 == 1)
-						this->set_led_colors(0, 0, 0);
-					if(this->hold_toggle % 5 == 2)
-						this->set_led_colors(0, 104, 104);
-					if(this->hold_toggle % 5 == 3)
-						this->set_led_colors(0, 0, 0);
-					if(this->hold_toggle % 5 == 4)
-						this->set_led_colors(0, 0, 0);
-    				break;
-    			
-    		}
-			
-			break;
+	if (!this->button_pressed){
+		switch (state) {
+			case HOLD:
+				this->hold_toggle ++;
+				this->set_led_colors(0, this->hold_toggle % 4  < 2 ? 104 : 0, 0);
+				break;
+			case SUSPEND:
+				this->hold_toggle ++;
+				this->set_led_colors(0, 0, this->hold_toggle % 4 < 2 ? 104 : 0);
+				break;
+			case WAIT:
+				this->hold_toggle ++;
+				this->set_led_colors(this->hold_toggle % 4  < 2 ? 104 : 0, this->hold_toggle % 4 <2 ? 24 : 0, 0);
+				break;
+			case TOOL:
+				this->hold_toggle ++;
+				struct tool_status tool;
+				PublicData::get_value( atc_handler_checksum, get_tool_status_checksum, &tool );
+				switch(tool.target_tool)
+				{
+					case 1:
+						if(this->hold_toggle % 5 == 0)
+							this->set_led_num(0,104,104,0,0,0,1);
+						if(this->hold_toggle % 5 == 1)
+							this->set_led_colors(0, 0, 0);
+						if(this->hold_toggle % 5 == 2)
+							this->set_led_colors(0, 0, 0);
+						if(this->hold_toggle % 5 == 3)
+							this->set_led_colors(0, 0, 0);
+						if(this->hold_toggle % 5 == 4)
+							this->set_led_colors(0, 0, 0);
+						break;
+					case 2:
+						if(this->hold_toggle % 5 == 0)
+							this->set_led_num(0,104,104,0,0,0,2);
+						if(this->hold_toggle % 5 == 1)
+							this->set_led_colors(0, 0, 0);
+						if(this->hold_toggle % 5 == 2)
+							this->set_led_colors(0, 0, 0);
+						if(this->hold_toggle % 5 == 3)
+							this->set_led_colors(0, 0, 0);
+						if(this->hold_toggle % 5 == 4)
+							this->set_led_colors(0, 0, 0);
+						break;
+					case 3:
+						if(this->hold_toggle % 5 == 0)
+							this->set_led_num(0,104,104,0,0,0,3);
+						if(this->hold_toggle % 5 == 1)
+							this->set_led_colors(0, 0, 0);
+						if(this->hold_toggle % 5 == 2)
+							this->set_led_colors(0, 0, 0);
+						if(this->hold_toggle % 5 == 3)
+							this->set_led_colors(0, 0, 0);
+						if(this->hold_toggle % 5 == 4)
+							this->set_led_colors(0, 0, 0);
+						break;
+					case 4:
+						if(this->hold_toggle % 5 == 0)
+							this->set_led_num(0,104,104,0,0,0,3);
+						if(this->hold_toggle % 5 == 1)
+							this->set_led_colors(0, 0, 0);
+						if(this->hold_toggle % 5 == 2)
+							this->set_led_num(0,104,104,0,0,0,1);
+						if(this->hold_toggle % 5 == 3)
+							this->set_led_colors(0, 0, 0);
+						if(this->hold_toggle % 5 == 4)
+							this->set_led_colors(0, 0, 0);
+						break;
+					case 5:
+						if(this->hold_toggle % 5 == 0)
+							this->set_led_num(0,104,104,0,0,0,3);
+						if(this->hold_toggle % 5 == 1)
+							this->set_led_colors(0, 0, 0);
+						if(this->hold_toggle % 5 == 2)
+							this->set_led_num(0,104,104,0,0,0,2);
+						if(this->hold_toggle % 5 == 3)
+							this->set_led_colors(0, 0, 0);
+						if(this->hold_toggle % 5 == 4)
+							this->set_led_colors(0, 0, 0);
+						break;
+					case 6:
+						if(this->hold_toggle % 5 == 0)
+							this->set_led_num(0,104,104,0,0,0,3);
+						if(this->hold_toggle % 5 == 1)
+							this->set_led_colors(0, 0, 0);
+						if(this->hold_toggle % 5 == 2)
+							this->set_led_num(0,104,104,0,0,0,3);
+						if(this->hold_toggle % 5 == 3)
+							this->set_led_colors(0, 0, 0);
+						if(this->hold_toggle % 5 == 4)
+							this->set_led_colors(0, 0, 0);
+						break;
+					default:
+						if(this->hold_toggle % 5 == 0)
+							this->set_led_colors(0, 104, 104);
+						if(this->hold_toggle % 5 == 1)
+							this->set_led_colors(0, 0, 0);
+						if(this->hold_toggle % 5 == 2)
+							this->set_led_colors(0, 104, 104);
+						if(this->hold_toggle % 5 == 3)
+							this->set_led_colors(0, 0, 0);
+						if(this->hold_toggle % 5 == 4)
+							this->set_led_colors(0, 0, 0);
+						break;
+					
+				}
+				
+				break;
+		}
 	}
+	
 	if (state != old_state) 
 	{
 		old_state = state;
@@ -1379,34 +1501,76 @@ void MainButton::set_led_colors(unsigned char R, unsigned char G, unsigned char 
 	NVIC_EnableIRQ(TIMER1_IRQn);     // Enable interrupt handler
 }
 
-void MainButton::set_led_num(unsigned char ColorFR, unsigned char ColorFG, unsigned char ColorFB, unsigned char ColorBR, unsigned char ColorBG, unsigned char ColorBB, unsigned char num)
+void MainButton::set_led_num(unsigned char ColorFR, unsigned char ColorFG, unsigned char ColorFB, unsigned char ColorBR, unsigned char ColorBG, unsigned char ColorBB, unsigned char num, bool row)
 {
     __disable_irq();
-    switch(num)
-    {
-    	case 1:
-    		set_led_color(ColorFR, ColorFG, ColorFB, ColorBR, ColorBG, ColorBB, ColorBR, ColorBG, ColorBB, ColorBR, ColorBG, ColorBB, ColorBR, ColorBG, ColorBB);
-    		//set_led_color(ColorBR, ColorBG, ColorBB);
-    		//set_led_color(ColorBR, ColorBG, ColorBB);
-    		//set_led_color(ColorBR, ColorBG, ColorBB);
-    		//set_led_color(ColorBR, ColorBG, ColorBB);
-    		break;	
-    	case 2:
-    		set_led_color(ColorFR, ColorFG, ColorFB, ColorBR, ColorBG, ColorBB, ColorFR, ColorFG, ColorFB, ColorBR, ColorBG, ColorBB, ColorBR, ColorBG, ColorBB);
-    		//set_led_color(ColorBR, ColorBG, ColorBB);
-    		//set_led_color(ColorFR, ColorFG, ColorFB);
-    		//set_led_color(ColorBR, ColorBG, ColorBB);
-    		//set_led_color(ColorBR, ColorBG, ColorBB);
-    		break;	
-    	case 3:
-    		set_led_color(ColorFR, ColorFG, ColorFB, ColorBR, ColorBG, ColorBB, ColorFR, ColorFG, ColorFB, ColorBR, ColorBG, ColorBB, ColorFR, ColorFG, ColorFB);
-    		//set_led_color(ColorBR, ColorBG, ColorBB);
-    		//set_led_color(ColorFR, ColorFG, ColorFB);
-    		//set_led_color(ColorBR, ColorBG, ColorBB);
-    		//set_led_color(ColorFR, ColorFG, ColorFB);
-    		break;	
-    	default:
-    		break;
-    }
+	if (!row){
+		switch(num){
+			case 1:
+				set_led_color(ColorFR, ColorFG, ColorFB, ColorBR, ColorBG, ColorBB, ColorBR, ColorBG, ColorBB, ColorBR, ColorBG, ColorBB, ColorBR, ColorBG, ColorBB);
+				//set_led_color(ColorBR, ColorBG, ColorBB);
+				//set_led_color(ColorBR, ColorBG, ColorBB);
+				//set_led_color(ColorBR, ColorBG, ColorBB);
+				//set_led_color(ColorBR, ColorBG, ColorBB);
+				break;	
+			case 2:
+				set_led_color(ColorFR, ColorFG, ColorFB, ColorBR, ColorBG, ColorBB, ColorFR, ColorFG, ColorFB, ColorBR, ColorBG, ColorBB, ColorBR, ColorBG, ColorBB);
+				//set_led_color(ColorBR, ColorBG, ColorBB);
+				//set_led_color(ColorFR, ColorFG, ColorFB);
+				//set_led_color(ColorBR, ColorBG, ColorBB);
+				//set_led_color(ColorBR, ColorBG, ColorBB);
+				break;	
+			case 3:
+				set_led_color(ColorFR, ColorFG, ColorFB, ColorBR, ColorBG, ColorBB, ColorFR, ColorFG, ColorFB, ColorBR, ColorBG, ColorBB, ColorFR, ColorFG, ColorFB);
+				//set_led_color(ColorBR, ColorBG, ColorBB);
+				//set_led_color(ColorFR, ColorFG, ColorFB);
+				//set_led_color(ColorBR, ColorBG, ColorBB);
+				//set_led_color(ColorFR, ColorFG, ColorFB);
+				break;	
+			default:
+				break;
+		}
+	}else{
+		switch(num){
+			case 1:
+				set_led_color(ColorFR, ColorFG, ColorFB, ColorBR, ColorBG, ColorBB, ColorBR, ColorBG, ColorBB, ColorBR, ColorBG, ColorBB, ColorBR, ColorBG, ColorBB);
+				//set_led_color(ColorBR, ColorBG, ColorBB);
+				//set_led_color(ColorBR, ColorBG, ColorBB);
+				//set_led_color(ColorBR, ColorBG, ColorBB);
+				//set_led_color(ColorBR, ColorBG, ColorBB);
+				break;	
+			case 2:
+				set_led_color(ColorFR, ColorFG, ColorFB, ColorFR, ColorFG, ColorFB, ColorBR, ColorBG, ColorBB, ColorBR, ColorBG, ColorBB, ColorBR, ColorBG, ColorBB);
+				//set_led_color(ColorBR, ColorBG, ColorBB);
+				//set_led_color(ColorFR, ColorFG, ColorFB);
+				//set_led_color(ColorBR, ColorBG, ColorBB);
+				//set_led_color(ColorBR, ColorBG, ColorBB);
+				break;	
+			case 3:
+				set_led_color(ColorFR, ColorFG, ColorFB, ColorFR, ColorFG, ColorFB, ColorFR, ColorFG, ColorFB, ColorBR, ColorBG, ColorBB, ColorBR, ColorBG, ColorBB);
+				//set_led_color(ColorBR, ColorBG, ColorBB);
+				//set_led_color(ColorFR, ColorFG, ColorFB);
+				//set_led_color(ColorBR, ColorBG, ColorBB);
+				//set_led_color(ColorFR, ColorFG, ColorFB);
+				break;
+			case 4:
+				set_led_color(ColorFR, ColorFG, ColorFB, ColorFR, ColorFG, ColorFB, ColorFR, ColorFG, ColorFB, ColorFR, ColorFG, ColorFB, ColorBR, ColorBG, ColorBB);
+				//set_led_color(ColorBR, ColorBG, ColorBB);
+				//set_led_color(ColorFR, ColorFG, ColorFB);
+				//set_led_color(ColorBR, ColorBG, ColorBB);
+				//set_led_color(ColorFR, ColorFG, ColorFB);
+				break;
+			case 5:
+				set_led_color(ColorFR, ColorFG, ColorFB, ColorFR, ColorFG, ColorFB, ColorFR, ColorFG, ColorFB, ColorFR, ColorFG, ColorFB, ColorFR, ColorFG, ColorFB);
+				//set_led_color(ColorBR, ColorBG, ColorBB);
+				//set_led_color(ColorFR, ColorFG, ColorFB);
+				//set_led_color(ColorBR, ColorBG, ColorBB);
+				//set_led_color(ColorFR, ColorFG, ColorFB);
+				break;
+			default:
+				break;
+		}
+	}
+    
     __enable_irq();
 }
