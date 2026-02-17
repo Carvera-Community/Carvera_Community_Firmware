@@ -30,6 +30,7 @@
 - Fixed: Report line position using playing_lines so that the current line doesn't jump around in the Controller
 - Fixed: Ensure that tool calibration runs again after being interrupted by e-stop
 - Fixed: Variable #5044 was returning position in MCS, now is in WCS as documented
+- Fixed: Probe laser on the AIR does turn off after the margin scan now
 - Change: Inch Mode (G20) now raises a machine halt. This is because there are outstanding bugs preventing it's use.
 - Change: Status query response now continues to contain playback details after playback has completed, and returns the play back state. The progress token format is now: |P:played_lines,percent_complete,elapsed_secs,is_playing|
 - Change: In M469.5 use the C parameter as the probe/retract distance
