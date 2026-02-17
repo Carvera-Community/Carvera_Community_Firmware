@@ -1846,7 +1846,7 @@ void ATCHandler::set_tool_offset()
 
 void ATCHandler::set_tlo_by_offset(float z_axis_offset){
 	// new TLO = Current TLO - (current WCS - z_axis_offset)
-	float mpos[3];
+	float mpos[THEROBOT->get_number_registered_motors()] = {0};
 	Robot::wcs_t pos;
 	THEROBOT->get_current_machine_position(mpos);
 	// current_position/mpos includes the compensation transform so we need to get the inverse to get actual position
