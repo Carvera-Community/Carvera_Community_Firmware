@@ -63,7 +63,7 @@ class MainButton : public Module {
         uint8_t old_state;
         void set_led_color(unsigned char R1, unsigned char G1, unsigned char B1,unsigned char R2, unsigned char G2, unsigned char B2,unsigned char R3, unsigned char G3, unsigned char B3,unsigned char R4, unsigned char G4, unsigned char B4,unsigned char R5, unsigned char G5, unsigned char B5);
         void set_led_colors(unsigned char R, unsigned char G, unsigned char B);
-        void set_led_num(unsigned char ColorFR, unsigned char ColorFG, unsigned char ColorFB, unsigned char ColorBR, unsigned char ColorBG, unsigned char ColorBB, unsigned char num);
+        void set_led_num(unsigned char ColorFR, unsigned char ColorFG, unsigned char ColorFB, unsigned char ColorBR, unsigned char ColorBG, unsigned char ColorBB, unsigned char num, bool row = false);
         void set_progress(unsigned char R, unsigned char G, unsigned char B, unsigned char num);
         void set_progress_blink_led_off(unsigned char R, unsigned char G, unsigned char B, unsigned char num);
 };
