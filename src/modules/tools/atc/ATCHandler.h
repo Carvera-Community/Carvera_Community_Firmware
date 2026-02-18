@@ -88,7 +88,7 @@ private:
     void set_tool_offset();
 
     //
-    void fill_change_scripts(int new_tool, bool clear_z);
+    void fill_change_scripts(int new_tool, bool clear_z, int old_tool, bool wait_after_empty, float custom_TLO);
     void fill_drop_scripts(int old_tool);
     void fill_pick_scripts(int new_tool, bool clear_z);
     void fill_cali_scripts(bool is_probe, bool clear_z);
@@ -271,6 +271,7 @@ private:
     int target_tool;
     int tool_number;
     int max_manual_tool_number;
+    int lowest_tool_number;
     int goto_position;
     float position_x;
     float position_y;

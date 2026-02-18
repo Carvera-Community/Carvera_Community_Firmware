@@ -287,8 +287,14 @@ float Gcode::get_variable_value(const char* expr, char** endptr) const{
                     return 0;
                     break;
                 #if MAX_ROBOT_ACTUATORS > 3
-                case 5044: //current machine A position
-                    return THEROBOT->actuators[A_AXIS]->get_current_position();
+                case 5044: //current WCS A position
+                    {
+                        float mpos_full[5];
+                        THEROBOT->get_current_machine_position(mpos_full);
+                        mpos_full[A_AXIS] = THEROBOT->actuators[A_AXIS]->get_current_position();
+                        pos = THEROBOT->mcs2wcs(mpos_full);
+                        return std::get<A_AXIS>(pos);
+                    }
                     break;
                 #endif
 

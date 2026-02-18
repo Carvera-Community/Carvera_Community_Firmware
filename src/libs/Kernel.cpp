@@ -382,14 +382,8 @@ std::string Kernel::get_query_string()
     struct tool_status tool;
     ok = PublicData::get_value( atc_handler_checksum, get_tool_status_checksum, &tool );
     if (ok) {
-    	if(THEKERNEL->factory_set->FuncSetting & (1<<2))	//ATC 
-	    {
-	        n= snprintf(buf, sizeof(buf), "|T:%d,%1.3f", tool.active_tool, tool.tool_offset);
-	    }
-	    else	//Manual Tool Change
-	    {
-	    	n= snprintf(buf, sizeof(buf), "|T:%d,%1.3f,%d", tool.active_tool, tool.tool_offset, tool.target_tool);
-	    }
+
+	    n= snprintf(buf, sizeof(buf), "|T:%d,%1.3f,%d", tool.active_tool, tool.tool_offset, tool.target_tool);
         if(n > sizeof(buf)) n= sizeof(buf);
         str.append(buf, n);
     }
@@ -508,7 +502,7 @@ std::string Kernel::get_diagnose_string()
 
     // get switchs state
     struct pad_switch pad;
-    if(THEKERNEL->factory_set->FuncSetting & (1<<2))	//ATC 
+    if(CARVERA == THEKERNEL->factory_set->MachineModel)	//ATC 
     {
     	ok = PublicData::get_value(switch_checksum, get_checksum("vacuum"), 0, &pad);
     }
@@ -835,9 +829,9 @@ void Kernel::check_eeprom_data()
 			}
 		}
 	}
-    if(!((this->eeprom_data->probe_tool_not_calibrated & ~1) == 0))
+    if(!((this->eeprom_data->tool_not_calibrated & ~1) == 0))
 	{
-		this->eeprom_data->probe_tool_not_calibrated = true;
+		this->eeprom_data->tool_not_calibrated = true;
 		needrewtite = true;
 	}
 	if(needrewtite)
