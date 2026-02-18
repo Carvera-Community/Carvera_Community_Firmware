@@ -72,10 +72,10 @@ delta_steps_per_mm							888.888889		# may be steps per degree for example (26.6
 
 # B axis
 epsilon_step_pin							1.22			# Pin for delta stepper step signal
-epsilon_dir_pin								1.0				# Pin for delta stepper direction
+epsilon_dir_pin								1.0			# Pin for delta stepper direction
 epsilon_en_pin								1.10			# Pin for delta enable
-#epsilon_max_rate							100.0			# mm/min
-#epsilon_acceleration						10.0			# mm/secÂ²
+epsilon_max_rate							3600.0			# mm/min
+#epsilon_acceleration						360.0			# mm/secÂ²
 epsilon_steps_per_mm						888.88888		# may be steps per degree for example (26.67)
 
 # WIFI
@@ -91,11 +91,11 @@ epsilon_steps_per_mm						888.88888		# may be steps per degree for example (26.6
 # atc.enable									true
 # atc.homing_endstop_pin						1.0^
 # atc.homing_debounce_ms						1
-atc.homing_max_travel_mm					8
-#atc.homing_retract_mm						1.5
-atc.homing_rate_mm_s						0.4
+atc.homing_max_travel_mm					360
+#atc.homing_retract_mm						0
+atc.homing_rate_mm_s						60
 #atc.action_mm								2.0
-atc.action_rate_mm_s						0.25
+atc.action_rate_mm_s						45
 
 # atc.detector.detect_pin					0.20^
 # atc.detector.detect_rate_mm_s				20				# Tool detect speed (mm / second)	
@@ -449,24 +449,24 @@ alpha_max_rate 3000.0					# Max feed rate for X axis (mm/min)
 beta_max_rate 3000.0					# Max feed rate for Y axis (mm/min)
 gamma_max_rate 2000.0					# Max feed rate for Z axis (mm/min)
 delta_max_rate 1800.0 					# Max rotation speed rate for A axis (degree/min)
-epsilon_max_rate 100.0					# Max feed rate for auto tool changer (mm/min)
+epsilon_max_rate 3600.0					# Max feed rate for auto tool changer (mm/min)
 
 acceleration 150						# Acceleration for X/Y/Z axis (mm/second/second)
 delta_acceleration 360.0 				# Acceleration for rotation axis (degree/second/second)
-epsilon_acceleration 10.0				# Acceleration for auto tool changer (mm/second/second)
+epsilon_acceleration 360.0				# Acceleration for auto tool changer (mm/second/second)
 
 # WIFI
 wifi.machine_name CARVERA_AIR_01001	    	# Machine name that is shown in the WiFi list
 
 # ATC Motion
-atc.homing_retract_mm 0.4 				# Retract distance after homing (mm)
-atc.action_mm 1.6					 	# Action distance when drop tool (mm)
+atc.homing_retract_mm 0					# Retract distance after homing (mm)
+atc.action_mm 70					 	# Action distance when drop tool (mm)
 atc.detector.detect_rate_mm_s 20		# Tool detect speed (mm / second)	
 atc.detector.detect_travel_mm 5	        # Tool detect back and forth distance (mm)
 
 atc.safe_z_mm -20.0						# Safety Z height when clamping tool
-atc.safe_z_empty_mm -50.0				# Safety Z height when not clamping tool
-atc.safe_z_offset_mm 15.0				# Z offset when slowing down ATC speed
+atc.safe_z_empty_mm -40.0				# Safety Z height when not clamping tool
+atc.safe_z_offset_mm 35.0				# Z offset when slowing down ATC speed
 atc.fast_z_rate_mm_m 1000				# Z axis fast speed When doing ATC			
 atc.slow_z_rate_mm_m 200				# Z axis slow speed when doing ATC
 atc.margin_rate_mm_m 1000.0 			# X and Y speed when scaning margin

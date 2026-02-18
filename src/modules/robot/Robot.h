@@ -44,8 +44,8 @@ class Robot : public Module {
         float get_default_acceleration() const { return default_acceleration; }
         void loadToolOffset(const float offset[N_PRIMARY_AXIS]);
         void saveToolOffset(const float offset[N_PRIMARY_AXIS], const float cur_tool_mz);
-        void set_probe_tool_not_calibrated(bool value);
-        bool get_probe_tool_not_calibrated();
+        void set_tool_not_calibrated(bool value);
+        bool get_tool_not_calibrated();
         float get_feed_rate() const;
         float get_s_value() const { return s_value; }
         void set_s_value(float s) { s_value= s; }
@@ -195,7 +195,7 @@ class Robot : public Module {
         int arc_correction;                                  // Setting : how often to rectify arc computation
         float max_speeds[3];                                 // Setting : max allowable speed in mm/s for each axis
         float max_speed;                                     // Setting : maximum feedrate in mm/s as specified by F parameter
-        bool probe_tool_not_calibrated;
+        bool tool_not_calibrated;
         bool load_last_wcs;
         float soft_endstop_min[3], soft_endstop_max[3];
 

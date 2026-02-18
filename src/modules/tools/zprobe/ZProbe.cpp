@@ -101,7 +101,7 @@ void ZProbe::on_module_loaded()
     tlo_calibrating = false;
     THEKERNEL->slow_ticker->attach(1000, this, &ZProbe::read_probe);
     THEKERNEL->slow_ticker->attach(1000, this, &ZProbe::read_calibrate);
-	if(!(THEKERNEL->factory_set->FuncSetting & (1<<2)))	//Manual Tool change 
+	if(CARVERA_AIR == THEKERNEL->factory_set->MachineModel)	//Manual Tool change 
 	{
     	THEKERNEL->slow_ticker->attach(100, this, &ZProbe::probe_doubleHit);
     }
@@ -1288,7 +1288,7 @@ bool ZProbe::parse_parameters(Gcode *gcode, bool override_probe_check){
         THEKERNEL->call_event(ON_HALT, nullptr);
         THEKERNEL->set_halt_reason(PROBE_FAIL);
         return false;
-    }else if(THEROBOT->get_probe_tool_not_calibrated() && gcode->has_letter('S') && (gcode->has_letter('H') || gcode->has_letter('Z'))){
+    }else if(THEROBOT->get_tool_not_calibrated() && gcode->has_letter('S') && (gcode->has_letter('H') || gcode->has_letter('Z'))){
         if(gcode->get_value('S') == 2){
             THEKERNEL->streams->printf("ALARM: Probe not calibrated. Please calibrate probe before probing.\n");
             THEKERNEL->call_event(ON_HALT, nullptr);
