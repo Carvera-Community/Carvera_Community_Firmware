@@ -346,47 +346,11 @@ void MainButton::on_idle(void *argument)
     				break;
     			case HOLD:
     				// resume
-					if(this->long_press_enable == "ToolChange" && !THEKERNEL->is_tool_waiting()) {
-						uint8_t atc_clamp_status;
-						uint8_t old_state = state;
-						THEKERNEL->set_tool_waiting(true);
-
-						PublicData::get_value(atc_handler_checksum, get_atc_clamped_status_checksum, 0, &atc_clamp_status);
-						THEKERNEL->streams->printf("atc clamped status = %d \n" , atc_clamp_status); //0 is unhomed, 1 is clamped, 2 is unclamped
-						THEKERNEL->streams->printf("Running Manual Tool Change From Front Button\n");
-						Gcode gc1("M490.2", &StreamOutput::NullStream);
-						Gcode gc2("M490.1", &StreamOutput::NullStream);
-						switch (atc_clamp_status){
-							case 0: //atc unhomed
-								THEKERNEL->call_event(ON_GCODE_RECEIVED, &gc1);
-								THECONVEYOR->wait_for_idle();
-								THEKERNEL->streams->printf("Toolholder Should Be Empty\n");
-								break;
-
-							case 1: //atc clamped
-								THEKERNEL->call_event(ON_GCODE_RECEIVED, &gc1);
-								THECONVEYOR->wait_for_idle();
-								THEKERNEL->streams->printf("Toolholder Should Be Empty\n");
-								break;
-							case 2: //atc unclamped
-								THEKERNEL->call_event(ON_GCODE_RECEIVED, &gc2);
-								THECONVEYOR->wait_for_idle();
-								THEKERNEL->streams->printf("Tool Should Be Clamped. Set Tool Number\n");
-								break;
-							default:
-								break;
-
-						}
-						THECONVEYOR->wait_for_idle();
-						THEKERNEL->set_tool_waiting(false);
-						
-	    			}else
-					{
-						THEKERNEL->set_feed_hold(false);
-						THEKERNEL->set_suspending(false);
-					}
-
-    				
+					THEKERNEL->set_feed_hold(false);    				
+    				break;
+				case SUSPEND:
+    				// resume
+					THEKERNEL->set_suspending(false);    				
     				break;
     			case ALARM:
     				halt_reason = THEKERNEL->get_halt_reason();
