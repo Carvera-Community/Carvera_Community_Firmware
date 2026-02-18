@@ -529,6 +529,7 @@ uint32_t MainButton::button_tick(uint32_t dummy)
 						break;
 					
 					case SUSPEND:
+					case HOLD:
 						if (progress > 0.8f){
 							this->set_led_num(0,104,0,0,0,0,4,true);
 						}else if (progress > 0.6f){
@@ -541,35 +542,6 @@ uint32_t MainButton::button_tick(uint32_t dummy)
 							this->set_led_num(0,0,0,0,0,0,0, true);
 						}
 						break;
-						
-					case HOLD:
-						if (this->long_press_enable == "ToolChange"){
-							if (progress > 0.8f){
-								this->set_led_num(0,104,104,0,0,0,4,true);
-							}else if (progress > 0.6f){
-								this->set_led_num(0,104,104,0,0,0,3, true);
-							}else if (progress > 0.4f){
-								this->set_led_num(0,104,104,0,0,0,2, true);
-							}else if (progress > 0.2f){
-								this->set_led_num(0,104,104,0,0,0,1, true);
-							}else{
-								this->set_led_num(0,0,0,0,0,0,0, true);
-							}
-							break;
-						}else{
-							if (progress > 0.8f){
-								this->set_led_num(0,104,0,0,0,0,4,true);
-							}else if (progress > 0.6f){
-								this->set_led_num(0,104,0,0,0,0,3, true);
-							}else if (progress > 0.4f){
-								this->set_led_num(0,104,0,0,0,0,2, true);
-							}else if (progress > 0.2f){
-								this->set_led_num(0,104,0,0,0,0,1, true);
-							}else{
-								this->set_led_num(0,0,0,0,0,0,0, true);
-							}
-							break;
-						}
 				}
 			}
 			this->hold_toggle = 0;
