@@ -40,6 +40,7 @@ class Robot : public Module {
         void reset_position_from_current_actuator_position();
         void reset_compensated_machine_position();
         float get_seconds_per_minute() const { return seconds_per_minute; }
+        void set_seconds_per_minute(float value) {seconds_per_minute = value;};
         float get_z_maxfeedrate() const { return this->max_speeds[Z_AXIS]; }
         float get_default_acceleration() const { return default_acceleration; }
         void loadToolOffset(const float offset[N_PRIMARY_AXIS]);
