@@ -34,6 +34,8 @@ public:
 private:
 
     void jog(string params, StreamOutput *stream);
+    void feed_override(string params, StreamOutput *stream);
+    void spindle_override(string params, StreamOutput *stream);
 
     static void ls_command(string parameters, StreamOutput *stream );
     static void cd_command(string parameters, StreamOutput *stream );

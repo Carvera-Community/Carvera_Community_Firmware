@@ -361,6 +361,14 @@ void SimpleShell::on_console_line_received( void *argument )
                 }
                 break;
 
+            case 'F': //feed rate override
+                feed_override(possible_command, new_message.stream);
+                break;
+            
+            case 'O': //spindle speed override
+                spindle_override(possible_command, new_message.stream);
+                break;
+
             default:
                 new_message.stream->printf("error:Invalid statement\n");
                 break;
@@ -2429,6 +2437,81 @@ void SimpleShell::jog(string parameters, StreamOutput *stream)
         THECONVEYOR->force_queue();
     }
 }
+
+void SimpleShell::spindle_override(string parameters, StreamOutput *stream) //M223 SXXX equivalent
+{
+    bool send_ok = false;
+    // $S is first parameter
+    shift_parameter(parameters);
+    if(parameters.empty()) {
+        stream->printf("usage: $O S100\n");
+        return;
+    }
+
+    while(!parameters.empty()) {
+        string p= shift_parameter(parameters);
+
+        char ax= toupper(p[0]);
+        if(ax == 'S') {
+            // get speed scale
+            float factor= strtof(p.substr(1).c_str(), NULL);
+            // enforce minimum 10% speed
+            if (factor < 10.0F)
+                factor = 10.0F;
+            // enforce maximum 3x speed
+            if (factor > 300.0F)
+                factor = 300.0F;
+
+            struct spindle_status ss;
+            bool pwm_spindle = PublicData::get_value(pwm_spindle_control_checksum, get_spindle_status_checksum, &ss);
+            if (pwm_spindle) {
+                ss.factor = factor;
+                PublicData::set_value(pwm_spindle_control_checksum, get_spindle_status_checksum, &ss);
+            }
+            continue;
+        }
+
+    }
+
+    // turn off queue delay and run it now
+    THECONVEYOR->force_queue();
+}
+
+void SimpleShell::feed_override(string parameters, StreamOutput *stream) //M220 SXXX equivalent
+{
+    bool send_ok = false;
+    // $S is first parameter
+    shift_parameter(parameters);
+    if(parameters.empty()) {
+        stream->printf("usage: $O S100\n");
+        return;
+    }
+
+    while(!parameters.empty()) {
+        string p= shift_parameter(parameters);
+
+        char ax= toupper(p[0]);
+        if(ax == 'S') {
+            // get speed scale
+            float scale= strtof(p.substr(1).c_str(), NULL);
+            // enforce minimum 10% speed
+            if (scale < 10.0F)
+                scale = 10.0F;
+            // enforce maximum 10x speed
+            if (scale > 1000.0F)
+                scale = 1000.0F;
+            THEROBOT->set_seconds_per_minute(6000.0F / scale);
+            continue;
+        }
+
+    }
+
+    // turn off queue delay and run it now
+    THECONVEYOR->force_queue();
+}
+
+
+
 
 void SimpleShell::help_command( string parameters, StreamOutput *stream )
 {
