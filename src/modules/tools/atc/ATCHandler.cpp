@@ -92,6 +92,7 @@
 #define probe_mcs_x_checksum		CHECKSUM("probe_mcs_x")
 #define probe_mcs_y_checksum		CHECKSUM("probe_mcs_y")
 #define probe_mcs_z_checksum		CHECKSUM("probe_mcs_z")
+#define reference_tool_mz_checksum	CHECKSUM("reference_tool_mz")
 
 ATCHandler::ATCHandler()
 {
@@ -1379,11 +1380,6 @@ void ATCHandler::on_module_loaded()
 
     // load data from eeprom
     this->active_tool = THEKERNEL->eeprom_data->TOOL;
-	if(CARVERA == THEKERNEL->factory_set->MachineModel || CARVERA_AIR == THEKERNEL->factory_set->MachineModel){
-		this->ref_tool_mz = -115.34; // Represents the machine Z coordinate when the tool length is 0
-	}else{
-		this->ref_tool_mz = -115.34; // In preparation for the Z1. Update this value when the Z1 is implemented
-	}
     if (THEKERNEL->eeprom_data->REFMZ != this->ref_tool_mz)
     {
         THEKERNEL->eeprom_data->REFMZ = this->ref_tool_mz;
@@ -1541,6 +1537,12 @@ void ATCHandler::on_config_reload(void *argument)
 	this->rotation_width = THEKERNEL->config->value(coordinate_checksum, rotation_width_checksum)->by_default(100 )->as_number();
 
 	this->skip_path_origin = THEKERNEL->config->value(atc_checksum, skip_path_origin_checksum)->by_default(false)->as_bool();
+
+	if(CARVERA == THEKERNEL->factory_set->MachineModel || CARVERA_AIR == THEKERNEL->factory_set->MachineModel){
+		this->ref_tool_mz = THEKERNEL->config->value(coordinate_checksum, reference_tool_mz_checksum)->by_default(-115.34f)->as_number(); // Represents the machine Z coordinate when the tool length is 0
+	}else{
+		this->ref_tool_mz = THEKERNEL->config->value(coordinate_checksum, reference_tool_mz_checksum)->by_default(-115.34f)->as_number(); // In preparation for the Z1. Update this value when the Z1 is implemented
+	}
 }
 
 void ATCHandler::on_halt(void* argument)
