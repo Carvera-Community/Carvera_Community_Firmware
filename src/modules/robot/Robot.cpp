@@ -615,50 +615,77 @@ void Robot::on_gcode_received(void *argument)
 {
     Gcode *gcode = static_cast<Gcode *>(argument);
 
+    // PHASE1: Simple pass-through mode - NO BUFFERING when compensation is OFF
+    // This isolates the buffer testing to only when explicitly activated
+    if (!compensation_preprocessor->is_active()) {
+        gcode->stream->printf(">>PASSTHROUGH: %s (comp=OFF, no buffering)\n", gcode->get_command());
+        process_buffered_command(gcode);
+        return;
+    }
+    
+    // CRITICAL: G40/G41/G42 must NEVER be buffered - they control the buffering system itself!
+    // G40 needs to flush the buffer, so it must execute immediately
+    // G41/G42 need to clear/reset the buffer, so they must execute immediately
+    if (gcode->has_g && (gcode->g == 40 || gcode->g == 41 || gcode->g == 42)) {
+        gcode->stream->printf(">>BYPASS_BUFFER: G%d %s (compensation control command)\n", 
+            gcode->g, gcode->get_command());
+        process_buffered_command(gcode);
+        return;
+    }
+    
+    // Cutter compensation v2.0: Buffer commands when compensation is ON
+    gcode->stream->printf(">>BUFFER: %s (count=%d, comp=%s)\n", 
+        gcode->get_command(), 
+        compensation_preprocessor->get_buffer_count(),
+        compensation_preprocessor->is_active() ? "ON" : "OFF");
+        
+    if (compensation_preprocessor->buffer_gcode(gcode)) {
+        // Try to get next command from buffer (could be motion or non-motion)
+        Gcode* output = compensation_preprocessor->get_compensated_gcode();
+        
+        while (output != nullptr) {
+            gcode->stream->printf(">>OUTPUT: %s (buffer_count=%d)\n", 
+                output->get_command(), compensation_preprocessor->get_buffer_count());
+            
+            // Process this command that came out of the buffer
+            process_buffered_command(output);
+            
+            delete output;
+            
+            // Try to get another command
+            output = compensation_preprocessor->get_compensated_gcode();
+        }
+        
+        // If nothing came out, we're still building up lookahead
+        if (compensation_preprocessor->get_buffer_count() > 0) {
+            gcode->stream->printf(">>BUFFERING: need more lookahead (count=%d)\n", 
+                compensation_preprocessor->get_buffer_count());
+        }
+        
+        return;  // Done - command has been buffered
+    } else {
+        // Buffer full - shouldn't happen with 10 slots
+        THEKERNEL->streams->printf("ERROR: Compensation buffer full, processing directly\n");
+        // Fall through to process directly
+    }
+    
+    // If we get here, buffer was full - process command directly (fallback)
+    process_buffered_command(gcode);
+}
+
+// Process a command that has come out of the buffer (or bypassed due to buffer full)
+void Robot::process_buffered_command(Gcode *gcode)
+{
+    // DEBUG: Show what G-code we're processing
+    if (gcode->has_g) {
+        gcode->stream->printf(">>PROCESS_BUFFERED: G%d '%s'\n", gcode->g, gcode->get_command());
+    } else {
+        gcode->stream->printf(">>PROCESS_BUFFERED: no G-code '%s'\n", gcode->get_command());
+    }
+    
     enum MOTION_MODE_T motion_mode= NONE;
 
     if( gcode->has_g) {
-        // CRITICAL: Flush compensation buffer before non-move G-codes
-        // This ensures buffered moves execute BEFORE commands like G28, G4, G10, etc.
-        bool is_move_gcode = (gcode->g == 0 || gcode->g == 1 || gcode->g == 2 || gcode->g == 3);
-        bool is_comp_gcode = (gcode->g == 40 || gcode->g == 41 || gcode->g == 42);
-        
-        if (compensation_preprocessor->is_active() && !is_move_gcode && !is_comp_gcode) {
-            // Non-move G-code encountered while compensation active - flush buffer first
-            int buffer_count = compensation_preprocessor->get_buffer_count();
-            if (buffer_count > 0) {
-                gcode->stream->printf(">>AUTO_FLUSH: G%d encountered, flushing %d buffered moves\n", 
-                    gcode->g, buffer_count);
-                
-                // Set flushing flag so remaining moves are output
-                compensation_preprocessor->flush();
-                
-                int flush_count = 0;
-                while (compensation_preprocessor->get_buffer_count() > 0) {
-                    Gcode* compensated = compensation_preprocessor->get_compensated_gcode();
-                    if (compensated != nullptr) {
-                        flush_count++;
-                        gcode->stream->printf(">>AUTO_FLUSH[%d]: %s\n", flush_count, compensated->get_command());
-                        // Process the buffered move
-                        MOTION_MODE_T motion = NONE;
-                        if (compensated->has_g && (compensated->g == 0 || compensated->g == 1)) {
-                            motion = (compensated->g == 0) ? SEEK : LINEAR;
-                        } else if (compensated->has_g && (compensated->g == 2 || compensated->g == 3)) {
-                            motion = (compensated->g == 2) ? CW_ARC : CCW_ARC;
-                        }
-                        if (motion != NONE) {
-                            process_move(compensated, motion);
-                        }
-                        delete compensated;
-                    } else {
-                        gcode->stream->printf(">>AUTO_FLUSH: NULL gcode (expected, buffer empty)\n");
-                        break;
-                    }
-                }
-                gcode->stream->printf(">>AUTO_FLUSH: Complete, flushed %d moves\n", flush_count);
-            }
-        }
-        
         switch( gcode->g ) {
             case 0:  motion_mode = SEEK;    break;
             case 1:  motion_mode = LINEAR;  break;
@@ -845,12 +872,13 @@ void Robot::on_gcode_received(void *argument)
                 gcode->stream->printf(">>G40: Flushed %d moves, compensation OFF\n", flush_count);
                 // Now it's safe to disable compensation
                 compensation_preprocessor->set_compensation(CompensationType::NONE, 0.0f);
-                break;
             }
+            break;
                 
             case 41: // G41 - Compensation Left
             case 42: // G42 - Compensation Right
             {
+                gcode->stream->printf(">>ROBOT: G%d handler CALLED\n", gcode->g);
                 float radius = 0.0f;
                 if (gcode->has_letter('D')) {
                     radius = gcode->get_value('D');
@@ -1344,43 +1372,15 @@ void Robot::on_gcode_received(void *argument)
         }
     }
 
-    // Cutter compensation v2.0: Buffer or process moves
+    // Motion commands are handled here
     if( motion_mode != NONE) {
         is_g123= motion_mode != SEEK;
-        
-        if (compensation_preprocessor->is_active()) {
-            // Compensation is active - buffer the G-code
-            gcode->stream->printf(">>BUFFER_IN: %s (count=%d)\n", 
-                gcode->get_command(), compensation_preprocessor->get_buffer_count());
-            if (compensation_preprocessor->buffer_gcode(gcode)) {
-                // Successfully buffered - now try to get compensated output
-                Gcode* compensated = compensation_preprocessor->get_compensated_gcode();
-                if (compensated != nullptr) {
-                    gcode->stream->printf(">>COMP_OUT: %s (buffer_count=%d)\n", 
-                        compensated->get_command(), compensation_preprocessor->get_buffer_count());
-                    // Process the compensated G-code through normal path
-                    process_move(compensated, motion_mode);
-                    delete compensated;  // Clean up after processing
-                } else {
-                    gcode->stream->printf(">>BUFFERING: waiting for lookahead (count=%d)\n", 
-                        compensation_preprocessor->get_buffer_count());
-                }
-            } else {
-                // Buffer full - this shouldn't happen with 10 slots
-                THEKERNEL->streams->printf("ERROR: Compensation buffer full\n");
-                process_move(gcode, motion_mode);  // Fall back to uncompensated
-            }
-        } else {
-            // No compensation - normal path
-            process_move(gcode, motion_mode);
-        }
-        // THEKERNEL->streams->printf("GCode: [%s], mode:[%d]\n", gcode->get_command(), motion_mode);
+        process_move(gcode, motion_mode);
+        current_motion_mode = motion_mode;
     } else {
         is_g123= false;
     }
-
-    current_motion_mode = motion_mode;
-
+    
     next_command_is_MCS = false; // must be on same line as G0 or G1
 }
 
