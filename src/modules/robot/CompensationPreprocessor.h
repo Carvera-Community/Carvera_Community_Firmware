@@ -11,6 +11,7 @@
 #include "CompensationTypes.h"
 
 #include <cmath>
+#include <cstdint>
 
 class Gcode;
 
@@ -107,6 +108,8 @@ private:
     float uncompensated_position[3];  // Track uncompensated position for I/J calculation
     float compensated_position[3];    // Track compensated position (where we actually are)
     bool is_flushing;  // True when flushing remaining moves (ignore lookahead requirements)
+    bool needs_lead_in; // True when G41/G42 activated but lead-in not yet calculated
+    uint8_t last_g;    // Last G-code number seen (for modal G-codes)
     
     // Helper functions
     bool buffer_has_space() const { return buffer_count < BUFFER_SIZE; }
