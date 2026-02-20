@@ -5,6 +5,8 @@ using namespace std;
 #include "Module.h"
 #include <vector>
 #include <queue>
+#include <cstdint>
+#include <cmath>
 #include "Pin.h"
 #include "Gcode.h"
 
@@ -86,7 +88,7 @@ private:
     void set_tool_offset();
 
     //
-    void fill_change_scripts(int new_tool, bool clear_z);
+    void fill_change_scripts(int new_tool, bool clear_z, int old_tool, bool wait_after_empty, float custom_TLO);
     void fill_drop_scripts(int old_tool);
     void fill_pick_scripts(int new_tool, bool clear_z);
     void fill_cali_scripts(bool is_probe, bool clear_z);
@@ -172,6 +174,18 @@ private:
     float probe_retract_mm;
     float probe_height_mm;
 
+    // Configurable probe position (absolute Machine Coordinate System)
+    float probe_mcs_x;
+    float probe_mcs_y;
+    float probe_mcs_z;
+    bool probe_position_configured;
+
+    // One-off probe position offsets for M493.1 (temporary offsets for specific tools)
+    float probe_oneoff_x;
+    float probe_oneoff_y;
+    float probe_oneoff_z;
+    bool probe_oneoff_configured;
+
     float last_pos[3];
 
     float anchor1_x;
@@ -196,10 +210,59 @@ private:
     bool skip_path_origin;
 
     struct atc_tool {
-    	int num;
-    	float mx_mm;
-    	float my_mm;
-    	float mz_mm;
+    	uint8_t num;    // Tool number (0-255)
+    	int16_t mx_mm;  // Stored as 0.01mm units (e.g., -25000 = -250.00mm), -1 = invalid
+    	int16_t my_mm;  // Stored as 0.01mm units, -1 = invalid
+    	int16_t mz_mm;  // Stored as 0.01mm units, -1 = invalid
+    	
+    	// Default constructor to initialize to invalid state
+    	atc_tool() : num(0), mx_mm(-1), my_mm(-1), mz_mm(-1) {}
+    	
+    	// Check if tool is valid (all coordinates are set, not -1)
+    	bool is_valid() const {
+    		return (mx_mm != -1 && my_mm != -1 && mz_mm != -1);
+    	}
+    	
+    	// Helper functions to convert to/from float (in millimeters)
+    	float get_mx_mm() const { return mx_mm / 100.0f; }
+    	float get_my_mm() const { return my_mm / 100.0f; }
+    	float get_mz_mm() const { return mz_mm / 100.0f; }
+    	void set_mx_mm(float val) {
+    		// Handle NaN and invalid values
+    		if (std::isnan(val) || val > 1000.0f || val < -1000.0f) {
+    			mx_mm = -1;
+    			return;
+    		}
+    		float fixed = val * 100.0f;
+    		// Clamp to int16_t range to prevent overflow (-327.68mm to 327.67mm)
+    		if (fixed > 32767.0f) fixed = 32767.0f;
+    		else if (fixed < -32768.0f) fixed = -32768.0f;
+    		mx_mm = (int16_t)(fixed + (fixed >= 0 ? 0.5f : -0.5f));
+    	}
+    	void set_my_mm(float val) {
+    		// Handle NaN and invalid values
+    		if (std::isnan(val) || val > 1000.0f || val < -1000.0f) {
+    			my_mm = -1;
+    			return;
+    		}
+    		float fixed = val * 100.0f;
+    		// Clamp to int16_t range to prevent overflow (-327.68mm to 327.67mm)
+    		if (fixed > 32767.0f) fixed = 32767.0f;
+    		else if (fixed < -32768.0f) fixed = -32768.0f;
+    		my_mm = (int16_t)(fixed + (fixed >= 0 ? 0.5f : -0.5f));
+    	}
+    	void set_mz_mm(float val) {
+    		// Handle NaN and invalid values
+    		if (std::isnan(val) || val > 1000.0f || val < -1000.0f) {
+    			mz_mm = -1;
+    			return;
+    		}
+    		float fixed = val * 100.0f;
+    		// Clamp to int16_t range to prevent overflow (-327.68mm to 327.67mm)
+    		if (fixed > 32767.0f) fixed = 32767.0f;
+    		else if (fixed < -32768.0f) fixed = -32768.0f;
+    		mz_mm = (int16_t)(fixed + (fixed >= 0 ? 0.5f : -0.5f));
+    	}
     };
 
     vector<struct atc_tool> atc_tools;
@@ -208,6 +271,7 @@ private:
     int target_tool;
     int tool_number;
     int max_manual_tool_number;
+    int lowest_tool_number;
     int goto_position;
     float position_x;
     float position_y;
@@ -219,6 +283,13 @@ private:
     float tool_offset;
     int beep_state;
     int beep_count;
+
+    // Tool slots functions
+    void load_custom_tool_slots();
+    bool is_custom_tool_defined(int tool_num);
+    void add_custom_tool_slot(int tool_num, float x_mm, float y_mm, float z_mm);
+    void remove_custom_tool_slot(int tool_num);
+    void save_custom_tool_slots_to_file();
 
 };
 

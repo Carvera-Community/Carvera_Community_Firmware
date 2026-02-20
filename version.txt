@@ -1,4 +1,54 @@
+[unreleased]
+- Enhancement: Move G0 at the configured default_seek_rate configured, defaulting to 3000mm/min, unless a Feed parameter is provided. This returns G0 being a rapid movement command.
+- Enhancement: Tool setter sensor location can now be configured separately. Use config items coordinate.probe_mcs_x coordinate.probe_mcs_y and coordinate.probe_mcs_z. If unset, the original hardcoded values will be used.
+- Enhancement: Tool TLO calibration MCode M491.1 can now be offset with parameters X/Y/Z. This enables probing of tools with off-centre cutting points.
+- Enhancement: M493.4 now shows details about the current tool setter position config
+- Enhancement: Added M889 to show current tool slot configuration. If no custom tool slots are defined it shows the current stock tool slot config.
+- Enhancement: Added capability to configure custom tool slots up to 255. If any tool slots are defined the machine defaults are ignored. The X/Y/Z MCS centre position is defined per tool.
+- Enhancement: Added M890 to add/redefine a new custom tool slot. Command immediately adds the slot to the running config and saves the running tool slot config to /sd/custom_tool_slots.txt. If this is the first custom tool added other stock location tools are saved. Parameters are T for tool number, X/Y/Z for MCS location. The Z parameter is optional, and if ommitted the Z value of the last tool slot is used.
+- Enhancement: Added M891 to remove a tool slot defintion. Parameter is T for the tool slot to remove. This immediately removes the config from memory and file. If /sd/custom_tool_slots.txt doesn't exist it will be created and populated.
+- Enhancement: Added the current spindle PWM value to the status response (? command)
+- Enhancement: If flex compensation file is missing and autoload is active, new error informs user
+- Enhancement: Changed the TLO system, so that the value now represents the stickout of the cutter from the spindle.
+- Enhancement: Added G93 (Inverse Time Feed Mode) - Sets feed rate mode where F parameter specifies 1/min (inverse time). The feed rate is multiplied by move distance to calculate mm/min. Useful for maintaining consistent time per move regardless of distance.
+- Enhancement: Added G94 (Feed Rate Per Minute Mode) - Sets feed rate mode to mm/min (default mode). The F parameter directly specifies feed rate in millimeters per minute.
+- Enhancement: Added the calibration offset function to the M6 toolchange command too
+- Enhancement: front button long press is now denoted by a flashing LED
+- Enhancement: Added improved callbacks to the estop command that includes information on line triggered
+- Enhancement: added $F S100 command to instantly override feed rate and $O S100 command to instantly override spindle speed
+- Enhancement: added max_rpm value to the config file to prevent running the spindle past its rated maximum. Can be overridden like any other config variable with config-set sd spindle.max_rpm 13000. Defaults to 13000 on the air and 15000 on the C1
+- Enhancement: faster communication over USB now available. The community controller will negotiage a faster speed at the normal speed. Both will revert to the slow speed on disconnect
+- Enhancement: Full ATC support on Carvera AIR
+- Enhancement: Manual toolchanges use toolchange popups on the controller
+- Enhancement: M400 Wait for all moves to complete. Use before M-codes that must run only after all prior motion is finished
+- Enhancement: Long press function will show remaining time until long press in a progress bar style. Colors are the same as the expected state (TOOL, RUN, SLEEP or IDLE)
+- Enhancement: Added coordinate.reference_tool_mz to the config to specify the reference tool mz value. Defaults to -115.34 which is the same on C1 and CA1 with an empty collet
+- Fixed: Remove artificial 30mm padding from A-axis by CCS86
+- Fixed: Active measurement of flex compensation will be aborted if the machine goes to a halt
+- Fixed: Restored the stock Makera probing laser behaviour if tool 0 is NOT the 3d probe
+- Fixed: goto now skips to the specified line instead of the +1 of the specified line. Eg after goto 9 the next line played will be 9 and not 10.
+- Fixed: If the repeat parameter (L) is greater than 1 on probe_boss (M462) or any M commands that use probe_boss(), an incorrect location is probed after the first on the cycle
+- Fixed: The probe_doubleHit function can no longer disable the probe power if the 3d probe is active
+- Fixed: small typo in line 2552 of atchandler.cpp, issue #218 in the community firmware
+- Fixed: temperture overheat warnings now include info on if it is overheat, too cold, or undefined and most likely a wiring issue
+- Fixed: Report line position using playing_lines so that the current line doesn't jump around in the Controller
+- Fixed: Ensure that tool calibration runs again after being interrupted by e-stop
+- Fixed: Variable #5044 was returning position in MCS, now is in WCS as documented
+- Fixed: Probe laser on the AIR does turn off after the margin scan now
+- Change: Inch Mode (G20) now raises a machine halt. This is because there are outstanding bugs preventing it's use.
+- Change: Status query response now continues to contain playback details after playback has completed, and returns the play back state. The progress token format is now: |P:played_lines,percent_complete,elapsed_secs,is_playing|
+- Change: In M469.5 use the C parameter as the probe/retract distance
+- Change: Lowered the minimum radius of A axis speed compensation to 0.1 from 1 to allow compensation on small diameters
+- Change: Fix Coordinated Speed Plateau: Added bi-directional logic to allow compound moves (Z+A or Y+A) to speed up if required to meet target surface speed.
+- Change: disable rotary-feedrate centerline-distance compensation during G0 rapid positioning moves to allow G0 A# commands to work at full speed
+- Change: there was a hardcoded max of 1800 on the A axis speed that has been removed. This value was overriding the config file max A axis speed
+- Change: increased spindle speed and feed rate override values to 10-300% instead of 50-200% to match controller
+
+
+
 [v2.0.0c]
+- Enhancement: The side depth parameter takes the probe tip diameter into account to precisely specify where the probe should make contact instead of where the end of the stylus will be
+- Enhancement: Updated the flex compensation system (reprobing needed) to the latest tested version with improved calculations
 - Fixed: When probing an angle with the L parameter > 1, it shows the results of each run instead of the average
 - Fixed: M469.4 was probing where the 4th axis module ends and the chuck starts, now it probes 5mm back in X to ensure the 4th axis module body is probed.
 - Fixed: M469.5 was probing top of 4th axis at chuck start not the indent of the harmonic drive. Now probe logic matches M495

@@ -259,6 +259,7 @@ bool CartGridStrategy::handleConfig()
             flex_compensation_active = true;
             updateCompensationTransform();
         }else{
+            THEKERNEL->set_flex_compensation_load_error(true);
             flex_compensation_active = false;
             updateCompensationTransform();
         }
@@ -487,6 +488,12 @@ bool CartGridStrategy::handleGcode(Gcode *gcode)
             return true;
 
         }else if(gcode->g == 33) { // G33: Perform flex measurement and enable compensation
+
+            if(THEKERNEL->factory_set->MachineModel != CARVERA_AIR) {
+                gcode->stream->printf("Flex compensation is only supported on Carvera Air\n");
+                return false;
+            }
+
             // Wait for empty queue
             THEKERNEL->conveyor->wait_for_idle();
 
@@ -500,6 +507,7 @@ bool CartGridStrategy::handleGcode(Gcode *gcode)
                 gcode->stream->printf("Flex measurement failed to complete\n");
             } else {
                 gcode->stream->printf("Flex measurement completed and compensation enabled.\n");
+                THEKERNEL->set_flex_compensation_load_error(false);
             }
             THEROBOT->disable_segmentation = false;
 
@@ -558,6 +566,7 @@ bool CartGridStrategy::handleGcode(Gcode *gcode)
                 if (load_flex_compensation_data(gcode->stream)) {
                     flex_compensation_active = true;
                     updateCompensationTransform();
+                    THEKERNEL->set_flex_compensation_load_error(false);
                 }else{
                     flex_compensation_active = false;
                     updateCompensationTransform();
@@ -871,7 +880,7 @@ void CartGridStrategy::doCompensation(float *target, bool inverse, bool debug)
         int rod_distance_int = 900000;
         int triangle_y_int = 900000;            // Y distance between the plane through both rods to the center of the spindle (90.0 * 10000)
         int machine_offset_z_int = 510000;      // Z distance between the centerplane between the rods and the end of the spindle (51.0 * 10000)
-        int sensor_machine_z_int = -1153600;   // Z machine coordinate if the tool length would be 0 (-115.36 * 10000)
+        int sensor_machine_z_int = -1153400;   // Z machine coordinate if the tool length would be 0 (-115.36 * 10000)
         int refmz_int = (int)(THEKERNEL->eeprom_data->REFMZ * 10000.0f);                  
         int TLO_int = (int)(THEKERNEL->eeprom_data->TLO * 10000.0f);
         float interpolated_delta = 0.0;
@@ -1086,7 +1095,6 @@ bool CartGridStrategy::doFlexMeasurement(Gcode *gc)
 
     // Parse G33 parameters
     float y_coordinate = 0.0F;
-    float x_distance = 0.0F;
     int num_points = 0;
 
     if(gc->has_letter('Y')) {
@@ -1139,7 +1147,7 @@ bool CartGridStrategy::doFlexMeasurement(Gcode *gc)
 
     int rod_distance_int = 900000;
     int machine_offset_z_int = 510000;      // Z distance between the centerplane between the rods and the end of the spindle (51.0 * 10000)
-    int sensor_machine_z_int = -1153600;   // Z machine coordinate if the tool length would be 0 (-115.36 * 10000)
+    int sensor_machine_z_int = -1153400;   // Z machine coordinate if the tool length would be 0 (-115.36 * 10000)
     int refmz_int = (int)(THEKERNEL->eeprom_data->REFMZ * 10000.0f);                  
     int TLO_int = (int)(THEKERNEL->eeprom_data->TLO * 10000.0f);
 
@@ -1168,6 +1176,10 @@ bool CartGridStrategy::doFlexMeasurement(Gcode *gc)
         zprobe->coordinated_move(current_x, current_y, NAN, params.rapid_rate / 60);
         // Probe at each point along X-axis
         for(int i = 0; i < num_points; i++) {
+            if(THEKERNEL->is_halted()) {
+                gc->stream->printf("ERROR: Halted during flex measurement\n");
+                return false;
+            }
             float probe_x = current_x + (i * x_step);
             zprobe->coordinated_move(probe_x, NAN, NAN, params.rapid_rate / 60);
             
@@ -1245,13 +1257,11 @@ void CartGridStrategy::print_flex_compensation_data(StreamOutput *stream)
     }
 
     // Get current machine position
-    float current_x = THEROBOT->get_axis_position(X_AXIS);
-    float current_y = THEROBOT->get_axis_position(Y_AXIS);
     float current_z = THEROBOT->get_axis_position(Z_AXIS);
     
     int rod_distance_int = 900000;
     int machine_offset_z_int = 510000;      // Z distance between the centerplane between the rods and the end of the spindle (51.0 * 10000)
-    int sensor_machine_z_int = -1153600;   // Z machine coordinate if the tool length would be 0 (-115.36 * 10000)
+    int sensor_machine_z_int = -1153400;   // Z machine coordinate if the tool length would be 0 (-115.36 * 10000)
     int refmz_int = (int)(THEKERNEL->eeprom_data->REFMZ * 10000.0f);                  
     int TLO_int = (int)(THEKERNEL->eeprom_data->TLO * 10000.0f);
  
