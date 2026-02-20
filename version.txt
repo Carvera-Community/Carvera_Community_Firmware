@@ -1,4 +1,4 @@
-[unreleased]
+[v2.1.0c-RC1]
 - Enhancement: Move G0 at the configured default_seek_rate configured, defaulting to 3000mm/min, unless a Feed parameter is provided. This returns G0 being a rapid movement command.
 - Enhancement: Tool setter sensor location can now be configured separately. Use config items coordinate.probe_mcs_x coordinate.probe_mcs_y and coordinate.probe_mcs_z. If unset, the original hardcoded values will be used.
 - Enhancement: Tool TLO calibration MCode M491.1 can now be offset with parameters X/Y/Z. This enables probing of tools with off-centre cutting points.
