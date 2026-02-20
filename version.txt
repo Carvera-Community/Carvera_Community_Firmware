@@ -22,6 +22,7 @@
 - Enhancement: Manual toolchanges use toolchange popups on the controller
 - Enhancement: M400 Wait for all moves to complete. Use before M-codes that must run only after all prior motion is finished
 - Enhancement: Long press function will show remaining time until long press in a progress bar style. Colors are the same as the expected state (TOOL, RUN, SLEEP or IDLE)
+- Enhancement: Added coordinate.reference_tool_mz to the config to specify the reference tool mz value. Defaults to -115.34 which is the same on C1 and CA1 with an empty collet
 - Fixed: Remove artificial 30mm padding from A-axis by CCS86
 - Fixed: Active measurement of flex compensation will be aborted if the machine goes to a halt
 - Fixed: Restored the stock Makera probing laser behaviour if tool 0 is NOT the 3d probe
