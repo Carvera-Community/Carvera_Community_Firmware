@@ -125,6 +125,7 @@ Robot::Robot()
     this->inch_mode = false;
     this->absolute_mode = true;
     this->e_absolute_mode = true;
+    this->inverse_time_mode = false;
     this->select_plane(X_AXIS, Y_AXIS, Z_AXIS);
     memset(this->machine_position, 0, sizeof machine_position);
     memset(this->compensated_machine_position, 0, sizeof compensated_machine_position);
@@ -153,7 +154,7 @@ void Robot::on_module_loaded()
     // load tlo data from eeprom
     float tlo[3] = {0, 0, THEKERNEL->eeprom_data->TLO};
     this->loadToolOffset(tlo);
-    this->probe_tool_not_calibrated = THEKERNEL->eeprom_data->probe_tool_not_calibrated;
+    this->tool_not_calibrated = THEKERNEL->eeprom_data->tool_not_calibrated;
     this->load_last_wcs = THEKERNEL->config->value(load_last_wcs_checksum)->by_default(false)->as_bool();
     if (this->load_last_wcs)
     {
@@ -189,6 +190,11 @@ void Robot::on_module_loaded()
 
 void Robot::load_config()
 {
+    // Check if config cache is available, if not return early to avoid crash
+    if (!THEKERNEL->config->is_config_cache_loaded()) {
+        return;
+    }
+    
     // Arm solutions are used to convert positions in millimeters into position in steps for each stepper motor.
     // While for a cartesian arm solution, this is a simple multiplication, in other, less simple cases, there is some serious math to be done.
     // To make adding those solution easier, they have their own, separate object.
@@ -314,8 +320,7 @@ void Robot::load_config()
         if((THEKERNEL->factory_set->FuncSetting & (1<<0)) && (a == 3))
 		{
 			uint16_t s = THEKERNEL->config->value(motor_checksums[a][4])->by_default(3000.0F)->as_number();
-			if(s > 1800) s=1800;
-        	actuators[a]->set_max_rate( s/60.0F); // it is in mm/min and converted to mm/sec
+			actuators[a]->set_max_rate( s/60.0F); // it is in mm/min and converted to mm/sec
         	float steps = THEKERNEL->config->value(motor_checksums[a][3])->by_default(a == 2 ? 2560.0F : 80.0F)->as_number();
         	if(CARVERA == THEKERNEL->factory_set->MachineModel)
         	{
@@ -390,7 +395,8 @@ void  Robot::push_state()
     bool em = this->e_absolute_mode;
     bool im = this->inch_mode;
     bool g123 = this->is_g123;
-    saved_state_t s(this->feed_rate, this->seek_rate, am, em, im, g123, current_wcs);
+    bool itm = this->inverse_time_mode;
+    saved_state_t s(this->feed_rate, this->seek_rate, am, em, im, g123, itm, current_wcs);
     state_stack.push(s);
 }
 
@@ -405,7 +411,8 @@ void Robot::pop_state()
         this->e_absolute_mode = std::get<3>(s);
         this->inch_mode = std::get<4>(s);
         this->is_g123 = std::get<5>(s);
-        this->current_wcs = std::get<6>(s);
+        this->inverse_time_mode = std::get<6>(s);
+        this->current_wcs = std::get<7>(s);
     }
 }
 
@@ -544,9 +551,6 @@ void Robot::check_max_actuator_speeds()
 
 void Robot::set_current_wcs_by_mpos(float x, float y, float z, float a, float b, float r)
 {
-    bool recalculate_z_offset = false;
-    float delta_ref_mz = 0;
-
     if(isnan(x)){
         x = std::get<X_AXIS>(wcs_offsets[current_wcs]);
     }
@@ -556,12 +560,7 @@ void Robot::set_current_wcs_by_mpos(float x, float y, float z, float a, float b,
     if(isnan(z)){
         z = std::get<Z_AXIS>(wcs_offsets[current_wcs]);
     }else{
-        if (THEKERNEL->eeprom_data->REFMZ != THEKERNEL->eeprom_data->TOOLMZ) {
-            delta_ref_mz = THEKERNEL->eeprom_data->TOOLMZ - THEKERNEL->eeprom_data->REFMZ;
-            recalculate_z_offset = true;
-        }
-        PublicData::set_value(atc_handler_checksum, set_ref_tool_mz_checksum, nullptr);
-        this->clearToolOffset();
+        z = z - std::get<Z_AXIS>(tool_offset);
     }
     if(isnan(a)){
         a = std::get<A_AXIS>(wcs_offsets[current_wcs]);
@@ -584,21 +583,8 @@ void Robot::set_current_wcs_by_mpos(float x, float y, float z, float a, float b,
         THEKERNEL->eeprom_data->WCSrotation[current_wcs] = this->r[current_wcs];
     }
 
-    // recalculate z offset for all WCS other than the current one if a different tool is selected
-    if (recalculate_z_offset) {
-        for (int i = 0; i < MAX_WCS; i++) {
-            if (i != current_wcs) {
-                std::tie(x, y, z, a, b) = wcs_offsets[i];
-                z += delta_ref_mz;
-                wcs_offsets[i] = wcs_t(x, y, z, a, b);
-                if (i <= 5) {
-                    THEKERNEL->eeprom_data->WCScoord[i][2] = z;
-                }
-            }
-        }
-    }
-    // save eeprom data if the current WCS is 0-5 or the Z offset is recalculated
-    if (current_wcs <= 5 || recalculate_z_offset) {
+    // save eeprom data if the current WCS is 0-5
+    if (current_wcs <= 5) {
         THEKERNEL->write_eeprom_data();
     }
 
@@ -653,25 +639,19 @@ void Robot::on_gcode_received(void *argument)
                     if(n == 0) n = current_wcs; // set current coordinate system
                     else --n;
                     if(n < MAX_WCS) {
-                        bool recalculate_z_offset = false;
                         float delta_ref_mz = 0;
                         float x, y, z, a, b;
                         std::tie(x, y, z, a, b) = wcs_offsets[n];
                         wcs_t pos= mcs2selected_wcs(machine_position, n);
                         // notify atc module to change ref tool mcs if Z wcs offset is chaned
                         if (gcode->has_letter('Z') && gcode->get_int('L') == 20) {
-                            if (probe_tool_not_calibrated && (THEKERNEL->eeprom_data->TOOL == 0 || THEKERNEL->eeprom_data->TOOL >= 999990)){
+                            if (tool_not_calibrated && (THEKERNEL->eeprom_data->TOOL == 0 || THEKERNEL->eeprom_data->TOOL >= 999990)){
                                 THEKERNEL->streams->printf("ALARM: Probe not calibrated. Please calibrate probe before probing.\n");
                                 THEKERNEL->call_event(ON_HALT, nullptr);
                                 THEKERNEL->set_halt_reason(CALIBRATE_FAIL);
                                 return;
                             }
-                            if (THEKERNEL->eeprom_data->REFMZ != THEKERNEL->eeprom_data->TOOLMZ) {
-                                delta_ref_mz = THEKERNEL->eeprom_data->TOOLMZ - THEKERNEL->eeprom_data->REFMZ;
-                                recalculate_z_offset = true;
-                            }
-                        	PublicData::set_value(atc_handler_checksum, set_ref_tool_mz_checksum, nullptr);
-                        	this->clearToolOffset();
+
                         }
                         if(gcode->has_letter('R')){
                             this->r[n] = gcode->get_value('R');
@@ -696,7 +676,7 @@ void Robot::on_gcode_received(void *argument)
                             }
                             
                             if(gcode->has_letter('Z')) {
-                                z = machine_position[Z_AXIS] - to_millimeters(gcode->get_value('Z'));
+                                z = machine_position[Z_AXIS] - to_millimeters(gcode->get_value('Z')) - std::get<Z_AXIS>(tool_offset);
                             }
                             
                             if(gcode->has_letter('A')) {
@@ -740,21 +720,8 @@ void Robot::on_gcode_received(void *argument)
                             THEKERNEL->eeprom_data->WCSrotation[n] = this->r[n];
                         }
 
-                        // recalculate z offset for all WCS other than the current one if a different tool is selected
-                        if (recalculate_z_offset) {
-                            for (int i = 0; i < MAX_WCS; i++) {
-                                if (i != n) {
-                                    std::tie(x, y, z, a, b) = wcs_offsets[i];
-                                    z += delta_ref_mz;
-                                    wcs_offsets[i] = wcs_t(x, y, z, a, b);
-                                    if (i <= 5) {
-                                        THEKERNEL->eeprom_data->WCScoord[i][2] = z;
-                                    }
-                                }
-                            }
-                        }
-                        // save eeprom data if the current WCS is 0-5 or the Z offset is recalculated
-                        if (n <= 5 || recalculate_z_offset) {
+                        // save eeprom data if the current WCS is 0-5
+                        if (n <= 5) {
                             THEKERNEL->write_eeprom_data();
                         }
                     }
@@ -764,7 +731,14 @@ void Robot::on_gcode_received(void *argument)
             case 17: this->select_plane(X_AXIS, Y_AXIS, Z_AXIS);   break;
             case 18: this->select_plane(X_AXIS, Z_AXIS, Y_AXIS);   break;
             case 19: this->select_plane(Y_AXIS, Z_AXIS, X_AXIS);   break;
-            case 20: this->inch_mode = true;   break;
+            // Inch mode is broken see https://github.com/Carvera-Community/Carvera_Community_Firmware/issues/209
+            // case 20: this->inch_mode = true;   break;
+            case 20: {
+                THEKERNEL->streams->printf("ALARM: Imperial Units are unsupported\n");
+                THEKERNEL->call_event(ON_HALT, nullptr);
+                THEKERNEL->set_halt_reason(MANUAL);
+                return;
+            }
             case 21: this->inch_mode = false;   break;
 
             case 54: case 55: case 56: case 57: case 58: case 59:
@@ -821,7 +795,7 @@ void Robot::on_gcode_received(void *argument)
                     		float delta[A_AXIS+1];
                     		for (size_t j = 0; j <= A_AXIS; ++j) delta[j]= 0;
                     		delta[A_AXIS]= mc - ma; // we go the max
-                    		THEROBOT->delta_move(delta, this->seek_rate, A_AXIS+1);
+                    		THEROBOT->delta_move(delta, actuators[A_AXIS]->get_max_rate(), A_AXIS+1);
                     		// wait for A moving
         					THECONVEYOR->wait_for_idle();
                     		// third
@@ -906,6 +880,9 @@ void Robot::on_gcode_received(void *argument)
 */
                 return;
             }
+            break;
+            case 93: this->inverse_time_mode = true; break;
+            case 94: this->inverse_time_mode = false;
         }
 
     } else if( gcode->has_m) {
@@ -920,6 +897,7 @@ void Robot::on_gcode_received(void *argument)
             case 2: // M2 end of program
                 //current_wcs = 0;
                 absolute_mode = true;
+                inverse_time_mode = false;
                 seconds_per_minute= 60;
                 break;
             case 17:
@@ -1432,11 +1410,32 @@ void Robot::process_move(Gcode *gcode, enum MOTION_MODE_T motion_mode)
     
     #endif
 
+    // G0 is non-modal for feed: without F use default seek rate; F on G0 applies only to that line
+    if (motion_mode == SEEK) {
+        if (THEKERNEL->config->is_config_cache_loaded()) {
+            this->seek_rate = THEKERNEL->config->value(default_seek_rate_checksum)->by_default(3000.0F)->as_number();
+        } else {
+            this->seek_rate = 3000.0F;
+        }
+    }
+
     if( gcode->has_letter('F') ) {
+        float f_value = this->to_millimeters( gcode->get_value('F') );
+        if (f_value <= 0.0F) {
+            gcode->is_error = true;
+            gcode->txt_after_ok = (f_value == 0 ? "Undefined feed rate\n" : "feed rate < 0\n");
+            THEKERNEL->streams->printf(f_value == 0 ? "Alarm:Undefined feed rate\n" : "Alarm:feed rate < 0\n");
+            return;
+        }
         if( motion_mode == SEEK )
-            this->seek_rate = this->to_millimeters( gcode->get_value('F') );
+            this->seek_rate = f_value;
         else
-            this->feed_rate = this->to_millimeters( gcode->get_value('F') );
+            this->feed_rate = f_value;
+    } else if (motion_mode != SEEK && this->inverse_time_mode) {
+        THEKERNEL->set_halt_reason(MANUAL);
+        THEKERNEL->call_event(ON_HALT, nullptr);
+        THEKERNEL->streams->printf("Inverse-time feed mode requires F parameter on every G01/G02/G03 line.\n");
+        return;
     }
 
     if(gcode->has_letter('S')) {
@@ -1514,11 +1513,17 @@ void Robot::process_move(Gcode *gcode, enum MOTION_MODE_T motion_mode)
         case NONE: break;
 
         case SEEK:
-            moved = this->append_line(gcode, target, this->seek_rate / seconds_per_minute, delta_e );
+            {
+                // rapid moves are always in mm/min
+                bool saved_itm = this->inverse_time_mode;
+                this->inverse_time_mode = false;
+                moved = this->append_line(gcode, target, this->seek_rate, delta_e );
+                this->inverse_time_mode = saved_itm;
+            }
             break;
 
         case LINEAR:
-            moved = this->append_line(gcode, target, this->feed_rate / seconds_per_minute, delta_e );
+            moved = this->append_line(gcode, target, this->feed_rate, delta_e );
             break;
 
         case CW_ARC:
@@ -1646,7 +1651,7 @@ void Robot::reset_compensated_machine_position()
         // we want to leave it where we have set Z, not where it ended up AFTER compensation so
         // this should correct the Z position to the machine_position
         is_g123 = false; // we don't want the laser to fire
-        if(!append_milestone(machine_position, this->seek_rate / 60.0F, 0)) {
+        if(!append_milestone(machine_position, this->seek_rate, 0)) {
             reset_axis_position(machine_position[X_AXIS], machine_position[Y_AXIS], machine_position[Z_AXIS]);
         }
     }
@@ -1655,7 +1660,7 @@ void Robot::reset_compensated_machine_position()
 // Convert target (in machine coordinates) to machine_position, then convert to actuator position and append this to the planner
 // target is in machine coordinates without the compensation transform, however we save a compensated_machine_position that includes
 // all transforms and is what we actually convert to actuator positions
-bool Robot::append_milestone(const float target[], float rate_mm_s, unsigned int line)
+bool Robot::append_milestone(const float target[], float feed_rate, unsigned int line)
 {
     float deltas[n_motors];
     float transformed_target[n_motors]; // adjust target for bed compensation
@@ -1738,30 +1743,6 @@ bool Robot::append_milestone(const float target[], float rate_mm_s, unsigned int
     // as the last milestone won't be updated we do not actually lose any moves as they will be accounted for in the next move
     if (!auxilliary_move && distance < 0.00001F) return false;
 
-    if (!auxilliary_move) {
-         for (size_t i = X_AXIS; i < N_PRIMARY_AXIS; i++) {
-            // find distance unit vector for primary axis only
-            unit_vec[i] = deltas[i] / distance;
-
-            // Do not move faster than the configured cartesian limits for XYZ
-            if ( i <= Z_AXIS && max_speeds[i] > 0 ) {
-                float axis_speed = fabsf(unit_vec[i] * rate_mm_s);
-
-                if (axis_speed > max_speeds[i]) {
-                	//float last_rate_mm_s = rate_mm_s;
-                    rate_mm_s *= ( max_speeds[i] / axis_speed );
-                    // THEKERNEL->streams->printf("Reduce Speed of %d from %1.2f to %1.2f\n", i, last_rate_mm_s, rate_mm_s);
-                }
-            }
-        }
-
-        if(this->max_speed > 0 && rate_mm_s > this->max_speed) {
-        	// float last_rate_mm_s = rate_mm_s;
-            rate_mm_s = this->max_speed;
-            // THEKERNEL->streams->printf("Reduce Total Speed from %1.2f to %1.2f\n", last_rate_mm_s, rate_mm_s);
-        }
-    }
-
     // find actuator position given the machine position, use actual adjusted target
     ActuatorCoordinates actuator_pos;
     if(!disable_arm_solution) {
@@ -1792,12 +1773,47 @@ bool Robot::append_milestone(const float target[], float rate_mm_s, unsigned int
         }
     }
     if (auxilliary_move) {
-        distance = sqrtf(sos); // distance in mm of the e move
+        distance = sqrtf(sos); // distance in mm of the e move, or degrees for A/B-only moves
         if (distance < 0.00001F) return false;
+        // Skip negligible A-axis-only moves (e.g. G0 A0 when A is already 0) to avoid feed rate
+        // overflow: planner expects distance in mm but A-only distance is in degrees.
+        if (fabsf(deltas[A_AXIS]) >= 0.00001F && distance < 0.001F) return false;
     }
-#endif
+    #endif
 
-    DEBUG_PRINTF("distance: %f, aux_move: %d\n", distance, auxilliary_move);
+    if (this->inverse_time_mode) {
+        // in G93/inverse time mode, the feed rate is given as 1/min,
+        // by multiplying it with the distance we get mm/min, the same as in G94
+        feed_rate *= distance;
+    }
+
+    float rate_mm_s = feed_rate / seconds_per_minute;
+
+    if (!auxilliary_move) {
+         for (size_t i = X_AXIS; i < N_PRIMARY_AXIS; i++) {
+            // find distance unit vector for primary axis only
+            unit_vec[i] = deltas[i] / distance;
+
+            // Do not move faster than the configured cartesian limits for XYZ
+            if ( i <= Z_AXIS && max_speeds[i] > 0 ) {
+                float axis_speed = fabsf(unit_vec[i] * rate_mm_s);
+
+                if (axis_speed > max_speeds[i]) {
+                    //float last_rate_mm_s = rate_mm_s;
+                    rate_mm_s *= ( max_speeds[i] / axis_speed );
+                    // THEKERNEL->streams->printf("Reduce Speed of %d from %1.2f to %1.2f\n", i, last_rate_mm_s, rate_mm_s);
+                }
+            }
+        }
+
+        if(this->max_speed > 0 && rate_mm_s > this->max_speed) {
+            // float last_rate_mm_s = rate_mm_s;
+            rate_mm_s = this->max_speed;
+            // THEKERNEL->streams->printf("Reduce Total Speed from %1.2f to %1.2f\n", last_rate_mm_s, rate_mm_s);
+        }
+    }
+
+    DEBUG_PRINTF("distance: %f, rate_mm_s: %f, aux_move: %d\n", distance, rate_mm_s, auxilliary_move);
 
     // use default acceleration to start with
     float acceleration = default_acceleration;
@@ -1812,22 +1828,25 @@ bool Robot::append_milestone(const float target[], float rate_mm_s, unsigned int
 
 		float actuator_rate = d / isecs;
 
-		if (actuator == A_AXIS) {
+        // FIX: Only check compensation for G1/G2/G3, ignore for G0
+		if (actuator == A_AXIS && this->is_g123) {
 		    // THEKERNEL->streams->printf("d: %f, rate: %f, distance: %f, aux_move: %d, acc: %f, isecs: %f, line: %d\n", d, actuator_rate, distance, auxilliary_move, acceleration, isecs, line);
-		    float a_perimeter = PI * 2 + 30;
+		    float a_perimeter = PI * 2;
 			// A Axis moved, calculate real A Axis speed based on Y and Z wcs
 	        wcs_t curr_mpos = wcs_t(target[X_AXIS], target[Y_AXIS], target[Z_AXIS], 0, 0);
 	        wcs_t curr_wpos = this->mcs2wcs(curr_mpos);
 			float abs_y_wcs = fabsf(std::get<Y_AXIS>(curr_wpos));
 			float abs_z_wcs = fabsf(std::get<Z_AXIS>(curr_wpos));
 			float rotation_radius = (abs_y_wcs > 0.00001 || abs_z_wcs > 0.00001) ? sqrtf(powf(abs_y_wcs, 2) + powf(abs_z_wcs, 2)) : 0;
-			if (rotation_radius > 1.0) {
-				a_perimeter = PI * 2 * rotation_radius + 30;
+            
+            // FIX: Changed 1.0 to 0.1 to allow small radius compensation
+			if (rotation_radius > 0.1) {
+				a_perimeter = PI * 2 * rotation_radius;
 		    }
 			if (auxilliary_move) {
-				// A axis move only, speed up if necessary
+				// A axis move only, speed up if necessary, but only in mm/min G94 mode
 				float mm_per_sec = a_perimeter * (rate_mm_s / 360);
-				if (mm_per_sec < rate_mm_s) {
+				if (!this->inverse_time_mode && mm_per_sec < rate_mm_s) {
 					// speed up
 					rate_mm_s *= (rate_mm_s / mm_per_sec);
 				}
@@ -1839,14 +1858,19 @@ bool Robot::append_milestone(const float target[], float rate_mm_s, unsigned int
 				// THEKERNEL->streams->printf("only A: %1.4f, %1.4f, %1.4f, %1.4f\r\n", abs_y_wcs, abs_z_wcs, rate_mm_s, a_perimeter);
 				continue;
 			} else {
-				// A axis move along with other axis, speed down if necessary
+				// A axis move along with other axis
+                // Fix: Speed UP or DOWN to match surface speed
 				float mm_per_sec = actuator_rate * a_perimeter / 360;
-				if (mm_per_sec > rate_mm_s) {
-					// speed down
-					actuator_rate *= (rate_mm_s / mm_per_sec);
-					rate_mm_s *= (rate_mm_s / mm_per_sec);
+                
+                // Allow compensation in BOTH directions if the difference is significant
+				if (!this->inverse_time_mode && fabsf(mm_per_sec - rate_mm_s) > 0.001 && mm_per_sec > 0.00001) {
+                    // Calculate ratio to match target surface speed
+                    float ratio = rate_mm_s / mm_per_sec;
+                    
+					actuator_rate *= ratio;
+					rate_mm_s *= ratio;
 					isecs = d / rate_mm_s;
-					// THEKERNEL->streams->printf("Speed down to : %1.4f, %1.4f, %1.4f\n", isecs, rate_mm_s, actuator_rate);
+					// THEKERNEL->streams->printf("Adjusting Speed to : %1.4f, %1.4f, %1.4f\n", isecs, rate_mm_s, actuator_rate);
 				}
 				// if (rate_mm_s < 1)  rate_mm_s = 1;
 				// THEKERNEL->streams->printf("Not only A: %1.4f, %1.4f, %1.4f, %1.4f, %1.4f\r\n", abs_y_wcs, abs_z_wcs, actuator_rate, rate_mm_s, a_perimeter);
@@ -1924,23 +1948,27 @@ bool Robot::delta_move(const float *delta, float rate_mm_s, uint8_t naxis)
     }
 
     is_g123= false; // we don't want the laser to fire
-    // submit for planning and if moved update machine_position
-    if(append_milestone(target, rate_mm_s, 0)) {
-         memcpy(machine_position, target, n_motors*sizeof(float));
-         return true;
-    }
 
-    return false;
+    bool saved_itm = this->inverse_time_mode;
+    this->inverse_time_mode = false; // force G94 since delta feedrates are always in mm/sec
+    // submit for planning and if moved update machine_position
+    bool moved = append_milestone(target, rate_mm_s * seconds_per_minute, 0);
+    if(moved) {
+        memcpy(machine_position, target, n_motors*sizeof(float));
+    }
+    this->inverse_time_mode = saved_itm; // restore G93/G94
+
+    return moved;
 }
 
 // Append a move to the queue ( cutting it into segments if needed )
-bool Robot::append_line(Gcode *gcode, const float target[], float rate_mm_s, float delta_e)
+bool Robot::append_line(Gcode *gcode, const float target[], float feed_rate, float delta_e)
 {
     // catch negative or zero feed rates and return the same error as GRBL does
-    if(rate_mm_s <= 0.0F) {
+    if(feed_rate <= 0.0F) {
         gcode->is_error= true;
-        gcode->txt_after_ok= (rate_mm_s == 0 ? "Undefined feed rate\n" : "feed rate < 0\n");
-        THEKERNEL->streams->printf(rate_mm_s == 0 ? "Alarm:Undefined feed rate\n" : "Alarm:feed rate < 0\n");
+        gcode->txt_after_ok= (feed_rate == 0 ? "Undefined feed rate\n" : "feed rate < 0\n");
+        THEKERNEL->streams->printf(feed_rate == 0 ? "Alarm:Undefined feed rate\n" : "Alarm:feed rate < 0\n");
         return false;
     }
 
@@ -1949,7 +1977,7 @@ bool Robot::append_line(Gcode *gcode, const float target[], float rate_mm_s, flo
 
     if(millimeters_of_travel < 0.00001F) {
         // we have no movement in XYZ, probably E only extrude or retract
-        return this->append_milestone(target, rate_mm_s, gcode->line);
+        return this->append_milestone(target, feed_rate, gcode->line);
     }
 
     /*
@@ -1979,7 +2007,11 @@ bool Robot::append_line(Gcode *gcode, const float target[], float rate_mm_s, flo
         // segment based on current speed and requested segments per second
         // the faster the travel speed the fewer segments needed
         // NOTE rate is mm/sec and we take into account any speed override
-        float seconds = millimeters_of_travel / rate_mm_s;
+        float seconds = seconds_per_minute / feed_rate;
+        if (!this->inverse_time_mode) {
+            // in G94 mode, the feed rate is per mm
+            seconds *= millimeters_of_travel;
+        }
         segments = max(1.0F, ceilf(this->delta_segments_per_second * seconds));
         // TODO if we are only moving in Z on a delta we don't really need to segment at all
 
@@ -1989,6 +2021,12 @@ bool Robot::append_line(Gcode *gcode, const float target[], float rate_mm_s, flo
         } else {
             segments = ceilf( millimeters_of_travel / this->mm_per_line_segment);
         }
+    }
+
+    if (this->inverse_time_mode) {
+        // in inverse-time G93 mode, we need to divide the total time between segments
+        // the feed_rate is an inverse of time, so we multiply to divide
+        feed_rate *= segments;
     }
 
     bool moved= false;
@@ -2011,13 +2049,13 @@ bool Robot::append_line(Gcode *gcode, const float target[], float rate_mm_s, flo
 
             // Append the end of this segment to the queue
             // this can block waiting for free block queue or if in feed hold
-            bool b= this->append_milestone(segment_end, rate_mm_s, gcode->line);
+            bool b= this->append_milestone(segment_end, feed_rate, gcode->line);
             moved= moved || b;
         }
     }
 
     // Append the end of this full move to the queue
-    if(this->append_milestone(target, rate_mm_s, gcode->line)) moved= true;
+    if(this->append_milestone(target, feed_rate, gcode->line)) moved= true;
 
     this->next_command_is_MCS = false; // always reset this
 
@@ -2029,12 +2067,11 @@ bool Robot::append_line(Gcode *gcode, const float target[], float rate_mm_s, flo
 // TODO does not support any E parameters so cannot be used for 3D printing.
 bool Robot::append_arc(Gcode * gcode, const float target[], const float rotated_target[], const float offset[], float radius, bool is_clockwise )
 {
-    float rate_mm_s= this->feed_rate / seconds_per_minute;
     // catch negative or zero feed rates and return the same error as GRBL does
-    if(rate_mm_s <= 0.0F) {
+    if(this->feed_rate <= 0.0F) {
         gcode->is_error= true;
-        gcode->txt_after_ok= (rate_mm_s == 0 ? "Undefined feed rate" : "feed rate < 0");
-        THEKERNEL->streams->printf(rate_mm_s == 0 ? "Alarm:Undefined feed rate\n" : "Alarm:feed rate < 0\n");
+        gcode->txt_after_ok= (this->feed_rate == 0 ? "Undefined feed rate" : "feed rate < 0");
+        THEKERNEL->streams->printf(this->feed_rate == 0 ? "Alarm:Undefined feed rate\n" : "Alarm:feed rate < 0\n");
         return false;
     }
     float offset_rotated[3]{0, 0, 0};
@@ -2110,6 +2147,16 @@ bool Robot::append_arc(Gcode * gcode, const float target[], const float rotated_
     uint16_t segments = floorf(millimeters_of_travel / arc_segment);
     bool moved= false;
 
+    // Note: for arcs, we handle the G93 transform here rather than in append_milestone
+    // because we divide time by segment count, not by linear distance.
+    // The rate_mm_s passed to append_milestone is already in mm/min.
+    float rate_mm_s = this->feed_rate;
+    if (this->inverse_time_mode) {
+        // in inverse-time/G93 mode, we need to divide the total time between segments
+        // the rate_mm_s is an inverse of time, so we multiply to divide
+        rate_mm_s *= segments;
+    }
+
     if(segments > 1) {
         float theta_per_segment = angular_travel / segments;
         linear_vector[this->plane_axis_0] = linear_vector[this->plane_axis_0] / segments;
@@ -2181,6 +2228,11 @@ bool Robot::append_arc(Gcode * gcode, const float target[], const float rotated_
             arc_target[this->plane_axis_0] = arc_center[this->plane_axis_0] + arc_target_vector[this->plane_axis_0] + i * linear_vector[this->plane_axis_0];
             arc_target[this->plane_axis_1] = arc_center[this->plane_axis_1] + arc_target_vector[this->plane_axis_1] + i * linear_vector[this->plane_axis_1];
             arc_target[this->plane_axis_2] = arc_center[this->plane_axis_2] + arc_target_vector[this->plane_axis_2] + i * linear_vector[this->plane_axis_2];
+
+            for (int j = A_AXIS; j < n_motors; j++) {
+                arc_target[j] = machine_position[j] + i * (target[j] - machine_position[j]) / segments;
+            }
+
             // Append this segment to the queue
             bool b= this->append_milestone(arc_target, rate_mm_s, gcode->line);
             moved= moved || b;
@@ -2310,14 +2362,14 @@ void Robot::override_homed_check(bool home_override_value) {
     return;
 }
 
-void Robot::set_probe_tool_not_calibrated(bool value)
+void Robot::set_tool_not_calibrated(bool value)
 {
-    probe_tool_not_calibrated = value;
-    THEKERNEL->eeprom_data->probe_tool_not_calibrated = value;
+    tool_not_calibrated = value;
+    THEKERNEL->eeprom_data->tool_not_calibrated = value;
     THEKERNEL->write_eeprom_data();
 }
 
-bool Robot::get_probe_tool_not_calibrated()
+bool Robot::get_tool_not_calibrated()
 {
-    return probe_tool_not_calibrated;
+    return tool_not_calibrated;
 }

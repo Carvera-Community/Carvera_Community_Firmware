@@ -101,7 +101,7 @@ void ZProbe::on_module_loaded()
     tlo_calibrating = false;
     THEKERNEL->slow_ticker->attach(1000, this, &ZProbe::read_probe);
     THEKERNEL->slow_ticker->attach(1000, this, &ZProbe::read_calibrate);
-	if(!(THEKERNEL->factory_set->FuncSetting & (1<<2)))	//Manual Tool change 
+	if(CARVERA_AIR == THEKERNEL->factory_set->MachineModel)	//Manual Tool change 
 	{
     	THEKERNEL->slow_ticker->attach(100, this, &ZProbe::probe_doubleHit);
     }
@@ -199,9 +199,14 @@ void ZProbe::on_main_loop(void *argument)
         if (CARVERA_AIR == THEKERNEL->factory_set->MachineModel) {
             bool ignore_on_halt = true;
             PublicData::set_value( switch_checksum, detector_switch_checksum, ignore_on_halt_checksum, &ignore_on_halt );
+            bool on = true;
+            PublicData::set_value( switch_checksum, detector_switch_checksum, state_checksum, &on );
         }
-    }
-    else{
+    }else{
+        if(is_3dprobe_active) {
+            bool off = false;
+            PublicData::set_value( switch_checksum, detector_switch_checksum, state_checksum, &off );
+        }
         is_3dprobe_active = false;    
         if (CARVERA_AIR == THEKERNEL->factory_set->MachineModel) {
             bool ignore_on_halt = false;
@@ -263,10 +268,6 @@ void ZProbe::on_main_loop(void *argument)
 
 uint32_t ZProbe::read_probe(uint32_t dummy)
 {
-    if (CARVERA_AIR == THEKERNEL->factory_set->MachineModel && (is_3dprobe_active || probing || calibrating)){
-        bool b = true;
-		PublicData::set_value( switch_checksum, detector_switch_checksum, state_checksum, &b );
-    }
 
     if (probe_triggered && !(this->pin.get() != invert_probe)) {
         probe_triggered = false;
@@ -367,6 +368,9 @@ uint32_t ZProbe::read_calibrate(uint32_t dummy)
 
 uint32_t ZProbe::probe_doubleHit(uint32_t dummy)
 {
+
+    if (is_3dprobe_active) return 0;
+
 	if (this->pin.get()) 
 	{
 		if(!bfirstHitDetected)
@@ -1284,7 +1288,7 @@ bool ZProbe::parse_parameters(Gcode *gcode, bool override_probe_check){
         THEKERNEL->call_event(ON_HALT, nullptr);
         THEKERNEL->set_halt_reason(PROBE_FAIL);
         return false;
-    }else if(THEROBOT->get_probe_tool_not_calibrated() && gcode->has_letter('S') && (gcode->has_letter('H') || gcode->has_letter('Z'))){
+    }else if(THEROBOT->get_tool_not_calibrated() && gcode->has_letter('S') && (gcode->has_letter('H') || gcode->has_letter('Z'))){
         if(gcode->get_value('S') == 2){
             THEKERNEL->streams->printf("ALARM: Probe not calibrated. Please calibrate probe before probing.\n");
             THEKERNEL->call_event(ON_HALT, nullptr);
@@ -2360,6 +2364,10 @@ void ZProbe::calibrate_probe_boss() //M460.2
     THEKERNEL->streams->printf("Calibrating Probe With Boss\n");
 
     float knownDiameter = 0;
+    // Save original axis distances before they get modified by probe_boss()
+    float original_x_axis_distance = param.x_axis_distance;
+    float original_y_axis_distance = param.y_axis_distance;
+    
     if (param.x_axis_distance != 0){
         knownDiameter = param.x_axis_distance;
     }
@@ -2377,10 +2385,15 @@ void ZProbe::calibrate_probe_boss() //M460.2
     THEKERNEL->probe_outputs[1] = 0;
 
     for(int i=0; i< param.repeat; i++) {
+            // Restore original axis distances before each probe_boss() call
+            // since probe_boss() modifies them by dividing by 2
+            param.x_axis_distance = original_x_axis_distance;
+            param.y_axis_distance = original_y_axis_distance;
+            
             probe_boss(true);
             THECONVEYOR->wait_for_idle();
             
-            if (param.x_axis_distance != 0){
+            if (original_x_axis_distance != 0){
                 probe_position_stack.push_back(THEKERNEL->probe_outputs[0]);
             }else{
                 probe_position_stack.push_back(THEKERNEL->probe_outputs[1]);

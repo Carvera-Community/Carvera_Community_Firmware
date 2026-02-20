@@ -93,6 +93,7 @@ Kernel::Kernel()
     cachewait = false;
     disable_serial_console = false;
     keep_alive_request = false;
+    flex_compensation_load_error = false;
 
     instance = this; // setup the Singleton instance of the kernel    
     
@@ -141,7 +142,8 @@ Kernel::Kernel()
     this->halt_on_error_debug = this->config->value( halt_on_error_debug_checksum )->by_default(false)->as_bool();
 
     if (!this->disable_serial_console) {
-        this->serial = new(AHB) SerialConsole(P2_8, P2_9, 115200);
+        int uart_baud = this->config->value(uart_checksum, baud_rate_setting_checksum)->by_default(115200)->as_number();
+        this->serial = new(AHB) SerialConsole(P2_8, P2_9, uart_baud);
         this->add_module( this->serial );
     }
 
@@ -352,8 +354,8 @@ std::string Kernel::get_query_string()
 
     // current spindle rpm and request rpm and override
     struct spindle_status ss;
-    ok = PublicData::get_value(pwm_spindle_control_checksum, get_spindle_status_checksum, &ss);
-    if (ok) {
+    bool pwm_spindle = PublicData::get_value(pwm_spindle_control_checksum, get_spindle_status_checksum, &ss);
+    if (pwm_spindle) {
         n= snprintf(buf, sizeof(buf), "|S:%1.1f,%1.1f,%1.1f,%d", ss.current_rpm, ss.target_rpm, ss.factor, int(this->get_vacuum_mode()));
         if(n > sizeof(buf)) n= sizeof(buf);
         str.append(buf, n);
@@ -380,14 +382,8 @@ std::string Kernel::get_query_string()
     struct tool_status tool;
     ok = PublicData::get_value( atc_handler_checksum, get_tool_status_checksum, &tool );
     if (ok) {
-    	if(THEKERNEL->factory_set->FuncSetting & (1<<2))	//ATC 
-	    {
-	        n= snprintf(buf, sizeof(buf), "|T:%d,%1.3f", tool.active_tool, tool.tool_offset);
-	    }
-	    else	//Manual Tool Change
-	    {
-	    	n= snprintf(buf, sizeof(buf), "|T:%d,%1.3f,%d", tool.active_tool, tool.tool_offset, tool.target_tool);
-	    }
+
+	    n= snprintf(buf, sizeof(buf), "|T:%d,%1.3f,%d", tool.active_tool, tool.tool_offset, tool.target_tool);
         if(n > sizeof(buf)) n= sizeof(buf);
         str.append(buf, n);
     }
@@ -414,7 +410,7 @@ std::string Kernel::get_query_string()
 	ok = PublicData::get_value( player_checksum, get_progress_checksum, &returned_data );
 	if (ok) {
 		struct pad_progress p =  *static_cast<struct pad_progress *>(returned_data);
-		n= snprintf(buf, sizeof(buf), "|P:%lu,%d,%lu", p.played_lines, p.percent_complete, p.elapsed_secs);
+		n= snprintf(buf, sizeof(buf), "|P:%lu,%d,%lu,%d", p.played_lines, p.percent_complete, p.elapsed_secs, p.is_playing ? 1 : 0);
 		if(n > sizeof(buf)) n= sizeof(buf);
 		str.append(buf, n);
 	}
@@ -464,6 +460,13 @@ std::string Kernel::get_query_string()
     if(n > sizeof(buf)) n = sizeof(buf);
     str.append(buf, n);
 
+    // PWM value for PWM spindle (similar to M957 output)
+    if (pwm_spindle) {
+        n = snprintf(buf, sizeof(buf), "|PWM:%5.3f", ss.current_pwm_value);
+        if(n > sizeof(buf)) n = sizeof(buf);
+        str.append(buf, n);
+    }
+
     str.append(">\n");
     return str;
 }
@@ -499,7 +502,7 @@ std::string Kernel::get_diagnose_string()
 
     // get switchs state
     struct pad_switch pad;
-    if(THEKERNEL->factory_set->FuncSetting & (1<<2))	//ATC 
+    if(CARVERA == THEKERNEL->factory_set->MachineModel)	//ATC 
     {
     	ok = PublicData::get_value(switch_checksum, get_checksum("vacuum"), 0, &pad);
     }
@@ -628,6 +631,12 @@ void Kernel::call_event(_EVENT_ENUM id_event, void * argument)
         this->halted = (argument == nullptr);
         if(!this->halted && this->feed_hold) this->feed_hold= false; // also clear feed hold
         was_idle = conveyor->is_idle(); // see if we were doing anything like printing
+        void *returned_data;
+        bool ok = PublicData::get_value( player_checksum, get_progress_checksum, &returned_data );
+        if (ok) {
+            struct pad_progress p =  *static_cast<struct pad_progress *>(returned_data);
+            this->streams->printf("Halt Happened at Line: %lu,percent: %d, time: %lu \n", p.played_lines, p.percent_complete, p.elapsed_secs);
+        }
     }
 
     // send to all registered modules
@@ -820,9 +829,9 @@ void Kernel::check_eeprom_data()
 			}
 		}
 	}
-    if(!((this->eeprom_data->probe_tool_not_calibrated & ~1) == 0))
+    if(!((this->eeprom_data->tool_not_calibrated & ~1) == 0))
 	{
-		this->eeprom_data->probe_tool_not_calibrated = true;
+		this->eeprom_data->tool_not_calibrated = true;
 		needrewtite = true;
 	}
 	if(needrewtite)

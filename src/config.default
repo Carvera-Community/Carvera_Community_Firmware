@@ -342,6 +342,7 @@ spindle.alarm_pin							0.19^			# spindle alarm trigger pin
 #spindle.stall_count_rpm						8000			# don't calculate stall when lower than this RPM
 #spindle.stall_alarm_rpm						5000			# consider as stall alarm if lower than this RPM
 
+#spindle.max_rpm						   15000			#hard limit on maximum spindle speed
 
 # Light
 # light.turn_off_min							0
@@ -389,6 +390,13 @@ coordinate.anchor2_offset_y 45.0		# Anchor2 Y Offset relative to anchor1
 coordinate.toolrack_offset_x 356		# Tool 6 X Offset relative to anchor1
 coordinate.toolrack_offset_y 0.0		# Tool 6 Y Offset relative to anchor1
 coordinate.toolrack_z -112.5			# ATC Z axis machine coordinates
+
+# Tool setter (probe) position in absolute Machine Coordinate System
+# If not set, uses hardcoded values: X=-4.158, Y=-42.568, Z=-157.0 for CARVERA
+# Set these values to configure a custom probe position, leave unset to use defaults
+#coordinate.probe_mcs_x -4.158		# Tool setter X position in MCS (mm)
+#coordinate.probe_mcs_y -42.568		# Tool setter Y position in MCS (mm)  
+#coordinate.probe_mcs_z -157.0		# Tool setter Z position in MCS (mm)
 
 coordinate.rotation_offset_x 3.5		# Rotation module X Offset relative to anchor1
 coordinate.rotation_offset_y 37.5		# Rotation module Y Offset relative to anchor1

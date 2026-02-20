@@ -53,6 +53,7 @@
 #include "LPC17xx.h"
 #include "MSCFileSystemPublicAccess.h"
 #include "WifiPublicAccess.h"
+#include "SerialConsole.h"
 
 #include "mbed.h" // for wait_ms()
 #include <strings.h> // For strncasecmp
@@ -124,6 +125,7 @@ const SimpleShell::ptentry_t SimpleShell::commands_table[] = {
     {"fset",  SimpleShell::fset_command},
     {"enable_4th_hd", SimpleShell::enable_4th_hd},
     {"disable_4th_hd", SimpleShell::disable_4th_hd},
+    {"baud",         SimpleShell::baud_command},
 
     // unknown command
     {NULL, NULL}
@@ -273,7 +275,16 @@ void SimpleShell::on_gcode_received(void *argument)
 		} else if (gcode->m == 336) { // turn off optional stop mode
 			THEKERNEL->set_line_by_line_exec_mode(true);
 			gcode->stream->printf("turning line by line execute mode on.\r\nPlaying file will pause after every valid gcode line, skipping empty and commented lines\r\n");
-		}
+		}else if (gcode->m == 337){
+            struct led_rgb colors;
+            colors.r = 0;
+            colors.g = 0;
+            colors.b = 0;
+            if (gcode->has_letter('R')) colors.r = gcode->get_value('R');
+            if (gcode->has_letter('U')) colors.g = gcode->get_value('U');
+            if (gcode->has_letter('B')) colors.b = gcode->get_value('B');
+            PublicData::set_value(main_button_checksum, set_led_bar_checksum, &colors);
+        }
     }
 }
 
@@ -348,6 +359,14 @@ void SimpleShell::on_console_line_received( void *argument )
                 if(!this->cont_mode_active) {
                     jog(possible_command, new_message.stream);
                 }
+                break;
+
+            case 'F': //feed rate override
+                feed_override(possible_command, new_message.stream);
+                break;
+            
+            case 'O': //spindle speed override
+                spindle_override(possible_command, new_message.stream);
                 break;
 
             default:
@@ -1040,7 +1059,7 @@ void SimpleShell::diagnose_command( string parameters, StreamOutput *stream)
 
     // get switchs state
     struct pad_switch pad;
-    if(THEKERNEL->factory_set->FuncSetting & (1<<2))	//ATC 
+    if(CARVERA == THEKERNEL->factory_set->MachineModel)	//ATC 
     {
     	ok = PublicData::get_value(switch_checksum, get_checksum("vacuum"), 0, &pad);
     }
@@ -1203,7 +1222,10 @@ void SimpleShell::model_command( string parameters, StreamOutput *stream )
 			break;
 		case CARVERA_AIR:			
 			stream->printf("model = %s, %d, %d, %d\n", "CA1", THEKERNEL->factory_set->MachineModel, THEKERNEL->factory_set->FuncSetting, THEKERNEL->probe_addr);
-			break;
+            if(THEKERNEL->is_flex_compensation_load_error()) {
+                stream->printf("ERROR: Could not load flex compensation data\n");
+            }
+            break;
 		default:			
 			stream->printf("model = %s, %d, %d, %d\n", "C1", THEKERNEL->factory_set->MachineModel, THEKERNEL->factory_set->FuncSetting, THEKERNEL->probe_addr);
 			break;
@@ -1484,6 +1506,28 @@ void SimpleShell::disable_4th_hd( string parameters, StreamOutput *stream)
 		stream->printf("Failed! This command is only for Carvera!\n");
 	}
 }
+
+void SimpleShell::baud_command(string parameters, StreamOutput *stream)
+{
+    if (THEKERNEL->serial == nullptr) {
+        stream->printf("error:Serial console not available\n");
+        return;
+    }
+    string arg = shift_parameter(parameters);
+    if (arg.empty()) {
+        stream->printf("%d\n", THEKERNEL->serial->get_baud());
+        return;
+    }
+    char *end = nullptr;
+    long new_baud = strtol(arg.c_str(), &end, 10);
+    if (end == arg.c_str() || *end != '\0' || new_baud <= 0 || new_baud > 4000000) {
+        stream->printf("error:Invalid baud rate\n");
+        return;
+    }
+    stream->printf("ok\n");
+    static_cast<SerialConsole *>(THEKERNEL->serial)->set_baud_temporary(static_cast<int>(new_baud));
+}
+
 // go into dfu boot mode
 void SimpleShell::dfu_command( string parameters, StreamOutput *stream)
 {
@@ -1687,7 +1731,7 @@ void SimpleShell::get_command( string parameters, StreamOutput *stream)
     } else if (what == "state") {
         // also $G and $I
         // [G0 G54 G17 G21 G90 G94 M0 M5 M9 T0 F0.]
-        stream->printf("[G%d %s G%d G%d G%d G94 M0 M%c M%c T%d F%1.4f S%1.4f]\n",
+        stream->printf("[G%d %s G%d G%d G%d G%d M0 M%c M%c T%d F%1.4f S%1.4f]\n",
             THEKERNEL->gcode_dispatch->get_modal_command(),
             wcs2gcode(THEROBOT->get_current_wcs()).c_str(),
             THEROBOT->plane_axis_0 == X_AXIS && THEROBOT->plane_axis_1 == Y_AXIS && THEROBOT->plane_axis_2 == Z_AXIS ? 17 :
@@ -1695,6 +1739,7 @@ void SimpleShell::get_command( string parameters, StreamOutput *stream)
               THEROBOT->plane_axis_0 == Y_AXIS && THEROBOT->plane_axis_1 == Z_AXIS && THEROBOT->plane_axis_2 == X_AXIS ? 19 : 17,
             THEROBOT->inch_mode ? 20 : 21,
             THEROBOT->absolute_mode ? 90 : 91,
+            THEROBOT->inverse_time_mode ? 93 : 94,
             get_switch_state("spindle") ? '3' : '5',
             get_switch_state("mist") ? '7' : get_switch_state("flood") ? '8' : '9',
             get_active_tool(),
@@ -2392,6 +2437,81 @@ void SimpleShell::jog(string parameters, StreamOutput *stream)
         THECONVEYOR->force_queue();
     }
 }
+
+void SimpleShell::spindle_override(string parameters, StreamOutput *stream) //M223 SXXX equivalent
+{
+    bool send_ok = false;
+    // $S is first parameter
+    shift_parameter(parameters);
+    if(parameters.empty()) {
+        stream->printf("usage: $O S100\n");
+        return;
+    }
+
+    while(!parameters.empty()) {
+        string p= shift_parameter(parameters);
+
+        char ax= toupper(p[0]);
+        if(ax == 'S') {
+            // get speed scale
+            float factor= strtof(p.substr(1).c_str(), NULL);
+            // enforce minimum 10% speed
+            if (factor < 10.0F)
+                factor = 10.0F;
+            // enforce maximum 3x speed
+            if (factor > 300.0F)
+                factor = 300.0F;
+
+            struct spindle_status ss;
+            bool pwm_spindle = PublicData::get_value(pwm_spindle_control_checksum, get_spindle_status_checksum, &ss);
+            if (pwm_spindle) {
+                ss.factor = factor;
+                PublicData::set_value(pwm_spindle_control_checksum, get_spindle_status_checksum, &ss);
+            }
+            continue;
+        }
+
+    }
+
+    // turn off queue delay and run it now
+    THECONVEYOR->force_queue();
+}
+
+void SimpleShell::feed_override(string parameters, StreamOutput *stream) //M220 SXXX equivalent
+{
+    bool send_ok = false;
+    // $S is first parameter
+    shift_parameter(parameters);
+    if(parameters.empty()) {
+        stream->printf("usage: $O S100\n");
+        return;
+    }
+
+    while(!parameters.empty()) {
+        string p= shift_parameter(parameters);
+
+        char ax= toupper(p[0]);
+        if(ax == 'S') {
+            // get speed scale
+            float scale= strtof(p.substr(1).c_str(), NULL);
+            // enforce minimum 10% speed
+            if (scale < 10.0F)
+                scale = 10.0F;
+            // enforce maximum 10x speed
+            if (scale > 1000.0F)
+                scale = 1000.0F;
+            THEROBOT->set_seconds_per_minute(6000.0F / scale);
+            continue;
+        }
+
+    }
+
+    // turn off queue delay and run it now
+    THECONVEYOR->force_queue();
+}
+
+
+
 
 void SimpleShell::help_command( string parameters, StreamOutput *stream )
 {

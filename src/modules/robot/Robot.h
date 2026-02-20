@@ -40,12 +40,13 @@ class Robot : public Module {
         void reset_position_from_current_actuator_position();
         void reset_compensated_machine_position();
         float get_seconds_per_minute() const { return seconds_per_minute; }
+        void set_seconds_per_minute(float value) {seconds_per_minute = value;};
         float get_z_maxfeedrate() const { return this->max_speeds[Z_AXIS]; }
         float get_default_acceleration() const { return default_acceleration; }
         void loadToolOffset(const float offset[N_PRIMARY_AXIS]);
         void saveToolOffset(const float offset[N_PRIMARY_AXIS], const float cur_tool_mz);
-        void set_probe_tool_not_calibrated(bool value);
-        bool get_probe_tool_not_calibrated();
+        void set_tool_not_calibrated(bool value);
+        bool get_tool_not_calibrated();
         float get_feed_rate() const;
         float get_s_value() const { return s_value; }
         void set_s_value(float s) { s_value= s; }
@@ -104,6 +105,7 @@ class Robot : public Module {
             bool inch_mode:1;                                 // true for inch mode, false for millimeter mode ( default )
             bool absolute_mode:1;                             // true for absolute mode ( default ), false for relative mode
             bool e_absolute_mode:1;                           // true for absolute mode for E ( default ), false for relative mode
+            bool inverse_time_mode:1;                         // true if G93 (inverse time feed mode) is active, false for G94 (mm/min mode, default)
             bool next_command_is_MCS:1;                       // set by G53
             bool disable_segmentation:1;                      // set to disable segmentation
             bool disable_arm_solution:1;                      // set to disable the arm solution
@@ -138,7 +140,7 @@ class Robot : public Module {
         };
 
         void load_config();
-        bool append_milestone(const float target[], float rate_mm_s, unsigned int line);
+        bool append_milestone(const float target[], float feed_rate, unsigned int line);
         bool append_line( Gcode* gcode, const float target[], float rate_mm_s, float delta_e);
         bool append_arc( Gcode* gcode, const float target[], const float rotated_target[], const float offset[], float radius, bool is_clockwise );
         bool compute_arc(Gcode* gcode, const float offset[], const float target[], const float rotated_target[], enum MOTION_MODE_T motion_mode);
@@ -159,14 +161,14 @@ class Robot : public Module {
         std::tuple<float, float, float, uint8_t> last_probe_position{0,0,0,0};
 
         uint8_t current_motion_mode;
-        using saved_state_t= std::tuple<float, float, bool, bool, bool, bool, uint8_t>; // save current feedrate and absolute mode, e absolute mode, inch mode, is_g123, current_wcs
+        using saved_state_t= std::tuple<float, float, bool, bool, bool, bool, bool, uint8_t>; // save current feedrate and absolute mode, e absolute mode, inch mode, is_g123, inverse_time_mode, current_wcs
         std::stack<saved_state_t> state_stack;               // saves state from M120
 
         float machine_position[k_max_actuators]; // Last requested position, in millimeters, which is what we were requested to move to in the gcode after offsets applied but before compensation transform
         float compensated_machine_position[k_max_actuators]; // Last machine position, which is the position before converting to actuator coordinates (includes compensation transform)
 
         float seek_rate;                                     // Current rate for seeking moves ( mm/min )
-        float feed_rate;                                     // Current rate for feeding moves ( mm/min )
+        float feed_rate;                                     // Current rate for feeding moves ( mm/min in G94, 1/min in G93 )
         float mm_per_line_segment;                           // Setting : Used to split lines into segments
         float mm_per_arc_segment;                            // Setting : Used to split arcs into segments
         float mm_max_arc_error;                              // Setting : Used to limit total arc segments to max error
@@ -194,7 +196,7 @@ class Robot : public Module {
         int arc_correction;                                  // Setting : how often to rectify arc computation
         float max_speeds[3];                                 // Setting : max allowable speed in mm/s for each axis
         float max_speed;                                     // Setting : maximum feedrate in mm/s as specified by F parameter
-        bool probe_tool_not_calibrated;
+        bool tool_not_calibrated;
         bool load_last_wcs;
         float soft_endstop_min[3], soft_endstop_max[3];
 
