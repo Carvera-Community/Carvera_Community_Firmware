@@ -893,7 +893,8 @@ void Robot::on_gcode_received(void *argument)
 
             case 30: // M30 end of program in grbl mode (otherwise it is delete sdcard file)
                 if(!THEKERNEL->is_grbl_mode()) break;
-                // fall through to M2
+                // fall through to M2. Next line informs the compiler, do not edit
+                // fall through
             case 2: // M2 end of program
                 //current_wcs = 0;
                 absolute_mode = true;
