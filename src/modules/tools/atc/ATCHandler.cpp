@@ -92,6 +92,7 @@
 #define probe_mcs_x_checksum		CHECKSUM("probe_mcs_x")
 #define probe_mcs_y_checksum		CHECKSUM("probe_mcs_y")
 #define probe_mcs_z_checksum		CHECKSUM("probe_mcs_z")
+#define reference_tool_mz_checksum	CHECKSUM("reference_tool_mz")
 
 ATCHandler::ATCHandler()
 {
@@ -1103,7 +1104,7 @@ void ATCHandler::fill_margin_scripts(float x_pos, float y_pos, float x_pos_max, 
 	this->script_queue.push("M497.4");
 
     // open probe laser
-	this->script_queue.push("M494.0");
+	this->script_queue.push("M494.1");
 	
 	// lift z to safe position with fast speed
 	snprintf(buff, sizeof(buff), "G53 G0 Z%.3f", THEROBOT->from_millimeters(this->clearance_z));
@@ -1129,8 +1130,10 @@ void ATCHandler::fill_margin_scripts(float x_pos, float y_pos, float x_pos_max, 
 	snprintf(buff, sizeof(buff), "G90 G1 X%.3f Y%.3f F%.3f", THEROBOT->from_millimeters(x_pos), THEROBOT->from_millimeters(y_pos), THEROBOT->from_millimeters(this->margin_rate));
 	this->script_queue.push(buff);
 
+	// wait for all moves to complete
+	this->script_queue.push("M400");
 	// close probe laser	
-    //this->script_queue.push("M494.2");
+    this->script_queue.push("M494.2");
 
 }
 
@@ -1339,7 +1342,7 @@ void ATCHandler::fill_autolevel_scripts(float x_pos, float y_pos,
 	this->script_queue.push("M497.6");
 	
 	// open wired probe laser
-    this->script_queue.push("M494.0");
+    this->script_queue.push("M494.1");
 	
 	// goto x and y path origin
 	snprintf(buff, sizeof(buff), "G90 G0 X%.3f Y%.3f", THEROBOT->from_millimeters(x_pos), THEROBOT->from_millimeters(y_pos));
@@ -1348,9 +1351,10 @@ void ATCHandler::fill_autolevel_scripts(float x_pos, float y_pos,
 	// do auto leveling
 	snprintf(buff, sizeof(buff), "G32R1X0Y0A%.3fB%.3fI%dJ%dH%.3f", x_size, y_size, x_grids, y_grids, height);
 	this->script_queue.push(buff);
-	
+	// wait for all moves to complete
+	this->script_queue.push("M400");
 	// close wired probe laser
-    //this->script_queue.push("M494.2");
+    this->script_queue.push("M494.2");
 }
 
 void ATCHandler::on_module_loaded()
@@ -1376,11 +1380,6 @@ void ATCHandler::on_module_loaded()
 
     // load data from eeprom
     this->active_tool = THEKERNEL->eeprom_data->TOOL;
-	if(CARVERA == THEKERNEL->factory_set->MachineModel || CARVERA_AIR == THEKERNEL->factory_set->MachineModel){
-		this->ref_tool_mz = -115.34; // Represents the machine Z coordinate when the tool length is 0
-	}else{
-		this->ref_tool_mz = -115.34; // In preparation for the Z1. Update this value when the Z1 is implemented
-	}
     if (THEKERNEL->eeprom_data->REFMZ != this->ref_tool_mz)
     {
         THEKERNEL->eeprom_data->REFMZ = this->ref_tool_mz;
@@ -1538,6 +1537,12 @@ void ATCHandler::on_config_reload(void *argument)
 	this->rotation_width = THEKERNEL->config->value(coordinate_checksum, rotation_width_checksum)->by_default(100 )->as_number();
 
 	this->skip_path_origin = THEKERNEL->config->value(atc_checksum, skip_path_origin_checksum)->by_default(false)->as_bool();
+
+	if(CARVERA == THEKERNEL->factory_set->MachineModel || CARVERA_AIR == THEKERNEL->factory_set->MachineModel){
+		this->ref_tool_mz = THEKERNEL->config->value(coordinate_checksum, reference_tool_mz_checksum)->by_default(-115.34f)->as_number(); // Represents the machine Z coordinate when the tool length is 0
+	}else{
+		this->ref_tool_mz = THEKERNEL->config->value(coordinate_checksum, reference_tool_mz_checksum)->by_default(-115.34f)->as_number(); // In preparation for the Z1. Update this value when the Z1 is implemented
+	}
 }
 
 void ATCHandler::on_halt(void* argument)
@@ -1579,6 +1584,11 @@ void ATCHandler::abort(){
 	}else	//Manual Tool Change
 	{
 		THEKERNEL->set_tool_waiting(false);
+	}
+	if(CARVERA_AIR == THEKERNEL->factory_set->MachineModel){
+		// close probe laser
+		bool b = false;
+	    PublicData::set_value( switch_checksum, detector_switch_checksum, state_checksum, &b );
 	}
 }
 

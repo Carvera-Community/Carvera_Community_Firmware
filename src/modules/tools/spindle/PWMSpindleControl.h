@@ -49,6 +49,7 @@ class PWMSpindleControl: public SpindleControl {
         uint32_t last_irq;
 
         // Values from config
+        float max_rpm;
         volatile float pulses_per_rev;
         float control_P_term;
         float control_I_term;

@@ -1773,10 +1773,13 @@ bool Robot::append_milestone(const float target[], float feed_rate, unsigned int
         }
     }
     if (auxilliary_move) {
-        distance = sqrtf(sos); // distance in mm of the e move
+        distance = sqrtf(sos); // distance in mm of the e move, or degrees for A/B-only moves
         if (distance < 0.00001F) return false;
+        // Skip negligible A-axis-only moves (e.g. G0 A0 when A is already 0) to avoid feed rate
+        // overflow: planner expects distance in mm but A-only distance is in degrees.
+        if (fabsf(deltas[A_AXIS]) >= 0.00001F && distance < 0.001F) return false;
     }
-#endif
+    #endif
 
     if (this->inverse_time_mode) {
         // in G93/inverse time mode, the feed rate is given as 1/min,
