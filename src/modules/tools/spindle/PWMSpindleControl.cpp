@@ -43,6 +43,7 @@
 #define spindle_stall_s_checksum			CHECKSUM("stall_s")
 #define spindle_stall_count_rpm_checksum	CHECKSUM("stall_count_rpm")
 #define spindle_stall_alarm_rpm_checksum	CHECKSUM("stall_alarm_rpm")
+#define spindle_max_rpm_checksum            CHECKSUM("max_rpm")
 
 #define UPDATE_FREQ 100
 
@@ -59,13 +60,18 @@ void PWMSpindleControl::on_module_loaded()
     current_pwm_value = 0;
     time_since_update = 0;
     stall_timer = 0;
-    
+    max_rpm = 12000;
     spindle_on = false;
     
     factor = 100;
 
     pulses_per_rev = THEKERNEL->config->value(spindle_checksum, spindle_pulses_per_rev_checksum)->by_default(1.0f)->as_number();
-    target_rpm = THEKERNEL->config->value(spindle_checksum, spindle_default_rpm_checksum)->by_default(10000.0f)->as_number();
+    target_rpm = THEKERNEL->config->value(spindle_checksum, spindle_default_rpm_checksum)->by_default( 15000.0f)->as_number();
+    if(CARVERA == THEKERNEL->factory_set->MachineModel) {
+        max_rpm = THEKERNEL->config->value(spindle_checksum, spindle_max_rpm_checksum)->by_default(15000.0f)->as_number();
+    } else {
+        max_rpm = THEKERNEL->config->value(spindle_checksum, spindle_max_rpm_checksum)->by_default(13000.0f)->as_number();
+    }
     control_P_term = THEKERNEL->config->value(spindle_checksum, spindle_control_P_checksum)->by_default(0.0001f)->as_number();
     control_I_term = THEKERNEL->config->value(spindle_checksum, spindle_control_I_checksum)->by_default(0.0001f)->as_number();
     control_D_term = THEKERNEL->config->value(spindle_checksum, spindle_control_D_checksum)->by_default(0.0001f)->as_number();
@@ -239,6 +245,10 @@ void PWMSpindleControl::turn_off() {
 
 
 void PWMSpindleControl::set_speed(int rpm) {
+    if (rpm > max_rpm){
+        max_rpm = rpm;
+        return;
+    }
     target_rpm = rpm;
 }
 
@@ -293,8 +303,15 @@ void PWMSpindleControl::on_get_public_data(void* argument)
 void PWMSpindleControl::on_set_public_data(void* argument)
 {
     PublicDataRequest* pdr = static_cast<PublicDataRequest*>(argument);
-
-    if(!pdr->starts_with(pwm_spindle_control_checksum)) return;
+    if(!pdr->starts_with(pwm_spindle_control_checksum)){
+        return;
+    }
+    if(pdr->second_element_is(get_spindle_status_checksum)) {
+        struct spindle_status *t= static_cast<spindle_status*>(pdr->get_data_ptr());
+        this->set_factor(t->factor);
+        pdr->set_taken();
+        return;
+    }
     if(pdr->second_element_is(turn_off_spindle_checksum)) {
         this->turn_off();
         pdr->set_taken();

@@ -72,7 +72,7 @@ delta_steps_per_mm							888.888889		# may be steps per degree for example (26.6
 
 # B axis
 epsilon_step_pin							1.22			# Pin for delta stepper step signal
-epsilon_dir_pin								1.0!			# Pin for delta stepper direction
+epsilon_dir_pin								1.0			# Pin for delta stepper direction
 epsilon_en_pin								1.10			# Pin for delta enable
 epsilon_max_rate							3600.0			# mm/min
 #epsilon_acceleration						360.0			# mm/secÂ²
@@ -364,7 +364,7 @@ spindle.alarm_pin							0.19^			# spindle alarm trigger pin
 #spindle.stall_s								1.0				# how many seconds before report stall status
 #spindle.stall_count_rpm						8000			# don't calculate stall when lower than this RPM
 #spindle.stall_alarm_rpm						5000			# consider as stall alarm if lower than this RPM
-
+#spindle.max_rpm						   15000			#hard limit on maximum spindle speed
 
 # Light
 # light.turn_off_min							0
