@@ -1298,7 +1298,7 @@ int Player::decompress(string sfilename, string dfilename, uint32_t sfilesize, S
 			k=0;
 			THEKERNEL->call_event(ON_IDLE);
 			memset(fbuff, 0, sizeof(fbuff));
-			sprintf((char*)fbuff, "#Info: decompart = %u\r\n", u32BlockNum);
+			sprintf((char*)fbuff, "#Info: decompart = %lu\r\n", u32BlockNum);
 			stream->printf((char*)fbuff);
 		}
 	}
@@ -1313,7 +1313,7 @@ int Player::decompress(string sfilename, string dfilename, uint32_t sfilesize, S
 	if (f_out!= NULL)
 		fclose(f_out);
 	memset(fbuff, 0, sizeof(fbuff));
-	sprintf((char*)fbuff, "#Info: decompart = %u\r\n", u32BlockNum);
+	sprintf((char*)fbuff, "#Info: decompart = %lu\r\n", u32BlockNum);
 	stream->printf((char*)fbuff);
 	return 1;
 _exit:
