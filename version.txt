@@ -10,6 +10,7 @@
 - Fixed: added // fall through to switch statements when it is intended to remove console error
 - Fixed: initialize sane values in probe grid max delta calculation
 - Fixed: writing past the end of a buffer in Drillingcycles::on_gcode_received
+- Fixed: int declared as NAN in ATCHandler::fill_change_scripts, fixed by setting to -1 and updating code accordingly
 - Change: added -Slow parameter to windows powershell build script to improve readability of error logs as the cost of speed.
 
 [2.1.0c-RC1]

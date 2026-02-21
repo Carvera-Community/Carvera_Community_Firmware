@@ -789,7 +789,7 @@ void ATCHandler::home_machine_with_pin(Gcode *gcode)//M469
 
 
 
-void ATCHandler::fill_change_scripts(int new_tool, bool clear_z, int old_tool = NAN, bool wait_after_empty = false, float custom_TLO = NAN) {
+void ATCHandler::fill_change_scripts(int new_tool, bool clear_z, int old_tool = -1, bool wait_after_empty = false, float custom_TLO = NAN) {
 	char buff[100];
 
 	// move to tool change position
@@ -803,7 +803,7 @@ void ATCHandler::fill_change_scripts(int new_tool, bool clear_z, int old_tool = 
 	this->script_queue.push("M497.2");
 
 	if (THEKERNEL->factory_set->FuncSetting & (1<<2)){
-		if (!isnan(old_tool) && old_tool != -1){
+		if (old_tool != -1){
 			// Enter tool changing waiting status
 			this->script_queue.push("M490.3");
 		}
