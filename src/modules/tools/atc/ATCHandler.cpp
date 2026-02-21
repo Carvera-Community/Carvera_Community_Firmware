@@ -429,7 +429,7 @@ void ATCHandler::calibrate_set_value(Gcode *gcode)
 	} else{
 		float final_x = 0;
 		float final_y = 0;
-		float final_z = 0;
+		//float final_z = 0;
 		switch ((int)gcode->get_value('P')){
 			case 0:
 				//home off pin
@@ -850,7 +850,7 @@ void ATCHandler::fill_change_scripts(int new_tool, bool clear_z, int old_tool = 
 
 void ATCHandler::fill_manual_drop_scripts(int old_tool) {
 	char buff[100];
-	struct atc_tool *current_tool = &atc_tools[old_tool];
+	//struct atc_tool *current_tool = &atc_tools[old_tool];
 	// set atc status
 	this->script_queue.push("M497.1");
 	//make extra sure the spindle is off
@@ -886,7 +886,7 @@ void ATCHandler::fill_manual_drop_scripts(int old_tool) {
 
 void ATCHandler::fill_manual_pickup_scripts(int new_tool, bool clear_z, bool auto_calibrate = false, float custom_TLO = NAN) {
 	char buff[100];
-	struct atc_tool *current_tool = &atc_tools[new_tool];
+	//struct atc_tool *current_tool = &atc_tools[new_tool];
 	// set atc status
 	this->script_queue.push("M497.2");
 	// lift z to safe position with fast speed

@@ -1547,7 +1547,7 @@ void Endstops::on_get_public_data(void* argument)
         *cover_state = this->cover_endstop_pin.get();
         pdr->set_taken();
     } else if (pdr->second_element_is(get_endstopAB_states_checksum)) {
-    	int index = 0;
+    	//int index = 0;
         char *data = static_cast<char *>(pdr->get_data_ptr());
         Pin motor_alarm_pin;
         motor_alarm_pin.from_string("1.16");
@@ -1556,7 +1556,7 @@ void Endstops::on_get_public_data(void* argument)
         
         pdr->set_taken();
     }else if (pdr->second_element_is(get_check_4th_checksum)) {
-    	int index = 0;
+    	//int index = 0;
         char *data = static_cast<char *>(pdr->get_data_ptr());
         check_4th(data);
         pdr->set_taken();

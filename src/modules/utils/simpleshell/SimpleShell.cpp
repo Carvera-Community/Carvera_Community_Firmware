@@ -1376,7 +1376,7 @@ void SimpleShell::test_led_command( string parameters, StreamOutput *stream )
 // set factory settings
 void SimpleShell::fset_command( string parameters, StreamOutput *stream)
 {
-	uint8_t channel;
+	//uint8_t channel;
 	char buff[32];
 	memset(buff, 0, sizeof(buff));
     if (!parameters.empty() ) {
@@ -2441,7 +2441,7 @@ void SimpleShell::jog(string parameters, StreamOutput *stream)
 
 void SimpleShell::spindle_override(string parameters, StreamOutput *stream) //M223 SXXX equivalent
 {
-    bool send_ok = false;
+    //bool send_ok = false;
     // $S is first parameter
     shift_parameter(parameters);
     if(parameters.empty()) {
@@ -2480,7 +2480,7 @@ void SimpleShell::spindle_override(string parameters, StreamOutput *stream) //M2
 
 void SimpleShell::feed_override(string parameters, StreamOutput *stream) //M220 SXXX equivalent
 {
-    bool send_ok = false;
+    //bool send_ok = false;
     // $S is first parameter
     shift_parameter(parameters);
     if(parameters.empty()) {

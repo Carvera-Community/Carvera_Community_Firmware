@@ -297,7 +297,7 @@ void MainButton::on_idle(void *argument)
 	    			}
 					else if(this->long_press_enable == "ToolChange" && !THEKERNEL->is_tool_waiting()) {
 						uint8_t atc_clamp_status;
-						uint8_t old_state = state;
+						//uint8_t old_state = state;
 						THEKERNEL->set_tool_waiting(true);
 
 						PublicData::get_value(atc_handler_checksum, get_atc_clamped_status_checksum, 0, &atc_clamp_status);

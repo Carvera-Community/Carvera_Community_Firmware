@@ -639,7 +639,7 @@ void Robot::on_gcode_received(void *argument)
                     if(n == 0) n = current_wcs; // set current coordinate system
                     else --n;
                     if(n < MAX_WCS) {
-                        float delta_ref_mz = 0;
+                        //float delta_ref_mz = 0;
                         float x, y, z, a, b;
                         std::tie(x, y, z, a, b) = wcs_offsets[n];
                         wcs_t pos= mcs2selected_wcs(machine_position, n);
