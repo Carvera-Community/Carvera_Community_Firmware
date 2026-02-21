@@ -132,6 +132,7 @@ Robot::Robot()
     this->arm_solution = NULL;
     seconds_per_minute = 60.0F;
     this->compensationTransform = nullptr;
+    this->pitchCompensationTransform = nullptr;
     this->get_e_scale_fnc= nullptr;
     this->wcs_offsets.fill(wcs_t(0.0F, 0.0F, 0.0F, 0.0F, 0.0F));
     this->g92_offset = wcs_t(0.0F, 0.0F, 0.0F, 0.0F, 0.0F);
@@ -469,6 +470,7 @@ void Robot::print_position(uint8_t subcode, std::string& res, bool ignore_extrud
         get_current_machine_position(mpos);
 
         // current_position/mpos includes the compensation transform so we need to get the inverse to get actual position
+        if(pitchCompensationTransform) pitchCompensationTransform(mpos, true, false); // get inverse pitch compensation transform
         if(compensationTransform) compensationTransform(mpos, true, false); // get inverse compensation transform
 
         if(subcode == 1) { // M114.1 print realtime WCS
@@ -1555,6 +1557,11 @@ void Robot::reset_axis_position(float x, float y, float z)
     compensated_machine_position[Y_AXIS]= machine_position[Y_AXIS] = y;
     compensated_machine_position[Z_AXIS]= machine_position[Z_AXIS] = z;
 
+    if(pitchCompensationTransform) {
+        // apply inverse transform to get machine_position
+        pitchCompensationTransform(machine_position, true, false);
+    }
+
     if(compensationTransform) {
         // apply inverse transform to get machine_position
         compensationTransform(machine_position, true, false);
@@ -1617,6 +1624,7 @@ void Robot::reset_position_from_current_actuator_position()
 
 
     // compensated_machine_position includes the compensation transform so we need to get the inverse to get actual machine_position
+    if(pitchCompensationTransform) pitchCompensationTransform(machine_position, true, false); // get inverse pitch compensation transform
     if(compensationTransform) compensationTransform(machine_position, true, false); // get inverse compensation transform
 
     // now reset actuator::machine_position, NOTE this may lose a little precision as FK is not always entirely accurate.
@@ -1673,6 +1681,10 @@ bool Robot::append_milestone(const float target[], float feed_rate, unsigned int
     if(compensationTransform) {
         // some compensation strategies can transform XYZ, some just change Z
         compensationTransform(transformed_target, false, false);
+    }
+
+    if(pitchCompensationTransform) {
+        pitchCompensationTransform(transformed_target, false, false);
     }
 
     bool move= false;

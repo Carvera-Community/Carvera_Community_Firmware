@@ -859,6 +859,7 @@ bool ZProbe::probe_XYZ(Gcode *gcode)
     float pos[3];
     THEROBOT->get_axis_position(pos, 3);
 
+    if(THEROBOT->pitchCompensationTransform) THEROBOT->pitchCompensationTransform(pos, true, false); // get inverse pitch compensation transform
     if(THEKERNEL->is_flex_compensation_active()) {
         if(THEROBOT->compensationTransform) THEROBOT->compensationTransform(pos, true, false); // get inverse compensation transform
     }
@@ -979,6 +980,7 @@ void ZProbe::calibrate_Z(Gcode *gcode)
     float pos[3];
     THEROBOT->get_axis_position(pos, 3);
 
+    if(THEROBOT->pitchCompensationTransform) THEROBOT->pitchCompensationTransform(pos, true, false); // get inverse pitch compensation transform
     if(THEKERNEL->is_flex_compensation_active()) {
         if(THEROBOT->compensationTransform) THEROBOT->compensationTransform(pos, true, false); // get inverse compensation transform
     }
@@ -1206,6 +1208,7 @@ bool ZProbe::fast_slow_probe_sequence(int axis, int direction){
     //store position
     THEROBOT->get_current_machine_position(mpos);
     // current_position/mpos includes the compensation transform so we need to get the inverse to get actual position
+    if(THEROBOT->pitchCompensationTransform) THEROBOT->pitchCompensationTransform(mpos, true, false); // get inverse pitch compensation transform
     if(THEKERNEL->is_flex_compensation_active()) {
         if(THEROBOT->compensationTransform) THEROBOT->compensationTransform(mpos, true, false); // get inverse compensation transform
     }
@@ -1406,6 +1409,7 @@ void ZProbe::probe_bore(bool calibration) //M461
     //save center position to use later
     THEROBOT->get_current_machine_position(mpos);
     // current_position/mpos includes the compensation transform so we need to get the inverse to get actual position
+    if(THEROBOT->pitchCompensationTransform) THEROBOT->pitchCompensationTransform(mpos, true, false); // get inverse pitch compensation transform
     if(THEKERNEL->is_flex_compensation_active()) {
         if(THEROBOT->compensationTransform) THEROBOT->compensationTransform(mpos, true, false); // get inverse compensation transform
     }
@@ -1542,6 +1546,7 @@ void ZProbe::probe_boss(bool calibration) //M462
     //save center position to use later
     THEROBOT->get_current_machine_position(mpos);
     // current_position/mpos includes the compensation transform so we need to get the inverse to get actual position
+    if(THEROBOT->pitchCompensationTransform) THEROBOT->pitchCompensationTransform(mpos, true, false); // get inverse pitch compensation transform
     if(THEKERNEL->is_flex_compensation_active()) {
         if(THEROBOT->compensationTransform) THEROBOT->compensationTransform(mpos, true, false); // get inverse compensation transform
     }
@@ -1704,6 +1709,7 @@ void ZProbe::probe_insideCorner() //M463
     //save center position to use later
     THEROBOT->get_current_machine_position(mpos);
     // current_position/mpos includes the compensation transform so we need to get the inverse to get actual position
+    if(THEROBOT->pitchCompensationTransform) THEROBOT->pitchCompensationTransform(mpos, true, false); // get inverse pitch compensation transform
     if(THEKERNEL->is_flex_compensation_active()) {
         if(THEROBOT->compensationTransform) THEROBOT->compensationTransform(mpos, true, false); // get inverse compensation transform
     }
@@ -1797,6 +1803,7 @@ void ZProbe::probe_outsideCorner() //M464
     //save center position to use later
     THEROBOT->get_current_machine_position(mpos);
     // current_position/mpos includes the compensation transform so we need to get the inverse to get actual position
+    if(THEROBOT->pitchCompensationTransform) THEROBOT->pitchCompensationTransform(mpos, true, false); // get inverse pitch compensation transform
     if(THEKERNEL->is_flex_compensation_active()) {
         if(THEROBOT->compensationTransform) THEROBOT->compensationTransform(mpos, true, false); // get inverse compensation transform
     }
@@ -1976,6 +1983,7 @@ void ZProbe::probe_axisangle(bool probe_a_axis, bool probe_with_offset) //M465
     //save center position to use later
     THEROBOT->get_current_machine_position(mpos);    // current_position/mpos includes the compensation transform so we need to get the inverse to get actual position
     a_axis_pos = THEROBOT->actuators[3]->get_current_position();
+    if(THEROBOT->pitchCompensationTransform) THEROBOT->pitchCompensationTransform(mpos, true, false); // get inverse pitch compensation transform
     if(THEKERNEL->is_flex_compensation_active()) {
         if(THEROBOT->compensationTransform) THEROBOT->compensationTransform(mpos, true, false); // get inverse compensation transform
     }
@@ -2221,6 +2229,7 @@ void ZProbe::probe_square(){
     //save center position to use later
     THEROBOT->get_current_machine_position(mpos);
     // current_position/mpos includes the compensation transform so we need to get the inverse to get actual position
+    if(THEROBOT->pitchCompensationTransform) THEROBOT->pitchCompensationTransform(mpos, true, false); // get inverse pitch compensation transform
     if(THEKERNEL->is_flex_compensation_active()) {
         if(THEROBOT->compensationTransform) THEROBOT->compensationTransform(mpos, true, false); // get inverse compensation transform
     }
