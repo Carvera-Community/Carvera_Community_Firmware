@@ -877,7 +877,7 @@ void SimpleShell::time_command( string parameters, StreamOutput *stream)
     	set_time(new_time);
     } else {
     	time_t old_time = time(NULL);
-    	stream->printf("time = %ld\n", old_time);
+    	stream->printf("time = %lld\n", old_time);
     }
 }
 
