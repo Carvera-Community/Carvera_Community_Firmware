@@ -335,8 +335,8 @@ void check_and_make_path( std::string origin )
 {
 	size_t pos = 0;
     std::string dir;
-    int res;
-    int ret = 0;
+    //int res;
+    //int ret = 0;
 
     while ((pos = origin.find_first_of('/', pos)) != std::string::npos) {
         dir = origin.substr(0, pos++);

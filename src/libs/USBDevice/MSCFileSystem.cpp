@@ -175,5 +175,5 @@ void MSCFileSystem::on_get_public_data(void* argument)
 
 void MSCFileSystem::on_set_public_data(void* argument)
 {
-    PublicDataRequest* pdr = static_cast<PublicDataRequest*>(argument);
+    //PublicDataRequest* pdr = static_cast<PublicDataRequest*>(argument);
 }

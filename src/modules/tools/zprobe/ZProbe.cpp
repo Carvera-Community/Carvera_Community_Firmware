@@ -1129,7 +1129,7 @@ float ZProbe::get_xyz_move_length(float x, float y, float z){
 bool ZProbe::fast_slow_probe_sequence(int axis, int direction){
     float moveBuffer[3];
     float mpos[3];
-    float old_mpos[3];
+    //float old_mpos[3];
     float retract_direction = 0;
     float x = 0;
     float y = 0;
@@ -1384,7 +1384,7 @@ void ZProbe::probe_bore(bool calibration) //M461
     THEKERNEL->streams->printf("Probing Bore/Rectangular Pocket\n");
 
     float mpos[3];
-    float old_mpos[3];
+    //float old_mpos[3];
 
     if (calibration){
         param.tool_dia = 0;
@@ -1492,7 +1492,7 @@ void ZProbe::probe_boss(bool calibration) //M462
     THEKERNEL->streams->printf("Probing Boss or Rectangular Block\n");
     
     float mpos[3];
-    float old_mpos[3];
+    //float old_mpos[3];
     bool probe_x_axis = false;
     bool probe_y_axis = false;
 
