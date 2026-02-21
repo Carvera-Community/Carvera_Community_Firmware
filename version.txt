@@ -1,4 +1,4 @@
-[v2.1.0c-RC1]
+[2.1.0c-RC1]
 - Enhancement: Move G0 at the configured default_seek_rate configured, defaulting to 3000mm/min, unless a Feed parameter is provided. This returns G0 being a rapid movement command.
 - Enhancement: Tool setter sensor location can now be configured separately. Use config items coordinate.probe_mcs_x coordinate.probe_mcs_y and coordinate.probe_mcs_z. If unset, the original hardcoded values will be used.
 - Enhancement: Tool TLO calibration MCode M491.1 can now be offset with parameters X/Y/Z. This enables probing of tools with off-centre cutting points.
@@ -44,9 +44,7 @@
 - Change: there was a hardcoded max of 1800 on the A axis speed that has been removed. This value was overriding the config file max A axis speed
 - Change: increased spindle speed and feed rate override values to 10-300% instead of 50-200% to match controller
 
-
-
-[v2.0.0c]
+[2.0.0c]
 - Enhancement: The side depth parameter takes the probe tip diameter into account to precisely specify where the probe should make contact instead of where the end of the stylus will be
 - Enhancement: Updated the flex compensation system (reprobing needed) to the latest tested version with improved calculations
 - Fixed: When probing an angle with the L parameter > 1, it shows the results of each run instead of the average
@@ -58,14 +56,14 @@
 - Change: ZProbe now uses the slow probe feedrate from the config file. M670 S<value> (mm/s) temporarily alters the slow probe feedrate
 - Change: The side depth parameter takes the probe tip diameter into account to precisely specify where the probe should make contact instead of where the end of the stylus will be
 
-[v2.0.0c-RC2]
+[2.0.0c-RC2]
 - Fixed: Scanning wifi scan no longer causes a machine crash
 - Fixed: Probe crash detection would incorrectly trigger with stock ZProbe during TLO calibration 
 - Fixed: Repeat boss probes would probe both X and Y axis even if only probe distance was provided to one.
 - Fixed: Calibrate probe on anchor 2 would hit the bolt cutout
 - Fixed: Change to probe tool using the controller would cause a halt
 
-[v2.0.0c-RC1]
+[2.0.0c-RC1]
 - Enhancement: 3D Probe crash detection
 - Enhancement: Setting "atc.skip_path_origin true" skips the initial travel to the path origin when starting a job 
 - Enhancement: Step jogging now stops at the endstops with a ramp rather than going to a halt state
