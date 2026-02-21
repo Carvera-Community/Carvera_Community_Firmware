@@ -166,7 +166,7 @@ void Robot::on_module_loaded()
     }
 
     // init
-    for (int i = 0; i < 9UL; i++){
+    for (unsigned int i = 0; i < 9UL; i++){
         this->cos_r[i] = 1;
     }
    
