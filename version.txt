@@ -4,6 +4,7 @@
 - Fixed: fixing type mismatch bug in wifiprovider that could lead to a memory overflow
 - Fixed: Removed possible memory overflow with get_current machine position writing past mpos
 - Fixed: Overly long strings in some zprobe print commands 
+- Change: added -Slow parameter to windows powershell build script to improve readability of error logs as the cost of speed.
 
 [2.1.0c-RC1]
 - Enhancement: Move G0 at the configured default_seek_rate configured, defaulting to 3000mm/min, unless a Feed parameter is provided. This returns G0 being a rapid movement command.

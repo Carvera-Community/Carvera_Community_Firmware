@@ -25,6 +25,10 @@ If the path is an existing directory, the artifact will be copied into it as `ma
 If the path points to a non-existent file in an existing directory, the artifact will be copied to that path.
 The destination directory must exist.
 
+.PARAMETER Slow
+runs the build command single threaded to prevent issues with multiple threads
+writing error messages over eachother
+
 .PARAMETER Help
 Displays this help message and exits.
 
@@ -70,7 +74,10 @@ param(
     [string]$OutputPath,
 
     [Parameter(Mandatory=$false)]
-    [switch]$Help
+    [switch]$Help,
+
+    [Parameter(Mandatory=$false)]
+    [switch]$Slow
 )
 
 # --- Script Setup ---
@@ -116,7 +123,9 @@ if ($PSVersionTable.PSEdition -eq "Desktop" -or
     $cpuCount = [Environment]::ProcessorCount
     Write-Host "Using $cpuCount parallel jobs for make." -ForegroundColor Cyan
 }
-
+if ($Slow){
+    $cpuCount = "1"
+}
 Write-Host "Using GCC version: $requestedGccVersion" -ForegroundColor Cyan
 Write-Host "Using $cpuCount parallel jobs for make." -ForegroundColor Cyan
 if ($Clean) {
