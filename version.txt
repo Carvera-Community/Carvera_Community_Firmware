@@ -7,6 +7,7 @@
 - Fixed: remove extra parameter in print string in ZProbe
 - Fixed: Type mismatch in time command.
 - Fixed: type mismatch in print string in decompress function in player.cpp
+- Fixed: added // fall through to switch statements when it is intended to remove console error
 - Change: added -Slow parameter to windows powershell build script to improve readability of error logs as the cost of speed.
 
 [2.1.0c-RC1]

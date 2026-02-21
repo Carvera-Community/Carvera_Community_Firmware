@@ -512,6 +512,8 @@ uint32_t MainButton::button_tick(uint32_t dummy)
 								this->set_led_num(0,0,0,0,0,0,0, true);
 							}
 							break;
+						} else{
+							break;
 						}
 						
 					case ALARM:
