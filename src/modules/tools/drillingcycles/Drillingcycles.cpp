@@ -212,7 +212,7 @@ void Drillingcycles::on_gcode_received(void* argument)
         // wait for any moves left and current position is update
         THEKERNEL->conveyor->wait_for_idle();
         // get actual position from robot
-        float pos[5];
+        float pos[5] = {};
         THEROBOT->get_axis_position(pos);
         // convert to WCS
         Robot::wcs_t wpos= THEROBOT->mcs2wcs(pos);
