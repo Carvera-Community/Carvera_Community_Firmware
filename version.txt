@@ -4,6 +4,7 @@
 - Fixed: fixing type mismatch bug in wifiprovider that could lead to a memory overflow
 - Fixed: Removed possible memory overflow with get_current machine position writing past mpos
 - Fixed: Overly long strings in some zprobe print commands 
+- Fixed: remove extra parameter in print string in ZProbe
 - Fixed: Type mismatch in time command.
 - Change: added -Slow parameter to windows powershell build script to improve readability of error logs as the cost of speed.
 
