@@ -2478,7 +2478,7 @@ FRESULT f_write (
     FRESULT res;
     DWORD clst, sect;
     UINT wcnt, cc;
-    const BYTE *wbuff = (BYTE*)buff;
+    const BYTE *wbuff = (const BYTE*)buff;
     BYTE csect;
 
 
