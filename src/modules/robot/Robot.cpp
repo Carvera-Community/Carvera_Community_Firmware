@@ -1694,7 +1694,11 @@ bool Robot::append_milestone(const float target[], float feed_rate, unsigned int
     if(soft_endstop_enabled && !THEKERNEL->is_zprobing()) {
         for (int i = 0; i <= Z_AXIS; ++i) {
             if(!is_homed(i)) continue;
-            if( (!isnan(soft_endstop_min[i]) && transformed_target[i] < soft_endstop_min[i]) && deltas[i] < 0 || (!isnan(soft_endstop_max[i]) && transformed_target[i] > soft_endstop_max[i]) && deltas[i] > 0) {
+            if( 
+                ( (!isnan(soft_endstop_min[i]) && transformed_target[i] < soft_endstop_min[i]) && deltas[i] < 0 ) 
+                || 
+                ( (!isnan(soft_endstop_max[i]) && transformed_target[i] > soft_endstop_max[i]) && deltas[i] > 0 )
+            ) {
                 if(soft_endstop_halt && !THECONVEYOR->is_continuous_mode()) {
                     if(THEKERNEL->is_grbl_mode()) {
                         THEKERNEL->streams->printf("error:");
