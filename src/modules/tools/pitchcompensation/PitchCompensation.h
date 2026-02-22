@@ -32,13 +32,15 @@ private:
     void config_load();
     void do_compensation(float* target, bool inverse, bool debug);
     void print_compensation_data(StreamOutput *stream);
-    void add_point(char axis, float pos, float multiplier);
-    void remove_point(char axis, float pos);
-    void clear_points(char axis);
-    void save_points_to_file();
+    void add_point(char axis, float pos, float multiplier, StreamOutput *stream);
+    void add_point_by_measurement(char axis, float machine_pos, float real_world_pos, StreamOutput *stream);
+    void remove_point(char axis, float pos, StreamOutput *stream);
+    void clear_points(char axis, StreamOutput *stream);
+    void save_points_to_file(StreamOutput *stream);
     void load_points_from_file();
     void update_compensation_transform();
     void precompute_integrals(AxisCompensation& axis_comp);
+    void recompute_multipliers_from_integrals(AxisCompensation& axis_comp);
     double integrate(const AxisCompensation& axis_comp, float pos);
     float inverse_integrate(const AxisCompensation& axis_comp, double val);
 
