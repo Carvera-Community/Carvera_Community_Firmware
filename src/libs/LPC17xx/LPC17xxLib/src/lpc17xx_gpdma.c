@@ -116,7 +116,7 @@ const uint32_t GPDMA_LUTPerAddr[] = {
  * @brief Lookup Table of GPDMA Channel Number matched with
  * GPDMA channel pointer
  */
-const LPC_GPDMACH_TypeDef *pGPDMACh[8] = {
+LPC_GPDMACH_TypeDef *pGPDMACh[8] = {
 		LPC_GPDMACH0,	// GPDMA Channel 0
 		LPC_GPDMACH1,	// GPDMA Channel 1
 		LPC_GPDMACH2,	// GPDMA Channel 2
@@ -365,16 +365,16 @@ Status GPDMA_Setup(GPDMA_Channel_CFG_Type *GPDMAChannelConfig)
  **********************************************************************/
 void GPDMA_ChannelCmd(uint8_t channelNum, FunctionalState NewState)
 {
-	LPC_GPDMACH_TypeDef *pDMAch;
+    LPC_GPDMACH_TypeDef *pDMAch;
 
-	// Get Channel pointer
-	pDMAch = (const LPC_GPDMACH_TypeDef *) pGPDMACh[channelNum];
+    // Get Channel pointer
+    pDMAch = (LPC_GPDMACH_TypeDef *) pGPDMACh[channelNum];
 
-	if (NewState == ENABLE) {
-		pDMAch->DMACCConfig |= GPDMA_DMACCxConfig_E;
-	} else {
-		pDMAch->DMACCConfig &= ~GPDMA_DMACCxConfig_E;
-	}
+    if (NewState == ENABLE) {
+        pDMAch->DMACCConfig |= GPDMA_DMACCxConfig_E;
+    } else {
+        pDMAch->DMACCConfig &= ~GPDMA_DMACCxConfig_E;
+    }
 }
 /*********************************************************************//**
  * @brief		Check if corresponding channel does have an active interrupt
