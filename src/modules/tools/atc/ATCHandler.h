@@ -85,7 +85,7 @@ private:
     void abort();
 
     // set tool offset afteer calibrating
-    void set_tool_offset();
+    void set_tool_offset(int repeat_count = 1);
 
     //
     void fill_change_scripts(int new_tool, bool clear_z, int old_tool, bool wait_after_empty, float custom_TLO);
@@ -173,6 +173,7 @@ private:
     float probe_slow_rate;
     float probe_retract_mm;
     float probe_height_mm;
+    float three_axis_probe_tlo_correction;
 
     // Configurable probe position (absolute Machine Coordinate System)
     float probe_mcs_x;
@@ -185,6 +186,8 @@ private:
     float probe_oneoff_y;
     float probe_oneoff_z;
     bool probe_oneoff_configured;
+
+    int repeat_tlo_measurement;
 
     float last_pos[3];
 
@@ -281,6 +284,8 @@ private:
     float ref_tool_mz;
     float cur_tool_mz;
     float tool_offset;
+    const int max_tl_mcz_values = 5;
+    deque<float> tl_mcz_values = deque<float>(max_tl_mcz_values, 0.0f);
     int beep_state;
     int beep_count;
 
