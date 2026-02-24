@@ -2479,6 +2479,7 @@ void ATCHandler::on_gcode_received(void *argument)
 						tool_offset = cur_tool_mz;// + ref_tool_mz;
 						const float offset[3] = {0.0, 0.0, tool_offset};
 						THEROBOT->saveToolOffset(offset, cur_tool_mz);
+						THEROBOT->set_tool_not_calibrated(false);
 					}else{
 						THEKERNEL->eeprom_data->REFMZ = -10;
 						THEKERNEL->write_eeprom_data();
@@ -2493,7 +2494,7 @@ void ATCHandler::on_gcode_received(void *argument)
 				}
 				if (gcode->has_letter('H')) { //set tlo from current position. H is offset above Z0
 					this->set_tlo_by_offset(gcode->get_value('H'));
-					
+					THEROBOT->set_tool_not_calibrated(false);
 				}
 
 
