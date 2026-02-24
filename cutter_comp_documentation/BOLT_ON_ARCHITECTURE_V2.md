@@ -557,52 +557,139 @@ G40
 
 ---
 
-## Implementation Checklist
+## Implementation Status
 
-### Step 1: Create Base Files on Fresh Branch
-- [ ] Checkout `cutter-compensation-v2` from origin/master
-- [ ] Add `CompensationTypes.h` (same as v1.0)
-- [ ] Create `CompensationPreprocessor.h` with new API
-- [ ] Create `CompensationPreprocessor.cpp` skeleton
+### Phase 1: Buffer Infrastructure Validation (✅ COMPLETE - Feb 19, 2026)
 
-### Step 2: Implement Gcode Manipulation
-- [ ] Implement `clone_and_extract()`
-- [ ] Implement `modify_gcode_coordinates()`
-- [ ] Unit test: Verify round-trip works (parse → modify → parse)
+**Strategy:** Isolation testing - validate buffering alone before adding compensation features.
 
-### Step 3: Implement Buffer Management
-- [ ] Circular buffer operations (push, pop, at)
-- [ ] `buffer_gcode()` with cloning
-- [ ] Lifetime management (destructor cleanup)
+#### Completed Steps:
+- ✅ Created base buffer structure (circular FIFO, 10 slots)
+- ✅ Implemented always-on buffering (all commands buffer regardless of comp state)
+- ✅ Added pass-through mode (when comp OFF, commands bypass buffer)
+- ✅ Implemented lookahead logic (hold until 3+ commands buffered)
+- ✅ Added flushing mode (G40 drains buffer)
+- ✅ Implemented control command bypass (G40/G41/G42 never buffer)
+- ✅ Added position tracking (uncompensated and compensated arrays)
+- ✅ Extensive debug logging system
+- ✅ Robot.cpp integration (lines 615-641)
+- ✅ Full validation testing with hardware
 
-### Step 4: Port Compensation Math
-- [ ] Copy `calculate_perpendicular_offset()` from extracted algorithms
-- [ ] Copy `calculate_corner_intersection()`
-- [ ] Copy `compensate_arc_endpoint()`
-- [ ] Adapt to work with BufferedGcode structure
+#### Phase 1 Validation Results:
+**Test Date:** February 19, 2026  
+**Firmware:** firmware_v2.4_PHASE1_G40_BYPASS.bin (448,200 bytes)  
+**Status:** ✅ ALL TESTS PASSED
 
-### Step 5: Implement Main API
-- [ ] `get_compensated_gcode()` with corner detection
-- [ ] `get_flushed_gcode()` for G40/M2
-- [ ] `enable_compensation()` / `disable_compensation()`
+**Validated Behaviors:**
+1. ✅ Pass-through mode: Commands execute immediately when compensation OFF
+2. ✅ Buffering mode: Commands hold until 3+ accumulated when compensation ON
+3. ✅ Lookahead: Buffer maintains 2-3 commands in steady state
+4. ✅ Circular buffer: Head/tail pointers advance correctly, no wrapping errors
+5. ✅ G41/G42: Clear buffer and start fresh buffering
+6. ✅ G40: Bypasses buffer, sets flushing flag to drain all commands
+7. ✅ No data loss: Every command in = every command out
+8. ✅ No duplication: Commands output exactly once
+9. ✅ No corruption: Coordinates always correct, no hard limits
+10. ✅ Works with arcs: G2/G3 commands buffer and output correctly
+11. ✅ System stable: No crashes, no pointer errors
 
-### Step 6: Robot Integration
-- [ ] Modify `on_gcode_received()` per design above
-- [ ] Remove old `parse_move_for_compensation()`
-- [ ] Remove old `process_parsed_move()`
-- [ ] Update G40/G41/G42 handlers
+#### Critical Bugs Fixed During Phase 1:
 
-### Step 7: Testing
-- [ ] Build firmware
-- [ ] Test Phase 1: Basic lines
-- [ ] Test Phase 2: Corners
-- [ ] Test Phase 3: Arcs
+**Bug #1: Buffer Immediately Draining**
+- **Symptom:** Every command entering buffer immediately exited
+- **Root Cause:** No lookahead requirement in `get_compensated_gcode()`
+- **Fix:** Added `if (buffer_count < 3 && !is_flushing) return nullptr;` at CompensationPreprocessor.cpp:215-220
+- **Result:** Buffer now properly holds commands for lookahead
+
+**Bug #2: Hard Limit Errors from Garbage Data**
+- **Symptom:** `ALARM: Hard limit -X` with corrupted coordinates (X-2.0 when commanded X0)
+- **Root Cause:** Buffer slots contained stale data from previous operations
+- **Fix:** Added pass-through mode when compensation OFF (Robot.cpp:615-627)
+- **Result:** No more hard limit errors, coordinates always correct
+
+**Bug #3: G40 Not Flushing All Commands (THE CRITICAL FIX)**
+- **Symptom:** Some commands remained in buffer after G40
+- **Root Cause:** G40 itself was being buffered! It sat waiting for lookahead instead of executing
+- **Fix:** Added bypass check for G40/G41/G42 before buffering logic (Robot.cpp:628-637)
+- **Insight:** Control commands that manage the buffer cannot themselves be subject to buffering
+- **Result:** G40 now flushes buffer completely, all tests pass
+
+#### Key Architectural Learnings:
+
+1. **Control Command Bypass is Mandatory:**
+   ```cpp
+   // CRITICAL: G40/G41/G42 must NEVER be buffered
+   if (gcode->has_g && (gcode->g == 40 || gcode->g == 41 || gcode->g == 42)) {
+       process_buffered_command(gcode);  // Execute immediately
+       return;  // Never enter buffer
+   }
+   ```
+   - G40 needs to flush the buffer → must execute immediately
+   - G41/G42 need to clear the buffer → must execute immediately
+   - Buffering these creates circular dependency
+
+2. **Pass-Through Mode Prevents Stale Data:**
+   - When compensation OFF, commands skip buffer entirely
+   - Eliminates possibility of encountering garbage from previous operations
+   - Simpler than trying to clear/reset buffer constantly
+
+3. **Lookahead Requirement Prevents Premature Draining:**
+   - Without lookahead check, buffer acts as pass-through (defeats purpose)
+   - Requiring 3+ commands simulates real compensation needs
+   - Flushing flag allows drain when G40 encountered
+
+4. **Always-On Buffering Enables Proper Lead-In:**
+   - When G41/G42 activated, next moves already buffered
+   - Can look ahead to calculate proper lead-in direction
+   - Critical for Phase 4 lead-in implementation
+
+### Phase 2: Simple Perpendicular Offset (⏳ NEXT)
+
+**Goal:** Add basic compensation offset without corner intersections.
+
+#### Planned Steps:
+- [ ] Implement `calculate_perpendicular_offset()` function
+- [ ] Modify `get_compensated_gcode()` to apply offset to straight lines
+- [ ] Keep corner intersections DISABLED (gaps expected)
+- [ ] Test with square path program
+- [ ] Verify parallel offset by radius amount
+- [ ] Confirm no crashes or coordinate corruption
+
+**Expected Behavior:**
+- Straight lines offset by radius perpendicular to direction
+- Corners will have gaps (intersection calculation not yet implemented)
+- Path should be parallel to original, just offset
+
+**Success Criteria:**
+- Path offset by correct radius amount
+- No hard limit errors or crashes
+- Gaps at corners are expected and acceptable
+- System remains stable
+
+### Phase 3: Corner Intersections (⏳ FUTURE)
+- [ ] Implement `calculate_corner_intersection()` function
+- [ ] Detect inside vs outside corners
+- [ ] Calculate intersection points of offset lines
+- [ ] Modify endpoints to meet at intersections
+- [ ] Test with square path (gaps should disappear)
+
+### Phase 4: Lead-In Move Generation (⏳ FUTURE)
+- [ ] Implement lead-in move generation
+- [ ] Use buffered moves to determine entry direction
+- [ ] Generate appropriate lead-in based on first move
+- [ ] Test diagonal bug scenario (should be eliminated)
+
+### Phase 5: Arc Compensation (⏳ FUTURE)
+- [ ] Implement arc endpoint and center offset calculations
+- [ ] Handle G2/G3 with compensation
+- [ ] Test arc-to-line and line-to-arc transitions
+
+### Final Integration and Cleanup (⏳ FUTURE)
+- [ ] Remove debug output (or make conditional)
+- [ ] Performance optimization
+- [ ] Comprehensive testing
+- [ ] Documentation updates
 - [ ] Compare with v1.0 behavior
-
-### Step 8: Cleanup
-- [ ] Remove debug output
-- [ ] Update comments
-- [ ] Document changes in README
 
 ---
 
@@ -632,14 +719,26 @@ G40
 
 ## Success Criteria
 
-**v2.0 is successful if:**
+**v2.0 Phase 1 Success Criteria (✅ ACHIEVED - Feb 19, 2026):**
 
-1. ✅ Compensation works correctly (matches v1.0 behavior)
+1. ✅ Buffering system works correctly (all tests passed)
+2. ✅ Single execution path maintained (all moves through process_move())
+3. ✅ Pass-through mode prevents stale data issues
+4. ✅ Control commands bypass buffer appropriately
+5. ✅ G40 flushes buffer completely
+6. ✅ No data loss, duplication, or corruption
+7. ✅ System stable with straight lines and arcs
+
+**v2.0 Complete System Success Criteria (⏳ IN PROGRESS):**
+
+1. ⏳ Compensation works correctly (implement Phases 2-5)
 2. ✅ Single execution path (all moves through process_move())
-3. ✅ Net code reduction (~150-200 lines removed)
+3. ⏳ Net code reduction (~150-200 lines removed vs v1.0)
 4. ✅ Easier to debug (no dual-stream confusion)
 5. ✅ Compatible with Robot features (soft limits, overrides)
 6. ✅ Clean architecture for maintainers
+7. ⏳ Proper lead-in calculation (Phase 4)
+8. ⏳ Corner handling without gaps (Phase 3)
 
 ---
 
