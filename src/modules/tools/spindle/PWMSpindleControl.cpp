@@ -43,6 +43,7 @@
 #define spindle_stall_s_checksum			CHECKSUM("stall_s")
 #define spindle_stall_count_rpm_checksum	CHECKSUM("stall_count_rpm")
 #define spindle_stall_alarm_rpm_checksum	CHECKSUM("stall_alarm_rpm")
+#define spindle_open_loop_checksum          CHECKSUM("open_loop")
 #define spindle_max_rpm_checksum            CHECKSUM("max_rpm")
 
 #define UPDATE_FREQ 100
@@ -82,6 +83,9 @@ void PWMSpindleControl::on_module_loaded()
     stall_alarm_rpm = THEKERNEL->config->value(spindle_checksum, spindle_stall_alarm_rpm_checksum)->by_default(5000)->as_number();
     acc_ratio      = THEKERNEL->config->value(spindle_checksum, spindle_acc_ratio_checksum)->by_default(1.0f)->as_number();
     alarm_pin.from_string(THEKERNEL->config->value(spindle_checksum, spindle_alarm_pin_checksum)->by_default("nc")->as_string())->as_input();
+
+    // Open-loop mode: bypass PID and use direct PWM scaling (like AnalogSpindleControl)
+    open_loop = THEKERNEL->config->value(spindle_checksum, spindle_open_loop_checksum)->by_default(false)->as_bool();
 
     // Smoothing value is low pass filter time constant in seconds.
     float smoothing_time = THEKERNEL->config->value(spindle_checksum, spindle_control_smoothing_checksum)->by_default(0.1f)->as_number();
@@ -176,34 +180,42 @@ uint32_t PWMSpindleControl::on_update_speed(uint32_t dummy)
 		}
 	}
     if (spindle_on) {
-    	if (update_count > UPDATE_FREQ / 5) {
-    		update_count = 0;
-            float error = target_rpm * (factor / 100) - current_rpm;
-            float acc_pwm = control_P_term * error;
-            
+        if (open_loop) {
+            // Open-loop mode: direct PWM calculation like AnalogSpindleControl
+            // PWM = (target_rpm * factor%) / max_rpm, clamped to max_pwm
+            float target_with_factor = target_rpm * (factor / 100.0f);
+            current_pwm_value = confine(target_with_factor / max_rpm * max_pwm, 0.0f, max_pwm);
+        } else {
+            // Closed-loop PID mode (original behavior)
+            if (update_count > UPDATE_FREQ / 5) {
+                update_count = 0;
+                float error = target_rpm * (factor / 100) - current_rpm;
+                float acc_pwm = control_P_term * error;
+
+                if(CARVERA_AIR == THEKERNEL->factory_set->MachineModel)
+                {
+                    if(target_change_count>UPDATE_FREQ*5)	//when speed changed time < 7s,we didn't use D_ter,to rapid speed up/down
+                    {
+                        acc_pwm += control_D_term * (error - prev_error);
+                        target_change_count = UPDATE_FREQ*5;
+                    }
+                }
+                float new_pwm = current_pwm_value + acc_pwm;
+                new_pwm = confine(new_pwm, 0.0f, max_pwm);
+
+                prev_error = error;
+                current_pwm_value = new_pwm;
+            }
+            update_count++;
             if(CARVERA_AIR == THEKERNEL->factory_set->MachineModel)
             {
-            	if(target_change_count>UPDATE_FREQ*5)	//when speed changed time < 7s,we didn't use D_ter,to rapid speed up/down
-	            {
-	            	acc_pwm += control_D_term * (error - prev_error);
-	            	target_change_count = UPDATE_FREQ*5;
-            	}
+                target_change_count++;
             }
-            float new_pwm = current_pwm_value + acc_pwm;
-            new_pwm = confine(new_pwm, 0.0f, max_pwm);
+        }
 
-            prev_error = error;
-            current_pwm_value = new_pwm;
-    	}
-    	update_count ++;
-    	if(CARVERA_AIR == THEKERNEL->factory_set->MachineModel)
-        {
-			target_change_count ++;
-		}
-
-		if (current_pwm_value > max_pwm) {
-			current_pwm_value = max_pwm;
-		}
+        if (current_pwm_value > max_pwm) {
+            current_pwm_value = max_pwm;
+        }
     } else {
         current_I_value = 0;
         current_pwm_value = 0;
