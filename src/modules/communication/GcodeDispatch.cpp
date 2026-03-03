@@ -257,7 +257,8 @@ try_again:
 
 						case 30: // end of program
 							if(!THEKERNEL->is_grbl_mode()) break; // Special case M30 as it is also delete sd card file so only do this if in grbl mode
-							// fall through to M2
+							// fall through to M2. Next line informs the compiler. Do not edit it
+							// fall through
 						case 2:
 							{
 								modal_group_1= 1; // set to G1

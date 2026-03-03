@@ -25,6 +25,7 @@ void wait_ms(int ms) {
 }
 
 void wait_us(int us) {
+    if (us <= 0) return;
     uint32_t start = us_ticker_read();
-    while ((us_ticker_read() - start) < us);
+    while ((us_ticker_read() - start) < (uint32_t)us);
 }

@@ -849,6 +849,7 @@ void SimpleShell::mem_command( string parameters, StreamOutput *stream)
     stream->printf("Block size: %u bytes, Tickinfo size: %u bytes\n", sizeof(Block), sizeof(Block::tickinfo_t) * Block::n_actuators);
 }
 
+/*
 static uint32_t getDeviceType()
 {
 #define IAP_LOCATION 0x1FFF1FF1
@@ -866,7 +867,7 @@ static uint32_t getDeviceType()
 
     return result[1];
 }
-
+*/
 
 // get network config
 void SimpleShell::time_command( string parameters, StreamOutput *stream)
@@ -876,7 +877,7 @@ void SimpleShell::time_command( string parameters, StreamOutput *stream)
     	set_time(new_time);
     } else {
     	time_t old_time = time(NULL);
-    	stream->printf("time = %ld\n", old_time);
+    	stream->printf("time = %lld\n", old_time);
     }
 }
 
@@ -1375,7 +1376,7 @@ void SimpleShell::test_led_command( string parameters, StreamOutput *stream )
 // set factory settings
 void SimpleShell::fset_command( string parameters, StreamOutput *stream)
 {
-	uint8_t channel;
+	//uint8_t channel;
 	char buff[32];
 	memset(buff, 0, sizeof(buff));
     if (!parameters.empty() ) {
@@ -2095,7 +2096,7 @@ void SimpleShell::jog(string parameters, StreamOutput *stream)
     }
 
     bool cont_mode= false;
-    bool send_ok= false;
+    //bool send_ok= false;
     while(!parameters.empty()) {
         string p= shift_parameter(parameters);
 
@@ -2106,7 +2107,7 @@ void SimpleShell::jog(string parameters, StreamOutput *stream)
                     cont_mode= true;
                     break;
                 case 'R': // send ok when done use this when sending $J in a gcode file
-                    send_ok= true;
+                    //send_ok= true;
                     break;
                 default:
                     stream->printf("error:illegal option %c\n", p[1]);
@@ -2192,8 +2193,8 @@ void SimpleShell::jog(string parameters, StreamOutput *stream)
 
     float dist_to_min[3] ={0,0,0};
     float dist_to_max[3] ={0,0,0};
-    int min_axis = 0;
-    int max_axis = 0;
+    //int min_axis = 0;
+    //int max_axis = 0;
 
     float min_time= 0.05;
     if(cont_mode) {
@@ -2314,7 +2315,7 @@ void SimpleShell::jog(string parameters, StreamOutput *stream)
 
         this->keep_alive_time = us_ticker_read() / 1000;
         uint32_t block_interval_ms = (uint32_t)((ta + 0.5 *min_time) * 1000.0f);
-        float time_start_to_end_block = 0;
+        //float time_start_to_end_block = 0;
         int stage = 0;
         THECONVEYOR->set_continuous_mode(true);
 
@@ -2356,7 +2357,7 @@ void SimpleShell::jog(string parameters, StreamOutput *stream)
                 
                 THEROBOT->delta_move(delta_const, fr, n_motors);
                 if(stage == 0) {
-                    time_start_to_end_block = current_time - last_block_time;
+                    //time_start_to_end_block = current_time - last_block_time;
                     block_interval_ms = (uint32_t)((min_time) * 1000.0f);
                     stage++;
                 }
@@ -2440,7 +2441,7 @@ void SimpleShell::jog(string parameters, StreamOutput *stream)
 
 void SimpleShell::spindle_override(string parameters, StreamOutput *stream) //M223 SXXX equivalent
 {
-    bool send_ok = false;
+    //bool send_ok = false;
     // $S is first parameter
     shift_parameter(parameters);
     if(parameters.empty()) {
@@ -2479,7 +2480,7 @@ void SimpleShell::spindle_override(string parameters, StreamOutput *stream) //M2
 
 void SimpleShell::feed_override(string parameters, StreamOutput *stream) //M220 SXXX equivalent
 {
-    bool send_ok = false;
+    //bool send_ok = false;
     // $S is first parameter
     shift_parameter(parameters);
     if(parameters.empty()) {

@@ -770,7 +770,8 @@ void ZProbe::on_gcode_received(void *argument)
                 gcode->stream->printf(";Probe feedrates Slow/fast(K)/Return (mm/sec) max_z (mm) height (mm) dwell (s):\nM670 S%1.2f K%1.2f R%1.2f Z%1.2f H%1.2f D%1.2f\n",
                     this->slow_feedrate, this->fast_feedrate, this->return_feedrate, this->max_z, this->probe_height, this->dwell_before_probing);
 
-                // fall through is intended so leveling strategies can handle m-codes too
+                // fall through is intended so leveling strategies can handle m-codes too. Next line informs the compiler, do not edit it
+                // fall through
 
             default:
                 for(auto s : strategies){
@@ -1129,7 +1130,7 @@ float ZProbe::get_xyz_move_length(float x, float y, float z){
 bool ZProbe::fast_slow_probe_sequence(int axis, int direction){
     float moveBuffer[3];
     float mpos[3];
-    float old_mpos[3];
+    //float old_mpos[3];
     float retract_direction = 0;
     float x = 0;
     float y = 0;
@@ -1384,7 +1385,7 @@ void ZProbe::probe_bore(bool calibration) //M461
     THEKERNEL->streams->printf("Probing Bore/Rectangular Pocket\n");
 
     float mpos[3];
-    float old_mpos[3];
+    //float old_mpos[3];
 
     if (calibration){
         param.tool_dia = 0;
@@ -1492,7 +1493,7 @@ void ZProbe::probe_boss(bool calibration) //M462
     THEKERNEL->streams->printf("Probing Boss or Rectangular Block\n");
     
     float mpos[3];
-    float old_mpos[3];
+    //float old_mpos[3];
     bool probe_x_axis = false;
     bool probe_y_axis = false;
 
