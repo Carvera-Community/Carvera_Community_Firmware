@@ -1863,11 +1863,11 @@ void ATCHandler::set_tool_offset(int repeat_count)
 					}
 					THEKERNEL->streams->printf("TLO value from measurement %d: %.3f\n", (-1 * (i - repeat_count)), tl_mcz_values[i] - ref_tool_mz);
 				}
-				THEKERNEL->streams->printf("------------------ Results-------------------------\n");
+				THEKERNEL->streams->printf("------------------ Results------------------------------\n");
 				THEKERNEL->streams->printf("Using TLO value from measurement %d: %.3f\n", (-1 * (index_highest - repeat_count)), highest_tl_mcz - ref_tool_mz);
 				THEKERNEL->streams->printf("Max delta: %.3f\n", highest_tl_mcz - lowest_tl_mcz);
 				THEKERNEL->streams->printf("Lowest cutting edge: %d, Highest cutting edge: %d\n", (-1 * (index_highest - repeat_count)), (-1 * (index_lowest - repeat_count)));
-				THEKERNEL->streams->printf("---------------------------------------------------\n");
+				THEKERNEL->streams->printf("-----------------------------------------------------------\n");
 			}
 			tool_offset = lowest_tl_mcz - ref_tool_mz;
         	float z_save = tool_offset;
