@@ -1846,16 +1846,25 @@ void ATCHandler::set_tool_offset(int repeat_count)
         if (ref_tool_mz < 1) {
 			tl_mcz_values.push_front(cur_tool_mz);
 			if (tl_mcz_values.size() == max_tl_mcz_values)tl_mcz_values.pop_back();
-			int index = 0;
-			float lowest_tl_mcz = cur_tool_mz;
+			float lowest_tl_mcz = tl_mcz_values[repeat_count - 1];
 			if (repeat_count > 1 && repeat_count <= tl_mcz_values.size()) {
-				for (int i = 1; i < repeat_count; i++) {
+				int index_lowest = 0;
+				int index_highest = repeat_count - 1;
+				float highest_tl_mcz = lowest_tl_mcz;
+				for (int i = repeat_count - 1; i >= 0; i--) {
 					if (tl_mcz_values[i] < lowest_tl_mcz) {
 						lowest_tl_mcz = tl_mcz_values[i];
-						index = i;
+						index_lowest = i;
 					}
+					if (tl_mcz_values[i] > highest_tl_mcz) {
+						highest_tl_mcz = tl_mcz_values[i];
+						index_highest = i;
+					}
+					THEKERNEL->streams->printf("TLO value from measurement %d: %.3f\n", (-1 * (i - repeat_count)), tl_mcz_values[i] - ref_tool_mz);
 				}
-				THEKERNEL->streams->printf("Using TLO value from measurement %d: %.3f\n", index, lowest_tl_mcz);
+				THEKERNEL->streams->printf("Using TLO value from measurement %d: %.3f\n", (-1 * (index_lowest - repeat_count)), lowest_tl_mcz - ref_tool_mz);
+				THEKERNEL->streams->printf("Max delta: %.3f\n", highest_tl_mcz - lowest_tl_mcz);
+				THEKERNEL->streams->printf("Lowest cutting edge: %d, Highest cutting edge: %d\n", (-1 * (index_lowest - repeat_count)), (-1 * (index_highest - repeat_count)));
 			}
 			tool_offset = lowest_tl_mcz - ref_tool_mz;
         	float z_save = tool_offset;
