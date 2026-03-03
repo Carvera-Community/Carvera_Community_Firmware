@@ -1026,7 +1026,7 @@ void ATCHandler::fill_pick_scripts(int new_tool, bool clear_z) {
 
 }
 
-void ATCHandler::fill_cali_scripts(bool is_probe, bool clear_z) {
+void ATCHandler::fill_cali_scripts(bool is_probe, bool clear_z, int repeat_count) {
 	char buff[100];
 	if (!THEROBOT->is_homed_all_axes()) {
 		return;
@@ -1050,7 +1050,7 @@ void ATCHandler::fill_cali_scripts(bool is_probe, bool clear_z) {
 		clear_z = true;
 	}
 	
-	for(int i = 1; i <= this->repeat_tlo_measurement; i++){
+	for(int i = 1; i <= repeat_count; i++){
 		// lift z to safe position with fast speed
 		snprintf(buff, sizeof(buff), "G53 G0 Z%.3f", THEROBOT->from_millimeters(clear_z ? this->clearance_z : this->safe_z_mm));
 		this->script_queue.push(buff);
@@ -1082,11 +1082,10 @@ void ATCHandler::fill_cali_scripts(bool is_probe, bool clear_z) {
 		float slow_probe_z = -1 - probe_retract_mm + (this->probe_oneoff_configured ? this->probe_oneoff_z : 0.0);
 		snprintf(buff, sizeof(buff), "G38.6 Z%.3f F%.3f", slow_probe_z, probe_slow_rate);
 		this->script_queue.push(buff);
-		if(i == this->repeat_tlo_measurement){
+		if(i == repeat_count){
 			// save new tool offset
 			snprintf(buff, sizeof(buff), "M493.1 R%d", i);
 			this->script_queue.push(buff);
-			this->repeat_tlo_measurement = 1;
 		}else{
 			// save new tool offset
 			this->script_queue.push("M493.1");
@@ -2305,10 +2304,10 @@ void ATCHandler::on_gcode_received(void *argument)
 				this->probe_oneoff_y = 0.0;
 				this->probe_oneoff_z = 0.0;
 				this->probe_oneoff_configured = false;
-				this->repeat_tlo_measurement = 1;
+				int repeat_count = 1;
 				if (gcode->has_letter('R')) {
 					if (gcode->get_value('R') > 0) {
-						this->repeat_tlo_measurement = gcode->get_value('R');
+						repeat_count = gcode->get_value('R');
 					}
 				}
 
@@ -2334,7 +2333,7 @@ void ATCHandler::on_gcode_received(void *argument)
 				// Set TLO calibration flag to disable 3D probe crash detection
 				bool tlo_calibrating = true;
 				PublicData::set_value( zprobe_checksum, set_tlo_calibrating_checksum, &tlo_calibrating );
-				this->fill_cali_scripts(active_tool == 0 || active_tool >= 999990, true);
+				this->fill_cali_scripts(active_tool == 0 || active_tool >= 999990, true, repeat_count);
 
 			}
 		} else if (gcode->m == 492) {
