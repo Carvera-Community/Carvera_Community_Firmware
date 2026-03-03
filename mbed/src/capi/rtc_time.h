@@ -14,6 +14,8 @@
  * limitations under the License.
  */
 
+#pragma once
+
 #include <time.h>
 
 #ifdef __cplusplus
