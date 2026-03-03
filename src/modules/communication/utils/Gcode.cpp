@@ -153,7 +153,7 @@ float Gcode::set_variable_value() const {
                 return value;
             }
             else{
-                this->stream->printf("Probe tip input out of range, aborting \n", var_num);
+                this->stream->printf("Probe tip input out of range, aborting \n");
                 return NAN;
             }
         } else if (var_num >= 501 && var_num <= 520) {

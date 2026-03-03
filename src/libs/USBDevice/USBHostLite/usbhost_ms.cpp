@@ -331,7 +331,7 @@ USB_INT32S  MS_BulkRecv (          USB_INT32U   block_number,
                          volatile  USB_INT08U  *user_buffer)
 {
     USB_INT32S  rc;
-    int i;
+    unsigned int i;
     volatile USB_INT08U *c = user_buffer;
     for (i=0;i<MS_BlkSize*num_blocks;i++)
         *c++ = 0;

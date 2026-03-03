@@ -166,7 +166,7 @@ void Robot::on_module_loaded()
     }
 
     // init
-    for (int i = 0; i < 9UL; i++){
+    for (unsigned int i = 0; i < 9UL; i++){
         this->cos_r[i] = 1;
     }
    
@@ -639,7 +639,7 @@ void Robot::on_gcode_received(void *argument)
                     if(n == 0) n = current_wcs; // set current coordinate system
                     else --n;
                     if(n < MAX_WCS) {
-                        float delta_ref_mz = 0;
+                        //float delta_ref_mz = 0;
                         float x, y, z, a, b;
                         std::tie(x, y, z, a, b) = wcs_offsets[n];
                         wcs_t pos= mcs2selected_wcs(machine_position, n);
@@ -893,7 +893,8 @@ void Robot::on_gcode_received(void *argument)
 
             case 30: // M30 end of program in grbl mode (otherwise it is delete sdcard file)
                 if(!THEKERNEL->is_grbl_mode()) break;
-                // fall through to M2
+                // fall through to M2. Next line informs the compiler, do not edit
+                // fall through
             case 2: // M2 end of program
                 //current_wcs = 0;
                 absolute_mode = true;
@@ -1693,7 +1694,11 @@ bool Robot::append_milestone(const float target[], float feed_rate, unsigned int
     if(soft_endstop_enabled && !THEKERNEL->is_zprobing()) {
         for (int i = 0; i <= Z_AXIS; ++i) {
             if(!is_homed(i)) continue;
-            if( (!isnan(soft_endstop_min[i]) && transformed_target[i] < soft_endstop_min[i]) && deltas[i] < 0 || (!isnan(soft_endstop_max[i]) && transformed_target[i] > soft_endstop_max[i]) && deltas[i] > 0) {
+            if( 
+                ( (!isnan(soft_endstop_min[i]) && transformed_target[i] < soft_endstop_min[i]) && deltas[i] < 0 ) 
+                || 
+                ( (!isnan(soft_endstop_max[i]) && transformed_target[i] > soft_endstop_max[i]) && deltas[i] > 0 )
+            ) {
                 if(soft_endstop_halt && !THECONVEYOR->is_continuous_mode()) {
                     if(THEKERNEL->is_grbl_mode()) {
                         THEKERNEL->streams->printf("error:");
