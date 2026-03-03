@@ -91,7 +91,7 @@ private:
     void fill_change_scripts(int new_tool, bool clear_z, int old_tool, bool wait_after_empty, float custom_TLO);
     void fill_drop_scripts(int old_tool);
     void fill_pick_scripts(int new_tool, bool clear_z);
-    void fill_cali_scripts(bool is_probe, bool clear_z);
+    void fill_cali_scripts(bool is_probe, bool clear_z, int repeat_count = 1);
 
     //
     void fill_manual_drop_scripts(int old_tool);
@@ -186,8 +186,6 @@ private:
     float probe_oneoff_y;
     float probe_oneoff_z;
     bool probe_oneoff_configured;
-
-    int repeat_tlo_measurement;
 
     float last_pos[3];
 
