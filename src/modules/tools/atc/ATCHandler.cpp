@@ -93,6 +93,7 @@
 #define probe_mcs_y_checksum		CHECKSUM("probe_mcs_y")
 #define probe_mcs_z_checksum		CHECKSUM("probe_mcs_z")
 #define reference_tool_mz_checksum	CHECKSUM("reference_tool_mz")
+#define three_axis_probe_tlo_correction_checksum CHECKSUM("three_axis_probe_tlo_correction")
 
 ATCHandler::ATCHandler()
 {
@@ -1025,7 +1026,7 @@ void ATCHandler::fill_pick_scripts(int new_tool, bool clear_z) {
 
 }
 
-void ATCHandler::fill_cali_scripts(bool is_probe, bool clear_z) {
+void ATCHandler::fill_cali_scripts(bool is_probe, bool clear_z, int repeat_count) {
 	char buff[100];
 	if (!THEROBOT->is_homed_all_axes()) {
 		return;
@@ -1049,43 +1050,50 @@ void ATCHandler::fill_cali_scripts(bool is_probe, bool clear_z) {
 		clear_z = true;
 	}
 	
-	// lift z to safe position with fast speed
-	snprintf(buff, sizeof(buff), "G53 G0 Z%.3f", THEROBOT->from_millimeters(clear_z ? this->clearance_z : this->safe_z_mm));
-	this->script_queue.push(buff);
-	// move x and y to calibrate position
-	// Use one-off offsets if configured, otherwise use standard probe position
-	float probe_x = probe_mx_mm + (this->probe_oneoff_configured ? this->probe_oneoff_x : 0.0);
-	float probe_y = probe_my_mm + (this->probe_oneoff_configured ? this->probe_oneoff_y : 0.0);
-	snprintf(buff, sizeof(buff), "G53 G0 X%.3f Y%.3f", THEROBOT->from_millimeters(probe_x), THEROBOT->from_millimeters(probe_y));
-	this->script_queue.push(buff);
-	// do calibrate with fast speed
-    if(CARVERA == THEKERNEL->factory_set->MachineModel)	//ATC 
-    {
-		// Use one-off Z offset if configured, otherwise use standard probe Z position
-		float probe_z = probe_mz_mm + (this->probe_oneoff_configured ? this->probe_oneoff_z : 0.0);
-		snprintf(buff, sizeof(buff), "G38.6 Z%.3f F%.3f", probe_z, probe_fast_rate);
+	for(int i = 1; i <= repeat_count; i++){
+		// lift z to safe position with fast speed
+		snprintf(buff, sizeof(buff), "G53 G0 Z%.3f", THEROBOT->from_millimeters(clear_z ? this->clearance_z : this->safe_z_mm));
+		this->script_queue.push(buff);
+		// move x and y to calibrate position
+		// Use one-off offsets if configured, otherwise use standard probe position
+		float probe_x = probe_mx_mm + (this->probe_oneoff_configured ? this->probe_oneoff_x : 0.0);
+		float probe_y = probe_my_mm + (this->probe_oneoff_configured ? this->probe_oneoff_y : 0.0);
+		snprintf(buff, sizeof(buff), "G53 G0 X%.3f Y%.3f", THEROBOT->from_millimeters(probe_x), THEROBOT->from_millimeters(probe_y));
+		this->script_queue.push(buff);
+		// do calibrate with fast speed
+		if(CARVERA == THEKERNEL->factory_set->MachineModel)	//ATC 
+		{
+			// Use one-off Z offset if configured, otherwise use standard probe Z position
+			float probe_z = probe_mz_mm + (this->probe_oneoff_configured ? this->probe_oneoff_z : 0.0);
+			snprintf(buff, sizeof(buff), "G38.6 Z%.3f F%.3f", probe_z, probe_fast_rate);
+		}
+		else	//Manual Tool Change
+		{
+			// Use one-off Z offset if configured, otherwise use toolrack Z position
+			float probe_z = toolrack_z - 10 + (this->probe_oneoff_configured ? this->probe_oneoff_z : 0.0);
+			snprintf(buff, sizeof(buff), "G38.6 Z%.3f F%.3f", probe_z, probe_fast_rate);
+		}
+		this->script_queue.push(buff);
+		// lift a bit
+		snprintf(buff, sizeof(buff), "G91 G0 Z%.3f", THEROBOT->from_millimeters(probe_retract_mm));
+		this->script_queue.push(buff);
+		// do calibrate with slow speed
+		// Use one-off Z offset if configured, otherwise use standard offset
+		float slow_probe_z = -1 - probe_retract_mm + (this->probe_oneoff_configured ? this->probe_oneoff_z : 0.0);
+		snprintf(buff, sizeof(buff), "G38.6 Z%.3f F%.3f", slow_probe_z, probe_slow_rate);
+		this->script_queue.push(buff);
+		if(i == repeat_count){
+			// save new tool offset
+			snprintf(buff, sizeof(buff), "M493.1 R%d", i);
+			this->script_queue.push(buff);
+		}else{
+			// save new tool offset
+			this->script_queue.push("M493.1");
+		}
+		// lift z to safe position with fast speed
+		snprintf(buff, sizeof(buff), "G53 G0 Z%.3f", THEROBOT->from_millimeters(this->safe_z_mm));
+		this->script_queue.push(buff);
 	}
-	else	//Manual Tool Change
-	{
-		// Use one-off Z offset if configured, otherwise use toolrack Z position
-		float probe_z = toolrack_z - 10 + (this->probe_oneoff_configured ? this->probe_oneoff_z : 0.0);
-		snprintf(buff, sizeof(buff), "G38.6 Z%.3f F%.3f", probe_z, probe_fast_rate);
-	}
-	this->script_queue.push(buff);
-	// lift a bit
-	snprintf(buff, sizeof(buff), "G91 G0 Z%.3f", THEROBOT->from_millimeters(probe_retract_mm));
-	this->script_queue.push(buff);
-	// do calibrate with slow speed
-	// Use one-off Z offset if configured, otherwise use standard offset
-	float slow_probe_z = -1 - probe_retract_mm + (this->probe_oneoff_configured ? this->probe_oneoff_z : 0.0);
-	snprintf(buff, sizeof(buff), "G38.6 Z%.3f F%.3f", slow_probe_z, probe_slow_rate);
-	this->script_queue.push(buff);
-	// save new tool offset
-	this->script_queue.push("M493.1");
-	// lift z to safe position with fast speed
-	snprintf(buff, sizeof(buff), "G53 G0 Z%.3f", THEROBOT->from_millimeters(this->safe_z_mm));
-	this->script_queue.push(buff);
-
 	// check if wireless probe is will be triggered
 	if (is_probe) {
 		this->script_queue.push("M492.3");
@@ -1537,7 +1545,7 @@ void ATCHandler::on_config_reload(void *argument)
 	this->rotation_width = THEKERNEL->config->value(coordinate_checksum, rotation_width_checksum)->by_default(100 )->as_number();
 
 	this->skip_path_origin = THEKERNEL->config->value(atc_checksum, skip_path_origin_checksum)->by_default(false)->as_bool();
-
+	this->three_axis_probe_tlo_correction = THEKERNEL->config->value(zprobe_checksum, three_axis_probe_tlo_correction_checksum)->by_default(0.0f)->as_number();
 	if(CARVERA == THEKERNEL->factory_set->MachineModel || CARVERA_AIR == THEKERNEL->factory_set->MachineModel){
 		this->ref_tool_mz = THEKERNEL->config->value(coordinate_checksum, reference_tool_mz_checksum)->by_default(-115.34f)->as_number(); // Represents the machine Z coordinate when the tool length is 0
 	}else{
@@ -1828,7 +1836,7 @@ void ATCHandler::loose_tool()
 	THEKERNEL->streams->printf("ATC loosed!\r\n");
 }
 
-void ATCHandler::set_tool_offset()
+void ATCHandler::set_tool_offset(int repeat_count)
 {
     float px, py, pz;
     uint8_t ps;
@@ -1836,8 +1844,35 @@ void ATCHandler::set_tool_offset()
     if (ps == 1) {
         cur_tool_mz = pz;
         if (ref_tool_mz < 1) {
-        	tool_offset = cur_tool_mz - ref_tool_mz;
-        	const float offset[3] = {0.0, 0.0, tool_offset};
+			tl_mcz_values.push_front(cur_tool_mz);
+			if (tl_mcz_values.size() == max_tl_mcz_values)tl_mcz_values.pop_back();
+			float lowest_tl_mcz = tl_mcz_values[repeat_count - 1];
+			if (repeat_count > 1 && repeat_count <= tl_mcz_values.size()) {
+				int index_lowest = 0;
+				int index_highest = repeat_count - 1;
+				float highest_tl_mcz = lowest_tl_mcz;
+				THEKERNEL->streams->printf("------------------ Measurements--------------------\n");
+				for (int i = repeat_count - 1; i >= 0; i--) {
+					if (tl_mcz_values[i] < lowest_tl_mcz) {
+						lowest_tl_mcz = tl_mcz_values[i];
+						index_lowest = i;
+					}
+					if (tl_mcz_values[i] > highest_tl_mcz) {
+						highest_tl_mcz = tl_mcz_values[i];
+						index_highest = i;
+					}
+					THEKERNEL->streams->printf("TLO value from measurement %d: %.3f\n", (-1 * (i - repeat_count)), tl_mcz_values[i] - ref_tool_mz);
+				}
+				THEKERNEL->streams->printf("------------------ Results------------------------------\n");
+				THEKERNEL->streams->printf("Using TLO value from measurement %d: %.3f\n", (-1 * (index_highest - repeat_count)), highest_tl_mcz - ref_tool_mz);
+				THEKERNEL->streams->printf("Max delta: %.3f\n", highest_tl_mcz - lowest_tl_mcz);
+				THEKERNEL->streams->printf("Lowest cutting edge: %d, Highest cutting edge: %d\n", (-1 * (index_highest - repeat_count)), (-1 * (index_lowest - repeat_count)));
+				THEKERNEL->streams->printf("-----------------------------------------------------------\n");
+			}
+			tool_offset = lowest_tl_mcz - ref_tool_mz;
+        	float z_save = tool_offset;
+        	if (this->active_tool >= 999990) z_save += this->three_axis_probe_tlo_correction;
+        	const float offset[3] = {0.0, 0.0, z_save};
         	THEROBOT->saveToolOffset(offset, cur_tool_mz);
 		} else{
 			THEKERNEL->eeprom_data->REFMZ = -10;
@@ -2044,19 +2079,19 @@ void ATCHandler::on_gcode_received(void *argument)
 					this->target_tool = new_tool;
 					this->fill_change_scripts(new_tool, true, active_tool);
 					this->fill_cali_scripts((new_tool == 0 || new_tool >= 999990), true);
-						} else if (new_tool == active_tool && THEROBOT->get_tool_not_calibrated()) {
-							// Tool is already selected but needs calibration (e.g., after e-stop during previous calibration)
-							THEKERNEL->streams->printf("Tool T%d needs TLO calibration\r\n", new_tool);
-							THEROBOT->push_state();
-							THEROBOT->get_axis_position(last_pos, 3);
-							set_inner_playing(true);
-							this->clear_script_queue();
-							atc_status = CALI;
-							// Set TLO calibration flag to disable 3D probe crash detection
-							bool tlo_calibrating = true;
-							PublicData::set_value( zprobe_checksum, set_tlo_calibrating_checksum, &tlo_calibrating );
-							this->fill_cali_scripts((new_tool == 0 || new_tool >= 999990), true);
-						}
+				} else if (new_tool == active_tool && THEROBOT->get_tool_not_calibrated()) {
+					// Tool is already selected but needs calibration (e.g., after e-stop during previous calibration)
+					THEKERNEL->streams->printf("Tool T%d needs TLO calibration\r\n", new_tool);
+					THEROBOT->push_state();
+					THEROBOT->get_axis_position(last_pos, 3);
+					set_inner_playing(true);
+					this->clear_script_queue();
+					atc_status = CALI;
+					// Set TLO calibration flag to disable 3D probe crash detection
+					bool tlo_calibrating = true;
+					PublicData::set_value( zprobe_checksum, set_tlo_calibrating_checksum, &tlo_calibrating );
+					this->fill_cali_scripts((new_tool == 0 || new_tool >= 999990), true);
+				}
 	        }
 		} else if (gcode->m == 460){
 			
@@ -2281,6 +2316,12 @@ void ATCHandler::on_gcode_received(void *argument)
 				this->probe_oneoff_y = 0.0;
 				this->probe_oneoff_z = 0.0;
 				this->probe_oneoff_configured = false;
+				int repeat_count = 1;
+				if (gcode->has_letter('R')) {
+					if (gcode->get_value('R') > 0) {
+						repeat_count = gcode->get_value('R');
+					}
+				}
 
 				if (gcode->has_letter('X')) {
 					this->probe_oneoff_x = gcode->get_value('X');
@@ -2304,7 +2345,7 @@ void ATCHandler::on_gcode_received(void *argument)
 				// Set TLO calibration flag to disable 3D probe crash detection
 				bool tlo_calibrating = true;
 				PublicData::set_value( zprobe_checksum, set_tlo_calibrating_checksum, &tlo_calibrating );
-				this->fill_cali_scripts(active_tool == 0 || active_tool >= 999990, true);
+				this->fill_cali_scripts(active_tool == 0 || active_tool >= 999990, true, repeat_count);
 
 			}
 		} else if (gcode->m == 492) {
@@ -2348,7 +2389,7 @@ void ATCHandler::on_gcode_received(void *argument)
 		} else if (gcode->m == 493) {
 			if (gcode->subcode == 0 || gcode->subcode == 1) {
 				THEROBOT->set_tool_not_calibrated(false);
-				set_tool_offset();
+				set_tool_offset(gcode->has_letter('R') ? gcode->get_value('R') : 1);
 			} else if (gcode->subcode == 2) {
 				// set new tool
 				if (gcode->has_letter('T')) {
