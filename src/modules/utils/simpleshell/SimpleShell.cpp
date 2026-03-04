@@ -386,6 +386,9 @@ void SimpleShell::on_console_line_received( void *argument )
         } else if (cmd == "config-set"){
             THEKERNEL->configurator->config_set_command(  possible_command, new_message.stream );
 
+        } else if (cmd == "config-delete"){
+            THEKERNEL->configurator->config_delete_command(  possible_command, new_message.stream );
+
         } else if (cmd == "config-load"){
             THEKERNEL->configurator->config_load_command(  possible_command, new_message.stream );
 
@@ -2534,6 +2537,7 @@ void SimpleShell::help_command( string parameters, StreamOutput *stream )
     stream->printf("break - break into debugger\r\n");
     stream->printf("config-get [<configuration_source>] <configuration_setting>\r\n");
     stream->printf("config-set [<configuration_source>] <configuration_setting> <value>\r\n");
+    stream->printf("config-delete [<configuration_source>] <configuration_setting>\r\n");
     stream->printf("get [pos|wcs|state|status|fk|ik]\r\n");
     stream->printf("get temp [bed|hotend]\r\n");
     stream->printf("set_temp bed|hotend 185\r\n");
