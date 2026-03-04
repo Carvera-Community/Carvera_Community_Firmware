@@ -44,6 +44,7 @@
 #define STEPPER THEROBOT->actuators
 // #define STEPS_PER_MM(a) (STEPPER[a]->get_steps_per_mm())
 
+#define enable_checksum             CHECKSUM("enable")
 #define atc_checksum            	CHECKSUM("atc")
 #define probe_checksum            	CHECKSUM("probe")
 #define endstop_pin_checksum      	CHECKSUM("homing_endstop_pin")
@@ -1424,6 +1425,7 @@ void ATCHandler::on_config_reload(void *argument)
 	detector_info.detect_pin.from_string( THEKERNEL->config->value(atc_checksum, detector_checksum, detect_pin_checksum)->by_default("0.20^" )->as_string())->as_input();
 	detector_info.detect_rate = THEKERNEL->config->value(atc_checksum, detector_checksum, detect_rate_mm_s_checksum)->by_default(1  )->as_number();
 	detector_info.detect_travel = THEKERNEL->config->value(atc_checksum, detector_checksum, detect_travel_mm_checksum)->by_default(1  )->as_number();
+	this->disable_toolsensor = !THEKERNEL->config->value(atc_checksum, detector_checksum, enable_checksum)->by_default(true)->as_bool();
 
 	this->safe_z_mm = THEKERNEL->config->value(atc_checksum, safe_z_checksum)->by_default(-10)->as_number();
 	this->safe_z_empty_mm = THEKERNEL->config->value(atc_checksum, safe_z_empty_checksum)->by_default(-20)->as_number();
@@ -1836,7 +1838,7 @@ void ATCHandler::loose_tool()
 	THEKERNEL->streams->printf("ATC loosed!\r\n");
 }
 
-void ATCHandler::set_tool_offset(int repeat_count)
+void ATCHandler::set_tool_offset(uint8_t repeat_count)
 {
     float px, py, pz;
     uint8_t ps;
@@ -2316,7 +2318,7 @@ void ATCHandler::on_gcode_received(void *argument)
 				this->probe_oneoff_y = 0.0;
 				this->probe_oneoff_z = 0.0;
 				this->probe_oneoff_configured = false;
-				int repeat_count = 1;
+				uint8_t repeat_count = 1;
 				if (gcode->has_letter('R')) {
 					if (gcode->get_value('R') > 0) {
 						repeat_count = gcode->get_value('R');
@@ -2351,14 +2353,14 @@ void ATCHandler::on_gcode_received(void *argument)
 		} else if (gcode->m == 492) {
 			if(THEKERNEL->factory_set->FuncSetting & (1<<2))	//ATC 
 			{
-				if (gcode->subcode == 0 || gcode->subcode == 1) {
+				if ((gcode->subcode == 0 || gcode->subcode == 1) && !this->disable_toolsensor) {
 					// check true
-					if (!laser_detect() && CARVERA == THEKERNEL->factory_set->MachineModel) {
+					if (!laser_detect()) {
 				        THEKERNEL->set_halt_reason(ATC_NO_TOOL);
 				        THEKERNEL->call_event(ON_HALT, nullptr);
 				        THEKERNEL->streams->printf("ERROR: Unexpected tool absence detected, please check tool rack!\n");
 					}
-				} else if (gcode->subcode == 2) {
+				} else if ((gcode->subcode == 2) && !this->disable_toolsensor) {
 					// check false
 					if (laser_detect()) {
 				        THEKERNEL->set_halt_reason(ATC_HAS_TOOL);
