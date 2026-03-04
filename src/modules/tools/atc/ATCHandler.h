@@ -85,7 +85,7 @@ private:
     void abort();
 
     // set tool offset afteer calibrating
-    void set_tool_offset(int repeat_count = 1);
+    void set_tool_offset(uint8_t repeat_count = 1);
 
     //
     void fill_change_scripts(int new_tool, bool clear_z, int old_tool, bool wait_after_empty, float custom_TLO);
@@ -130,6 +130,7 @@ private:
     uint16_t debounce;
     bool atc_homing;
     bool detecting;
+    bool disable_toolsensor;
 
     bool playing_file;
     bool g28_triggered;
@@ -282,7 +283,7 @@ private:
     float ref_tool_mz;
     float cur_tool_mz;
     float tool_offset;
-    const int max_tl_mcz_values = 5;
+    const uint8_t max_tl_mcz_values = 5;
     deque<float> tl_mcz_values = deque<float>(max_tl_mcz_values, 0.0f);
     int beep_state;
     int beep_count;

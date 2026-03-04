@@ -463,6 +463,7 @@ atc.homing_retract_mm 0					# Retract distance after homing (mm)
 atc.action_mm 70					 	# Action distance when drop tool (mm)
 atc.detector.detect_rate_mm_s 20		# Tool detect speed (mm / second)	
 atc.detector.detect_travel_mm 5	        # Tool detect back and forth distance (mm)
+atc.detector.enable true				# Enable or disable the toolsensor
 
 atc.safe_z_mm -20.0						# Safety Z height when clamping tool
 atc.safe_z_empty_mm -40.0				# Safety Z height when not clamping tool
