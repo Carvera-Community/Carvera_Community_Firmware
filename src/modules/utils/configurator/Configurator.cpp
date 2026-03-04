@@ -91,20 +91,30 @@ void Configurator::config_set_command( string parameters, StreamOutput *stream )
         }
     }
     stream->printf( "%s source does not exist\r\n", source.c_str());
+}
 
+// Delete the specified setting from the specified ConfigSource (file only; removes the line from config.txt)
+void Configurator::config_delete_command( string parameters, StreamOutput *stream )
+{
+    string source = shift_parameter(parameters);
+    string setting = shift_parameter(parameters);
+    if(source.empty() || setting.empty()) {
+        stream->printf( "Usage: config-delete source setting # where source is sd (or local), setting is the key to remove\r\n" );
+        return;
+    }
 
-    /* Live setting not really supported anymore as the cache is never left loaded
-        if (value == "") {
-            if(!THEKERNEL->config->config_cache_loaded) {
-                stream->printf( "live: setting not allowed as config cache is not loaded\r\n" );
-                return;
+    uint16_t source_checksum = get_checksum(source);
+    for(unsigned int i = 0; i < THEKERNEL->config->config_sources.size(); i++) {
+        if( THEKERNEL->config->config_sources[i]->is_named(source_checksum) ) {
+            if(THEKERNEL->config->config_sources[i]->remove(setting)) {
+                stream->printf( "%s: %s has been removed\r\n", source.c_str(), setting.c_str() );
+            } else {
+                stream->printf( "%s: %s not found or source is read-only\r\n", source.c_str(), setting.c_str() );
             }
-            value = setting;
-            setting = source;
-            source = "";
-            THEKERNEL->config->set_string(setting, value);
-            stream->printf( "live: %s has been set to %s\r\n", setting.c_str(), value.c_str() );
-    */
+            return;
+        }
+    }
+    stream->printf( "%s source does not exist\r\n", source.c_str());
 }
 
 // Reload config values from the specified ConfigSource, NOTE used for debugging by dumping the config-cache

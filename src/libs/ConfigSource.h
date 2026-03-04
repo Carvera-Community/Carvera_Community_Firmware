@@ -23,6 +23,7 @@ class ConfigSource {
         virtual bool is_named( uint16_t check_sum ) = 0;
         virtual bool write( std::string setting, std::string value ) = 0;
         virtual std::string read( uint16_t check_sums[3] ) = 0;
+        virtual bool remove( std::string setting ) { return false; }
 
     protected:
         virtual ConfigValue* process_line_from_ascii_config(const std::string& line, ConfigCache* cache);
