@@ -18,6 +18,7 @@
 - Enhancement: New config setting "zprobe.three_axis_probe_tlo_correction" allows the user to correct for tlo measurement inaccuracies
 - Enhancement: New "R" Parameter for M491 to repeat TLO measurement and find the lowest cutting edge on a facemill. The user has to rotate the face mill between cycles
 - Enhancement: New "config-delete sd <key>" command that allows to delete a config setting from the config.txt. It's intended to be used when cleaning up the config.txt or when config keys got misspelled.
+- Enhancement: New config setting "atc.detector.enable" allows to disable the tool laser sensor.
 
 [2.1.0c-RC1]
 - Enhancement: Move G0 at the configured default_seek_rate configured, defaulting to 3000mm/min, unless a Feed parameter is provided. This returns G0 being a rapid movement command.
