@@ -161,12 +161,18 @@ void WifiProvider::receive_wifi_data() {
 				THEKERNEL->set_keep_alive_request(true);
 				continue;
 			}
-	        if(THEKERNEL->is_feed_hold_enabled()) {
+			bool at_line_start;
+			at_line_start = (this->buffer.head == this->buffer.tail);
+			if (!at_line_start) {
+				int last_idx = this->buffer.prev_block_index(this->buffer.head);
+				at_line_start = (this->buffer.buffer[last_idx] == '\n' || this->buffer.buffer[last_idx] == '\r');
+			}
+
+	        if(THEKERNEL->is_feed_hold_enabled() && at_line_start) {
 	            if(WifiData[i] == '!') { // safe pause
 	                THEKERNEL->set_feed_hold(true);
 	                continue;
 	            }
-
 	            if(WifiData[i] == '~') { // safe resume
 	                THEKERNEL->set_feed_hold(false);
 	                continue;
