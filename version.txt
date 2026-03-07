@@ -13,6 +13,7 @@
 - Fixed: int declared as NAN in ATCHandler::fill_change_scripts, fixed by setting to -1 and updating code accordingly
 - Fixed: comparison of integer expressions of different signedness
 - Fixed: wait_us could run into issues if the value given is less than zero. Now ignores times less than 0
+- Fixed: "!" is not filtered anymore when not at the beginning of the line. This enables configuration of inverted pins over the config-set command. (e.g. config-set sd atc.detector.detect_pin 0.21!^)
 - Change: added -Slow parameter to windows powershell build script to improve readability of error logs as the cost of speed.
 - Change: removed register specifiers in LPC1768 and mbded libraries used by the project. register has been depreciated for a long time and now falls back to being completely ignored. Looked for library updates first, they haven't been updated.
 - Enhancement: New config setting "zprobe.three_axis_probe_tlo_correction" allows the user to correct for tlo measurement inaccuracies
