@@ -1993,7 +1993,7 @@ void ATCHandler::on_gcode_received(void *argument)
 					THEKERNEL->set_halt_reason(ATC_TOOL_INVALID);
 					gcode->stream->printf("ALARM: Tool T%d not defined in tool slots\r\n", new_tool);
 				} else if (new_tool != active_tool) {
-					if (new_tool > -1 && THEKERNEL->get_laser_mode()) {
+					if (new_tool > -1 && THEKERNEL->get_laser_mode() && CARVERA == THEKERNEL->factory_set->MachineModel) {
 						THEKERNEL->streams->printf("ALARM: Can not do ATC in laser mode!\n");
 						return;
 					}
@@ -2581,13 +2581,25 @@ void ATCHandler::on_gcode_received(void *argument)
 									                
 							if(THEKERNEL->factory_set->FuncSetting & (1<<2))	//ATC 
 							{
-				        		if (active_tool > 0 && active_tool < 999990) {
-				        			// drop current tool
-				            		int old_tool = active_tool;
-				            		// change to probe tool
-				            		this->fill_drop_scripts(old_tool);
-				        		}
-			            		this->fill_pick_scripts(0, active_tool <= 0);
+								//drop current tool
+								if (this->active_tool >= this->lowest_tool_number && (this->is_custom_tool_defined(this->active_tool) || this->active_tool <= this->tool_number)){ //drop atc tool
+									THEKERNEL->streams->printf("Start dropping current tool: T%d\r\n", this->active_tool);
+									// just drop tool
+									this->fill_drop_scripts(active_tool);
+								}else if((this->active_tool > this->tool_number || this->active_tool < this->lowest_tool_number) && !this->is_custom_tool_defined(this->active_tool) && this->active_tool != -1){ //drop manual tool
+									THEKERNEL->streams->printf("Start manually dropping current tool: T%d\r\n", this->active_tool);
+									this->target_tool = -1;
+									if (CARVERA == THEKERNEL->factory_set->MachineModel){
+										this->fill_change_scripts(-1, true, active_tool, true);
+									}else{
+										this->fill_change_scripts(-1, true, active_tool, false);
+									}
+								}
+								if (CARVERA == THEKERNEL->factory_set->MachineModel) {
+			            			this->fill_pick_scripts(0, active_tool <= 0);
+								}else{
+									this->fill_change_scripts(0, true);
+								}
 			            		this->fill_cali_scripts(true, false);
 			            	}
 			            	else	//Manual Tool Change
