@@ -98,18 +98,13 @@ void SerialConsole::on_serial_char_received() {
 		
 		if (received == '?') {
 			query_flag = true;
-            this->previous_char = received;
 			continue;
 		} else if (this->previous_char == '?' && received == '1') {
 			// Found ?1 pattern
 			query_flag = true;
 			THEKERNEL->set_keep_alive_request(true);
-			this->previous_char = 0; // Reset
 			continue;
 		}
-		
-		// Reset previous_char for any other character
-		this->previous_char = received;
 		
 		//if (received == '*') {
 		//	diagnose_flag = true;
@@ -133,18 +128,24 @@ void SerialConsole::on_serial_char_received() {
             continue;
         }
         if(THEKERNEL->is_feed_hold_enabled()) {
-            if(received == '!') { // safe pause
-                THEKERNEL->set_feed_hold(true);
-                continue;
-            }
-            if(received == '~') { // safe resume
-                THEKERNEL->set_feed_hold(false);
-                continue;
+            bool at_line_start = (this->buffer.head == this->buffer.tail) || (this->previous_char == '\n') || (this->previous_char == '\r');
+            if(at_line_start) {
+                if(received == '!') { // safe pause
+                    THEKERNEL->set_feed_hold(true);
+                    continue;
+                }
+                if(received == '~') { // safe resume
+                    THEKERNEL->set_feed_hold(false);
+                    continue;
+                }
             }
         }
 		// convert CR to NL (for host OSs that don't send NL)
 		if ( received == '\r' ) { received = '\n'; }
 		this->buffer.push_back(received);
+
+        // Reset previous_char for any other character
+		this->previous_char = received;
     }
 }
 
