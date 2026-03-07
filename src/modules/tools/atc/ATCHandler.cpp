@@ -1993,7 +1993,7 @@ void ATCHandler::on_gcode_received(void *argument)
 					THEKERNEL->set_halt_reason(ATC_TOOL_INVALID);
 					gcode->stream->printf("ALARM: Tool T%d not defined in tool slots\r\n", new_tool);
 				} else if (new_tool != active_tool) {
-					if (new_tool > -1 && THEKERNEL->get_laser_mode()) {
+					if (new_tool > -1 && THEKERNEL->get_laser_mode() && CARVERA == THEKERNEL->factory_set->MachineModel) {
 						THEKERNEL->streams->printf("ALARM: Can not do ATC in laser mode!\n");
 						return;
 					}
