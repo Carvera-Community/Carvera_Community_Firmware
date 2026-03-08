@@ -2037,7 +2037,7 @@ void ATCHandler::on_gcode_received(void *argument)
 						this->fill_change_scripts(new_tool, true, -1, false, custom_TLO);
 						
 						if (auto_calibrate){
-							this->fill_cali_scripts((new_tool == 0 || new_tool >= 999990), true); 
+							this->fill_cali_scripts((new_tool == 0 || new_tool >= 999990), true, repeat_count); 
 						}
 					}else if(new_tool >= 0 && (this->is_custom_tool_defined(new_tool) || new_tool <= this->tool_number)){ //standard ATC
 						THEKERNEL->streams->printf("Start picking new tool: T%d\r\n", new_tool);
@@ -2063,7 +2063,7 @@ void ATCHandler::on_gcode_received(void *argument)
 					// Set TLO calibration flag to disable 3D probe crash detection
 					bool tlo_calibrating = true;
 					PublicData::set_value( zprobe_checksum, set_tlo_calibrating_checksum, &tlo_calibrating );
-					this->fill_cali_scripts(new_tool == 0 || new_tool >= 999990, true);
+					this->fill_cali_scripts(new_tool == 0 || new_tool >= 999990, true, repeat_count);
 				}
 	        }
 	        else	//Manual Tool Change for AIR
