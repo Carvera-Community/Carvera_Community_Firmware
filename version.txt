@@ -19,7 +19,7 @@
 - Change: added -Slow parameter to windows powershell build script to improve readability of error logs as the cost of speed.
 - Change: removed register specifiers in LPC1768 and mbded libraries used by the project. register has been depreciated for a long time and now falls back to being completely ignored. Looked for library updates first, they haven't been updated.
 - Enhancement: New config setting "zprobe.three_axis_probe_tlo_correction" allows the user to correct for tlo measurement inaccuracies
-- Enhancement: New "R" Parameter for M491 to repeat TLO measurement and find the lowest cutting edge on a facemill. The user has to rotate the face mill between cycles
+- Enhancement: New "R" Parameter for M491 and M6 to repeat TLO measurement and find the lowest cutting edge on a facemill. The user has to rotate the face mill between cycles
 - Enhancement: New "config-delete sd <key>" command that allows to delete a config setting from the config.txt. It's intended to be used when cleaning up the config.txt or when config keys got misspelled.
 - Enhancement: New config setting "atc.detector.enable" allows to disable the tool laser sensor.
 
