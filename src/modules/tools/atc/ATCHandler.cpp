@@ -1967,6 +1967,7 @@ void ATCHandler::on_gcode_received(void *argument)
 			this->probe_oneoff_y = 0.0;
 			this->probe_oneoff_z = 0.0;
 			this->probe_oneoff_configured = false;
+			uint8_t repeat_count = 1;
 
 			if (gcode->has_letter('X')) {
 				this->probe_oneoff_x = gcode->get_value('X');
