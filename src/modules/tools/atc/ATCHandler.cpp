@@ -1644,7 +1644,7 @@ uint32_t ATCHandler::read_detector(uint32_t dummy)
 // Called every second in an ISR
 uint32_t ATCHandler::countdown_probe_laser(uint32_t dummy)
 {
-	if(CARVERA == THEKERNEL->factory_set->FuncSetting)	//ATC 
+	if(CARVERA == THEKERNEL->factory_set->MachineModel)	//ATC 
 	{
 		if (this->probe_laser_last < 120) {
 			this->probe_laser_last ++;
@@ -1968,6 +1968,13 @@ void ATCHandler::on_gcode_received(void *argument)
 			this->probe_oneoff_z = 0.0;
 			this->probe_oneoff_configured = false;
 			uint8_t repeat_count = 1;
+
+
+			if (gcode->has_letter('R')) {
+				if (gcode->get_value('R') > 0) {
+					repeat_count = gcode->get_value('R');
+				}
+			}
 
 			if (gcode->has_letter('X')) {
 				this->probe_oneoff_x = gcode->get_value('X');
