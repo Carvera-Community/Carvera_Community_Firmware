@@ -53,21 +53,22 @@ void CompensationPreprocessor::set_compensation(CompensationType type, float rad
     compensation_radius = radius;
     
     if (type == CompensationType::NONE) {
-        // G40: Set flag to bypass lookahead and flush remaining commands
-        // DO NOT clear() - we want to OUTPUT buffered commands, not delete them!
         is_flushing = true;
         needs_lead_in = false;
-        THEKERNEL->streams->printf(">>PHASE1: G40 activated - FLUSHING mode (will output remaining %d buffered commands)\n", buffer_count);
+        THEKERNEL->streams->printf(">>PHASE2: G40 activated - FLUSHING mode (will output remaining %d buffered commands)\n", buffer_count);
     } else {
-        // G41/G42: Clear any old buffered commands before starting fresh
-        THEKERNEL->streams->printf(">>PHASE1: G41/G42 called - clearing buffer (count was %d)\n", buffer_count);
+        THEKERNEL->streams->printf(">>PHASE2: G41/G42 called - clearing buffer (count was %d)\n", buffer_count);
         clear();
         
-        // Reset flushing flag and mark that we need lead-in calculation
         is_flushing = false;
         needs_lead_in = true;
-        THEKERNEL->streams->printf(">>PHASE1: G41/G42 activated - BUFFERING mode (type=%s, radius=%.3f)\n",
-            type == CompensationType::LEFT ? "LEFT" : "RIGHT", radius);
+        
+        const char* side_str = (type == CompensationType::LEFT) ? "LEFT (G41)" : "RIGHT (G42)";
+        THEKERNEL->streams->printf(">>PHASE2: Compensation activated - type=%s, radius=%.3f\n", side_str, radius);
+        
+        compensated_position[X_AXIS] = uncompensated_position[X_AXIS];
+        compensated_position[Y_AXIS] = uncompensated_position[Y_AXIS];
+        compensated_position[Z_AXIS] = uncompensated_position[Z_AXIS];
     }
 }
 
@@ -77,18 +78,15 @@ bool CompensationPreprocessor::buffer_gcode(Gcode* gcode)
         return false;
     }
     
-    // Add to buffer
     int slot_index = buffer_head;
     BufferedGcode& slot = buffer[slot_index];
     
-    // Clone and extract data
     clone_and_extract(gcode, slot);
     
-    // Update buffer pointers
     buffer_head = buffer_next_index(buffer_head);
     buffer_count++;
     
-    THEKERNEL->streams->printf(">>PHASE1_BUFFERED: Command added to buffer (count now=%d, head=%d, tail=%d)\n",
+    THEKERNEL->streams->printf(">>PHASE2_BUFFERED: Command added to buffer (count now=%d, head=%d, tail=%d)\n",
         buffer_count, buffer_head, buffer_tail);
     
     return true;
@@ -138,7 +136,8 @@ void CompensationPreprocessor::clone_and_extract(Gcode* gcode, BufferedGcode& sl
     slot.uncomp_start[Y_AXIS] = uncompensated_position[Y_AXIS];
     slot.uncomp_start[Z_AXIS] = uncompensated_position[Z_AXIS];
     
-    // Extract endpoint (update uncompensated position)
+    // Extract endpoint and update uncompensated position tracker
+    // This tracks the PROGRAMMED path so next buffered move knows correct start
     if (gcode->has_letter('X')) {
         slot.endpoint[X_AXIS] = gcode->get_value('X');
         uncompensated_position[X_AXIS] = slot.endpoint[X_AXIS];
@@ -194,73 +193,137 @@ Gcode* CompensationPreprocessor::get_compensated_gcode()
         return nullptr;
     }
     
-    // ========================================================================
-    // PHASE 1 TEST: BUFFER TESTING WITH PROPER LOOKAHEAD
-    // ========================================================================
-    // This version tests that buffering works correctly WITH lookahead:
-    // - Commands enter buffer
-    // - Buffer HOLDS commands until we have 3+ (lookahead)
-    // - Commands exit buffer in correct order ONLY when lookahead satisfied
-    // - No commands lost or duplicated
-    // - G41/G42/G40 pass through correctly
-    // 
-    // ALL COMPENSATION LOGIC STILL DISABLED FOR ISOLATION TESTING
-    // ========================================================================
-    
-    // CRITICAL: Implement lookahead buffering
-    // Don't output anything until we have at least 3 commands for lookahead
-    // UNLESS we're flushing (G40 deactivated compensation) or buffer is full
     int required_lookahead = 3;
     
     if (buffer_count < required_lookahead && !is_flushing) {
-        THEKERNEL->streams->printf(">>PHASE1_BUFFERING: Holding for lookahead (count=%d, need=%d)\n", 
+        THEKERNEL->streams->printf(">>PHASE2_BUFFERING: Holding for lookahead (count=%d, need=%d)\n", 
             buffer_count, required_lookahead);
-        return nullptr;  // Keep buffering
+        return nullptr;
     }
     
     BufferedGcode& slot = buffer[buffer_tail];
     
-    // CRITICAL VALIDATION: Check for null or invalid gcode pointer
     if (slot.gcode == nullptr) {
         THEKERNEL->streams->printf(">>ERROR: Buffer slot %d has NULL gcode pointer! Clearing buffer.\n", buffer_tail);
         clear();
         return nullptr;
     }
     
-    THEKERNEL->streams->printf(">>PHASE1_TEST: Reading buffer slot %d (tail=%d, head=%d, count=%d)\n",
-        buffer_tail, buffer_tail, buffer_head, buffer_count);
-    THEKERNEL->streams->printf(">>SLOT_DATA: endpoint=[%.3f, %.3f, %.3f] is_move=%d has_g=%d g=%d\n",
-        slot.endpoint[X_AXIS], slot.endpoint[Y_AXIS], slot.endpoint[Z_AXIS],
-        slot.is_move, slot.gcode->has_g, slot.gcode->has_g ? slot.gcode->g : -1);
-    THEKERNEL->streams->printf(">>SLOT_GCODE: '%s'\n", slot.gcode->get_command());
+    print_buffer_state("before_offset");
+    print_position_state("before_offset");
     
-    // Update position tracker (for all moves, regardless of compensation state)
-    if (slot.is_move) {
-        if (slot.gcode->has_letter('X')) {
-            uncompensated_position[X_AXIS] = slot.endpoint[X_AXIS];
-            compensated_position[X_AXIS] = slot.endpoint[X_AXIS];
-        }
-        if (slot.gcode->has_letter('Y')) {
-            uncompensated_position[Y_AXIS] = slot.endpoint[Y_AXIS];
-            compensated_position[Y_AXIS] = slot.endpoint[Y_AXIS];
-        }
-        if (slot.gcode->has_letter('Z')) {
-            uncompensated_position[Z_AXIS] = slot.endpoint[Z_AXIS];
-            compensated_position[Z_AXIS] = slot.endpoint[Z_AXIS];
+    // PHASE 2: Apply compensation if active and this is a straight line move
+    if (compensation_type != CompensationType::NONE && slot.is_move && !slot.has_ijk) {
+        THEKERNEL->streams->printf(">>PHASE2: Applying compensation to move\n");
+        
+        float direction[2];
+        direction[0] = slot.endpoint[X_AXIS] - slot.uncomp_start[X_AXIS];
+        direction[1] = slot.endpoint[Y_AXIS] - slot.uncomp_start[Y_AXIS];
+        
+        float mag = sqrtf(direction[0]*direction[0] + direction[1]*direction[1]);
+        
+        if (mag < 0.1f) {
+            THEKERNEL->streams->printf(">>PHASE2: Zero-length move detected (%.4f mm), looking ahead\n", mag);
+            
+            if (buffer_count > 1) {
+                int next_idx = buffer_next_index(buffer_tail);
+                BufferedGcode& next_slot = buffer[next_idx];
+                
+                if (next_slot.is_move && !next_slot.has_ijk) {
+                    direction[0] = next_slot.endpoint[X_AXIS] - slot.endpoint[X_AXIS];
+                    direction[1] = next_slot.endpoint[Y_AXIS] - slot.endpoint[Y_AXIS];
+                    mag = sqrtf(direction[0]*direction[0] + direction[1]*direction[1]);
+                    THEKERNEL->streams->printf(">>PHASE2: Using next move direction: mag=%.4f\n", mag);
+                }
+            }
+            
+            if (mag < 0.1f) {
+                THEKERNEL->streams->printf(">>PHASE2: Cannot determine direction, skipping compensation\n");
+                goto skip_compensation;
+            }
         }
         
-        THEKERNEL->streams->printf(">>PHASE1_POSITION: X=%.3f Y=%.3f Z=%.3f\n",
-            uncompensated_position[X_AXIS], uncompensated_position[Y_AXIS], uncompensated_position[Z_AXIS]);
+        direction[0] /= mag;
+        direction[1] /= mag;
+        
+        float normal[2];
+        if (compensation_type == CompensationType::LEFT) {
+            normal[0] = -direction[1];
+            normal[1] = direction[0];
+        } else {
+            normal[0] = direction[1];
+            normal[1] = -direction[0];
+        }
+        
+        float offset_endpoint[2];
+        offset_endpoint[0] = slot.endpoint[X_AXIS] + normal[0] * compensation_radius;
+        offset_endpoint[1] = slot.endpoint[Y_AXIS] + normal[1] * compensation_radius;
+        
+        print_offset_calculation(slot, direction, normal, offset_endpoint);
+        
+        char new_command[256];
+        char* ptr = new_command;
+        
+        if (slot.gcode->has_g) {
+            ptr += snprintf(ptr, sizeof(new_command) - (ptr - new_command), "G%d ", slot.gcode->g);
+        }
+        
+        ptr += snprintf(ptr, sizeof(new_command) - (ptr - new_command), 
+            "X%.4f Y%.4f Z%.4f",
+            offset_endpoint[0],
+            offset_endpoint[1],
+            slot.endpoint[Z_AXIS]);
+        
+        if (slot.gcode->has_letter('F')) {
+            ptr += snprintf(ptr, sizeof(new_command) - (ptr - new_command), 
+                " F%.1f", slot.gcode->get_value('F'));
+        }
+        
+        THEKERNEL->streams->printf(">>PHASE2_REBUILT: '%s' -> '%s'\n",
+            slot.gcode->get_command(), new_command);
+        
+        delete slot.gcode;
+        slot.gcode = new Gcode(new_command, &(StreamOutput::NullStream));
+        
+        // Update compensated position to actual offset endpoint
+        // uncompensated_position was already updated during buffering
+        compensated_position[X_AXIS] = offset_endpoint[0];
+        compensated_position[Y_AXIS] = offset_endpoint[1];
+        compensated_position[Z_AXIS] = slot.endpoint[Z_AXIS];
+        
+        float start[2] = {slot.uncomp_start[X_AXIS], slot.uncomp_start[Y_AXIS]};
+        print_move_transform(slot, start, offset_endpoint);
+        
+    } else {
+        skip_compensation:
+        
+        if (slot.is_move) {
+            THEKERNEL->streams->printf(">>PHASE2_PASSTHROUGH: Move without compensation (comp=%s, is_arc=%d)\n",
+                compensation_type == CompensationType::NONE ? "OFF" : "ON",
+                slot.has_ijk ? 1 : 0);
+            
+            // uncompensated_position was already updated during buffering
+            // Just sync compensated position to match (no offset applied)
+            compensated_position[X_AXIS] = slot.endpoint[X_AXIS];
+            compensated_position[Y_AXIS] = slot.endpoint[Y_AXIS];
+            compensated_position[Z_AXIS] = slot.endpoint[Z_AXIS];
+        } else {
+            THEKERNEL->streams->printf(">>PHASE2_COMMAND: Non-move command '%s'\n",
+                slot.gcode->get_command());
+        }
     }
     
-    // Return original G-code UNMODIFIED - no compensation applied
-    Gcode* output = slot.gcode;  // Transfer ownership
+    print_position_state("after_offset");
+    
+    Gcode* output = slot.gcode;
     slot.gcode = nullptr;
     
     buffer_tail = buffer_next_index(buffer_tail);
     buffer_count--;
     
-    THEKERNEL->streams->printf(">>PHASE1_OUTPUT: Command released from buffer (remaining=%d)\n", buffer_count);
+    THEKERNEL->streams->printf(">>PHASE2_OUTPUT: Command released (remaining=%d)\n", buffer_count);
+    print_buffer_state("after_output");
+    THEKERNEL->streams->printf("\n");
     
     return output;
 }
@@ -644,8 +707,82 @@ void CompensationPreprocessor::set_initial_position(const float position[3])
     uncompensated_position[Y_AXIS] = position[Y_AXIS];
     uncompensated_position[Z_AXIS] = position[Z_AXIS];
     
-    // Initialize compensated position to same as uncompensated at start
     compensated_position[X_AXIS] = position[X_AXIS];
     compensated_position[Y_AXIS] = position[Y_AXIS];
     compensated_position[Z_AXIS] = position[Z_AXIS];
+}
+
+void CompensationPreprocessor::print_buffer_state(const char* context)
+{
+    const char* comp_str = "NONE";
+    if (compensation_type == CompensationType::LEFT) comp_str = "LEFT";
+    else if (compensation_type == CompensationType::RIGHT) comp_str = "RIGHT";
+    
+    THEKERNEL->streams->printf(">>BUFFER_STATE[%s]: count=%d, head=%d, tail=%d, comp=%s, radius=%.3f\n",
+        context, buffer_count, buffer_head, buffer_tail, comp_str, compensation_radius);
+}
+
+void CompensationPreprocessor::print_buffer_contents()
+{
+    THEKERNEL->streams->printf(">>BUFFER_CONTENTS: (%d commands)\n", buffer_count);
+    for (int i = 0; i < buffer_count; i++) {
+        int idx = (buffer_tail + i) % BUFFER_SIZE;
+        BufferedGcode& slot = buffer[idx];
+        THEKERNEL->streams->printf("  [%d] ", i);
+        if (slot.is_move) {
+            THEKERNEL->streams->printf("MOVE: (%.3f,%.3f,%.3f) -> (%.3f,%.3f,%.3f) %s\n",
+                slot.uncomp_start[X_AXIS], slot.uncomp_start[Y_AXIS], slot.uncomp_start[Z_AXIS],
+                slot.endpoint[X_AXIS], slot.endpoint[Y_AXIS], slot.endpoint[Z_AXIS],
+                slot.gcode ? slot.gcode->get_command() : "NULL");
+        } else {
+            THEKERNEL->streams->printf("CMD: %s\n", slot.gcode ? slot.gcode->get_command() : "NULL");
+        }
+    }
+}
+
+void CompensationPreprocessor::print_position_state(const char* context)
+{
+    THEKERNEL->streams->printf(">>POSITION[%s]: uncomp=(%.3f,%.3f,%.3f) comp=(%.3f,%.3f,%.3f) delta=(%.3f,%.3f)\n",
+        context,
+        uncompensated_position[X_AXIS], uncompensated_position[Y_AXIS], uncompensated_position[Z_AXIS],
+        compensated_position[X_AXIS], compensated_position[Y_AXIS], compensated_position[Z_AXIS],
+        compensated_position[X_AXIS] - uncompensated_position[X_AXIS],
+        compensated_position[Y_AXIS] - uncompensated_position[Y_AXIS]);
+}
+
+void CompensationPreprocessor::print_offset_calculation(
+    const BufferedGcode& slot,
+    const float direction[2],
+    const float normal[2],
+    const float offset_endpoint[2])
+{
+    THEKERNEL->streams->printf(">>OFFSET_CALC:\n");
+    THEKERNEL->streams->printf("  Original: (%.3f,%.3f) -> (%.3f,%.3f)\n",
+        slot.uncomp_start[X_AXIS], slot.uncomp_start[Y_AXIS],
+        slot.endpoint[X_AXIS], slot.endpoint[Y_AXIS]);
+    THEKERNEL->streams->printf("  Direction: (%.4f, %.4f)\n", direction[0], direction[1]);
+    THEKERNEL->streams->printf("  Normal: (%.4f, %.4f) [%s]\n", 
+        normal[0], normal[1],
+        compensation_type == CompensationType::LEFT ? "LEFT/CCW" : "RIGHT/CW");
+    THEKERNEL->streams->printf("  Radius: %.3f\n", compensation_radius);
+    THEKERNEL->streams->printf("  Offset Endpoint: (%.3f,%.3f)\n", offset_endpoint[0], offset_endpoint[1]);
+    THEKERNEL->streams->printf("  Offset Amount: (%.3f,%.3f)\n",
+        offset_endpoint[0] - slot.endpoint[X_AXIS],
+        offset_endpoint[1] - slot.endpoint[Y_AXIS]);
+}
+
+void CompensationPreprocessor::print_move_transform(
+    const BufferedGcode& slot,
+    const float start[2],
+    const float end[2])
+{
+    THEKERNEL->streams->printf(">>MOVE_TRANSFORM:\n");
+    THEKERNEL->streams->printf("  BEFORE: (%.3f,%.3f) -> (%.3f,%.3f)\n",
+        slot.uncomp_start[X_AXIS], slot.uncomp_start[Y_AXIS],
+        slot.endpoint[X_AXIS], slot.endpoint[Y_AXIS]);
+    THEKERNEL->streams->printf("  AFTER:  (%.3f,%.3f) -> (%.3f,%.3f)\n",
+        start[0], start[1], end[0], end[1]);
+    THEKERNEL->streams->printf("  SHIFT:  (%.3f,%.3f) at start, (%.3f,%.3f) at end\n",
+        start[0] - slot.uncomp_start[X_AXIS], start[1] - slot.uncomp_start[Y_AXIS],
+        end[0] - slot.endpoint[X_AXIS], end[1] - slot.endpoint[Y_AXIS]);
 }
