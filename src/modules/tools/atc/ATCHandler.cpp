@@ -2064,11 +2064,11 @@ void ATCHandler::on_gcode_received(void *argument)
 						auto_calibrate = gcode->get_value('C');
 					}
 					//drop current tool
-					if (!manual_drop){ //drop atc tool
+					if (active_is_atc_tool){ //drop atc tool
 						THEKERNEL->streams->printf("Start dropping current tool: T%d\r\n", this->active_tool);
 						atc_status = DROP;
 						this->fill_drop_scripts(active_tool);
-					}else{ //drop manual tool
+					}else if(manual_drop){ //drop manual tool
 						THEKERNEL->streams->printf("Start manually dropping current tool: T%d\r\n", this->active_tool);
 						atc_status = CHANGE;
 						this->target_tool = -1;
