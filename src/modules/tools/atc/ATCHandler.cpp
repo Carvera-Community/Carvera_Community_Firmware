@@ -131,6 +131,7 @@ ATCHandler::ATCHandler()
     probe_oneoff_y = 0.0;
     probe_oneoff_z = 0.0;
     probe_oneoff_configured = false;
+	target_collet_type = UNDEFINED;
 }
 
 void ATCHandler::clear_script_queue(){
@@ -791,7 +792,7 @@ void ATCHandler::home_machine_with_pin(Gcode *gcode)//M469
 
 
 
-void ATCHandler::fill_change_scripts(int new_tool, bool clear_z, int old_tool = -1, bool wait_after_empty = false, float custom_TLO = NAN) {
+void ATCHandler::fill_change_scripts(int new_tool, bool clear_z, int old_tool = -1, bool wait_after_empty = false, uint8_t colletIndex = 0, float custom_TLO = NAN) {
 	char buff[100];
 
 	// move to tool change position
@@ -815,6 +816,11 @@ void ATCHandler::fill_change_scripts(int new_tool, bool clear_z, int old_tool = 
 		if (new_tool != -1){
 			snprintf(buff, sizeof(buff), "M493.5 T%d", new_tool);
 			this->script_queue.push(buff);
+			if (colletIndex != 0){
+				// change collet
+				snprintf(buff, sizeof(buff), "M493.6 S%d", colletIndex);
+				this->script_queue.push(buff);
+			}
 			// Enter tool changing waiting status
 			this->script_queue.push("M490.3");
 			//close
@@ -828,10 +834,21 @@ void ATCHandler::fill_change_scripts(int new_tool, bool clear_z, int old_tool = 
 			// set new tool
 			snprintf(buff, sizeof(buff), "M493.2 T%d", new_tool);
 			this->script_queue.push(buff);
+			// wait after empty is only true when dropping a manual tool followed by an atc tool
 			if (wait_after_empty){
+				if (colletIndex != 0){
+					// change collet
+					snprintf(buff, sizeof(buff), "M493.6 S%d", colletIndex);
+					this->script_queue.push(buff);
+				}
 				// Enter tool changing waiting status for calibration
 				this->script_queue.push("M490.3");
 			}
+		}
+
+		if (colletIndex != 0){
+			// set target collet back to undefined after change
+			this->script_queue.push("M493.6 S0");
 		}
 
 		if (!isnan(custom_TLO)) {
@@ -843,6 +860,11 @@ void ATCHandler::fill_change_scripts(int new_tool, bool clear_z, int old_tool = 
 			this->script_queue.push(buff);
 		}
 	}else{
+		if (colletIndex != 0){
+			// change collet
+			snprintf(buff, sizeof(buff), "M493.6 S%d", colletIndex);
+			this->script_queue.push(buff);
+		}
 		this->script_queue.push("M490.1");
 		// set new tool
 		snprintf(buff, sizeof(buff), "M493.2 T%d", new_tool);
@@ -1975,6 +1997,13 @@ void ATCHandler::on_gcode_received(void *argument)
 					repeat_count = gcode->get_value('R');
 				}
 			}
+			uint8_t colletIndex = 0;
+			if (gcode->has_letter('S') && THEKERNEL->factory_set->FuncSetting & (1<<2)) {
+				colletIndex = gcode->get_value('S');
+				if (colletIndex < 1 || colletIndex > 5) {
+					colletIndex = 0;
+				}
+			}
 
 			if (gcode->has_letter('X')) {
 				this->probe_oneoff_x = gcode->get_value('X');
@@ -2008,9 +2037,22 @@ void ATCHandler::on_gcode_received(void *argument)
 					
 					// push old state
 					bool auto_calibrate = true;
+					bool active_is_atc_tool = (this->active_tool >= this->lowest_tool_number && this->active_tool <= this->tool_number) // tool is inside the atc tool range
+										|| this->is_custom_tool_defined(this->active_tool); 									 		// or tool is a custom tool
+
+					bool new_is_atc_tool = (new_tool >= this->lowest_tool_number && new_tool <= this->tool_number) 	// tool is inside the atc tool range
+										|| this->is_custom_tool_defined(new_tool); 									// or tool is a custom tool
+
+					bool manual_drop = !active_is_atc_tool			// active tool is not an atc tool
+										&& this->active_tool != -1; // there is a tool that needs to be dropped
+
+					bool manual_pickup = !new_is_atc_tool			// new tool is not an atc tool
+										  && new_tool != -1; 		// there is a tool that needs to be picked up
+
 					float custom_TLO = NAN;
 					THEROBOT->push_state();
 					THEROBOT->get_axis_position(last_pos, 3);
+					THEKERNEL->streams->printf("Saved XY position: X%.3f Y%.3f\n", last_pos[0], last_pos[1]);
 					set_inner_playing(true);
 					this->clear_script_queue();
 
@@ -2022,32 +2064,35 @@ void ATCHandler::on_gcode_received(void *argument)
 						auto_calibrate = gcode->get_value('C');
 					}
 					//drop current tool
-					if (this->active_tool >= this->lowest_tool_number && (this->is_custom_tool_defined(this->active_tool) || this->active_tool <= this->tool_number)){ //drop atc tool
+					if (!manual_drop){ //drop atc tool
 						THEKERNEL->streams->printf("Start dropping current tool: T%d\r\n", this->active_tool);
-						// just drop tool
 						atc_status = DROP;
 						this->fill_drop_scripts(active_tool);
-					}else if((this->active_tool > this->tool_number || this->active_tool < this->lowest_tool_number) && !this->is_custom_tool_defined(this->active_tool) && this->active_tool != -1){ //drop manual tool
+					}else{ //drop manual tool
 						THEKERNEL->streams->printf("Start manually dropping current tool: T%d\r\n", this->active_tool);
 						atc_status = CHANGE;
 						this->target_tool = -1;
-						if (new_tool >= 0 && (this->is_custom_tool_defined(new_tool) || new_tool <= this->tool_number)){
-							this->fill_change_scripts(-1, true, active_tool, true);
+						if (!manual_pickup){
+							this->fill_change_scripts(-1, true, active_tool, true, colletIndex);
 						}else{
 							this->fill_change_scripts(-1, true, active_tool, false);
 						}
 					}
 					
 					//pick up new tool
-					if((new_tool > this->tool_number || new_tool < this->lowest_tool_number) && !this->is_custom_tool_defined(new_tool) && new_tool != -1){
+					if(manual_pickup){
 						THEKERNEL->streams->printf("Start manually picking new tool: T%d\r\n", new_tool);
 						atc_status = CHANGE;
-						this->fill_change_scripts(new_tool, true, -1, false, custom_TLO);
+						this->fill_change_scripts(new_tool, true, -1, false, colletIndex, custom_TLO);
 						
 						if (auto_calibrate){
 							this->fill_cali_scripts((new_tool == 0 || new_tool >= 999990), true, repeat_count); 
 						}
-					}else if(new_tool >= 0 && (this->is_custom_tool_defined(new_tool) || new_tool <= this->tool_number)){ //standard ATC
+					}else if(new_is_atc_tool){ //standard ATC
+						// add change script to change collets
+						if (colletIndex != 0 && !manual_drop) {
+							this->fill_change_scripts(-1, true, -1, true, colletIndex);
+						}
 						THEKERNEL->streams->printf("Start picking new tool: T%d\r\n", new_tool);
 						atc_status = PICK;
 						this->fill_pick_scripts(new_tool, true);
@@ -2060,7 +2105,7 @@ void ATCHandler::on_gcode_received(void *argument)
 						atc_status = CALI;
 						this->fill_cali_scripts(false, true);
 					}
-				} else if (new_tool == active_tool && THEROBOT->get_tool_not_calibrated()) {
+				} else if (new_tool == active_tool && THEROBOT->get_tool_not_calibrated() && (new_tool != -1 || (CARVERA == THEKERNEL->factory_set->MachineModel && THEKERNEL->get_laser_mode()))) {
 					// Tool is already selected but needs calibration (e.g., after e-stop during previous calibration)
 					THEKERNEL->streams->printf("Tool T%d needs TLO calibration\r\n", new_tool);
 					THEROBOT->push_state();
@@ -2087,9 +2132,9 @@ void ATCHandler::on_gcode_received(void *argument)
 					// just pick up tool
 					atc_status = CHANGE;
 					this->target_tool = new_tool;
-					this->fill_change_scripts(new_tool, true, active_tool);
+					this->fill_change_scripts(new_tool, true, active_tool, false, colletIndex);
 					this->fill_cali_scripts((new_tool == 0 || new_tool >= 999990), true);
-				} else if (new_tool == active_tool && THEROBOT->get_tool_not_calibrated()) {
+				} else if (new_tool == active_tool && THEROBOT->get_tool_not_calibrated() && new_tool != -1) {
 					// Tool is already selected but needs calibration (e.g., after e-stop during previous calibration)
 					THEKERNEL->streams->printf("Tool T%d needs TLO calibration\r\n", new_tool);
 					THEROBOT->push_state();
@@ -2262,6 +2307,7 @@ void ATCHandler::on_gcode_received(void *argument)
 				// do calibrate to find new TLO
 				THEROBOT->push_state();
 				THEROBOT->get_axis_position(last_pos, 3);
+				THEKERNEL->streams->printf("Saved XY position: X%.3f Y%.3f\n", last_pos[0], last_pos[1]);
 				set_inner_playing(true);
 				this->clear_script_queue();
 				
@@ -2349,6 +2395,7 @@ void ATCHandler::on_gcode_received(void *argument)
 				// do calibrate
 				THEROBOT->push_state();
 				THEROBOT->get_axis_position(last_pos, 3);
+				THEKERNEL->streams->printf("Saved XY position: X%.3f Y%.3f\n", last_pos[0], last_pos[1]);
 				set_inner_playing(true);
 				this->clear_script_queue();
 				atc_status = CALI;
@@ -2467,6 +2514,14 @@ void ATCHandler::on_gcode_received(void *argument)
 				// set new tool
 				if (gcode->has_letter('T')) {
 		    		this->target_tool = gcode->get_value('T');
+				}
+			}else if (gcode->subcode == 6) {
+				// set new target collet
+				if (gcode->has_letter('S')) {
+					this->target_collet_type = static_cast<COLLET_TYPE>(gcode->get_value('S'));
+					if (this->target_collet_type < 1 || this->target_collet_type > 5) {
+						this->target_collet_type = UNDEFINED;
+					}
 				}
 			}
 		} else if (gcode->m == 494) {
@@ -2840,7 +2895,7 @@ void ATCHandler::on_main_loop(void *argument)
 		if (this->atc_status != AUTOMATION) {
 	        // return to z clearance position
 	        rapid_move(true, NAN, NAN, this->clearance_z, NAN, NAN);
-
+			THEKERNEL->streams->printf("Return to XY position: X%.3f Y%.3f\n", last_pos[0], last_pos[1]);
 	        // return to saved x and y position
 	        rapid_move(true, last_pos[0], last_pos[1], NAN, NAN, NAN);
 		}
@@ -3141,6 +3196,7 @@ void ATCHandler::on_get_public_data(void* argument)
     	}else{
             t->tool_offset = 0.0; 
 		}
+		t->target_collet_type = this->target_collet_type;
 		pdr->set_taken();
     } else if (pdr->second_element_is(get_atc_pin_status_checksum)) {
         char *data = static_cast<char *>(pdr->get_data_ptr());
@@ -3183,6 +3239,10 @@ void ATCHandler::on_set_public_data(void* argument)
     } else if (pdr->second_element_is(abort_checksum)) {
 		this->abort();
 		pdr->set_taken();
+	} else if (pdr->second_element_is(set_target_collet_type_checksum)) {
+		uint8_t* data = static_cast<uint8_t*>(pdr->get_data_ptr());
+		this->target_collet_type = static_cast<COLLET_TYPE>(*data);
+		pdr->set_taken();
 	}
 	
 	if(CARVERA_AIR == THEKERNEL->factory_set->MachineModel)
@@ -3211,7 +3271,6 @@ void ATCHandler::set_inner_playing(bool inner_playing)
 {
 	this->playing_file = PublicData::set_value( player_checksum, inner_playing_checksum, &inner_playing );
 }
-
 
 // Called every 100ms in an ISR
 uint32_t ATCHandler::beep_beep(uint32_t dummy)
