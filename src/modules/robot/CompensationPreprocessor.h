@@ -202,6 +202,24 @@ private:
             v[2] /= mag;
         }
     }
+    
+    // ========================================================================
+    // PHASE 2: DEBUG OUTPUT FUNCTIONS FOR FULL VISIBILITY
+    // ========================================================================
+    void print_buffer_state(const char* context);
+    void print_buffer_contents();
+    void print_position_state(const char* context);
+    void print_offset_calculation(
+        const BufferedGcode& slot,
+        const float direction[2],
+        const float normal[2],
+        const float offset_endpoint[2]
+    );
+    void print_move_transform(
+        const BufferedGcode& slot,
+        const float start[2],
+        const float end[2]
+    );
 };
 
 #endif // COMPENSATION_PREPROCESSOR_H
