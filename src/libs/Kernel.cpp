@@ -383,7 +383,7 @@ std::string Kernel::get_query_string()
     ok = PublicData::get_value( atc_handler_checksum, get_tool_status_checksum, &tool );
     if (ok) {
 
-	    n= snprintf(buf, sizeof(buf), "|T:%d,%1.3f,%d", tool.active_tool, tool.tool_offset, tool.target_tool);
+	    n= snprintf(buf, sizeof(buf), "|T:%d,%1.3f,%d,%d", tool.active_tool, tool.tool_offset, tool.target_tool, tool.target_collet_type);
         if(n > sizeof(buf)) n= sizeof(buf);
         str.append(buf, n);
     }
@@ -1213,5 +1213,18 @@ int Kernel::iic_page_write(unsigned char u8PageNum, unsigned char u8len, unsigne
 	this->i2c->stop();
 
 	return 0;
+}
+
+
+void Kernel::set_tool_waiting(bool f) { 
+	this->tool_waiting = f; 
+	if (!this->tool_waiting) {
+		struct tool_status tool;
+		PublicData::get_value( atc_handler_checksum, get_tool_status_checksum, &tool );
+		if (tool.target_collet_type != 0){
+			uint8_t collet_type = 0;
+			PublicData::set_value( atc_handler_checksum, set_target_collet_type_checksum, &collet_type );
+		}
+	}
 }
 

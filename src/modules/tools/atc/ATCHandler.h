@@ -58,7 +58,16 @@ private:
 		BP_COMPLETE,//job complete
 		BP_TOOL, 	//change tools
     } BEEP_STATUS;
+    typedef enum {
+        UNDEFINED = 0,
+        COLLET_1_8 = 1,
+        COLLET_4 = 2,
+        COLLET_6 = 3,
+        COLLET_1_4 = 4,
+        COLLET_8 = 5,
+    } COLLET_TYPE;
     
+    COLLET_TYPE target_collet_type;
     ATC_STATUS atc_status;
     
 
@@ -88,7 +97,7 @@ private:
     void set_tool_offset(uint8_t repeat_count = 1);
 
     //
-    void fill_change_scripts(int new_tool, bool clear_z, int old_tool, bool wait_after_empty, float custom_TLO);
+    void fill_change_scripts(int new_tool, bool clear_z, int old_tool, bool wait_after_empty, uint8_t colletIndex, float custom_TLO);
     void fill_drop_scripts(int old_tool);
     void fill_pick_scripts(int new_tool, bool clear_z);
     void fill_cali_scripts(bool is_probe, bool clear_z, int repeat_count = 1);
