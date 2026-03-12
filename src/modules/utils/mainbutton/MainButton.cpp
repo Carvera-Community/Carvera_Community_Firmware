@@ -416,6 +416,26 @@ void MainButton::on_idle(void *argument)
 	    			    this->main_button_LED_G.set(this->hold_toggle % 4  < 2 ? 1 : 0);
 	    			    this->main_button_LED_B.set(0);
 	    				break;
+					case TOOL:
+						this->hold_toggle ++;
+						struct tool_status tool;
+						PublicData::get_value( atc_handler_checksum, get_tool_status_checksum, &tool );
+						uint8_t r = 0;
+						uint8_t g = 0;
+						uint8_t b = 0;
+						if (tool.target_collet_type == 0){
+							r = 0;
+							g = 1;
+							b = 1;
+						}else{
+							r = 1;
+							g = 1;
+							b = 0;
+						}
+						this->main_button_LED_R.set(this->hold_toggle % 4  < 2 ? r : 0);
+						this->main_button_LED_G.set(this->hold_toggle % 4  < 2 ? g : 0);
+						this->main_button_LED_B.set(this->hold_toggle % 4  < 2 ? b : 0);
+						break;
 	    		}
 
 	    	}
@@ -654,11 +674,23 @@ uint32_t MainButton::led_tick(uint32_t dummy)
 				this->hold_toggle ++;
 				struct tool_status tool;
 				PublicData::get_value( atc_handler_checksum, get_tool_status_checksum, &tool );
+				uint8_t r = 0;
+				uint8_t g = 0;
+				uint8_t b = 0;
+				if (tool.target_collet_type == 0){
+					r = 0;
+					g = 104;
+					b = 104;
+				}else{
+					r = 104;
+					g = 104;
+					b = 0;
+				}
 				switch(tool.target_tool)
 				{
 					case 1:
 						if(this->hold_toggle % 5 == 0)
-							this->set_led_num(0,104,104,0,0,0,1);
+							this->set_led_num(r,g,b,0,0,0,1);
 						if(this->hold_toggle % 5 == 1)
 							this->set_led_colors(0, 0, 0);
 						if(this->hold_toggle % 5 == 2)
@@ -670,7 +702,7 @@ uint32_t MainButton::led_tick(uint32_t dummy)
 						break;
 					case 2:
 						if(this->hold_toggle % 5 == 0)
-							this->set_led_num(0,104,104,0,0,0,2);
+							this->set_led_num(r,g,b,0,0,0,2);
 						if(this->hold_toggle % 5 == 1)
 							this->set_led_colors(0, 0, 0);
 						if(this->hold_toggle % 5 == 2)
@@ -682,7 +714,7 @@ uint32_t MainButton::led_tick(uint32_t dummy)
 						break;
 					case 3:
 						if(this->hold_toggle % 5 == 0)
-							this->set_led_num(0,104,104,0,0,0,3);
+							this->set_led_num(r,g,b,0,0,0,3);
 						if(this->hold_toggle % 5 == 1)
 							this->set_led_colors(0, 0, 0);
 						if(this->hold_toggle % 5 == 2)
@@ -694,11 +726,11 @@ uint32_t MainButton::led_tick(uint32_t dummy)
 						break;
 					case 4:
 						if(this->hold_toggle % 5 == 0)
-							this->set_led_num(0,104,104,0,0,0,3);
+							this->set_led_num(r,g,b,0,0,0,3);
 						if(this->hold_toggle % 5 == 1)
 							this->set_led_colors(0, 0, 0);
 						if(this->hold_toggle % 5 == 2)
-							this->set_led_num(0,104,104,0,0,0,1);
+							this->set_led_num(r,g,b,0,0,0,1);
 						if(this->hold_toggle % 5 == 3)
 							this->set_led_colors(0, 0, 0);
 						if(this->hold_toggle % 5 == 4)
@@ -706,11 +738,11 @@ uint32_t MainButton::led_tick(uint32_t dummy)
 						break;
 					case 5:
 						if(this->hold_toggle % 5 == 0)
-							this->set_led_num(0,104,104,0,0,0,3);
+							this->set_led_num(r,g,b,0,0,0,3);
 						if(this->hold_toggle % 5 == 1)
 							this->set_led_colors(0, 0, 0);
 						if(this->hold_toggle % 5 == 2)
-							this->set_led_num(0,104,104,0,0,0,2);
+							this->set_led_num(r,g,b,0,0,0,2);
 						if(this->hold_toggle % 5 == 3)
 							this->set_led_colors(0, 0, 0);
 						if(this->hold_toggle % 5 == 4)
@@ -718,11 +750,11 @@ uint32_t MainButton::led_tick(uint32_t dummy)
 						break;
 					case 6:
 						if(this->hold_toggle % 5 == 0)
-							this->set_led_num(0,104,104,0,0,0,3);
+							this->set_led_num(r,g,b,0,0,0,3);
 						if(this->hold_toggle % 5 == 1)
 							this->set_led_colors(0, 0, 0);
 						if(this->hold_toggle % 5 == 2)
-							this->set_led_num(0,104,104,0,0,0,3);
+							this->set_led_num(r,g,b,0,0,0,3);
 						if(this->hold_toggle % 5 == 3)
 							this->set_led_colors(0, 0, 0);
 						if(this->hold_toggle % 5 == 4)
@@ -730,11 +762,11 @@ uint32_t MainButton::led_tick(uint32_t dummy)
 						break;
 					default:
 						if(this->hold_toggle % 5 == 0)
-							this->set_led_colors(0, 104, 104);
+							this->set_led_colors(r,g,b);
 						if(this->hold_toggle % 5 == 1)
 							this->set_led_colors(0, 0, 0);
 						if(this->hold_toggle % 5 == 2)
-							this->set_led_colors(0, 104, 104);
+							this->set_led_colors(r,g,b);
 						if(this->hold_toggle % 5 == 3)
 							this->set_led_colors(0, 0, 0);
 						if(this->hold_toggle % 5 == 4)
