@@ -60,11 +60,12 @@ private:
     } BEEP_STATUS;
     typedef enum {
         UNDEFINED = 0,
-        COLLET_1_8 = 1,
-        COLLET_4 = 2,
-        COLLET_6 = 3,
-        COLLET_1_4 = 4,
-        COLLET_8 = 5,
+        COLLET_3 = 1,
+        COLLET_1_8 = 2,
+        COLLET_4 = 3,
+        COLLET_6 = 4,
+        COLLET_1_4 = 5,
+        COLLET_8 = 6,
     } COLLET_TYPE;
     
     COLLET_TYPE target_collet_type;
