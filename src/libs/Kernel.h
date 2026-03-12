@@ -182,7 +182,7 @@ class Kernel {
         void set_waiting(bool f) { waiting = f; }
         bool is_waiting() const { return waiting; }
         
-        void set_tool_waiting(bool f) { tool_waiting = f; }
+        void set_tool_waiting(bool f);
         bool is_tool_waiting() const { return tool_waiting; }
 
         void set_aborted(bool f) { aborted = f; }
