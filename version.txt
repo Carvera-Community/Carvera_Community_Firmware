@@ -23,6 +23,7 @@
 - Enhancement: New "config-delete sd <key>" command that allows to delete a config setting from the config.txt. It's intended to be used when cleaning up the config.txt or when config keys got misspelled.
 - Enhancement: New config setting "atc.detector.enable" allows to disable the tool laser sensor.
 - Enhancement: M6 can take S1 - S6 as parameter to specify the collet that has to be installed. When doing an ATC toolchange, the machine will move to the manual toolchange position for the user to change the collet.
+- Enhancement: Machine will send the parsed lines in addition to the currently executed line to visualize the lookahead buffer in the controller
 
 [2.1.0c-RC1]
 - Enhancement: Move G0 at the configured default_seek_rate configured, defaulting to 3000mm/min, unless a Feed parameter is provided. This returns G0 being a rapid movement command.
