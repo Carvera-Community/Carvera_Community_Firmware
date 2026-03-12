@@ -416,6 +416,26 @@ void MainButton::on_idle(void *argument)
 	    			    this->main_button_LED_G.set(this->hold_toggle % 4  < 2 ? 1 : 0);
 	    			    this->main_button_LED_B.set(0);
 	    				break;
+					case TOOL:
+						this->hold_toggle ++;
+						struct tool_status tool;
+						PublicData::get_value( atc_handler_checksum, get_tool_status_checksum, &tool );
+						uint8_t r = 0;
+						uint8_t g = 0;
+						uint8_t b = 0;
+						if (tool.target_collet_type == 0){
+							r = 0;
+							g = 1;
+							b = 1;
+						}else{
+							r = 1;
+							g = 1;
+							b = 0;
+						}
+						this->main_button_LED_R.set(this->hold_toggle % 4  < 2 ? r : 0);
+						this->main_button_LED_G.set(this->hold_toggle % 4  < 2 ? g : 0);
+						this->main_button_LED_B.set(this->hold_toggle % 4  < 2 ? b : 0);
+						break;
 	    		}
 
 	    	}

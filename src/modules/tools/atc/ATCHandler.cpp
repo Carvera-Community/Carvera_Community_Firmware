@@ -2519,7 +2519,7 @@ void ATCHandler::on_gcode_received(void *argument)
 				// set new target collet
 				if (gcode->has_letter('S')) {
 					this->target_collet_type = static_cast<COLLET_TYPE>(gcode->get_value('S'));
-					if (this->target_collet_type < 1 || this->target_collet_type > 5) {
+					if (this->target_collet_type < COLLET_3 || this->target_collet_type > COLLET_8) {
 						this->target_collet_type = UNDEFINED;
 					}
 				}
