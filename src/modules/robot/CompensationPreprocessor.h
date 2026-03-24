@@ -43,7 +43,7 @@ public:
     /**
      * Check if compensation is active
      */
-    bool is_active() const { return compensation_type != CompensationType::NONE; }
+    bool is_active() const { return comp_active; }
     
     /**
      * Buffer a G-code for processing
@@ -62,7 +62,7 @@ public:
      * Get current buffer count
      * @return Number of moves currently buffered
      */
-    int get_buffer_count() const { return buffer_count; }
+    int get_buffer_count() const { return uncomp_count; }
     
     /**
      * Flush remaining buffered moves
@@ -83,110 +83,72 @@ public:
     void set_initial_position(const float position[3]);
     
 private:
-    // Buffered G-code structure
-    struct BufferedGcode {
-        Gcode* gcode;          // Cloned G-code object
-        float endpoint[3];     // Endpoint in XYZ
-        float uncomp_start[3]; // Uncompensated start position (for arc center calculation)
-        float ijk[3];          // I/J/K for arcs
-        bool has_ijk;          // True if arc move
-        bool is_cw;            // True for G2, false for G3
-        bool is_move;          // True if G0/G1/G2/G3
-        float direction[3];    // Unit direction vector (for lines)
+    // ========================================================================
+    // PHASE-LOCKED DUAL RING BUFFER ARCHITECTURE
+    // ========================================================================
+    
+    // Uncompensated buffer: Stores programmed path
+    struct UncompPoint {
+        float x, y, z;
     };
     
-    // Circular buffer
-    static const int BUFFER_SIZE = 10;
-    BufferedGcode buffer[BUFFER_SIZE];
-    int buffer_head;
-    int buffer_tail;
-    int buffer_count;
+    // Compensated buffer: Stores offset path coordinates and Gcode pointer
+    struct CompPoint {
+        float x, y, z;
+        Gcode* gcode;  // Compensated Gcode to return to Robot.cpp
+    };
+    
+    // Ring buffer size (3 slots for lookahead)
+    static const int BUFFER_SIZE = 3;
+    
+    // Uncompensated buffer (source of truth for programmed path)
+    UncompPoint uncomp_ring[BUFFER_SIZE];
+    int uncomp_head;   // Next slot to write
+    int uncomp_tail;   // Next slot to output
+    int uncomp_count;  // Slots occupied
+    
+    // Compensated buffer (computed offset path)
+    CompPoint comp_ring[BUFFER_SIZE];
+    // Note: comp_tail = uncomp_tail (synchronized)
+    // Note: comp_head = (uncomp_tail + 1) % BUFFER_SIZE (phase-locked offset)
+    int comp_count;    // Slots occupied
     
     // Compensation state
-    CompensationType compensation_type;
-    float compensation_radius;
-    float uncompensated_position[3];  // Track uncompensated position for I/J calculation
-    float compensated_position[3];    // Track compensated position (where we actually are)
-    bool is_flushing;  // True when flushing remaining moves (ignore lookahead requirements)
-    bool needs_lead_in; // True when G41/G42 activated but lead-in not yet calculated
-    uint8_t last_g;    // Last G-code number seen (for modal G-codes)
+    CompensationType comp_type;    // LEFT (G41), RIGHT (G42), or NONE (G40)
+    float comp_radius;              // Tool radius (D word value)
+    bool comp_active;               // Is compensation active?
+    bool is_flushing;               // True when flushing remaining moves
+    bool first_point_computed;      // True after first point processed (special case)
+    uint8_t last_g;                 // Last G-code number seen (for modal G-codes)
     
     // Helper functions
-    bool buffer_has_space() const { return buffer_count < BUFFER_SIZE; }
-    int buffer_next_index(int index) const { return (index + 1) % BUFFER_SIZE; }
+    bool buffer_has_space() const { return uncomp_count < BUFFER_SIZE; }
+    int get_comp_head() const { return (uncomp_tail + 1) % BUFFER_SIZE; }
+    int get_comp_tail() const { return uncomp_tail; }
     
     /**
-     * Clone and extract G-code data
-     * @param gcode - Original G-code
-     * @param slot - Buffer slot to fill
+     * Compute compensated coordinates and output
+     * Phase-locked: Computes comp_ring[comp_head] using uncomp_ring data
      */
-    void clone_and_extract(Gcode* gcode, BufferedGcode& slot);
+    void compute_and_output();
     
     /**
-     * Apply compensation to move coordinates
-     * Looks ahead at next 2 moves for corner detection
-     * @param index - Buffer index of move to compensate
+     * Output compensated Gcode to conveyor
+     * Sends comp_ring[comp_tail] to machine and advances buffers
      */
-    void apply_compensation(int index);
+    void output_compensated();
     
     /**
-     * Calculate perpendicular offset for straight line
+     * Calculate perpendicular offset for Phase 2
+     * @param prev - Previous point (for direction)
+     * @param curr - Current point (to be offset)
+     * @param output - Output array [x, y] for offset point
+     * @return true if offset calculated, false if zero-length move
      */
-    void calculate_perpendicular_offset(
-        const float endpoint[2],
-        const float direction[2],
-        float radius,
-        bool is_left,
+    bool calculate_perpendicular_offset(
+        const UncompPoint& prev,
+        const UncompPoint& curr,
         float output[2]
-    );
-    
-    /**
-     * Calculate corner intersection
-     */
-    bool calculate_corner_intersection(
-        const float corner_point[2],
-        const float dir1[2],
-        const float dir2[2],
-        float radius,
-        bool is_left,
-        float output[2]
-    );
-    
-    /**
-     * Determine if corner is inside or outside
-     */
-    bool is_inside_corner(
-        const float dir1[2],
-        const float dir2[2],
-        bool is_left
-    );
-    
-    /**
-     * Compensate arc endpoint
-     */
-    bool compensate_arc_endpoint(
-        const float uncomp_start[2],
-        const float comp_start[2],
-        float arc_endpoint[2],
-        float arc_ij[2],
-        float comp_radius,
-        bool is_left,
-        bool is_cw
-    );
-    
-    /**
-     * Modify G-code coordinates
-     * Rebuilds G-code string with new X/Y/I/J values
-     * @param gcode - G-code to modify
-     * @param new_endpoint - New XYZ endpoint
-     * @param new_ijk - New IJK values (for arcs)
-     * @param has_ijk - True if arc move
-     */
-    void modify_gcode_coordinates(
-        Gcode* gcode,
-        const float new_endpoint[3],
-        const float new_ijk[3],
-        bool has_ijk
     );
     
     // Geometry utilities
@@ -204,22 +166,14 @@ private:
     }
     
     // ========================================================================
-    // PHASE 2: DEBUG OUTPUT FUNCTIONS FOR FULL VISIBILITY
+    // PHASE 2: DEBUG OUTPUT FUNCTIONS FOR DUAL BUFFER VISIBILITY
     // ========================================================================
-    void print_buffer_state(const char* context);
-    void print_buffer_contents();
-    void print_position_state(const char* context);
-    void print_offset_calculation(
-        const BufferedGcode& slot,
-        const float direction[2],
-        const float normal[2],
-        const float offset_endpoint[2]
-    );
-    void print_move_transform(
-        const BufferedGcode& slot,
-        const float start[2],
-        const float end[2]
-    );
+    void print_uncomp_buffered();
+    void print_offset_calc(const UncompPoint& prev, const UncompPoint& curr, 
+                          const float dir[2], const float normal[2], 
+                          const float offset[2]);
+    void print_output(const char* gcode_str);
+    void print_buffer_state();
 };
 
 #endif // COMPENSATION_PREPROCESSOR_H

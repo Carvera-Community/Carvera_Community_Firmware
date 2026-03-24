@@ -1,0 +1,26 @@
+﻿Checking for GCC 14.2 at .\gcc-arm-none-eabi-14.2...
+Found GCC 14.2 toolchain at .\gcc-arm-none-eabi-14.2
+Checking for Make make-4.4.1 at .\make-4.4.1...
+Found Make make-4.4.1 toolchain at .\make-4.4.1
+Executing command with Make make-4.4.1 and GCC 14.2 in PATH: make AXIS=5 
+PAXIS=3 CNC=1
+Running command: make AXIS=5 PAXIS=3 CNC=1
+make[1]: Entering directory 'C:/Users/Matth/Desktop/Personal/equipment_and_tools/Carvera_CNC/Carvera_Community_Firmware/mbed'
+Building src
+make[2]: Entering directory 'C:/Users/Matth/Desktop/Personal/equipment_and_tools/Carvera_CNC/Carvera_Community_Firmware/mbed/src'
+Building mbed-lpc1768.mk
+make[3]: Entering directory 'C:/Users/Matth/Desktop/Personal/equipment_and_tools/Carvera_CNC/Carvera_Community_Firmware/mbed/src'
+make[3]: Nothing to be done for 'all'.
+make[3]: Leaving directory 'C:/Users/Matth/Desktop/Personal/equipment_and_tools/Carvera_CNC/Carvera_Community_Firmware/mbed/src'
+make[2]: Leaving directory 'C:/Users/Matth/Desktop/Personal/equipment_and_tools/Carvera_CNC/Carvera_Community_Firmware/mbed/src'
+make[1]: Leaving directory 'C:/Users/Matth/Desktop/Personal/equipment_and_tools/Carvera_CNC/Carvera_Community_Firmware/mbed'
+make[1]: Entering directory 'C:/Users/Matth/Desktop/Personal/equipment_and_tools/Carvera_CNC/Carvera_Community_Firmware/mri'
+make[1]: Nothing to be done for 'arm'.
+make[1]: Leaving directory 'C:/Users/Matth/Desktop/Personal/equipment_and_tools/Carvera_CNC/Carvera_Community_Firmware/mri'
+Building Smoothie
+make[1]: Entering directory 'C:/Users/Matth/Desktop/Personal/equipment_and_tools/Carvera_CNC/Carvera_Community_Firmware/src'
+**NOTE** Excluding modules tools/filamentdetector tools/scaracal tools/extruder
+Building for device lpc1768
+make[2]: Entering directory 'C:/Users/Matth/Desktop/Personal/equipment_and_tools/Carvera_CNC/Carvera_Community_Firmware/src'
+Compiling version.cpp
+Compiling modules/robot/CompensationPreprocessor.cpp
