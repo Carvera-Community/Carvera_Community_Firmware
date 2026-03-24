@@ -1,19 +1,44 @@
 # Dual Buffer Architecture Design
-**Date**: March 10, 2026  
+**Date**: March 10, 2026 (Updated March 23, 2026)  
 **Purpose**: Refactor compensation preprocessor to use two dedicated ring buffers  
 **Phase**: Bug fix for Phase 2 + preparation for Phase 3 corner calculations
 
 ---
 
+## External References
+
+**Industry Standards:**
+- **LinuxCNC G41/G42 Documentation**: http://linuxcnc.org/docs/html/gcode/g-code.html#gcode:g41-g42
+  - Standard behavior for cutter radius compensation
+  - Entry/exit move requirements
+  - Corner intersection calculations
+  
+- **NIST RS274NGC G-code Standard**: https://www.nist.gov/publications/nist-rs274ngc-interpreter-version-3
+  - Official G-code specification (Section 3.5.16 - Cutter Radius Compensation)
+  - Tool diameter offset behavior
+  
+- **Fanuc Programming Manual**: (Industry reference for CNC compensation behavior)
+  - G40: Cancel cutter compensation
+  - G41: Cutter compensation left
+  - G42: Cutter compensation right
+  - D-word: Tool diameter specification
+
+---
+
 ## Architecture Overview
 
-### Current Problem
-Single buffer trying to track both uncompensated (programmed) and compensated (offset) coordinates, with confusion about when to update positions (buffering vs output time).
+### Current Problem (March 10-20, 2026)
+- Single buffer trying to track both uncompensated and compensated coordinates
+- Confusion about when to update positions (buffering vs output time)
+- `compute_and_output()` called repeatedly without buffer advancement (infinite loops)
+- Two separate "clocks" driving the system (write path vs read path)
+- `comp_count` growing unbounded (156+ with only 3 buffer slots)
 
-### New Solution
-**Two synchronized ring buffers:**
+### New Solution (REVISED March 23, 2026)
+**Two synchronized ring buffers with SINGLE DRIVER:**
 1. **Uncompensated Buffer** (`uncomp_ring`): Source of truth for programmed path
 2. **Compensated Buffer** (`comp_ring`): Computed offset path for machine execution
+3. **Single Clock**: Write function (`buffer_gcode`) drives everything - compute AND advance
 
 ---
 
@@ -58,141 +83,358 @@ int comp_count;               // Number of computed compensated points
 
 ---
 
-## Buffer Synchronization
+## Buffer Synchronization (REVISED March 23, 2026)
 
-### Relationship Diagram
+### Single Driver Model - Write Drives Everything
+
+**CRITICAL PRINCIPLE**: The serial stream is the ONLY clock. When a G-code arrives, `buffer_gcode()` writes it, computes the offset, AND advances the buffers - all in one atomic operation.
+
+**Old Problem (March 10-20)**:
 ```
-Uncompensated Buffer (programmed path - fills first):
-┌────────┬────────┬────────┐
-│ Slot 0 │ Slot 1 │ Slot 2 │
-│  A     │  B     │  C     │
-└────────┴────────┴────────┘
-    ↑               ↑
-   tail           head
+WRITE CLOCK: buffer_gcode() → fills uncomp_ring → maybe calls compute_and_output()
+READ CLOCK: get_compensated_gcode() → advances uncomp_tail and comp_tail
+RESULT: Two drivers, unsynchronized, infinite loops in flush()
+```
+
+**New Solution (March 23)**:
+```
+SINGLE CLOCK: buffer_gcode() → fills uncomp_ring → compute_and_output() → advances BOTH buffers
+ACCESSOR: get_compensated_gcode() → just returns what's already computed (doesn't advance)
+RESULT: One driver, synchronized, flush() works correctly
+```
+
+### Synchronization Rules (REVISED)
+
+1. **Write Phase**: `buffer_gcode(gcode)` stores point in `uncomp_ring[uncomp_head]`, advances head
+2. **Compute Phase**: When `uncomp_count >= 3`, automatically call `compute_and_output()`
+3. **Computation**:
+   - Read from `uncomp_ring[uncomp_tail]` (and neighbors for direction)
+   - Write to `comp_ring[comp_idx]` where `comp_idx = uncomp_tail` (synchronized)
+   - **Advance uncomp_tail** and increment comp_count
+4. **Output Phase**: `get_compensated_gcode()` returns `comp_ring[comp_tail]` (no advancement!)
+5. **Consumption**: Robot.cpp processes the Gcode, calls again for next (polling model preserved)
+
+### Buffer Advancement Pattern (Example)
+
+**Initial State:**
+```
+uncomp_ring: [_, _, _]  head=0, tail=0, count=0
+comp_ring:   [_, _, _]  count=0
+```
+
+**buffer_gcode(A):**
+```
+uncomp_ring: [A, _, _]  head=1, tail=0, count=1
+comp_ring:   [_, _, _]  count=0
+```
+- Write A at slot 0, advance head to 1
+- uncomp_count < 3, so no compute triggered
+
+**buffer_gcode(B):**
+```
+uncomp_ring: [A, B, _]  head=2, tail=0, count=2
+comp_ring:   [_, _, _]  count=0
+```
+- Write B at slot 1, advance head to 2
+- uncomp_count < 3, so no compute triggered
+
+**buffer_gcode(C):**
+```
+uncomp_ring: [A, B, C]  head=0, tail=0, count=3  ← Buffer full!
+   ↓ Special case: comp_count == 0 (first fill)
+   ↓ "Prime the pump" - compute TWO points back-to-back:
    
-Compensated Buffer (offset path - computes when uncomp outputs):
-┌────────┬────────┬────────┐
-│ Slot 0 │ Slot 1 │ Slot 2 │
-│  A'    │  B'    │  C'    │
-└────────┴────────┴────────┘
-    ↑               ↑
-   tail           head
-                   ↑
-                   └─ Locked to uncomp_tail
+   ↓ FIRST compute_and_output():
+   ↓   Computes A' using direction A→B (onset direction, comp_count==0 special case)
+   ↓   Stores at comp_ring[0] (comp_idx = uncomp_tail = 0)
+   ↓   Advances: uncomp_tail=1, comp_count=1 (uncomp_count stays 3)
+   
+   ↓ SECOND compute_and_output() (if uncomp_count >= 2):
+   ↓   Computes B' using direction A→B→C (corner calculation, 3-point lookback)
+   ↓   Stores at comp_ring[1] (comp_idx = uncomp_tail = 1)
+   ↓   Advances: uncomp_tail=2, comp_count=2 (uncomp_count stays 3)
+```
+```
+AFTER:
+uncomp_ring: [A, B, C]  head=0, tail=2, count=3  ← Still full! Count stays at 3
+comp_ring:   [A',B',_]  count=2                    ← A' and B' both computed
+```
+- Write C at slot 2, advance head to 0 (wraps)
+- uncomp_count == 3 AND comp_count == 0, triggers **double compute**
+- First: A' computed using onset direction (special case)
+- Second: B' computed as corner using all 3 points (A→B→C)
+- Tail advanced to 2 (read pointer moves), but **count stays 3** (all slots occupied)
+
+**buffer_gcode(D):**
+```
+uncomp_ring: [D, B, C]  head=1, tail=2, count=3  ← Still full!
+comp_ring:   [A',B',_]  count=2
+```
+- Write D at slot 0, advance head to 1 (overwrites old A)
+- uncomp_count stays at 3 (buffer remains full)
+- Check: uncomp_count (3) >= 3 AND comp_count (2) < 3? **YES**
+- Triggers single compute:
+
+```
+   ↓ Normal single compute (comp_count > 0):
+   ↓ Computes C' using direction B→C→D (corner calculation, 3-point lookback)
+   ↓ Stores at comp_ring[2] (comp_idx = uncomp_tail = 2)
+   ↓ Advances: uncomp_tail=0, comp_count=3 (uncomp_count stays 3)
+```
+```
+AFTER:
+uncomp_ring: [D, B, C]  head=1, tail=0, count=3  ← Still full!
+comp_ring:   [A',B',C']  count=3                  ← Comp buffer full
+```
+- C' computed using B→C→D
+- Tail advanced to 0 (read pointer moves)
+- **uncomp_count stays 3** (buffer remains full with D, B, C data)
+
+**buffer_gcode(E):**
+```
+(Assuming Robot.cpp has read A', so comp_count = 2)
+uncomp_ring: [D, E, C]  head=2, tail=0, count=3  ← Still full!
+   ↓ Normal single compute (comp_count > 0):
+   ↓ Computes D' using direction C→D→E (corner calculation, 3-point lookback)
+   ↓ Stores at comp_ring[0] (comp_idx = uncomp_tail = 0, overwrites A')
+   ↓ Advances: uncomp_tail=1, comp_count=3 (uncomp_count stays 3)
+```
+```
+AFTER:
+uncomp_ring: [D, E, C]  head=2, tail=1, count=3  ← Still full!
+comp_ring:   [D',B',C']  count=3                  ← Comp buffer full again
+```
+- Write E at slot 1, advance head to 2 (overwrites old B)
+- uncomp_count stays at 3 (buffer remains full)
+- Check: uncomp_count (3) >= 3 AND comp_count (2) < 3? YES
+- Compute D' using C→D→E (normal single compute)
+- Tail advanced to 1, **count stays 3**
+
+**Key Insight: Why Double-Compute on First Fill?**
+
+The double-compute pattern (computing both A' and B' when buffer first fills) serves two purposes:
+
+1. **Start the output pipeline immediately**: Gets 2 compensated points ready so Robot.cpp can start moving
+2. **Enable corner calculation for B'**: With all 3 points (A, B, C) available, B' can use full 3-point lookback for corner intersection logic (Phase 3)
+
+After the initial double-compute, the system settles into a **single-compute cadence**: each new point triggers one compute, maintaining a 2-point lead (comp_count ≈ 2 during steady state).
+
+**Important: uncomp_count Semantics**
+
+`uncomp_count` represents **occupied slots** in the circular buffer, not "points waiting to be computed":
+- Starts at 0 (empty)
+- Grows 0→1→2→3 as points are buffered
+- **Stays at 3** once buffer is full (during normal operation)
+- Only decrements during `flush()` when draining the buffer
+
+This is standard circular buffer behavior: the count tracks how full the buffer is, while `uncomp_tail` tracks the read position.
+
+### Phase-Locked Relationship (SIMPLIFIED)
+
+```cpp
+// Storage index is ALWAYS synchronized with uncomp_tail
+comp_idx = uncomp_tail;
+
+// Buffer advancement in compute_and_output()
+uncomp_tail = (uncomp_tail + 1) % BUFFER_SIZE;  // Read pointer advances
+// uncomp_count stays constant (stays at 3 when buffer full)
+
+comp_count++;  // Grows as we compute (bounded by BUFFER_SIZE)
 ```
 
-### Synchronization Rules
-1. **Buffering Phase**: Fill `uncomp_ring` until count=3 (lookahead complete)
-2. **Computation Phase**: When `uncomp_count=3`, compute compensated point at `uncomp_tail`
-3. **Output Phase**: Output from `comp_tail`, advance both buffers synchronously
-4. **Position Tracking**: Implicit - current position is whatever's at the tail positions
+### Key Benefits
+- **No "last position" variable**: Phase offset provides lookback naturally
+- **Full buffer utilization**: All 3 slots in both buffers are used
+- **Simple synchronization**: Tails always at same position, head always tail+1
+- **Clean initialization**: First point (A) outputs null, path starts at B (first computed corner)
 
 ---
 
-## Calculation Logic
+## Calculation Logic (REVISED March 23, 2026)
 
-### Phase 2: Simple Perpendicular Offset
+### Phase 2: Simple Perpendicular Offset with First Point Special Case
 
-**Input**: Current point at `uncomp_tail`, need to compute compensated version  
-**Lookback**: Previous 2 slots (for future corner logic, Phase 2 only uses current line)
+**Key Insight**: Use `comp_count` to distinguish first point from subsequent points.
 
 ```cpp
-// Get current point and lookback points
-Point curr = uncomp_ring[uncomp_tail];
-Point prev1 = uncomp_ring[(uncomp_tail - 1 + 3) % 3];  // Handle wraparound
-Point prev2 = uncomp_ring[(uncomp_tail - 2 + 3) % 3];
-
-// Phase 2: Calculate perpendicular offset
-// Line direction: prev1 → curr
-float dx = curr.x - prev1.x;
-float dy = curr.y - prev1.y;
-float mag = sqrt(dx*dx + dy*dy);
-
-if (mag < 0.1f) {
-    // Zero-length move: look ahead to next point
-    // (Special handling needed)
-} else {
-    // Normalize direction
-    dx /= mag;
-    dy /= mag;
-    
-    // Perpendicular normal
-    float nx, ny;
-    if (compensation_type == LEFT) {
-        nx = -dy;  // 90° CCW
-        ny = dx;
-    } else {
-        nx = dy;   // 90° CW
-        ny = -dx;
+void compute_and_output()
+{
+    // SAFETY: Don't exceed buffer capacity
+    if (comp_count >= BUFFER_SIZE) {
+        return;  // Comp buffer full, can't compute more
     }
     
-    // Apply offset to current point
-    comp_ring[comp_head].x = curr.x + nx * radius;
-    comp_ring[comp_head].y = curr.y + ny * radius;
-    comp_ring[comp_head].z = curr.z;
+    // Storage index synchronized with uncomp_tail
+    int comp_idx = uncomp_tail;
     
-    // Rebuild Gcode
-    sprintf(comp_ring[comp_head].gcode_string, "G1 X%.3f Y%.3f Z%.3f", ...);
+    // SAFETY: Don't recompute if already have Gcode at this slot
+    if (comp_ring[comp_idx].gcode != nullptr) {
+        return;  // Already computed, skip
+    }
+    
+    // First point vs subsequent point logic
+    if (comp_count == 0) {
+        // ================================================================
+        // FIRST POINT: Compensate A using ONSET direction (A→B)
+        // ================================================================
+        
+        int curr_idx = uncomp_tail;                  // Point A at tail
+        int next_idx = (uncomp_tail + 1) % BUFFER_SIZE;  // Point B at tail+1
+        
+        const UncompPoint& curr = uncomp_ring[curr_idx];  // A
+        const UncompPoint& next = uncomp_ring[next_idx];  // B
+        
+        // Calculate direction A→B
+        float dx = next.x - curr.x;
+        float dy = next.y - curr.y;
+        float mag = sqrt(dx*dx + dy*dy);
+        
+        if (mag < 0.1f) {
+            // Zero-length: no offset possible
+            comp_ring[comp_idx].x = curr.x;
+            comp_ring[comp_idx].y = curr.y;
+            comp_ring[comp_idx].z = curr.z;
+        } else {
+            // Normalize and compute perpendicular
+            dx /= mag;
+            dy /= mag;
+            
+            float nx, ny;
+            if (comp_type == LEFT) {
+                nx = -dy;  // 90° CCW
+                ny = dx;
+            } else {
+                nx = dy;   // 90° CW
+                ny = -dx;
+            }
+            
+            // Apply offset to point A (ONSET direction)
+            comp_ring[comp_idx].x = curr.x + nx * comp_radius;
+            comp_ring[comp_idx].y = curr.y + ny * comp_radius;
+            comp_ring[comp_idx].z = curr.z;
+        }
+        
+    } else {
+        // ================================================================
+        // SUBSEQUENT POINTS: Compensate using ENTRY direction (prev→curr)
+        // ================================================================
+        
+        int prev_idx = uncomp_tail;                  // Previous point
+        int curr_idx = (uncomp_tail + 1) % BUFFER_SIZE;  // Current point
+        
+        const UncompPoint& prev = uncomp_ring[prev_idx];
+        const UncompPoint& curr = uncomp_ring[curr_idx];
+        
+        // Calculate direction prev→curr
+        float dx = curr.x - prev.x;
+        float dy = curr.y - prev.y;
+        float mag = sqrt(dx*dx + dy*dy);
+        
+        if (mag < 0.1f) {
+            // Zero-length: no offset possible
+            comp_ring[comp_idx].x = prev.x;
+            comp_ring[comp_idx].y = prev.y;
+            comp_ring[comp_idx].z = prev.z;
+        } else {
+            // Normalize and compute perpendicular
+            dx /= mag;
+            dy /= mag;
+            
+            float nx, ny;
+            if (comp_type == LEFT) {
+                nx = -dy;  // 90° CCW
+                ny = dx;
+            } else {
+                nx = dy;   // 90° CW
+                ny = -dx;
+            }
+            
+            // Apply offset to PREV point (entry direction)
+            comp_ring[comp_idx].x = prev.x + nx * comp_radius;
+            comp_ring[comp_idx].y = prev.y + ny * comp_radius;
+            comp_ring[comp_idx].z = prev.z;
+        }
+    }
+    
+    // Build Gcode string
+    char gcode_str[128];
+    snprintf(gcode_str, sizeof(gcode_str), "G1 X%.3f Y%.3f Z%.3f",
+             comp_ring[comp_idx].x, comp_ring[comp_idx].y, comp_ring[comp_idx].z);
+    
+    // Create and store Gcode object
+    comp_ring[comp_idx].gcode = new Gcode(gcode_str, &StreamOutput::NullStream);
+    
+    // ADVANCE BUFFERS (Single driver model - this is the KEY change!)
+    uncomp_tail = (uncomp_tail + 1) % BUFFER_SIZE;
+    uncomp_count--;
+    comp_count++;
 }
 ```
 
 ### Phase 3: Corner Intersections (Future)
 
+When implementing Phase 3, the same `comp_count` check applies:
+- `if (comp_count == 0)`: First point uses onset direction
+- `else`: Subsequent points use corner intersection of two offset lines
+
+**Lookback**: Use 3 consecutive uncomp points (tail-1, tail, tail+1) to calculate corner intersection
+
 ```cpp
-// To calculate corner at point B (current output position):
-// Look at line A→B and line B→C
+// Phase 3 pseudocode (future):
+Point A = uncomp_ring[(uncomp_tail - 1 + BUFFER_SIZE) % BUFFER_SIZE];  // Previous
+Point B = uncomp_ring[uncomp_tail];                                     // Current (corner)
+Point C = uncomp_ring[(uncomp_tail + 1) % BUFFER_SIZE];                // Next
 
-Point A = uncomp_ring[(uncomp_tail - 1 + 3) % 3];  // Previous point
-Point B = uncomp_ring[uncomp_tail];                 // Current point
-Point C = uncomp_ring[(uncomp_tail + 1) % 3];      // Next point (still buffered)
-
-// Calculate offset line 1: A'→B' (parallel to A→B)
-// Calculate offset line 2: B'→C' (parallel to B→C)
-// Find intersection of these two offset lines
-// Result becomes compensated point B'
+// Calculate intersection of offset lines A'→B' and B'→C'
+// Result becomes compensated point B' stored at comp[comp_idx]
 ```
 
----
+**Initial State**: With phase-locking, the first compensated point is computed at position tail+1
 
-## Special Cases
+**First Fill Sequence**:
+```
+Input A → uncomp[0], count=1
+Input B → uncomp[1], count=2
+Input C → uncomp[2], count=3 (buffer full)
 
-### Program Start (First 1-2 Lines)
+State: uncomp = [A,B,C], tail=0, head=0
+       comp_tail = 0, comp_head = 1
+```
 
-**Problem**: Lookback needs 2 previous points, but buffer starts empty.
+**First Compute/Output**:
+- Compute: B' using direction A→B, store at comp[1]
+- Output: comp[0] which is null/uninitialized
+- **Result**: First point (A) effectively skipped, path starts at B'
 
-**Solution**:
-- **First line** (uncomp_count=1): No previous line exists
-  - Output: Simply offset the first point perpendicular to... what direction?
-  - **Decision needed**: Do we use direction to point 2? Or just offset based on current position?
-  - User said: "compensated 'starting point' simply starts at the offset position. This creates an extra movement at the beginning but that is fine."
-  - **Action**: Output lead-in move to offset position (0,0) → (offset 0,0)
-  
-- **Second line** (uncomp_count=2): One previous point exists
-  - Can calculate direction: point[0] → point[1]
-  - Apply perpendicular offset as normal
-  
-- **Third+ lines** (uncomp_count=3): Full buffer, normal operation
-  - Can look back 2 slots for corner calculations (Phase 3)
+**This is acceptable** because:
+1. Only affects first point of program
+2. Subsequent points (B, C, D, ...) all get proper offset
+3. Phase 3 will handle this with proper lead-in calculation
+4. Avoids needing "last position" tracking variable
 
 ### Zero-Length Moves
 
-**Problem**: `G1 X50 Y50 Z10` (Z-only move, no XY change) has no direction.
+**Problem**: `G1 X50 Y50 Z10` (Z-only move, no XY change) has no direction for offset calculation.
 
-**Current Approach**: Look ahead to next move for direction
-
-**New Approach with Dual Buffers**:
+**Solution with Phase-Locked Buffers**:
 ```cpp
-if (mag < 0.1f) {
-    // Look ahead in uncomp_ring
-    Point next = uncomp_ring[(uncomp_tail + 1) % 3];
-    
-    // Use direction from curr → next
-    // Or if still zero-length, keep looking ahead
-    // Or as last resort, use previous direction
+// Computing comp[comp_head] where comp_head = (uncomp_tail+1)%3
+int prev_idx = uncomp_tail;
+int curr_idx = (uncomp_tail + 1) % 3;
+
+float dx = uncomp_ring[curr_idx].x - uncomp_ring[prev_idx].x;
+float dy = uncomp_ring[curr_idx].y - uncomp_ring[prev_idx].y;
+
+if (sqrt(dx*dx + dy*dy) < 0.1f) {
+    // Zero-length: output same coordinates (duplicate last position)
+    comp_ring[comp_head].x = uncomp_ring[curr_idx].x;
+    comp_ring[comp_head].y = uncomp_ring[curr_idx].y;
+    comp_ring[comp_head].z = uncomp_ring[curr_idx].z;
 }
 ```
 
-**Storage**: Always store in `uncomp_ring` even if zero-length (user confirmed)
+**Behavior**: Zero-length moves output exact same Gcode command (duplicate), as confirmed by user.  
+**Storage**: Always store in `uncomp_ring` even if zero-length.
 
 ### G40 Passthrough Mode
 
@@ -244,152 +486,163 @@ bool comp_active;         // Is G41/G42 active (vs G40 passthrough)
 
 ---
 
-## Algorithm Flow
+## Algorithm Flow (REVISED March 23, 2026 - Single Driver Model)
+
+### Control Flow Diagram
+
+```
+Serial Stream → Parser → on_gcode_received() ← ⏰ THE ONLY CLOCK
+                              │
+                              ├─→ Comp OFF? → process_buffered_command()
+                              ├─→ G40/G41/G42? → handle mode change
+                              │
+                              └─→ Comp ON, normal move:
+                                  │
+                                  └─→ buffer_gcode(gcode)
+                                      ├─→ Write to uncomp_ring[uncomp_head]
+                                      ├─→ uncomp_head++, uncomp_count++
+                                      │
+                                      └─→ IF uncomp_count >= 3:
+                                          │
+                                          └─→ compute_and_output()
+                                              ├─→ Compute offset (if comp_count == 0: first point, else: subsequent)
+                                              ├─→ Store in comp_ring[comp_idx]
+                                              ├─→ uncomp_tail++, uncomp_count-- ← KEY: Advances here!
+                                              └─→ comp_count++
+                                      
+                                      Robot.cpp POLLS get_compensated_gcode()
+                                      ├─→ Returns comp_ring[comp_tail].gcode
+                                      ├─→ comp_tail++, comp_count-- ← Just empties comp buffer
+                                      └─→ Does NOT touch uncomp buffer
+```
 
 ### Main Processing Functions
 
-#### 1. `on_gcode_received()` - Entry point
+#### 1. `buffer_gcode()` - THE DRIVER (Write + Compute + Advance)
 ```cpp
-void on_gcode_received(Gcode* gcode) {
-    // Handle G40/G41/G42 mode switches
-    if (gcode->has_g && gcode->g == 40) {
-        flush_buffers();
-        comp_active = false;
-        return;
+bool buffer_gcode(Gcode* gcode) 
+{
+    // Check space
+    if (uncomp_count >= BUFFER_SIZE) {
+        return false;  // Full (shouldn't happen with proper advancement)
     }
     
-    if (gcode->has_g && (gcode->g == 41 || gcode->g == 42)) {
-        comp_type = (gcode->g == 41) ? LEFT : RIGHT;
-        comp_radius = ... // Get D word
-        comp_active = true;
-        return;
-    }
-    
-    // Route based on mode
-    if (!comp_active) {
-        // Passthrough mode - direct output
-        THEKERNEL->conveyor->append_gcode(gcode);
+    // Extract coordinates (modal if not specified)
+    float x, y, z;
+    if (uncomp_count == 0) {
+        // First point must have explicit coords
+        x = gcode->has_letter('X') ? gcode->get_value('X') : 0.0f;
+        y = gcode->has_letter('Y') ? gcode->get_value('Y') : 0.0f;
+        z = gcode->has_letter('Z') ? gcode->get_value('Z') : 0.0f;
     } else {
-        // Compensation active - buffer it
-        buffer_gcode(gcode);
+        // Modal coords from previous point
+        int prev_idx = (uncomp_head - 1 + BUFFER_SIZE) % BUFFER_SIZE;
+        x = gcode->has_letter('X') ? gcode->get_value('X') : uncomp_ring[prev_idx].x;
+        y = gcode->has_letter('Y') ? gcode->get_value('Y') : uncomp_ring[prev_idx].y;
+        z = gcode->has_letter('Z') ? gcode->get_value('Z') : uncomp_ring[prev_idx].z;
     }
-}
-```
-
-#### 2. `buffer_gcode()` - Add to uncompensated buffer
-```cpp
-void buffer_gcode(Gcode* gcode) {
-    // Extract coordinates
-    float x = gcode->has_letter('X') ? gcode->get_value('X') : uncomp_ring[(uncomp_head-1+3)%3].x;
-    float y = gcode->has_letter('Y') ? gcode->get_value('Y') : uncomp_ring[(uncomp_head-1+3)%3].y;
-    float z = gcode->has_letter('Z') ? gcode->get_value('Z') : uncomp_ring[(uncomp_head-1+3)%3].z;
     
-    // Store in uncomp buffer
+    // WRITE to uncomp buffer
     uncomp_ring[uncomp_head].x = x;
     uncomp_ring[uncomp_head].y = y;
     uncomp_ring[uncomp_head].z = z;
     
-    uncomp_head = (uncomp_head + 1) % 3;
+    uncomp_head = (uncomp_head + 1) % BUFFER_SIZE;
     uncomp_count++;
     
-    print_debug_uncomp_buffered();
-    
-    // If buffer full, start processing
-    if (uncomp_count >= 3) {
+    // COMPUTE if we have lookahead AND comp buffer has space
+    // Special case: First fill (comp_count == 0) - "prime the pump" with 2 computes
+    if (uncomp_count >= 3 && comp_count == 0) {
+        // First fill - compute TWO points to start the pipeline
+        compute_and_output();  // First point (A') using onset direction
+        if (uncomp_count >= 2 && comp_count < BUFFER_SIZE) {
+            compute_and_output();  // Second point (B') using corner calc
+        }
+    } else if (uncomp_count >= 3 && comp_count < BUFFER_SIZE) {
+        // Normal case - single compute per buffer write
         compute_and_output();
     }
+    
+    return true;
 }
 ```
 
-#### 3. `compute_and_output()` - Calculate offset and output
+#### 2. `compute_and_output()` - Compute AND Advance Uncomp Buffer
 ```cpp
-void compute_and_output() {
-    // Cache lookback points
-    uncomp_curr = uncomp_ring[uncomp_tail];
-    uncomp_prev1 = uncomp_ring[(uncomp_tail - 1 + 3) % 3];
-    uncomp_prev2 = uncomp_ring[(uncomp_tail - 2 + 3) % 3];  // For Phase 3
-    
-    // Calculate direction: prev1 → curr
-    float dx = uncomp_curr.x - uncomp_prev1.x;
-    float dy = uncomp_curr.y - uncomp_prev1.y;
-    float mag = sqrt(dx*dx + dy*dy);
-    
-    if (mag < 0.1f) {
-        handle_zero_length_move();
+void compute_and_output()
+{
+    // SAFETY: Don't exceed comp buffer capacity
+    if (comp_count >= BUFFER_SIZE) {
         return;
     }
     
-    // Normalize and perpendicular
-    dir_x = dx / mag;
-    dir_y = dy / mag;
+    int comp_idx = uncomp_tail;  // Synchronized storage index
     
-    if (comp_type == LEFT) {
-        norm_x = -dir_y;
-        norm_y = dir_x;
-    } else {
-        norm_x = dir_y;
-        norm_y = -dir_x;
+    // SAFETY: Don't recompute
+    if (comp_ring[comp_idx].gcode != nullptr) {
+        return;
     }
     
-    // Apply offset
-    comp_x = uncomp_curr.x + norm_x * comp_radius;
-    comp_y = uncomp_curr.y + norm_y * comp_radius;
-    comp_z = uncomp_curr.z;
+    // FIRST POINT vs SUBSEQUENT (see Calculation Logic section above for full code)
+    if (comp_count == 0) {
+        // Compute A' using A→B (onset direction)
+        // ...
+    } else {
+        // Compute using prev→curr (entry direction)
+        // ...
+    }
     
-    // Store in comp buffer
-    comp_ring[comp_head].x = comp_x;
-    comp_ring[comp_head].y = comp_y;
-    comp_ring[comp_head].z = comp_z;
+    // Build and store Gcode
+    char gcode_str[128];
+    snprintf(gcode_str, sizeof(gcode_str), "G1 X%.3f Y%.3f Z%.3f", ...);
+    comp_ring[comp_idx].gcode = new Gcode(gcode_str, &StreamOutput::NullStream);
     
-    // Rebuild Gcode
-    sprintf(comp_ring[comp_head].gcode_string, "G1 X%.3f Y%.3f Z%.3f", comp_x, comp_y, comp_z);
-    
-    comp_head = (comp_head + 1) % 3;
-    comp_count++;
-    
-    print_debug_offset_calc();
-    
-    // Output from comp buffer
-    output_compensated();
+    // ADVANCE BUFFERS ← This is the KEY to single-driver model!
+    uncomp_tail = (uncomp_tail + 1) % BUFFER_SIZE;  // Move read pointer
+    // Note: uncomp_count NOT decremented - stays at 3 when buffer full
+    comp_count++;  // Increment computed count
 }
 ```
 
-#### 4. `output_compensated()` - Send to machine
+#### 3. `get_compensated_gcode()` - ACCESSOR ONLY (No Advancement of Uncomp!)
 ```cpp
-void output_compensated() {
-    if (comp_count == 0) return;
+Gcode* get_compensated_gcode()
+{
+    // Just return what's ready
+    if (comp_count == 0) {
+        return nullptr;  // Nothing computed yet
+    }
     
-    // Get compensated Gcode from tail
-    CompPoint* pt = &comp_ring[comp_tail];
+    int comp_tail = uncomp_tail;  // Synchronized read index
     
-    // Create new Gcode object from string
-    Gcode gc(pt->gcode_string, ...);
+    // Get the Gcode
+    Gcode* result = comp_ring[comp_tail].gcode;
     
-    print_debug_output();
+    // Clear the slot
+    comp_ring[comp_tail].gcode = nullptr;
     
-    // Send to conveyor
-    THEKERNEL->conveyor->append_gcode(&gc);
-    
-    // Advance both buffers synchronously
-    comp_tail = (comp_tail + 1) % 3;
+    // ONLY advance comp buffer (uncomp already advanced in compute_and_output!)
     comp_count--;
     
-    uncomp_tail = (uncomp_tail + 1) % 3;
-    uncomp_count--;
+    return result;
 }
 ```
 
-#### 5. `flush_buffers()` - End of program or G40
+#### 4. `flush()` - Empty Remaining Buffer (FIXED!)
 ```cpp
-void flush_buffers() {
-    // Process all remaining buffered points
-    while (uncomp_count > 0) {
-        compute_and_output();
+void flush()
+{
+    is_flushing = true;
+    
+    // Compute any remaining uncomp points
+    // This works now because compute_and_output() advances uncomp_tail!
+    while (uncomp_count > 0 && comp_count < BUFFER_SIZE) {
+        compute_and_output();  // Advances uncomp_tail each call
     }
     
-    // Clear state
-    uncomp_head = uncomp_tail = uncomp_count = 0;
-    comp_head = comp_tail = comp_count = 0;
+    // Note: Robot.cpp will poll get_compensated_gcode() to empty comp buffer
+    
+    is_flushing = false;
 }
 ```
 
@@ -428,76 +681,289 @@ void print_debug_buffer_state() {
 
 ---
 
-## Implementation Checklist
+## Implementation Checklist (REVISED March 23, 2026)
 
-### Phase 1: Data Structures (CompensationPreprocessor.h)
-- [ ] Define `UncompPoint` struct
-- [ ] Define `CompPoint` struct  
-- [ ] Add `uncomp_ring[3]`, `uncomp_head`, `uncomp_tail`, `uncomp_count`
-- [ ] Add `comp_ring[3]`, `comp_head`, `comp_tail`, `comp_count`
-- [ ] Rename `compensation_type` → `comp_type`
-- [ ] Rename `compensation_radius` → `comp_radius`
-- [ ] Add `comp_active` flag
-- [ ] Remove old `BufferedGcode` struct and related variables
-- [ ] Remove old `uncompensated_position[3]`, `compensated_position[3]` arrays
+### Phase 1: Data Structures (CompensationPreprocessor.h) ✅ COMPLETE (March 13)
+- [x] Define `UncompPoint` struct
+- [x] Define `CompPoint` struct with `Gcode* gcode` member
+- [x] Add `uncomp_ring[3]`, `uncomp_head`, `uncomp_tail`, `uncomp_count`
+- [x] Add `comp_ring[3]`, `comp_count` (no comp_head/comp_tail - derived from uncomp_tail)
+- [x] Rename `compensation_type` → `comp_type`
+- [x] Rename `compensation_radius` → `comp_radius`
+- [x] Add `comp_active` flag
+- [x] Remove old `BufferedGcode` struct and related variables
+- [x] Remove old `uncompensated_position[3]`, `compensated_position[3]` arrays
 
-### Phase 2: Core Functions (CompensationPreprocessor.cpp)
-- [ ] Rewrite `on_gcode_received()` with new routing logic
-- [ ] Implement `buffer_gcode()` - simple coordinate extraction and storage
-- [ ] Implement `compute_and_output()` - offset calculation using lookback
-- [ ] Implement `output_compensated()` - send to conveyor and advance buffers
-- [ ] Update `flush_buffers()` for new architecture
-- [ ] Remove old `clone_and_extract()` function
-- [ ] Remove old `get_compensated_gcode()` function
+### Phase 2a: Bug Fixes (March 19-20) ✅ COMPLETE
+- [x] Fix diameter-to-radius conversion (D10 = 5mm radius)
+- [x] Fix parameter offset bug (offset prev, not curr)
+- [x] Add comp_count == 0 check (partial fix for overflow)
 
-### Phase 3: Special Cases
-- [ ] Handle program start (first 1-2 lines) with limited lookback
-- [ ] Handle zero-length moves with lookahead
-- [ ] Ensure G40 passthrough works correctly
+### Phase 2b: Single-Driver Architecture Fixes (March 23) 🔄 PENDING
+**compute_and_output()** - Major changes:
+- [ ] Replace `first_point_computed` flag with `if (comp_count == 0)` check
+- [ ] Add safety check: `if (comp_count >= BUFFER_SIZE) return;`
+- [ ] Add safety check: `if (comp_ring[comp_idx].gcode != nullptr) return;`
+- [ ] Add buffer advancement at END of function:
+  ```cpp
+  uncomp_tail = (uncomp_tail + 1) % BUFFER_SIZE;  // Advance read pointer
+  // Do NOT decrement uncomp_count - it stays at 3 when buffer full
+  comp_count++;  // Increment computed count
+  ```
+- [ ] Update first point logic to use onset direction (A→B to compute A')
+- [ ] Update subsequent point logic to use entry direction (prev→curr)
 
-### Phase 4: Debug Output
-- [ ] Update all debug print functions for new variable names
-- [ ] Add new debug for uncomp/comp buffer states
-- [ ] Ensure debug output shows synchronization clearly
+**get_compensated_gcode()** - Simplify to accessor:
+- [ ] Remove uncomp_tail advancement (compute_and_output now handles this)
+- [ ] Remove uncomp_count decrement (compute_and_output now handles this)
+- [ ] Keep comp_count decrement and comp_tail advancement
+- [ ] Result: Simple accessor that only empties comp buffer
 
-### Phase 5: Testing
-- [ ] Build firmware
-- [ ] Test `TEST_D_word_simple_square_in_square.cnc`
+**flush()** - Verify correct behavior:
+- [ ] Verify loop condition: `while (uncomp_count > 0 && comp_count < BUFFER_SIZE)`
+- [ ] No changes needed (will work correctly once compute advances buffers)
+
+**buffer_gcode()** - Add double-compute logic:
+- [ ] Add special case for first fill (comp_count == 0):
+  ```cpp
+  if (uncomp_count >= 3 && comp_count == 0) {
+      compute_and_output();  // A' with onset direction
+      if (uncomp_count >= 2 && comp_count < BUFFER_SIZE) {
+          compute_and_output();  // B' with corner calc
+      }
+  } else if (uncomp_count >= 3 && comp_count < BUFFER_SIZE) {
+      compute_and_output();  // Normal single compute
+  }
+  ```
+- [ ] This "primes the pump" by computing 2 points when buffer first fills
+- [ ] Enables B' to use corner calculation (3-point lookback) immediately
+
+### Phase 3: Build & Test (March 23) 🔄 PENDING
+- [ ] Implement code changes above
+- [ ] Build: `.\build\build.ps1 -Clean`
+- [ ] Copy to: FirmwareBin\firmware_SingleDriver_20260323.bin
+- [ ] Deploy to CNC controller
+- [ ] Test: TEST_D_word_simple_square_in_square.cnc
+
+### Phase 4: Validation (March 23) 🔄 PENDING
+- [ ] Verify no crashes or infinite loops
+- [ ] Verify comp_count stays ≤ 3 (bounded)
+- [ ] Verify uncomp_tail advances correctly during compute
+- [ ] Verify first point (A') computed using onset direction (A→B)
+- [ ] Verify subsequent points computed using entry direction (prev→curr)
+- [ ] Verify flush() drains buffer without hanging
+- [ ] Verify G40 works correctly
 - [ ] Verify no diagonal movements
-- [ ] Verify position tracking is implicit and synchronized
-- [ ] Verify corner gaps present (expected for Phase 2)
+- [ ] Document corner gaps (expected for Phase 2)
+
+### Phase 5: Future Work (Phase 3+ Corner Calculations)
+- [ ] Design corner intersection algorithm
+- [ ] Implement 3-point lookback for corners
+- [ ] Add corner type detection (inside vs outside)
+- [ ] Test with various corner angles
 
 ---
 
-## Expected Outcomes
+## Benefits of Revised Architecture (March 23, 2026)
 
-### Phase 2 Success Criteria
+### Single-Driver Model Benefits
+- **No Infinite Loops**: compute_and_output() advances uncomp_tail, so flush() naturally terminates
+- **Bounded comp_count**: Safety check prevents overflow (comp_count ≤ BUFFER_SIZE)
+- **Clear Control Flow**: Serial stream → buffer_gcode() → compute_and_output() → advances buffers (one clock)
+- **Self-Contained Computation**: compute_and_output() is independent, advances its own state
+
+### Original Dual Buffer Benefits (Retained)
+- **Clarity**: Two buffers, two purposes (programmed path vs offset path)
+- **Correctness**: Synchronization explicit (comp_idx = uncomp_tail)
+- **Extensibility**: Easy to add corner calculations (look back at 3 points via uncomp_ring)
+- **Simplicity**: No complex "last position" tracking, just buffer indices
+
+### Phase 2 Success Criteria (Updated)
 ✅ No diagonal movements during straight-line segments  
 ✅ Perpendicular offset applied correctly  
+✅ First point (A') computed correctly using onset direction  
+✅ Subsequent points computed correctly using entry direction  
 ✅ Position tracking synchronized (implicit in buffer positions)  
+✅ No crashes or infinite loops  
+✅ comp_count bounded (≤ 3)  
 ✅ Debug output shows clear uncomp → comp transformation  
-✅ Corner gaps visible (expected, will fix in Phase 3)  
-
-### Benefits of New Architecture
-- **Clarity**: Two buffers, two purposes - no confusion
-- **Correctness**: Synchronization explicit, no race conditions
-- **Extensibility**: Easy to add corner calculations (look back at 3 points)
-- **Simplicity**: No complex position update logic, just buffer management
+⚠️ Corner gaps visible (expected, will fix in Phase 3)
 
 ---
 
-## Questions for Review
+## Design Decisions (REVISED March 23, 2026)
 
-1. **Program start behavior**: For the first point, should we output a lead-in move from current position to offset position? Or start compensated path directly?
+1. **Program start behavior (REVISED)**: ✅ First point (A) outputs A' using **onset direction** (A→B). This requires special case logic using `if (comp_count == 0)` check. Previous design discarded first point; new design outputs it correctly.
 
-2. **Buffer size**: Confirmed 3 slots for both. Any performance concerns?
+2. **Buffer advancement**: ✅ **Single-driver model** - compute_and_output() advances uncomp_tail itself (self-contained). get_compensated_gcode() becomes simple accessor. This fixes infinite loop bugs.
 
-3. **Zero-length move direction**: If zero-length followed by another zero-length, how far ahead should we look for direction?
+3. **Prime the pump**: ✅ When buffer first fills (uncomp_count==3, comp_count==0), compute **TWO points back-to-back**: A' (onset) and B' (corner). This starts the output pipeline and enables B' to use 3-point corner calculation immediately.
 
-4. **Debug verbosity**: Current debug output is very detailed. Keep it for Phase 2, or reduce?
+4. **Buffer size**: ✅ Both buffers use 3 slots for lookahead. comp storage index synchronized with uncomp_tail (comp_idx = uncomp_tail).
 
-5. **Gcode rebuild**: Should `comp_ring` store the full Gcode string, or just coordinates + rebuild on output?
+5. **uncomp_count semantics**: ✅ Represents **occupied slots** (0→1→2→3 during fill, stays at 3 when full). Only decrements during flush(). This is standard circular buffer behavior.
+
+6. **Zero-length move behavior**: ✅ Output exact same Gcode command (duplicate). No offset calculation possible without direction.
+
+7. **Debug verbosity**: ✅ Keep detailed debug output for validation. Log shows buffer states, comp_count bounds, first point detection.
+
+8. **Memory management**: ✅ Gcode objects stored as pointers in CompPoint struct. Created by compute_and_output(), returned by get_compensated_gcode(), deleted in clear().
+
+9. **Safety checks**: ✅ Added comp_count >= BUFFER_SIZE check, gcode != nullptr check to prevent overflow and double-computation.
+
+5. **Gcode rebuild**: ✅ Build Gcode string on-the-fly during output (not stored in buffer).
+
+6. **Phase locking**: ✅ `comp_tail = uncomp_tail` (synchronous), `comp_head = (uncomp_tail+1)%3` (offset by +1).
+
+7. **Buffer overwrite**: ✅ Circular overwrite once full (uncomp_count stays at 3).
 
 ---
 
-**Ready to proceed with implementation?** Please review and let me know if any changes needed!
+## Implementation Status (March 23, 2026 - REVISED)
+
+### Critical Bugs Discovered (March 19-23, 2026)
+
+**Bug #1: Diameter-to-Radius Conversion** ✅ FIXED (March 19)
+- **Symptom**: Offset was 10mm instead of 5mm for D10 tool
+- **Root Cause**: D word stored directly as offset radius (D10 = 10mm)
+- **Fix**: Added `radius = diameter / 2.0f` in Robot.cpp G41/G42 handler
+- **Status**: Fixed in firmware_DiameterFix_20260319.bin
+
+**Bug #2: Parameter Offset Error** ✅ FIXED (March 19)
+- **Symptom**: Wrong point being offset in calculate_perpendicular_offset()
+- **Root Cause**: Function offsetting `curr` (second param) instead of `prev` (first param)
+- **Fix**: Changed offset application to use `prev` coordinates
+- **Status**: Fixed in firmware_DiameterFix_20260319.bin
+
+**Bug #3: Buffer Overflow** ⚠️ PARTIALLY FIXED (March 20)
+- **Symptom**: comp_count reached 156+ (buffer has 3 slots!)
+- **Root Cause**: compute_and_output() called 159 times, get_compensated_gcode() only 8 times
+- **Attempted Fix**: Only compute when `comp_count == 0` 
+- **Status**: Reduced overflow but didn't solve root cause
+
+**Bug #4: Infinite Loop in flush() - ROOT CAUSE** 🔴 PENDING FIX (March 21-23)
+- **Symptom**: 
+  ```cpp
+  while (uncomp_count > 0) {
+      compute_and_output();  // Called 159 times!
+  }
+  ```
+  compute_and_output() doesn't advance uncomp_tail or decrement uncomp_count → infinite loop
+- **Root Cause**: **Two-driver problem** - Write path (buffer_gcode) and read path (get_compensated_gcode) operate independently
+  - buffer_gcode() fills uncomp_ring, calls compute_and_output()
+  - compute_and_output() increments comp_count (unbounded!)
+  - get_compensated_gcode() advances uncomp_tail (too slow, only when Robot.cpp polls)
+  - Result: comp_count grows without bound, uncomp_tail doesn't advance during buffering
+- **Solution**: **Single-driver model** - compute_and_output() advances buffers itself
+- **Status**: Architecture redesigned (see Buffer Synchronization section), awaiting implementation
+
+### Architectural Revision (March 23, 2026)
+
+**Original Design (March 13)**:
+- Phase-locked: comp_head = (uncomp_tail + 1) % 3
+- First point outputs null/discarded
+- compute_and_output() doesn't advance buffers
+- get_compensated_gcode() advances both uncomp_tail and comp_tail
+
+**Revised Design (March 23)** - User Confirmed:
+- **Single driver**: buffer_gcode() → compute_and_output() → advances uncomp_tail
+- First point outputs A' using **onset direction** (comp_count == 0 check)
+- compute_and_output() advances uncomp_tail **itself** (self-contained)
+- get_compensated_gcode() becomes simple **accessor** (no advancement of uncomp)
+
+### Files Requiring Updates
+
+**CompensationPreprocessor.cpp** - Major changes needed:
+
+**compute_and_output()** (Lines ~124-156):
+- ❌ **REMOVE**: `first_point_computed` flag logic
+- ✅ **ADD**: `if (comp_count == 0)` check for first point
+  - First point: Compensate A using A→B (onset direction)
+  - Subsequent: Compensate prev using prev→curr (entry direction)
+- ✅ **ADD**: Safety checks
+  ```cpp
+  if (comp_count >= BUFFER_SIZE) return;
+  if (comp_ring[comp_idx].gcode != nullptr) return;
+  ```
+- ✅ **ADD**: Buffer advancement at end
+  ```cpp
+  uncomp_tail = (uncomp_tail + 1) % BUFFER_SIZE;
+  uncomp_count--;
+  comp_count++;
+  ```
+
+**get_compensated_gcode()** (Lines ~234-240):
+- ❌ **REMOVE**: uncomp_tail advancement
+- ❌ **REMOVE**: uncomp_count decrement
+- ✅ **KEEP**: comp_tail advancement and comp_count decrement
+- Result: Simple accessor that only empties comp buffer
+
+**flush()** (Lines ~242-252):
+- ❌ **REMOVE**: Infinite loop concern (will work correctly once compute advances buffers)
+- ✅ **VERIFY**: Loop condition `while (uncomp_count > 0 && comp_count < BUFFER_SIZE)`
+- Note: Will naturally terminate because compute_and_output() decrements uncomp_count
+
+### Build History
+
+**March 13, 2026**: Initial Phase 2 implementation
+- Built: firmware.bin (450KB)
+- Issues: Diagonal movement, parameter offset bug
+
+**March 19, 2026**: Diameter and parameter fixes
+- Built: firmware_DiameterFix_20260319.bin (450KB)
+- Fixed: D10 → 5mm radius, parameter offset corrected
+- Issues: Still had crashes, buffer overflow
+
+**March 20, 2026**: Buffer overflow attempt
+- Built: firmware_BufferOverflowFix_20260320.bin (450KB)
+- Added: comp_count == 0 check in buffer_gcode()
+- Issues: Overflow continued in different pattern
+
+**March 23, 2026**: Architecture redesign (PENDING BUILD)
+- Target: firmware_SingleDriver_20260323.bin
+- Changes: Single-driver model, comp_count == 0 for first point
+- Status: Documentation complete, implementation pending
+
+### Next Steps for Implementation
+
+**Step 1: Code Changes** (CompensationPreprocessor.cpp)
+1. Modify compute_and_output():
+   - Replace first_point_computed with `if (comp_count == 0)`
+   - Add safety checks (comp_count >= BUFFER_SIZE, gcode != nullptr)
+   - Add buffer advancement code at end
+2. Modify get_compensated_gcode():
+   - Remove uncomp_tail advancement
+   - Keep as simple accessor
+3. Verify flush():
+   - Loop should work correctly with new advancement
+
+**Step 2: Build & Test**
+1. Run: `.\build\build.ps1 -Clean`
+2. Copy to: FirmwareBin\firmware_SingleDriver_20260323.bin
+3. Deploy to CNC controller
+4. Test: TEST_D_word_simple_square_in_square.cnc
+5. Verify log output shows bounded comp_count (max 3)
+
+**Step 3: Validation**
+- [ ] No crashes or infinite loops
+- [ ] comp_count stays ≤ 3
+- [ ] First point (A') computed correctly using onset direction
+- [ ] Subsequent points computed correctly using entry direction
+- [ ] flush() drains buffer without hanging
+- [ ] G40 works correctly
+
+### Key Implementation Decisions Made
+
+**First Point Behavior**: Implemented as designed - first point (A) outputs null, path starts at B'. The output_compensated() function checks `if (comp_count == 0)` and skips output on first cycle, then advances uncomp_tail. This is intentional and acceptable.
+
+**Zero-Length Moves**: Implemented - calculate_perpendicular_offset() returns false if magnitude < 0.1mm, compute_and_output() stores duplicate coordinates in comp_ring when this occurs.
+
+**Phase Locking**: Correctly implemented with helper methods:
+- `get_comp_tail()` returns `uncomp_tail` (synchronized)
+---
+
+## End of Document
+
+**Document Version**: March 23, 2026 (Revised for Single-Driver Architecture)
+**Status**: Documentation complete, awaiting implementation and testing
+**Next Action**: Implement code changes in CompensationPreprocessor.cpp, build firmware_SingleDriver_20260323.bin

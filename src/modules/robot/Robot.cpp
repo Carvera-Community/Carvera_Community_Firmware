@@ -881,7 +881,10 @@ void Robot::process_buffered_command(Gcode *gcode)
                 gcode->stream->printf(">>ROBOT: G%d handler CALLED\n", gcode->g);
                 float radius = 0.0f;
                 if (gcode->has_letter('D')) {
-                    radius = gcode->get_value('D');
+                    float diameter = gcode->get_value('D');
+                    radius = diameter / 2.0f;  // D word specifies diameter, convert to radius
+                    gcode->stream->printf(">>G%d: D word diameter=%.3f -> radius=%.3f\n", 
+                        gcode->g, diameter, radius);
                 }
                 CompensationType type = (gcode->g == 41) ? CompensationType::LEFT : CompensationType::RIGHT;
                 gcode->stream->printf(">>G%d: Compensation %s, radius=%.3f\n", 
