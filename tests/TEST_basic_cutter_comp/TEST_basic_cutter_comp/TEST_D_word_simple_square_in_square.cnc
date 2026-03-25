@@ -1,6 +1,6 @@
 ; Test cutter compensation implementation
 ; Using explicit D word for tool diameter
-; Tool diameter set to 6mm for testing
+; Tool diameter set by D10 (10mm diameter, 5mm radius)
 
 G90 ; Absolute positioning
 G21 ; Millimeters
@@ -8,26 +8,26 @@ G21 ; Millimeters
 ; Test 1: Simple line with left compensation
 G1 F800      ; Set feed rate
 G1 X0 Y0 Z5      ; Move to start position of cut with offset
-G1 X50 Y0      ; Should offset 3mm to left
+G1 X50 Y0      ; Should offset 5mm to left
 G1 X50 Y50     ; Move to next position
 G1 X0 Y50      ; Complete the rectangle
 G1 X0 Y0       ; Return to start with offset
 G1 X10 Y10     ; Move to start position of cut with offset
-G1 X40 Y10     ; Should offset 3mm to right
+G1 X40 Y10     ; Should offset 5mm to right
 G1 X40 Y40     ; Move to next position
 G1 X10 Y40     ; Complete the rectangle
 G1 X10 Y10     ; Return to start with offset
 G0 X0 Y0 Z5    ; Move to start position
-G41 D10         ; Enable left compensation with 6mm tool
+G41 D10         ; Enable left compensation with 10mm tool (5mm radius)
 G1 X0 Y0       ; Move to start position of cut with offset
-G1 X50 Y0      ; Should offset 3mm to left
+G1 X50 Y0      ; Should offset 5mm to left
 G1 X50 Y50     ; Move to next position
 G1 X0 Y50      ; Complete the rectangle
 G1 X0 Y0       ; Return to start with offset
 G40            ; Cancel compensation
-G42 D10        ; Enable right compensation with 6mm tool
+G42 D10        ; Enable right compensation with 10mm tool (5mm radius)
 G1 X10 Y10     ; Move to start position of cut with offset
-G1 X40 Y10     ; Should offset 3mm to right
+G1 X40 Y10     ; Should offset 5mm to right
 G1 X40 Y40     ; Move to next position
 G1 X10 Y40     ; Complete the rectangle
 G1 X10 Y10     ; Return to start with offset

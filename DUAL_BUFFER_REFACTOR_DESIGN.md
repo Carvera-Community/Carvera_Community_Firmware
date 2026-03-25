@@ -1,5 +1,5 @@
 # Dual Buffer Architecture Design
-**Date**: March 10, 2026 (Updated March 23, 2026)  
+**Date**: March 10, 2026 (Updated March 24, 2026)  
 **Purpose**: Refactor compensation preprocessor to use two dedicated ring buffers  
 **Phase**: Bug fix for Phase 2 + preparation for Phase 3 corner calculations
 
@@ -34,11 +34,13 @@
 - Two separate "clocks" driving the system (write path vs read path)
 - `comp_count` growing unbounded (156+ with only 3 buffer slots)
 
-### New Solution (REVISED March 23, 2026)
+### New Solution (REVISED March 24, 2026)
 **Two synchronized ring buffers with SINGLE DRIVER:**
 1. **Uncompensated Buffer** (`uncomp_ring`): Source of truth for programmed path
 2. **Compensated Buffer** (`comp_ring`): Computed offset path for machine execution
-3. **Single Clock**: Write function (`buffer_gcode`) drives everything - compute AND advance
+3. **Single Clock**: `buffer_gcode()` drives write, compute, advance, and output handoff
+4. **Push Handoff**: Robot consumes compensated output from `buffer_gcode()` return, not free polling
+5. **Flush-Only Decrement**: `comp_count` does not decrement in normal G41/G42 streaming
 
 ---
 
@@ -52,7 +54,7 @@ struct UncompPoint {
 
 UncompPoint uncomp_ring[3];  // 3 slots for lookahead
 int uncomp_head;              // Write position (next slot to fill)
-int uncomp_tail;              // Read position (next slot to output)
+int uncomp_tail;              // Read position (next slot to compute)
 int uncomp_count;             // Number of buffered points
 ```
 
@@ -71,8 +73,8 @@ struct CompPoint {
 
 CompPoint comp_ring[3];      // 3 slots, synchronized with uncomp
 int comp_head;                // Write position (locked to uncomp_tail)
-int comp_tail;                // Read position (next slot to output)
-int comp_count;               // Number of computed compensated points
+int comp_tail;                // Read position (next slot to serve)
+int comp_count;               // Occupied/ready slots in comp_ring (fullness)
 ```
 
 **Key Properties:**
@@ -83,7 +85,7 @@ int comp_count;               // Number of computed compensated points
 
 ---
 
-## Buffer Synchronization (REVISED March 23, 2026)
+## Buffer Synchronization (REVISED March 24, 2026)
 
 ### Single Driver Model - Write Drives Everything
 
@@ -96,23 +98,37 @@ READ CLOCK: get_compensated_gcode() → advances uncomp_tail and comp_tail
 RESULT: Two drivers, unsynchronized, infinite loops in flush()
 ```
 
-**New Solution (March 23)**:
+**New Solution (March 24)**:
 ```
-SINGLE CLOCK: buffer_gcode() → fills uncomp_ring → compute_and_output() → advances BOTH buffers
-ACCESSOR: get_compensated_gcode() → just returns what's already computed (doesn't advance)
-RESULT: One driver, synchronized, flush() works correctly
+SINGLE CLOCK: buffer_gcode() → write uncomp → compute_and_output() → advance state
+             → serve comp tail (return Gcode*) on same tick
+NORMAL STREAMING: comp_count tracks fullness and does NOT decrement
+FLUSH (G40): explicit drain path decrements comp_count and uncomp_count to zero
+RESULT: One driver, synchronized, deterministic drain behavior
 ```
 
 ### Synchronization Rules (REVISED)
 
 1. **Write Phase**: `buffer_gcode(gcode)` stores point in `uncomp_ring[uncomp_head]`, advances head
-2. **Compute Phase**: When `uncomp_count >= 3`, automatically call `compute_and_output()`
+2. **Compute Phase**: When `uncomp_count >= 3`, call `compute_and_output()` on the same clock tick
 3. **Computation**:
    - Read from `uncomp_ring[uncomp_tail]` (and neighbors for direction)
    - Write to `comp_ring[comp_idx]` where `comp_idx = uncomp_tail` (synchronized)
-   - **Advance uncomp_tail** and increment comp_count
-4. **Output Phase**: `get_compensated_gcode()` returns `comp_ring[comp_tail]` (no advancement!)
-5. **Consumption**: Robot.cpp processes the Gcode, calls again for next (polling model preserved)
+    - **Advance uncomp_tail** and maintain comp fullness semantics
+4. **Serve Phase (Normal G41/G42)**: `buffer_gcode()` returns one compensated `Gcode*` from comp tail
+5. **Drain Phase (G40 flush)**: Decrement both rings intentionally until empty
+
+### Second-Pass Contract (Authoritative, March 24, 2026)
+
+This section overrides any contradictory text later in this document.
+
+1. `comp_count` means "how full is `comp_ring`".
+2. During normal streaming (G41/G42), `comp_count` is not decremented.
+3. Advancement is clocked by `buffer_gcode()` only; no free-running pull loop.
+4. `buffer_gcode()` always advances pipeline state when compensation is active.
+5. During `flush()` (G40), decrement and drain both rings explicitly to zero.
+6. `get_compensated_gcode()` is not part of normal streaming handoff; if retained, it is flush-only.
+7. First-fill priming still computes two points once, but this must be guarded by persistent session state (not `comp_count == 0` alone).
 
 ### Buffer Advancement Pattern (Example)
 
@@ -246,7 +262,7 @@ comp_count++;  // Grows as we compute (bounded by BUFFER_SIZE)
 - **No "last position" variable**: Phase offset provides lookback naturally
 - **Full buffer utilization**: All 3 slots in both buffers are used
 - **Simple synchronization**: Tails always at same position, head always tail+1
-- **Clean initialization**: First point (A) outputs null, path starts at B (first computed corner)
+- **Clean initialization**: First point (A) outputs A' via onset direction on first-fill prime
 
 ---
 
@@ -366,8 +382,8 @@ void compute_and_output()
     
     // ADVANCE BUFFERS (Single driver model - this is the KEY change!)
     uncomp_tail = (uncomp_tail + 1) % BUFFER_SIZE;
-    uncomp_count--;
-    comp_count++;
+    // Normal streaming: uncomp_count remains occupancy/fullness (stays at 3 once full)
+    comp_count++;  // Fullness of comp_ring (no normal-stream decrement)
 }
 ```
 
@@ -486,7 +502,7 @@ bool comp_active;         // Is G41/G42 active (vs G40 passthrough)
 
 ---
 
-## Algorithm Flow (REVISED March 23, 2026 - Single Driver Model)
+## Algorithm Flow (REVISED March 24, 2026 - Clocked Push Model)
 
 ### Control Flow Diagram
 
@@ -502,25 +518,25 @@ Serial Stream → Parser → on_gcode_received() ← ⏰ THE ONLY CLOCK
                                       ├─→ Write to uncomp_ring[uncomp_head]
                                       ├─→ uncomp_head++, uncomp_count++
                                       │
-                                      └─→ IF uncomp_count >= 3:
+                                          └─→ IF uncomp_count >= 3:
                                           │
                                           └─→ compute_and_output()
                                               ├─→ Compute offset (if comp_count == 0: first point, else: subsequent)
                                               ├─→ Store in comp_ring[comp_idx]
-                                              ├─→ uncomp_tail++, uncomp_count-- ← KEY: Advances here!
-                                              └─→ comp_count++
-                                      
-                                      Robot.cpp POLLS get_compensated_gcode()
-                                      ├─→ Returns comp_ring[comp_tail].gcode
-                                      ├─→ comp_tail++, comp_count-- ← Just empties comp buffer
-                                      └─→ Does NOT touch uncomp buffer
+                                              ├─→ uncomp_tail++ (normal streaming: uncomp_count stays occupied/full)
+                                              └─→ comp_count tracks fullness (no decrement in normal stream)
+
+                                          buffer_gcode() SERVES tail output immediately
+                                          ├─→ Returns next compensated Gcode* for this tick
+                                          ├─→ Robot consumes returned pointer (no free polling loop)
+                                          └─→ During G40 flush only: explicit comp_count/uncomp_count decrement path
 ```
 
 ### Main Processing Functions
 
-#### 1. `buffer_gcode()` - THE DRIVER (Write + Compute + Advance)
+#### 1. `buffer_gcode()` - THE DRIVER (Write + Compute + Advance + Serve)
 ```cpp
-bool buffer_gcode(Gcode* gcode) 
+Gcode* buffer_gcode(Gcode* gcode)
 {
     // Check space
     if (uncomp_count >= BUFFER_SIZE) {
@@ -563,7 +579,9 @@ bool buffer_gcode(Gcode* gcode)
         compute_and_output();
     }
     
-    return true;
+    // Serve one compensated output on this same clock tick.
+    // Returns nullptr only when pipeline is still priming or no output is available.
+    return served_output;
 }
 ```
 
@@ -604,11 +622,12 @@ void compute_and_output()
 }
 ```
 
-#### 3. `get_compensated_gcode()` - ACCESSOR ONLY (No Advancement of Uncomp!)
+#### 3. `get_compensated_gcode()` - OPTIONAL FLUSH ACCESSOR (Not Normal Streaming)
 ```cpp
 Gcode* get_compensated_gcode()
 {
-    // Just return what's ready
+    // Only used by explicit flush/drain paths if needed.
+    // Not used by Robot.cpp as a free-running pull consumer.
     if (comp_count == 0) {
         return nullptr;  // Nothing computed yet
     }
@@ -621,27 +640,26 @@ Gcode* get_compensated_gcode()
     // Clear the slot
     comp_ring[comp_tail].gcode = nullptr;
     
-    // ONLY advance comp buffer (uncomp already advanced in compute_and_output!)
+    // Decrement here only in explicit flush-drain behavior.
     comp_count--;
     
     return result;
 }
 ```
 
-#### 4. `flush()` - Empty Remaining Buffer (FIXED!)
+#### 4. `flush()` - Empty Remaining Buffer (Clocked Drain)
 ```cpp
 void flush()
 {
     is_flushing = true;
-    
-    // Compute any remaining uncomp points
-    // This works now because compute_and_output() advances uncomp_tail!
-    while (uncomp_count > 0 && comp_count < BUFFER_SIZE) {
-        compute_and_output();  // Advances uncomp_tail each call
+
+    // Explicitly drain both rings to zero during G40.
+    // This is the only path where counts are intentionally decremented.
+    while (uncomp_count > 0 || comp_count > 0) {
+        // compute/serve/decrement steps happen under flush policy
+        step_flush_drain();
     }
-    
-    // Note: Robot.cpp will poll get_compensated_gcode() to empty comp buffer
-    
+
     is_flushing = false;
 }
 ```
@@ -681,289 +699,63 @@ void print_debug_buffer_state() {
 
 ---
 
-## Implementation Checklist (REVISED March 23, 2026)
+## Implementation Backbone (March 24, 2026 - Second Pass)
 
-### Phase 1: Data Structures (CompensationPreprocessor.h) ✅ COMPLETE (March 13)
-- [x] Define `UncompPoint` struct
-- [x] Define `CompPoint` struct with `Gcode* gcode` member
-- [x] Add `uncomp_ring[3]`, `uncomp_head`, `uncomp_tail`, `uncomp_count`
-- [x] Add `comp_ring[3]`, `comp_count` (no comp_head/comp_tail - derived from uncomp_tail)
-- [x] Rename `compensation_type` → `comp_type`
-- [x] Rename `compensation_radius` → `comp_radius`
-- [x] Add `comp_active` flag
-- [x] Remove old `BufferedGcode` struct and related variables
-- [x] Remove old `uncompensated_position[3]`, `compensated_position[3]` arrays
+This section is the implementation backbone for the second refactor pass.
 
-### Phase 2a: Bug Fixes (March 19-20) ✅ COMPLETE
-- [x] Fix diameter-to-radius conversion (D10 = 5mm radius)
-- [x] Fix parameter offset bug (offset prev, not curr)
-- [x] Add comp_count == 0 check (partial fix for overflow)
+### Required Invariants
 
-### Phase 2b: Single-Driver Architecture Fixes (March 23) 🔄 PENDING
-**compute_and_output()** - Major changes:
-- [ ] Replace `first_point_computed` flag with `if (comp_count == 0)` check
-- [ ] Add safety check: `if (comp_count >= BUFFER_SIZE) return;`
-- [ ] Add safety check: `if (comp_ring[comp_idx].gcode != nullptr) return;`
-- [ ] Add buffer advancement at END of function:
-  ```cpp
-  uncomp_tail = (uncomp_tail + 1) % BUFFER_SIZE;  // Advance read pointer
-  // Do NOT decrement uncomp_count - it stays at 3 when buffer full
-  comp_count++;  // Increment computed count
-  ```
-- [ ] Update first point logic to use onset direction (A→B to compute A')
-- [ ] Update subsequent point logic to use entry direction (prev→curr)
+1. `buffer_gcode()` is the only normal-stream clock.
+2. `comp_count` means comp ring fullness and does not decrement during normal G41/G42 streaming.
+3. Normal streaming always advances on `buffer_gcode()` ticks.
+4. `flush()` (G40) is the only path that intentionally decrements and drains both rings.
+5. First-fill double compute remains required, but must be guarded by persistent session state.
 
-**get_compensated_gcode()** - Simplify to accessor:
-- [ ] Remove uncomp_tail advancement (compute_and_output now handles this)
-- [ ] Remove uncomp_count decrement (compute_and_output now handles this)
-- [ ] Keep comp_count decrement and comp_tail advancement
-- [ ] Result: Simple accessor that only empties comp buffer
+### Required API Direction
 
-**flush()** - Verify correct behavior:
-- [ ] Verify loop condition: `while (uncomp_count > 0 && comp_count < BUFFER_SIZE)`
-- [ ] No changes needed (will work correctly once compute advances buffers)
+1. Update `buffer_gcode()` contract to return the compensated `Gcode*` for the current clock tick.
+2. Remove Robot.cpp free polling loop in normal compensation flow.
+3. Keep `get_compensated_gcode()` only as optional flush/drain accessor, or retire it once flush uses explicit drain step API.
 
-**buffer_gcode()** - Add double-compute logic:
-- [ ] Add special case for first fill (comp_count == 0):
-  ```cpp
-  if (uncomp_count >= 3 && comp_count == 0) {
-      compute_and_output();  // A' with onset direction
-      if (uncomp_count >= 2 && comp_count < BUFFER_SIZE) {
-          compute_and_output();  // B' with corner calc
-      }
-  } else if (uncomp_count >= 3 && comp_count < BUFFER_SIZE) {
-      compute_and_output();  // Normal single compute
-  }
-  ```
-- [ ] This "primes the pump" by computing 2 points when buffer first fills
-- [ ] Enables B' to use corner calculation (3-point lookback) immediately
+### Code Work Items
 
-### Phase 3: Build & Test (March 23) 🔄 PENDING
-- [ ] Implement code changes above
-- [ ] Build: `.\build\build.ps1 -Clean`
-- [ ] Copy to: FirmwareBin\firmware_SingleDriver_20260323.bin
-- [ ] Deploy to CNC controller
-- [ ] Test: TEST_D_word_simple_square_in_square.cnc
+1. `CompensationPreprocessor.h`
+- [ ] Update `buffer_gcode` return type for push handoff.
+- [ ] Add persistent prime/session state flag for first-fill logic.
+- [ ] Keep explicit ring occupancy members for uncomp and comp buffers.
 
-### Phase 4: Validation (March 23) 🔄 PENDING
-- [ ] Verify no crashes or infinite loops
-- [ ] Verify comp_count stays ≤ 3 (bounded)
-- [ ] Verify uncomp_tail advances correctly during compute
-- [ ] Verify first point (A') computed using onset direction (A→B)
-- [ ] Verify subsequent points computed using entry direction (prev→curr)
-- [ ] Verify flush() drains buffer without hanging
-- [ ] Verify G40 works correctly
-- [ ] Verify no diagonal movements
-- [ ] Document corner gaps (expected for Phase 2)
+2. `CompensationPreprocessor.cpp`
+- [ ] In `buffer_gcode()`: write, compute, serve one output, and advance every active tick.
+- [ ] In `compute_and_output()`: keep onset-vs-entry logic; advance uncomp tail; keep normal-stream occupancy semantics.
+- [ ] Prevent re-entry of first-fill logic after startup by using persistent session flag (not `comp_count == 0` alone).
+- [ ] In normal stream: do not decrement `comp_count`; maintain cap at `BUFFER_SIZE`.
+- [ ] In `flush()`: explicitly decrement `comp_count` and uncomp occupancy to zero with guaranteed forward progress.
+- [ ] Add/confirm final drain behavior for trailing uncomp/comp points (reverse/special flush compute if needed).
 
-### Phase 5: Future Work (Phase 3+ Corner Calculations)
-- [ ] Design corner intersection algorithm
-- [ ] Implement 3-point lookback for corners
-- [ ] Add corner type detection (inside vs outside)
-- [ ] Test with various corner angles
+3. `Robot.cpp`
+- [ ] Replace normal pull loop with one-per-tick consumption from `buffer_gcode()` return.
+- [ ] Keep flush integration deterministic and bounded.
 
----
+### Validation Checklist
 
-## Benefits of Revised Architecture (March 23, 2026)
+- [ ] Build succeeds after API contract update.
+- [ ] No diagonal artifacts in square D-word test.
+- [ ] D10 behavior is 5 mm radius in logs and motion.
+- [ ] Normal streaming shows no `comp_count` decrement events.
+- [ ] G40 flush drains both rings fully with deterministic termination.
+- [ ] G41→G40→G42 transitions remain stable.
 
-### Single-Driver Model Benefits
-- **No Infinite Loops**: compute_and_output() advances uncomp_tail, so flush() naturally terminates
-- **Bounded comp_count**: Safety check prevents overflow (comp_count ≤ BUFFER_SIZE)
-- **Clear Control Flow**: Serial stream → buffer_gcode() → compute_and_output() → advances buffers (one clock)
-- **Self-Contained Computation**: compute_and_output() is independent, advances its own state
+### Active Decisions (Locked)
 
-### Original Dual Buffer Benefits (Retained)
-- **Clarity**: Two buffers, two purposes (programmed path vs offset path)
-- **Correctness**: Synchronization explicit (comp_idx = uncomp_tail)
-- **Extensibility**: Easy to add corner calculations (look back at 3 points via uncomp_ring)
-- **Simplicity**: No complex "last position" tracking, just buffer indices
+1. Push handoff contract: `buffer_gcode()` returns compensated output.
+2. Fullness semantics: `comp_count` is fullness, not pull queue depth.
+3. Decrement policy: decrement only during explicit flush drain.
+4. Clock policy: always advance on `buffer_gcode()` during active compensation.
 
-### Phase 2 Success Criteria (Updated)
-✅ No diagonal movements during straight-line segments  
-✅ Perpendicular offset applied correctly  
-✅ First point (A') computed correctly using onset direction  
-✅ Subsequent points computed correctly using entry direction  
-✅ Position tracking synchronized (implicit in buffer positions)  
-✅ No crashes or infinite loops  
-✅ comp_count bounded (≤ 3)  
-✅ Debug output shows clear uncomp → comp transformation  
-⚠️ Corner gaps visible (expected, will fix in Phase 3)
-
----
-
-## Design Decisions (REVISED March 23, 2026)
-
-1. **Program start behavior (REVISED)**: ✅ First point (A) outputs A' using **onset direction** (A→B). This requires special case logic using `if (comp_count == 0)` check. Previous design discarded first point; new design outputs it correctly.
-
-2. **Buffer advancement**: ✅ **Single-driver model** - compute_and_output() advances uncomp_tail itself (self-contained). get_compensated_gcode() becomes simple accessor. This fixes infinite loop bugs.
-
-3. **Prime the pump**: ✅ When buffer first fills (uncomp_count==3, comp_count==0), compute **TWO points back-to-back**: A' (onset) and B' (corner). This starts the output pipeline and enables B' to use 3-point corner calculation immediately.
-
-4. **Buffer size**: ✅ Both buffers use 3 slots for lookahead. comp storage index synchronized with uncomp_tail (comp_idx = uncomp_tail).
-
-5. **uncomp_count semantics**: ✅ Represents **occupied slots** (0→1→2→3 during fill, stays at 3 when full). Only decrements during flush(). This is standard circular buffer behavior.
-
-6. **Zero-length move behavior**: ✅ Output exact same Gcode command (duplicate). No offset calculation possible without direction.
-
-7. **Debug verbosity**: ✅ Keep detailed debug output for validation. Log shows buffer states, comp_count bounds, first point detection.
-
-8. **Memory management**: ✅ Gcode objects stored as pointers in CompPoint struct. Created by compute_and_output(), returned by get_compensated_gcode(), deleted in clear().
-
-9. **Safety checks**: ✅ Added comp_count >= BUFFER_SIZE check, gcode != nullptr check to prevent overflow and double-computation.
-
-5. **Gcode rebuild**: ✅ Build Gcode string on-the-fly during output (not stored in buffer).
-
-6. **Phase locking**: ✅ `comp_tail = uncomp_tail` (synchronous), `comp_head = (uncomp_tail+1)%3` (offset by +1).
-
-7. **Buffer overwrite**: ✅ Circular overwrite once full (uncomp_count stays at 3).
-
----
-
-## Implementation Status (March 23, 2026 - REVISED)
-
-### Critical Bugs Discovered (March 19-23, 2026)
-
-**Bug #1: Diameter-to-Radius Conversion** ✅ FIXED (March 19)
-- **Symptom**: Offset was 10mm instead of 5mm for D10 tool
-- **Root Cause**: D word stored directly as offset radius (D10 = 10mm)
-- **Fix**: Added `radius = diameter / 2.0f` in Robot.cpp G41/G42 handler
-- **Status**: Fixed in firmware_DiameterFix_20260319.bin
-
-**Bug #2: Parameter Offset Error** ✅ FIXED (March 19)
-- **Symptom**: Wrong point being offset in calculate_perpendicular_offset()
-- **Root Cause**: Function offsetting `curr` (second param) instead of `prev` (first param)
-- **Fix**: Changed offset application to use `prev` coordinates
-- **Status**: Fixed in firmware_DiameterFix_20260319.bin
-
-**Bug #3: Buffer Overflow** ⚠️ PARTIALLY FIXED (March 20)
-- **Symptom**: comp_count reached 156+ (buffer has 3 slots!)
-- **Root Cause**: compute_and_output() called 159 times, get_compensated_gcode() only 8 times
-- **Attempted Fix**: Only compute when `comp_count == 0` 
-- **Status**: Reduced overflow but didn't solve root cause
-
-**Bug #4: Infinite Loop in flush() - ROOT CAUSE** 🔴 PENDING FIX (March 21-23)
-- **Symptom**: 
-  ```cpp
-  while (uncomp_count > 0) {
-      compute_and_output();  // Called 159 times!
-  }
-  ```
-  compute_and_output() doesn't advance uncomp_tail or decrement uncomp_count → infinite loop
-- **Root Cause**: **Two-driver problem** - Write path (buffer_gcode) and read path (get_compensated_gcode) operate independently
-  - buffer_gcode() fills uncomp_ring, calls compute_and_output()
-  - compute_and_output() increments comp_count (unbounded!)
-  - get_compensated_gcode() advances uncomp_tail (too slow, only when Robot.cpp polls)
-  - Result: comp_count grows without bound, uncomp_tail doesn't advance during buffering
-- **Solution**: **Single-driver model** - compute_and_output() advances buffers itself
-- **Status**: Architecture redesigned (see Buffer Synchronization section), awaiting implementation
-
-### Architectural Revision (March 23, 2026)
-
-**Original Design (March 13)**:
-- Phase-locked: comp_head = (uncomp_tail + 1) % 3
-- First point outputs null/discarded
-- compute_and_output() doesn't advance buffers
-- get_compensated_gcode() advances both uncomp_tail and comp_tail
-
-**Revised Design (March 23)** - User Confirmed:
-- **Single driver**: buffer_gcode() → compute_and_output() → advances uncomp_tail
-- First point outputs A' using **onset direction** (comp_count == 0 check)
-- compute_and_output() advances uncomp_tail **itself** (self-contained)
-- get_compensated_gcode() becomes simple **accessor** (no advancement of uncomp)
-
-### Files Requiring Updates
-
-**CompensationPreprocessor.cpp** - Major changes needed:
-
-**compute_and_output()** (Lines ~124-156):
-- ❌ **REMOVE**: `first_point_computed` flag logic
-- ✅ **ADD**: `if (comp_count == 0)` check for first point
-  - First point: Compensate A using A→B (onset direction)
-  - Subsequent: Compensate prev using prev→curr (entry direction)
-- ✅ **ADD**: Safety checks
-  ```cpp
-  if (comp_count >= BUFFER_SIZE) return;
-  if (comp_ring[comp_idx].gcode != nullptr) return;
-  ```
-- ✅ **ADD**: Buffer advancement at end
-  ```cpp
-  uncomp_tail = (uncomp_tail + 1) % BUFFER_SIZE;
-  uncomp_count--;
-  comp_count++;
-  ```
-
-**get_compensated_gcode()** (Lines ~234-240):
-- ❌ **REMOVE**: uncomp_tail advancement
-- ❌ **REMOVE**: uncomp_count decrement
-- ✅ **KEEP**: comp_tail advancement and comp_count decrement
-- Result: Simple accessor that only empties comp buffer
-
-**flush()** (Lines ~242-252):
-- ❌ **REMOVE**: Infinite loop concern (will work correctly once compute advances buffers)
-- ✅ **VERIFY**: Loop condition `while (uncomp_count > 0 && comp_count < BUFFER_SIZE)`
-- Note: Will naturally terminate because compute_and_output() decrements uncomp_count
-
-### Build History
-
-**March 13, 2026**: Initial Phase 2 implementation
-- Built: firmware.bin (450KB)
-- Issues: Diagonal movement, parameter offset bug
-
-**March 19, 2026**: Diameter and parameter fixes
-- Built: firmware_DiameterFix_20260319.bin (450KB)
-- Fixed: D10 → 5mm radius, parameter offset corrected
-- Issues: Still had crashes, buffer overflow
-
-**March 20, 2026**: Buffer overflow attempt
-- Built: firmware_BufferOverflowFix_20260320.bin (450KB)
-- Added: comp_count == 0 check in buffer_gcode()
-- Issues: Overflow continued in different pattern
-
-**March 23, 2026**: Architecture redesign (PENDING BUILD)
-- Target: firmware_SingleDriver_20260323.bin
-- Changes: Single-driver model, comp_count == 0 for first point
-- Status: Documentation complete, implementation pending
-
-### Next Steps for Implementation
-
-**Step 1: Code Changes** (CompensationPreprocessor.cpp)
-1. Modify compute_and_output():
-   - Replace first_point_computed with `if (comp_count == 0)`
-   - Add safety checks (comp_count >= BUFFER_SIZE, gcode != nullptr)
-   - Add buffer advancement code at end
-2. Modify get_compensated_gcode():
-   - Remove uncomp_tail advancement
-   - Keep as simple accessor
-3. Verify flush():
-   - Loop should work correctly with new advancement
-
-**Step 2: Build & Test**
-1. Run: `.\build\build.ps1 -Clean`
-2. Copy to: FirmwareBin\firmware_SingleDriver_20260323.bin
-3. Deploy to CNC controller
-4. Test: TEST_D_word_simple_square_in_square.cnc
-5. Verify log output shows bounded comp_count (max 3)
-
-**Step 3: Validation**
-- [ ] No crashes or infinite loops
-- [ ] comp_count stays ≤ 3
-- [ ] First point (A') computed correctly using onset direction
-- [ ] Subsequent points computed correctly using entry direction
-- [ ] flush() drains buffer without hanging
-- [ ] G40 works correctly
-
-### Key Implementation Decisions Made
-
-**First Point Behavior**: Implemented as designed - first point (A) outputs null, path starts at B'. The output_compensated() function checks `if (comp_count == 0)` and skips output on first cycle, then advances uncomp_tail. This is intentional and acceptable.
-
-**Zero-Length Moves**: Implemented - calculate_perpendicular_offset() returns false if magnitude < 0.1mm, compute_and_output() stores duplicate coordinates in comp_ring when this occurs.
-
-**Phase Locking**: Correctly implemented with helper methods:
-- `get_comp_tail()` returns `uncomp_tail` (synchronized)
 ---
 
 ## End of Document
 
-**Document Version**: March 23, 2026 (Revised for Single-Driver Architecture)
-**Status**: Documentation complete, awaiting implementation and testing
-**Next Action**: Implement code changes in CompensationPreprocessor.cpp, build firmware_SingleDriver_20260323.bin
+**Document Version**: March 24, 2026 (Clocked Push Second Pass)
+**Status**: Backbone updated for second refactor pass
+**Next Action**: Implement the second-pass code changes using this section as authoritative guidance
