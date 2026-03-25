@@ -104,39 +104,30 @@ private:
     // Uncompensated buffer (source of truth for programmed path)
     UncompPoint uncomp_ring[BUFFER_SIZE];
     int uncomp_head;   // Next slot to write
-    int uncomp_tail;   // Next slot to output
-    int uncomp_count;  // Slots occupied
+    int uncomp_tail;   // Next slot to compute
+    int uncomp_count;  // Occupied slots (0..3), stays 3 when full
     
     // Compensated buffer (computed offset path)
     CompPoint comp_ring[BUFFER_SIZE];
-    // Note: comp_tail = uncomp_tail (synchronized)
-    // Note: comp_head = (uncomp_tail + 1) % BUFFER_SIZE (phase-locked offset)
-    int comp_count;    // Slots occupied
+    int comp_count;    // Computed slots ready for Robot.cpp
     
     // Compensation state
     CompensationType comp_type;    // LEFT (G41), RIGHT (G42), or NONE (G40)
     float comp_radius;              // Tool radius (D word value)
     bool comp_active;               // Is compensation active?
     bool is_flushing;               // True when flushing remaining moves
-    bool first_point_computed;      // True after first point processed (special case)
     uint8_t last_g;                 // Last G-code number seen (for modal G-codes)
     
     // Helper functions
-    bool buffer_has_space() const { return uncomp_count < BUFFER_SIZE; }
-    int get_comp_head() const { return (uncomp_tail + 1) % BUFFER_SIZE; }
-    int get_comp_tail() const { return uncomp_tail; }
+    bool buffer_has_space() const { return !(uncomp_count >= BUFFER_SIZE && comp_count >= BUFFER_SIZE); }
+    int get_comp_head() const { return uncomp_tail; }
+    int get_comp_tail() const { return (uncomp_tail - comp_count + BUFFER_SIZE) % BUFFER_SIZE; }
     
     /**
      * Compute compensated coordinates and output
      * Phase-locked: Computes comp_ring[comp_head] using uncomp_ring data
      */
     void compute_and_output();
-    
-    /**
-     * Output compensated Gcode to conveyor
-     * Sends comp_ring[comp_tail] to machine and advances buffers
-     */
-    void output_compensated();
     
     /**
      * Calculate perpendicular offset for Phase 2

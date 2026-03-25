@@ -36,7 +36,6 @@ CompensationPreprocessor::CompensationPreprocessor()
     comp_radius = 0.0f;
     comp_active = false;
     is_flushing = false;
-    first_point_computed = false;
     last_g = 0;  // Default to G0
     
     // Initialize buffer memory to zero
@@ -87,9 +86,14 @@ void CompensationPreprocessor::set_compensation(CompensationType type, float rad
 bool CompensationPreprocessor::buffer_gcode(Gcode* gcode)
 {
     THEKERNEL->streams->printf(">>BUFFER_GCODE: ENTRY - gcode=%p, uncomp_count=%d\n", (void*)gcode, uncomp_count);
+
+    if (gcode == nullptr) {
+        THEKERNEL->streams->printf(">>BUFFER_GCODE: Null gcode pointer\n");
+        return false;
+    }
     
     if (!buffer_has_space()) {
-        THEKERNEL->streams->printf(">>BUFFER_GCODE: Buffer full!\n");
+        THEKERNEL->streams->printf(">>BUFFER_GCODE: Both uncomp and comp buffers full!\n");
         return false;
     }
     
@@ -117,17 +121,25 @@ bool CompensationPreprocessor::buffer_gcode(Gcode* gcode)
     uncomp_ring[uncomp_head].z = z;
     
     uncomp_head = (uncomp_head + 1) % BUFFER_SIZE;
-    uncomp_count++;
+    if (uncomp_count < BUFFER_SIZE) {
+        uncomp_count++;
+    }
     
     print_uncomp_buffered();
     
-    // If buffer full AND no computed move waiting, compute next offset
-    // Only compute when comp_count == 0 to avoid recomputing same points
-    if (uncomp_count >= 3 && comp_count == 0) {
-        THEKERNEL->streams->printf(">>BUFFER_GCODE: Buffer full (count=%d) and comp empty, calling compute_and_output()\n", uncomp_count);
+    // If buffer is full, compute offsets.
+    // First full cycle primes the pipeline with two computes.
+    if (uncomp_count >= BUFFER_SIZE && comp_count == 0) {
+        THEKERNEL->streams->printf(">>BUFFER_GCODE: First full cycle - priming with double compute\n");
         compute_and_output();
-    } else if (uncomp_count >= 3 && comp_count > 0) {
-        THEKERNEL->streams->printf(">>BUFFER_GCODE: Buffer full but comp_count=%d (already computed), skipping\n", comp_count);
+        if (comp_count < BUFFER_SIZE) {
+            compute_and_output();
+        }
+    } else if (uncomp_count >= BUFFER_SIZE && comp_count < BUFFER_SIZE) {
+        THEKERNEL->streams->printf(">>BUFFER_GCODE: Steady-state single compute\n");
+        compute_and_output();
+    } else if (uncomp_count >= BUFFER_SIZE && comp_count >= BUFFER_SIZE) {
+        THEKERNEL->streams->printf(">>BUFFER_GCODE: Comp buffer full, waiting for Robot.cpp consumption\n");
     }
     
     THEKERNEL->streams->printf(">>BUFFER_GCODE: EXIT - success\n");
@@ -140,14 +152,24 @@ bool CompensationPreprocessor::buffer_gcode(Gcode* gcode)
 
 void CompensationPreprocessor::compute_and_output()
 {
-    THEKERNEL->streams->printf(">>COMPUTE: ENTRY - uncomp_count=%d, comp_count=%d, first_point=%d\n", 
-        uncomp_count, comp_count, !first_point_computed);
+    THEKERNEL->streams->printf(">>COMPUTE: ENTRY - uncomp_count=%d, comp_count=%d\n",
+        uncomp_count, comp_count);
+
+    if (uncomp_count < 2) {
+        THEKERNEL->streams->printf(">>COMPUTE: Not enough uncomp points to compute\n");
+        return;
+    }
+
+    if (comp_count >= BUFFER_SIZE) {
+        THEKERNEL->streams->printf(">>COMPUTE: Comp buffer full, skip\n");
+        return;
+    }
     
     // Calculate offset based on whether this is the first point or subsequent
     float offset[2];
     bool success;
     
-    if (!first_point_computed) {
+    if (comp_count == 0) {
         // ====================================================================
         // SPECIAL CASE: First point after G41/G42 activation
         // Use ONSET direction (current → next) to determine offset
@@ -195,10 +217,11 @@ void CompensationPreprocessor::compute_and_output()
         THEKERNEL->streams->printf(">>COMPUTE: Gcode created at %p\n", 
             (void*)comp_ring[comp_idx].gcode);
         
-        first_point_computed = true;
         comp_count++;
-        
-        THEKERNEL->streams->printf(">>COMPUTE: EXIT - first point complete, comp_count=%d\n", comp_count);
+        uncomp_tail = (uncomp_tail + 1) % BUFFER_SIZE;
+
+        THEKERNEL->streams->printf(">>COMPUTE: EXIT - first point complete, comp_count=%d, uncomp_tail=%d\n",
+            comp_count, uncomp_tail);
         
     } else {
         // ====================================================================
@@ -249,8 +272,10 @@ void CompensationPreprocessor::compute_and_output()
             (void*)comp_ring[comp_idx].gcode);
         
         comp_count++;
-        
-        THEKERNEL->streams->printf(">>COMPUTE: EXIT - subsequent complete, comp_count=%d\n", comp_count);
+        uncomp_tail = (uncomp_tail + 1) % BUFFER_SIZE;
+
+        THEKERNEL->streams->printf(">>COMPUTE: EXIT - subsequent complete, comp_count=%d, uncomp_tail=%d\n",
+            comp_count, uncomp_tail);
     }
 }
 
@@ -318,10 +343,17 @@ Gcode* CompensationPreprocessor::get_compensated_gcode()
     // Clear the pointer (Robot.cpp will own it)
     comp_ring[comp_tail].gcode = nullptr;
     
-    // Advance both buffers synchronously
-    uncomp_tail = (uncomp_tail + 1) % BUFFER_SIZE;
-    uncomp_count--;
+    // Always decrease compensated ready count when consumed.
     comp_count--;
+
+    // uncomp_count tracks occupied slots and only drains during flush.
+    if (is_flushing && uncomp_count > 0) {
+        uncomp_count--;
+    }
+
+    if (is_flushing && uncomp_count == 0) {
+        is_flushing = false;
+    }
     
     THEKERNEL->streams->printf(">>GET_GCODE: EXIT - returning %p, counts now uncomp=%d comp=%d\n", 
         (void*)result, uncomp_count, comp_count);
@@ -334,12 +366,11 @@ void CompensationPreprocessor::flush()
     // Set flushing flag to bypass lookahead requirements
     is_flushing = true;
     
-    // Process all remaining buffered points
-    while (uncomp_count > 0) {
+    // Compute pending uncompensated points into comp buffer.
+    // During normal run, uncomp_count can remain at BUFFER_SIZE while full.
+    while (comp_count < uncomp_count && comp_count < BUFFER_SIZE) {
         compute_and_output();
     }
-    
-    is_flushing = false;
 }
 
 void CompensationPreprocessor::clear()
@@ -364,7 +395,6 @@ void CompensationPreprocessor::clear()
     uncomp_count = 0;
     comp_count = 0;
     is_flushing = false;
-    first_point_computed = false;
     
     THEKERNEL->streams->printf(">>CLEAR: Buffer indices reset\n");
     
