@@ -639,38 +639,20 @@ void Robot::on_gcode_received(void *argument)
         compensation_preprocessor->get_buffer_count(),
         compensation_preprocessor->is_active() ? "ON" : "OFF");
         
-    if (compensation_preprocessor->buffer_gcode(gcode)) {
-        // Try to get next command from buffer (could be motion or non-motion)
-        Gcode* output = compensation_preprocessor->get_compensated_gcode();
-        
-        while (output != nullptr) {
-            gcode->stream->printf(">>OUTPUT: %s (buffer_count=%d)\n", 
-                output->get_command(), compensation_preprocessor->get_buffer_count());
-            
-            // Process this command that came out of the buffer
-            process_buffered_command(output);
-            
-            delete output;
-            
-            // Try to get another command
-            output = compensation_preprocessor->get_compensated_gcode();
-        }
-        
-        // If nothing came out, we're still building up lookahead
-        if (compensation_preprocessor->get_buffer_count() > 0) {
-            gcode->stream->printf(">>BUFFERING: need more lookahead (count=%d)\n", 
-                compensation_preprocessor->get_buffer_count());
-        }
-        
-        return;  // Done - command has been buffered
-    } else {
-        // Buffer full - shouldn't happen with 10 slots
-        THEKERNEL->streams->printf("ERROR: Compensation buffer full, processing directly\n");
-        // Fall through to process directly
+    Gcode* output = compensation_preprocessor->buffer_gcode(gcode);
+
+    if (output != nullptr) {
+        gcode->stream->printf(">>OUTPUT: %s (buffer_count=%d)\n",
+            output->get_command(), compensation_preprocessor->get_buffer_count());
+
+        process_buffered_command(output);
+        delete output;
+    } else if (compensation_preprocessor->get_buffer_count() > 0) {
+        gcode->stream->printf(">>BUFFERING: need more lookahead (count=%d)\n",
+            compensation_preprocessor->get_buffer_count());
     }
-    
-    // If we get here, buffer was full - process command directly (fallback)
-    process_buffered_command(gcode);
+
+    return;
 }
 
 // Process a command that has come out of the buffer (or bypassed due to buffer full)
@@ -898,11 +880,10 @@ void Robot::process_buffered_command(Gcode *gcode)
                     std::get<Y_AXIS>(wcs_pos),
                     std::get<Z_AXIS>(wcs_pos)
                 };
+                compensation_preprocessor->set_compensation(type, radius);
                 compensation_preprocessor->set_initial_position(wcs_position);
                 gcode->stream->printf(">>G%d: Initial WCS pos X=%.3f Y=%.3f Z=%.3f\n",
                     gcode->g, wcs_position[X_AXIS], wcs_position[Y_AXIS], wcs_position[Z_AXIS]);
-                
-                compensation_preprocessor->set_compensation(type, radius);
             }
             break;
 
