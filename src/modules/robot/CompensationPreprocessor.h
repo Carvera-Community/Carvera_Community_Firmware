@@ -47,10 +47,10 @@ public:
     
     /**
      * Buffer a G-code for processing
-     * @param gcode - G-code to buffer (will be cloned)
-     * @return true if buffered, false if buffer full
+        * @param gcode - G-code to buffer
+        * @return Next compensated Gcode for this clock tick, or nullptr while priming
      */
-    bool buffer_gcode(Gcode* gcode);
+        Gcode* buffer_gcode(Gcode* gcode);
     
     /**
      * Get next compensated G-code
@@ -109,25 +109,43 @@ private:
     
     // Compensated buffer (computed offset path)
     CompPoint comp_ring[BUFFER_SIZE];
-    int comp_count;    // Computed slots ready for Robot.cpp
+    int comp_head;     // Next slot to write compensated output
+    int comp_tail;     // Next slot to serve/drain
+    int comp_count;    // Logical fullness of comp ring
+    int comp_ready_count; // Actual queued Gcode pointers waiting to be served
     
     // Compensation state
     CompensationType comp_type;    // LEFT (G41), RIGHT (G42), or NONE (G40)
     float comp_radius;              // Tool radius (D word value)
     bool comp_active;               // Is compensation active?
     bool is_flushing;               // True when flushing remaining moves
+    bool pipeline_primed;           // True after initial double-compute priming
+    bool first_output_pending;      // True until the first compensated point is computed
+    bool has_initial_position;      // True once G41/G42 starting position is captured
     uint8_t last_g;                 // Last G-code number seen (for modal G-codes)
+    float initial_position[3];      // WCS position captured when compensation activates
     
     // Helper functions
-    bool buffer_has_space() const { return !(uncomp_count >= BUFFER_SIZE && comp_count >= BUFFER_SIZE); }
-    int get_comp_head() const { return uncomp_tail; }
-    int get_comp_tail() const { return (uncomp_tail - comp_count + BUFFER_SIZE) % BUFFER_SIZE; }
+    int get_comp_head() const { return comp_head; }
+    int get_comp_tail() const { return comp_tail; }
     
     /**
      * Compute compensated coordinates and output
      * Phase-locked: Computes comp_ring[comp_head] using uncomp_ring data
      */
     void compute_and_output();
+
+    /**
+     * Compute the terminal compensated point during G40 flush.
+     * Uses the last segment direction and offsets the final point.
+     */
+    bool compute_terminal_output();
+
+    /**
+     * Serve one compensated Gcode from the tail of the comp ring.
+     * @param draining - When true, decrement ring counts for explicit flush draining.
+     */
+    Gcode* serve_compensated_gcode(bool draining);
     
     /**
      * Calculate perpendicular offset for Phase 2
