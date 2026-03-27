@@ -656,7 +656,7 @@ void MainButton::on_set_public_data(void* argument)
 uint32_t MainButton::led_tick(uint32_t dummy)
 {
 	uint8_t state = THEKERNEL->get_state();
-	if (!this->button_pressed){
+	if (!this->button_pressed && THECONVEYOR->is_idle()){
 		switch (state) {
 			case HOLD:
 				this->hold_toggle ++;
