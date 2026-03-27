@@ -143,6 +143,7 @@ switch.spindlefan.input_on_command			M811			# Command that will turn this switch
 switch.spindlefan.input_off_command			M812			# Command that will turn this switch off
 switch.spindlefan.output_pin				2.1				# Pin this module controls
 switch.spindlefan.output_type				hwpwm			# Digital means this is just an on or off pin
+switch.spindlefan.failsafe					1				# 
 switch.spindlefan.default_on_value			50				#
 
 switch.light.enable							true			# Enable this module
