@@ -17,6 +17,7 @@
 - Fixed: Manual toolchanges after starting a file on an atc machine should work correctly now
 - Fixed: Changing to the laser on an air with an atc works now
 - Fixed: Clamping the spindle rpm to the max rpm fixed
+- Fixed: No LED change during run to prevent step losses (blinking leads to missing steps and can be clearly heard)
 - Change: added -Slow parameter to windows powershell build script to improve readability of error logs as the cost of speed.
 - Change: removed register specifiers in LPC1768 and mbded libraries used by the project. register has been depreciated for a long time and now falls back to being completely ignored. Looked for library updates first, they haven't been updated.
 - Change: Ext out on the CA1 and extend on C1 will turn off on halt (can be reverted to previous behaviour with config-set sd switch.extendout.failsafe 1)
