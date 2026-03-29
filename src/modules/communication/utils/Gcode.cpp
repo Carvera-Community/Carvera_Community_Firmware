@@ -241,18 +241,21 @@ float Gcode::get_variable_value(const char* expr, char** endptr) const{
                 case 5021: //current machine X position
                     THEROBOT->get_current_machine_position(mpos);
                     // current_position/mpos includes the compensation transform so we need to get the inverse to get actual position
+                    if(THEROBOT->pitchCompensationTransform) THEROBOT->pitchCompensationTransform(mpos, true, false); // get inverse pitch compensation transform
                     if(THEROBOT->compensationTransform) THEROBOT->compensationTransform(mpos, true, false); // get inverse compensation transform
                     return mpos[X_AXIS];
                     break;
                 case 5022: //current machine Y position
                     THEROBOT->get_current_machine_position(mpos);
                     // current_position/mpos includes the compensation transform so we need to get the inverse to get actual position
+                    if(THEROBOT->pitchCompensationTransform) THEROBOT->pitchCompensationTransform(mpos, true, false); // get inverse pitch compensation transform
                     if(THEROBOT->compensationTransform) THEROBOT->compensationTransform(mpos, true, false); // get inverse compensation transform
                     return mpos[Y_AXIS];
                     break;
                 case 5023: //current machine Z position
                     THEROBOT->get_current_machine_position(mpos);
                     // current_position/mpos includes the compensation transform so we need to get the inverse to get actual position
+                    if(THEROBOT->pitchCompensationTransform) THEROBOT->pitchCompensationTransform(mpos, true, false); // get inverse pitch compensation transform
                     if(THEROBOT->compensationTransform) THEROBOT->compensationTransform(mpos, true, false); // get inverse compensation transform
                     return mpos[Z_AXIS];
                     break;
@@ -265,6 +268,7 @@ float Gcode::get_variable_value(const char* expr, char** endptr) const{
                 case 5041: //current WCS X position
                      THEROBOT->get_current_machine_position(mpos);
                     // current_position/mpos includes the compensation transform so we need to get the inverse to get actual position
+                    if(THEROBOT->pitchCompensationTransform) THEROBOT->pitchCompensationTransform(mpos, true, false); // get inverse pitch compensation transform
                     if(THEROBOT->compensationTransform) THEROBOT->compensationTransform(mpos, true, false); // get inverse compensation transform
                     pos= THEROBOT->mcs2wcs(mpos);
                     return THEROBOT->from_millimeters(std::get<X_AXIS>(pos));
@@ -273,6 +277,7 @@ float Gcode::get_variable_value(const char* expr, char** endptr) const{
                 case 5042: //current WCS Y position
                      THEROBOT->get_current_machine_position(mpos);
                     // current_position/mpos includes the compensation transform so we need to get the inverse to get actual position
+                    if(THEROBOT->pitchCompensationTransform) THEROBOT->pitchCompensationTransform(mpos, true, false); // get inverse pitch compensation transform
                     if(THEROBOT->compensationTransform) THEROBOT->compensationTransform(mpos, true, false); // get inverse compensation transform
                     pos= THEROBOT->mcs2wcs(mpos);
                     return THEROBOT->from_millimeters(std::get<Y_AXIS>(pos));
@@ -281,6 +286,7 @@ float Gcode::get_variable_value(const char* expr, char** endptr) const{
                 case 5043: //current WCS A position
                      THEROBOT->get_current_machine_position(mpos);
                     // current_position/mpos includes the compensation transform so we need to get the inverse to get actual position
+                    if(THEROBOT->pitchCompensationTransform) THEROBOT->pitchCompensationTransform(mpos, true, false); // get inverse pitch compensation transform
                     if(THEROBOT->compensationTransform) THEROBOT->compensationTransform(mpos, true, false); // get inverse compensation transform
                     pos= THEROBOT->mcs2wcs(mpos);
                     return THEROBOT->from_millimeters(std::get<Z_AXIS>(pos));
