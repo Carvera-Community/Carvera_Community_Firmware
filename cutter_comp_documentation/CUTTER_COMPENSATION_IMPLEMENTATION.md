@@ -770,7 +770,7 @@ This fix revealed a fundamental principle: **Control commands that manage a proc
 
 ---
 
-## Current State (Updated: February 23, 2026)
+## Current State (Updated: April 1, 2026)
 
 ### Phase 1: Buffer Infrastructure (✅ COMPLETE - Feb 19, 2026)
 
@@ -804,30 +804,104 @@ This fix revealed a fundamental principle: **Control commands that manage a proc
 - Commands execute correctly uncompensated when comp OFF
 - Commands buffer correctly when comp ON
 
-### Phase 2: Simple Perpendicular Offset (⏳ NEXT - Starting Feb 23, 2026)
+### Phase 2: Simple Perpendicular Offset (✅ COMPLETE - Feb 23 → Mar 15, 2026)
 
-**Goal:** Add basic offset calculation without corner intersections
+**Firmware Version:** firmware_v2.7_PHASE2_PERPENDICULAR_OFFSET.bin (451,608 bytes)  
+**Status:** ✅ COMPLETE - Perpendicular offset working, corner artifacts identified
 
-**To Be Implemented:**
-⏳ `calculate_perpendicular_offset()` function
-⏳ Apply offset to straight line endpoints
-⏳ Test with square path (gaps at corners expected)
-⏳ Validate parallel offset by radius amount
+**Implemented Features:**
+✅ `calculate_perpendicular_offset()` function
+✅ Apply offset to straight line endpoints
+✅ Tested with square path (offset applied successfully)
+✅ Offset magnitude correct by radius
+✅ Debug output shows compensated coordinates
+✅ G41 (LEFT) compensation working
+✅ G42 (RIGHT) compensation working
 
-**Intentionally Disabled for Phase 2:**
-- Corner intersection calculations
-- Lead-in move generation
-- Arc compensation
+**Known Limitation - Corner Diagonal Artifacts:**
+❌ Offset calculated independently per segment (entering direction only)
+❌ Gaps at corners manifest as diagonal shortcuts
+❌ Example: Corner at (50,0)→(50,50) shows comp[1]=(45,0) then comp[2]=(50,45)
+❌ Tool traces diagonal from (45,0) to (50,45) instead of clean corner
 
-**Expected Behavior:**
-- Straight lines offset perpendicular to direction by radius
-- Gaps at corners (acceptable for Phase 2)
-- No crashes or coordinate corruption
+**Cause:** Algorithm offset each intermediate point perpendicular to the segment leading INTO it, without considering the segment leaving FROM it. Geometrically incomplete.
+
+**Resolution:** Phase 3 implements true corner intersection geometry.
+
+---
+
+### Phase 3: Geometrically Correct Corner Intersection (✅ COMPLETE - April 1, 2026)
+
+**Firmware Version:** firmware_v2.7_PHASE3_CORNER_INTERSECTION_20260401.bin (450,816 bytes)  
+**Status:** ✅ FULLY VALIDATED - Perfect corners achieved, zero diagonal artifacts
+
+**Achievement:**
+✅ Eliminated corner diagonal artifacts completely
+✅ Unified A-B-C corner intersection algorithm
+✅ Handles three cases (onset/corner/terminal) with single formula
+✅ Code reduced from 120+ to ~50 lines (cleaner, more maintainable)
+✅ Machine testing confirms perfect corner geometry
+✅ Kivy log verification shows correct miter joins
+
+**Algorithm Summary:**
+- **Unified approach:** Single `calculate_corner_intersection()` for all three compute cases
+- **5-step geometry:** Direction vectors → perpendicular normals → offset lines → intersection
+- **Line-line intersection:** Parametric equation solving with epsilon tolerance
+- **Degenerate handling:** Onset (A=B) and Terminal (B=C) reduce to perpendicular offsets
+- **Implementation:** ~70 lines in calculate_corner_intersection(), 4 lines each in compute_and_output() and compute_terminal_output()
+
+**Test Results (from kivy_26-04-01_0.txt):**
+```
+Outer Square Compensation:
+  comp[0] = (0,5)     ← Onset perpendicular offset
+  comp[1] = (45,5)    ← Miter-joined corner intersection ✅
+  comp[2] = (45,45)   ← Miter-joined corner intersection ✅
+  comp[0] = (5,45)    ← Miter-joined corner intersection ✅
+
+"That last build executed with no diagonals and made perfect corners" - Operator Confirmation
+```
+
+**Verification Method:**
+- Square-in-square test program (double rectangular cut)
+- Both G41 (LEFT) and G42 (RIGHT) modes
+- Machine generated compensated coordinates extracted from Kivy log
+- Perfect 90° corners with no diagonal shortcuts
+- Dimension verification passed
+- No tool chatter, gouge, or hesitation
+
+**Code Changes:**
+- **CompensationPreprocessor.h:** Added `calculate_corner_intersection()` declaration
+- **CompensationPreprocessor.cpp:**
+  - Refactored `compute_and_output()` (120→50 lines, eliminated branching)
+  - Updated `compute_terminal_output()` (now calls unified function)
+  - Implemented `calculate_corner_intersection()` (70 lines)
+  - Removed duplicate perpendicular offset calculations
+
+**Comparison to Phase 2:**
+| Aspect | Phase 2 | Phase 3 | Result |
+|--------|---------|---------|--------|
+| Corner at (50,0)→(50,50) | comp[1]=(45,0), comp[2]=(50,45) | comp[1]=(45,5), comp[2]=(45,45) | **Perfect miter join!** |
+| Code branches | 2 separate paths | 1 unified path | **-58% code** |
+| Degenerate support | None (first point special case) | Built-in (A=B, B=C) | **Elegant** |
+| Corner quality | Diagonal artifacts ❌ | Zero artifacts ✅ | **Problem solved** |
+
+**For Complete Phase 3 Documentation:** See [PHASE3_CORNER_INTERSECTION_MILESTONE.md](./PHASE3_CORNER_INTERSECTION_MILESTONE.md)
+
+---
 
 ### Future Phases:
 
-**Phase 3: Corner Intersections (⏸️ FUTURE)**
-⏸️ Corner intersection calculations (code exists in corner_handling.cpp, needs integration)
+**Phase 4: Modal G-code Preservation (⏸️ FUTURE - Priority: MEDIUM)**
+⏸️ Currently: Outputs hardcoded "G1 X Y Z"
+⏸️ Enhancement: Preserve input motion mode (G0 rapid vs G1 feed)
+⏸️ Enhancement: Preserve feed rate (F word)
+⏸️ Impact: Proper rapid vs feed moves, machine velocity control
+
+**Phase 5: Advanced Features (⏸️ FUTURE - Priority: LOW)**
+⏸️ Arc-to-arc transitions (optimize corner handling for arc sequences)
+⏸️ Lead-in/lead-out moves (approach/retract paths)
+⏸️ Multi-tool strategies (tool library optimization)
+⏸️ CNC simulation tool (visual verification)
 ⏸️ Inside vs outside corner detection
 ⏸️ Intersection point calculation
 ⏸️ Eliminate gaps at corners
