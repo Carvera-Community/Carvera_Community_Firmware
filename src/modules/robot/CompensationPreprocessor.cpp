@@ -188,124 +188,62 @@ void CompensationPreprocessor::compute_and_output()
         THEKERNEL->streams->printf(">>COMPUTE: Target comp slot %d still occupied, skip\n", comp_idx);
         return;
     }
-    
-    // Calculate offset based on whether this is the first point or subsequent
+
     float offset[2];
-    bool success;
-    
+    bool success = false;
+    int idx_a = 0;
+    int idx_b = 0;
+    int idx_c = 0;
+
     if (first_output_pending) {
-        // ====================================================================
-        // SPECIAL CASE: First point after G41/G42 activation
-        // Use ONSET direction (current → next) to determine offset
-        // ====================================================================
-        
-        int uncomp_curr = uncomp_tail;
-        int uncomp_next = (uncomp_tail + 1) % BUFFER_SIZE;
-        const UncompPoint& curr = uncomp_ring[uncomp_curr];
-        const UncompPoint& next = uncomp_ring[uncomp_next];
-        
-        THEKERNEL->streams->printf(">>COMPUTE: FIRST POINT - using onset direction curr[%d]→next[%d]\n", 
-            uncomp_curr, uncomp_next);
-        THEKERNEL->streams->printf("  curr=(%.3f,%.3f,%.3f), next=(%.3f,%.3f,%.3f)\n",
-            curr.x, curr.y, curr.z, next.x, next.y, next.z);
-        
-        // Calculate offset using onset direction
-        success = calculate_perpendicular_offset(curr, next, offset);
-        
-        if (success) {
-            comp_ring[comp_idx].x = offset[0];
-            comp_ring[comp_idx].y = offset[1];
-            comp_ring[comp_idx].z = curr.z;
-            THEKERNEL->streams->printf(">>COMPUTE: First point offset - comp[%d]=(%.3f,%.3f,%.3f)\n",
-                comp_idx, offset[0], offset[1], curr.z);
-        } else {
-            // Zero-length move: use uncompensated coordinates
-            comp_ring[comp_idx].x = curr.x;
-            comp_ring[comp_idx].y = curr.y;
-            comp_ring[comp_idx].z = curr.z;
-            THEKERNEL->streams->printf(">>COMPUTE: First point - zero-length, no offset\n");
-        }
-        
-        // Build Gcode string
-        char gcode_str[128];
-        snprintf(gcode_str, sizeof(gcode_str), "G1 X%.3f Y%.3f Z%.3f",
-                 comp_ring[comp_idx].x, comp_ring[comp_idx].y, comp_ring[comp_idx].z);
-        
-        print_output(gcode_str);
-        
-        // Create and store Gcode object
-        THEKERNEL->streams->printf(">>COMPUTE: Creating first Gcode at comp[%d]\n", comp_idx);
-        comp_ring[comp_idx].gcode = new Gcode(gcode_str, &StreamOutput::NullStream);
-        THEKERNEL->streams->printf(">>COMPUTE: Gcode created at %p\n", 
-            (void*)comp_ring[comp_idx].gcode);
-        
-        if (comp_count < BUFFER_SIZE) {
-            comp_count++;
-        }
-        comp_ready_count++;
-        uncomp_tail = (uncomp_tail + 1) % BUFFER_SIZE;
-        comp_head = (comp_head + 1) % BUFFER_SIZE;
-        first_output_pending = false;
-
-        THEKERNEL->streams->printf(">>COMPUTE: EXIT - first point complete, comp_count=%d, comp_ready=%d, uncomp_tail=%d, comp_head=%d\n",
-            comp_count, comp_ready_count, uncomp_tail, comp_head);
-        
+        idx_b = uncomp_tail;
+        idx_a = idx_b; // Onset degenerates to perpendicular offset at the first point.
+        idx_c = (uncomp_tail + 1) % BUFFER_SIZE;
+        THEKERNEL->streams->printf(">>COMPUTE: FIRST POINT - A[%d]=B[%d], C[%d]\n", idx_a, idx_b, idx_c);
     } else {
-        // ====================================================================
-        // NORMAL CASE: Subsequent points (phase-locked processing)
-        // Use ENTRY direction (prev → current) to determine offset
-        // ====================================================================
-        
-        int uncomp_prev = uncomp_tail;
-        int uncomp_curr = (uncomp_tail + 1) % BUFFER_SIZE;
-        const UncompPoint& prev = uncomp_ring[uncomp_prev];
-        const UncompPoint& curr = uncomp_ring[uncomp_curr];
-        
-        THEKERNEL->streams->printf(">>COMPUTE: SUBSEQUENT POINT - using entry direction prev[%d]→curr[%d]\n",
-            uncomp_prev, uncomp_curr);
-        THEKERNEL->streams->printf("  prev=(%.3f,%.3f,%.3f), curr=(%.3f,%.3f,%.3f)\n",
-            prev.x, prev.y, prev.z, curr.x, curr.y, curr.z);
-        
-        // Calculate offset using entry direction
-        success = calculate_perpendicular_offset(prev, curr, offset);
-        
-        if (success) {
-            comp_ring[comp_idx].x = offset[0];
-            comp_ring[comp_idx].y = offset[1];
-            comp_ring[comp_idx].z = prev.z;
-            THEKERNEL->streams->printf(">>COMPUTE: Subsequent offset - comp[%d]=(%.3f,%.3f,%.3f)\n",
-                comp_idx, offset[0], offset[1], prev.z);
-        } else {
-            // Zero-length move: use uncompensated coordinates
-            comp_ring[comp_idx].x = prev.x;
-            comp_ring[comp_idx].y = prev.y;
-            comp_ring[comp_idx].z = prev.z;
-            THEKERNEL->streams->printf(">>COMPUTE: Subsequent - zero-length, no offset\n");
-        }
-        
-        // Build Gcode string
-        char gcode_str[128];
-        snprintf(gcode_str, sizeof(gcode_str), "G1 X%.3f Y%.3f Z%.3f",
-                 comp_ring[comp_idx].x, comp_ring[comp_idx].y, comp_ring[comp_idx].z);
-        
-        print_output(gcode_str);
-        
-        // Create and store Gcode object
-        THEKERNEL->streams->printf(">>COMPUTE: Creating subsequent Gcode at comp[%d]\n", comp_idx);
-        comp_ring[comp_idx].gcode = new Gcode(gcode_str, &StreamOutput::NullStream);
-        THEKERNEL->streams->printf(">>COMPUTE: Gcode created at %p\n", 
-            (void*)comp_ring[comp_idx].gcode);
-        
-        if (comp_count < BUFFER_SIZE) {
-            comp_count++;
-        }
-        comp_ready_count++;
-        uncomp_tail = (uncomp_tail + 1) % BUFFER_SIZE;
-        comp_head = (comp_head + 1) % BUFFER_SIZE;
-
-        THEKERNEL->streams->printf(">>COMPUTE: EXIT - subsequent complete, comp_count=%d, comp_ready=%d, uncomp_tail=%d, comp_head=%d\n",
-            comp_count, comp_ready_count, uncomp_tail, comp_head);
+        idx_b = uncomp_tail;
+        idx_a = (uncomp_tail - 1 + BUFFER_SIZE) % BUFFER_SIZE;
+        idx_c = (uncomp_tail + 1) % BUFFER_SIZE;
+        THEKERNEL->streams->printf(">>COMPUTE: CORNER POINT - A[%d], B[%d], C[%d]\n", idx_a, idx_b, idx_c);
     }
+
+    const UncompPoint& a = uncomp_ring[idx_a];
+    const UncompPoint& b = uncomp_ring[idx_b];
+    const UncompPoint& c = uncomp_ring[idx_c];
+
+    success = calculate_corner_intersection(a, b, c, offset);
+
+    if (success) {
+        comp_ring[comp_idx].x = offset[0];
+        comp_ring[comp_idx].y = offset[1];
+        comp_ring[comp_idx].z = b.z;
+        THEKERNEL->streams->printf(">>COMPUTE: Offset result - comp[%d]=(%.3f,%.3f,%.3f)\n",
+            comp_idx, offset[0], offset[1], b.z);
+    } else {
+        comp_ring[comp_idx].x = b.x;
+        comp_ring[comp_idx].y = b.y;
+        comp_ring[comp_idx].z = b.z;
+        THEKERNEL->streams->printf(">>COMPUTE: Degenerate motion - no offset\n");
+    }
+
+    char gcode_str[128];
+    snprintf(gcode_str, sizeof(gcode_str), "G1 X%.3f Y%.3f Z%.3f",
+             comp_ring[comp_idx].x, comp_ring[comp_idx].y, comp_ring[comp_idx].z);
+
+    print_output(gcode_str);
+
+    comp_ring[comp_idx].gcode = new Gcode(gcode_str, &StreamOutput::NullStream);
+
+    if (comp_count < BUFFER_SIZE) {
+        comp_count++;
+    }
+    comp_ready_count++;
+    uncomp_tail = (uncomp_tail + 1) % BUFFER_SIZE;
+    comp_head = (comp_head + 1) % BUFFER_SIZE;
+    first_output_pending = false;
+
+    THEKERNEL->streams->printf(">>COMPUTE: EXIT - complete, comp_count=%d, comp_ready=%d, uncomp_tail=%d, comp_head=%d\n",
+        comp_count, comp_ready_count, uncomp_tail, comp_head);
 }
 
 bool CompensationPreprocessor::compute_terminal_output()
@@ -326,32 +264,16 @@ bool CompensationPreprocessor::compute_terminal_output()
     const UncompPoint& prev = uncomp_ring[prev_idx];
     const UncompPoint& curr = uncomp_ring[last_idx];
 
-    float dx = curr.x - prev.x;
-    float dy = curr.y - prev.y;
-    float mag = sqrtf(dx*dx + dy*dy);
-
-    if (mag < 0.1f) {
+    float offset[2];
+    bool success = calculate_corner_intersection(prev, curr, curr, offset);
+    if (success) {
+        comp_ring[comp_idx].x = offset[0];
+        comp_ring[comp_idx].y = offset[1];
+    } else {
         comp_ring[comp_idx].x = curr.x;
         comp_ring[comp_idx].y = curr.y;
-        comp_ring[comp_idx].z = curr.z;
-    } else {
-        float dir_x = dx / mag;
-        float dir_y = dy / mag;
-        float normal_x;
-        float normal_y;
-
-        if (comp_type == CompensationType::LEFT) {
-            normal_x = -dir_y;
-            normal_y = dir_x;
-        } else {
-            normal_x = dir_y;
-            normal_y = -dir_x;
-        }
-
-        comp_ring[comp_idx].x = curr.x + normal_x * comp_radius;
-        comp_ring[comp_idx].y = curr.y + normal_y * comp_radius;
-        comp_ring[comp_idx].z = curr.z;
     }
+    comp_ring[comp_idx].z = curr.z;
 
     char gcode_str[128];
     snprintf(gcode_str, sizeof(gcode_str), "G1 X%.3f Y%.3f Z%.3f",
@@ -410,6 +332,77 @@ bool CompensationPreprocessor::calculate_perpendicular_offset(
     // Debug output
     print_offset_calc(prev, curr, dir, normal, output);
     
+    return true;
+}
+
+bool CompensationPreprocessor::calculate_corner_intersection(
+    const UncompPoint& a,
+    const UncompPoint& b,
+    const UncompPoint& c,
+    float output[2])
+{
+    const float epsilon = 0.0001f;
+
+    float u_in[2] = { b.x - a.x, b.y - a.y };
+    float u_out[2] = { c.x - b.x, c.y - b.y };
+
+    float mag_in = sqrtf(u_in[0] * u_in[0] + u_in[1] * u_in[1]);
+    float mag_out = sqrtf(u_out[0] * u_out[0] + u_out[1] * u_out[1]);
+
+    if (mag_in < epsilon && mag_out < epsilon) {
+        return false;
+    }
+
+    if (mag_in >= epsilon) {
+        u_in[0] /= mag_in;
+        u_in[1] /= mag_in;
+    }
+
+    if (mag_out >= epsilon) {
+        u_out[0] /= mag_out;
+        u_out[1] /= mag_out;
+    }
+
+    // Degenerate endpoint handling: if one direction is missing, reuse the other.
+    if (mag_in < epsilon) {
+        u_in[0] = u_out[0];
+        u_in[1] = u_out[1];
+    }
+    if (mag_out < epsilon) {
+        u_out[0] = u_in[0];
+        u_out[1] = u_in[1];
+    }
+
+    float n_in[2];
+    float n_out[2];
+    if (comp_type == CompensationType::LEFT) {
+        n_in[0] = -u_in[1];
+        n_in[1] = u_in[0];
+        n_out[0] = -u_out[1];
+        n_out[1] = u_out[0];
+    } else {
+        n_in[0] = u_in[1];
+        n_in[1] = -u_in[0];
+        n_out[0] = u_out[1];
+        n_out[1] = -u_out[0];
+    }
+
+    float p1[2] = { b.x + n_in[0] * comp_radius, b.y + n_in[1] * comp_radius };
+    float p2[2] = { b.x + n_out[0] * comp_radius, b.y + n_out[1] * comp_radius };
+
+    float denom = u_in[0] * u_out[1] - u_in[1] * u_out[0];
+    if (fabsf(denom) < epsilon) {
+        output[0] = p1[0];
+        output[1] = p1[1];
+        return true;
+    }
+
+    float p2_minus_p1[2] = { p2[0] - p1[0], p2[1] - p1[1] };
+    float s = cross_product_2d(p2_minus_p1, u_out) / denom;
+
+    output[0] = p1[0] + s * u_in[0];
+    output[1] = p1[1] + s * u_in[1];
+
     return true;
 }
 
