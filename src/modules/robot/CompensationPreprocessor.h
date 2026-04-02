@@ -159,6 +159,17 @@ private:
         const UncompPoint& curr,
         float output[2]
     );
+
+    /**
+     * Calculate compensated corner point for B using A-B-C triplet.
+     * Degenerate cases (A==B or B==C) reduce to a perpendicular offset.
+     */
+    bool calculate_corner_intersection(
+        const UncompPoint& a,
+        const UncompPoint& b,
+        const UncompPoint& c,
+        float output[2]
+    );
     
     // Geometry utilities
     float cross_product_2d(const float v1[2], const float v2[2]) {
