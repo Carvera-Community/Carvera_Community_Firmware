@@ -13,7 +13,18 @@
 #include <cmath>
 #include <cstdint>
 
+#ifndef CUTTER_COMPENSATION_TRACE_ENABLED
+#define CUTTER_COMPENSATION_TRACE_ENABLED 0
+#endif
+
+#if CUTTER_COMPENSATION_TRACE_ENABLED
+#define COMPENSATION_TRACE_PRINTF(stream, ...) do { (stream)->printf(__VA_ARGS__); } while (0)
+#else
+#define COMPENSATION_TRACE_PRINTF(stream, ...) do { } while (0)
+#endif
+
 class Gcode;
+class StreamOutput;
 
 /**
  * Cutter Compensation Preprocessor v2.0 - Bolt-On Architecture
@@ -30,6 +41,22 @@ class Gcode;
  */
 class CompensationPreprocessor {
 public:
+    struct LoadBalanceMetrics {
+        uint32_t input_gcode_count;
+        uint32_t generated_gcode_count;
+        uint32_t served_gcode_count;
+        uint32_t compute_count;
+        uint32_t priming_wait_count;
+        uint32_t load_balance_wait_count;
+        uint32_t empty_serve_count;
+        uint32_t sample_count;
+        int32_t cumulative_ready_margin;
+        int32_t min_ready_margin;
+        int32_t max_ready_margin;
+        uint8_t max_uncomp_depth;
+        uint8_t max_comp_ready_depth;
+    };
+
     CompensationPreprocessor();
     ~CompensationPreprocessor();
     
@@ -44,6 +71,23 @@ public:
      * Check if compensation is active
      */
     bool is_active() const { return comp_active; }
+
+    /**
+     * Get cumulative load-balance metrics for the dual-buffer pipeline.
+     */
+    const LoadBalanceMetrics& get_load_balance_metrics() const { return load_balance_metrics; }
+
+    /**
+     * Reset cumulative load-balance metrics without disturbing buffer state.
+     */
+    void reset_load_balance_metrics();
+
+    /**
+     * Print a human-readable load-balance report to the given stream.
+     * Called once at the end of a G40 flush so the report appears in the
+     * operator console without adding any per-move I/O overhead.
+     */
+    void print_load_balance_report(StreamOutput* stream) const;
     
     /**
      * Buffer a G-code for processing
@@ -124,10 +168,12 @@ private:
     bool has_initial_position;      // True once G41/G42 starting position is captured
     uint8_t last_g;                 // Last G-code number seen (for modal G-codes)
     float initial_position[3];      // WCS position captured when compensation activates
+    LoadBalanceMetrics load_balance_metrics;
     
     // Helper functions
     int get_comp_head() const { return comp_head; }
     int get_comp_tail() const { return comp_tail; }
+    void record_load_balance_sample();
     
     /**
      * Compute compensated coordinates and output
@@ -186,7 +232,7 @@ private:
     }
     
     // ========================================================================
-    // PHASE 2: DEBUG OUTPUT FUNCTIONS FOR DUAL BUFFER VISIBILITY
+    // PHASE 2: TRACE OUTPUT FUNCTIONS FOR DUAL BUFFER VISIBILITY
     // ========================================================================
     void print_uncomp_buffered();
     void print_offset_calc(const UncompPoint& prev, const UncompPoint& curr, 

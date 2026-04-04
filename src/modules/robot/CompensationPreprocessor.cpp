@@ -21,8 +21,56 @@
 
 using namespace std;
 
+void CompensationPreprocessor::reset_load_balance_metrics()
+{
+    load_balance_metrics.input_gcode_count = 0;
+    load_balance_metrics.generated_gcode_count = 0;
+    load_balance_metrics.served_gcode_count = 0;
+    load_balance_metrics.compute_count = 0;
+    load_balance_metrics.priming_wait_count = 0;
+    load_balance_metrics.load_balance_wait_count = 0;
+    load_balance_metrics.empty_serve_count = 0;
+    load_balance_metrics.sample_count = 0;
+    load_balance_metrics.cumulative_ready_margin = 0;
+    load_balance_metrics.min_ready_margin = 0;
+    load_balance_metrics.max_ready_margin = 0;
+    load_balance_metrics.max_uncomp_depth = 0;
+    load_balance_metrics.max_comp_ready_depth = 0;
+}
+
+void CompensationPreprocessor::record_load_balance_sample()
+{
+    int ready_margin = comp_ready_count - uncomp_count;
+
+    if (uncomp_count > load_balance_metrics.max_uncomp_depth) {
+        load_balance_metrics.max_uncomp_depth = uncomp_count;
+    }
+
+    if (comp_ready_count > load_balance_metrics.max_comp_ready_depth) {
+        load_balance_metrics.max_comp_ready_depth = comp_ready_count;
+    }
+
+    if (load_balance_metrics.sample_count == 0) {
+        load_balance_metrics.min_ready_margin = ready_margin;
+        load_balance_metrics.max_ready_margin = ready_margin;
+    } else {
+        if (ready_margin < load_balance_metrics.min_ready_margin) {
+            load_balance_metrics.min_ready_margin = ready_margin;
+        }
+
+        if (ready_margin > load_balance_metrics.max_ready_margin) {
+            load_balance_metrics.max_ready_margin = ready_margin;
+        }
+    }
+
+    load_balance_metrics.sample_count++;
+    load_balance_metrics.cumulative_ready_margin += ready_margin;
+}
+
 CompensationPreprocessor::CompensationPreprocessor()
 {
+    reset_load_balance_metrics();
+
     // Initialize uncomp buffer
     uncomp_head = 0;
     uncomp_tail = 0;
@@ -66,7 +114,7 @@ CompensationPreprocessor::~CompensationPreprocessor()
 
 void CompensationPreprocessor::set_compensation(CompensationType type, float radius)
 {
-    THEKERNEL->streams->printf(">>SET_COMP: ENTRY - type=%d, radius=%.3f\n", (int)type, radius);
+    COMPENSATION_TRACE_PRINTF(THEKERNEL->streams, ">>SET_COMP: ENTRY - type=%d, radius=%.3f\n", (int)type, radius);
     
     comp_type = type;
     comp_radius = radius;
@@ -78,12 +126,12 @@ void CompensationPreprocessor::set_compensation(CompensationType type, float rad
         pipeline_primed = false;
         first_output_pending = true;
         has_initial_position = false;
-        THEKERNEL->streams->printf(">>PHASE2: G40 activated - compensation OFF\n");
+        COMPENSATION_TRACE_PRINTF(THEKERNEL->streams, ">>PHASE2: G40 activated - compensation OFF\n");
     } else {
         // G41/G42 - Turn on compensation
-        THEKERNEL->streams->printf(">>PHASE2: G41/G42 called - clearing buffer (count was %d)\n", uncomp_count);
+        COMPENSATION_TRACE_PRINTF(THEKERNEL->streams, ">>PHASE2: G41/G42 called - clearing buffer (count was %d)\n", uncomp_count);
         clear();
-        THEKERNEL->streams->printf(">>SET_COMP: clear() returned successfully\n");
+        COMPENSATION_TRACE_PRINTF(THEKERNEL->streams, ">>SET_COMP: clear() returned successfully\n");
         
         is_flushing = false;
         comp_active = true;
@@ -92,19 +140,22 @@ void CompensationPreprocessor::set_compensation(CompensationType type, float rad
         has_initial_position = false;
         
         const char* side_str = (type == CompensationType::LEFT) ? "LEFT (G41)" : "RIGHT (G42)";
-        THEKERNEL->streams->printf(">>PHASE2: Compensation activated - type=%s, radius=%.3f\n", side_str, radius);
+        COMPENSATION_TRACE_PRINTF(THEKERNEL->streams, ">>PHASE2: Compensation activated - type=%s, radius=%.3f\n", side_str, radius);
     }
     
-    THEKERNEL->streams->printf(">>SET_COMP: EXIT - comp_active=%d\n", comp_active);
+    COMPENSATION_TRACE_PRINTF(THEKERNEL->streams, ">>SET_COMP: EXIT - comp_active=%d\n", comp_active);
 }
 
 Gcode* CompensationPreprocessor::buffer_gcode(Gcode* gcode)
 {
-    THEKERNEL->streams->printf(">>BUFFER_GCODE: ENTRY - gcode=%p, uncomp_count=%d, comp_ready=%d\n",
+    load_balance_metrics.input_gcode_count++;
+    COMPENSATION_TRACE_PRINTF(THEKERNEL->streams, ">>BUFFER_GCODE: ENTRY - gcode=%p, uncomp_count=%d, comp_ready=%d\n",
         (void*)gcode, uncomp_count, comp_ready_count);
 
     if (gcode == nullptr) {
-        THEKERNEL->streams->printf(">>BUFFER_GCODE: Null gcode pointer\n");
+        load_balance_metrics.load_balance_wait_count++;
+        record_load_balance_sample();
+        COMPENSATION_TRACE_PRINTF(THEKERNEL->streams, ">>BUFFER_GCODE: Null gcode pointer\n");
         return nullptr;
     }
     
@@ -113,11 +164,11 @@ Gcode* CompensationPreprocessor::buffer_gcode(Gcode* gcode)
     
     if (uncomp_count == 0) {
         // First point - use explicit coordinates or captured activation position
-        THEKERNEL->streams->printf(">>BUFFER_GCODE: First move after compensation activation\n");
+        COMPENSATION_TRACE_PRINTF(THEKERNEL->streams, ">>BUFFER_GCODE: First move after compensation activation\n");
         x = gcode->has_letter('X') ? gcode->get_value('X') : initial_position[X_AXIS];
         y = gcode->has_letter('Y') ? gcode->get_value('Y') : initial_position[Y_AXIS];
         z = gcode->has_letter('Z') ? gcode->get_value('Z') : initial_position[Z_AXIS];
-        THEKERNEL->streams->printf(">>BUFFER_GCODE: Coords X=%.3f Y=%.3f Z=%.3f\n", x, y, z);
+        COMPENSATION_TRACE_PRINTF(THEKERNEL->streams, ">>BUFFER_GCODE: Coords X=%.3f Y=%.3f Z=%.3f\n", x, y, z);
     } else {
         // Use modal coordinates (last position if not specified)
         int prev_idx = (uncomp_head - 1 + BUFFER_SIZE) % BUFFER_SIZE;
@@ -139,28 +190,38 @@ Gcode* CompensationPreprocessor::buffer_gcode(Gcode* gcode)
     print_uncomp_buffered();
 
     if (uncomp_count < BUFFER_SIZE) {
-        THEKERNEL->streams->printf(">>BUFFER_GCODE: Priming uncomp buffer (count=%d)\n", uncomp_count);
+        load_balance_metrics.priming_wait_count++;
+        load_balance_metrics.load_balance_wait_count++;
+        record_load_balance_sample();
+        COMPENSATION_TRACE_PRINTF(THEKERNEL->streams, ">>BUFFER_GCODE: Priming uncomp buffer (count=%d)\n", uncomp_count);
         return nullptr;
     }
 
     if (!pipeline_primed) {
-        THEKERNEL->streams->printf(">>BUFFER_GCODE: First full cycle - priming with double compute\n");
+        load_balance_metrics.priming_wait_count++;
+        load_balance_metrics.load_balance_wait_count++;
+        COMPENSATION_TRACE_PRINTF(THEKERNEL->streams, ">>BUFFER_GCODE: First full cycle - priming with double compute\n");
         compute_and_output();
         if (comp_ready_count < BUFFER_SIZE) {
             compute_and_output();
         }
         pipeline_primed = true;
         print_buffer_state();
+        record_load_balance_sample();
         return nullptr;
     }
     
     if (comp_ready_count < BUFFER_SIZE) {
-        THEKERNEL->streams->printf(">>BUFFER_GCODE: Steady-state single compute\n");
+        COMPENSATION_TRACE_PRINTF(THEKERNEL->streams, ">>BUFFER_GCODE: Steady-state single compute\n");
         compute_and_output();
     }
 
     Gcode* output = serve_compensated_gcode(false);
-    THEKERNEL->streams->printf(">>BUFFER_GCODE: EXIT - returning %p\n", (void*)output);
+    if (output == nullptr) {
+        load_balance_metrics.load_balance_wait_count++;
+    }
+    record_load_balance_sample();
+    COMPENSATION_TRACE_PRINTF(THEKERNEL->streams, ">>BUFFER_GCODE: EXIT - returning %p\n", (void*)output);
     return output;
 }
 
@@ -170,22 +231,26 @@ Gcode* CompensationPreprocessor::buffer_gcode(Gcode* gcode)
 
 void CompensationPreprocessor::compute_and_output()
 {
-    THEKERNEL->streams->printf(">>COMPUTE: ENTRY - uncomp_count=%d, comp_count=%d, comp_ready=%d\n",
+    load_balance_metrics.compute_count++;
+    COMPENSATION_TRACE_PRINTF(THEKERNEL->streams, ">>COMPUTE: ENTRY - uncomp_count=%d, comp_count=%d, comp_ready=%d\n",
         uncomp_count, comp_count, comp_ready_count);
 
     if (uncomp_count < 2) {
-        THEKERNEL->streams->printf(">>COMPUTE: Not enough uncomp points to compute\n");
+        record_load_balance_sample();
+        COMPENSATION_TRACE_PRINTF(THEKERNEL->streams, ">>COMPUTE: Not enough uncomp points to compute\n");
         return;
     }
 
     if (comp_ready_count >= BUFFER_SIZE) {
-        THEKERNEL->streams->printf(">>COMPUTE: Comp ring has no free slot, skip\n");
+        record_load_balance_sample();
+        COMPENSATION_TRACE_PRINTF(THEKERNEL->streams, ">>COMPUTE: Comp ring has no free slot, skip\n");
         return;
     }
 
     int comp_idx = comp_head;
     if (comp_ring[comp_idx].gcode != nullptr) {
-        THEKERNEL->streams->printf(">>COMPUTE: Target comp slot %d still occupied, skip\n", comp_idx);
+        record_load_balance_sample();
+        COMPENSATION_TRACE_PRINTF(THEKERNEL->streams, ">>COMPUTE: Target comp slot %d still occupied, skip\n", comp_idx);
         return;
     }
 
@@ -199,12 +264,12 @@ void CompensationPreprocessor::compute_and_output()
         idx_b = uncomp_tail;
         idx_a = idx_b; // Onset degenerates to perpendicular offset at the first point.
         idx_c = (uncomp_tail + 1) % BUFFER_SIZE;
-        THEKERNEL->streams->printf(">>COMPUTE: FIRST POINT - A[%d]=B[%d], C[%d]\n", idx_a, idx_b, idx_c);
+        COMPENSATION_TRACE_PRINTF(THEKERNEL->streams, ">>COMPUTE: FIRST POINT - A[%d]=B[%d], C[%d]\n", idx_a, idx_b, idx_c);
     } else {
         idx_b = uncomp_tail;
         idx_a = (uncomp_tail - 1 + BUFFER_SIZE) % BUFFER_SIZE;
         idx_c = (uncomp_tail + 1) % BUFFER_SIZE;
-        THEKERNEL->streams->printf(">>COMPUTE: CORNER POINT - A[%d], B[%d], C[%d]\n", idx_a, idx_b, idx_c);
+        COMPENSATION_TRACE_PRINTF(THEKERNEL->streams, ">>COMPUTE: CORNER POINT - A[%d], B[%d], C[%d]\n", idx_a, idx_b, idx_c);
     }
 
     const UncompPoint& a = uncomp_ring[idx_a];
@@ -217,13 +282,13 @@ void CompensationPreprocessor::compute_and_output()
         comp_ring[comp_idx].x = offset[0];
         comp_ring[comp_idx].y = offset[1];
         comp_ring[comp_idx].z = b.z;
-        THEKERNEL->streams->printf(">>COMPUTE: Offset result - comp[%d]=(%.3f,%.3f,%.3f)\n",
+        COMPENSATION_TRACE_PRINTF(THEKERNEL->streams, ">>COMPUTE: Offset result - comp[%d]=(%.3f,%.3f,%.3f)\n",
             comp_idx, offset[0], offset[1], b.z);
     } else {
         comp_ring[comp_idx].x = b.x;
         comp_ring[comp_idx].y = b.y;
         comp_ring[comp_idx].z = b.z;
-        THEKERNEL->streams->printf(">>COMPUTE: Degenerate motion - no offset\n");
+        COMPENSATION_TRACE_PRINTF(THEKERNEL->streams, ">>COMPUTE: Degenerate motion - no offset\n");
     }
 
     char gcode_str[128];
@@ -233,6 +298,7 @@ void CompensationPreprocessor::compute_and_output()
     print_output(gcode_str);
 
     comp_ring[comp_idx].gcode = new Gcode(gcode_str, &StreamOutput::NullStream);
+    load_balance_metrics.generated_gcode_count++;
 
     if (comp_count < BUFFER_SIZE) {
         comp_count++;
@@ -241,8 +307,9 @@ void CompensationPreprocessor::compute_and_output()
     uncomp_tail = (uncomp_tail + 1) % BUFFER_SIZE;
     comp_head = (comp_head + 1) % BUFFER_SIZE;
     first_output_pending = false;
+    record_load_balance_sample();
 
-    THEKERNEL->streams->printf(">>COMPUTE: EXIT - complete, comp_count=%d, comp_ready=%d, uncomp_tail=%d, comp_head=%d\n",
+    COMPENSATION_TRACE_PRINTF(THEKERNEL->streams, ">>COMPUTE: EXIT - complete, comp_count=%d, comp_ready=%d, uncomp_tail=%d, comp_head=%d\n",
         comp_count, comp_ready_count, uncomp_tail, comp_head);
 }
 
@@ -257,7 +324,8 @@ bool CompensationPreprocessor::compute_terminal_output()
     int comp_idx = comp_head;
 
     if (comp_ring[comp_idx].gcode != nullptr) {
-        THEKERNEL->streams->printf(">>TERMINAL: Target comp slot %d still occupied, skip\n", comp_idx);
+        record_load_balance_sample();
+        COMPENSATION_TRACE_PRINTF(THEKERNEL->streams, ">>TERMINAL: Target comp slot %d still occupied, skip\n", comp_idx);
         return false;
     }
 
@@ -280,6 +348,7 @@ bool CompensationPreprocessor::compute_terminal_output()
              comp_ring[comp_idx].x, comp_ring[comp_idx].y, comp_ring[comp_idx].z);
 
     comp_ring[comp_idx].gcode = new Gcode(gcode_str, &StreamOutput::NullStream);
+    load_balance_metrics.generated_gcode_count++;
 
     comp_head = (comp_head + 1) % BUFFER_SIZE;
     comp_ready_count++;
@@ -287,8 +356,9 @@ bool CompensationPreprocessor::compute_terminal_output()
         comp_count++;
     }
     uncomp_tail = uncomp_head;
+    record_load_balance_sample();
 
-    THEKERNEL->streams->printf(">>TERMINAL: Added final point comp[%d], comp_ready=%d\n", comp_idx, comp_ready_count);
+    COMPENSATION_TRACE_PRINTF(THEKERNEL->streams, ">>TERMINAL: Added final point comp[%d], comp_ready=%d\n", comp_idx, comp_ready_count);
     return true;
 }
 
@@ -411,9 +481,51 @@ Gcode* CompensationPreprocessor::get_compensated_gcode()
     return serve_compensated_gcode(true);
 }
 
+void CompensationPreprocessor::print_load_balance_report(StreamOutput* stream) const
+{
+    const LoadBalanceMetrics& m = load_balance_metrics;
+    uint32_t pull_requests = m.served_gcode_count + m.empty_serve_count;
+    float avg_margin = (m.sample_count > 0)
+        ? (float)m.cumulative_ready_margin / (float)m.sample_count
+        : 0.0f;
+    float pull_hit_rate = (pull_requests > 0)
+        ? ((float)m.served_gcode_count * 100.0f) / (float)pull_requests
+        : 100.0f;
+    float pull_miss_rate = (pull_requests > 0)
+        ? ((float)m.empty_serve_count * 100.0f) / (float)pull_requests
+        : 0.0f;
+    float prod_vs_pull = (pull_requests > 0)
+        ? ((float)m.generated_gcode_count * 100.0f) / (float)pull_requests
+        : 100.0f;
+
+    stream->printf(
+        "COMP_LB: in=%lu gen=%lu srv=%lu compute=%lu prime_wait=%lu lb_wait=%lu empty_srv=%lu "
+        "pull_req=%lu hit=%.1f%% miss=%.1f%% prod_vs_pull=%.1f%% "
+        "samples=%lu avg_margin=%.2f min_margin=%ld max_margin=%ld "
+        "max_uncomp=%u max_comp_ready=%u\n",
+        (unsigned long)m.input_gcode_count,
+        (unsigned long)m.generated_gcode_count,
+        (unsigned long)m.served_gcode_count,
+        (unsigned long)m.compute_count,
+        (unsigned long)m.priming_wait_count,
+        (unsigned long)m.load_balance_wait_count,
+        (unsigned long)m.empty_serve_count,
+        (unsigned long)pull_requests,
+        pull_hit_rate,
+        pull_miss_rate,
+        prod_vs_pull,
+        (unsigned long)m.sample_count,
+        avg_margin,
+        (long)m.min_ready_margin,
+        (long)m.max_ready_margin,
+        (unsigned)m.max_uncomp_depth,
+        (unsigned)m.max_comp_ready_depth
+    );
+}
+
 void CompensationPreprocessor::flush()
 {
-    THEKERNEL->streams->printf(">>FLUSH: ENTRY - uncomp_count=%d comp_count=%d comp_ready=%d\n",
+    COMPENSATION_TRACE_PRINTF(THEKERNEL->streams, ">>FLUSH: ENTRY - uncomp_count=%d comp_count=%d comp_ready=%d\n",
         uncomp_count, comp_count, comp_ready_count);
 
     is_flushing = true;
@@ -426,25 +538,26 @@ void CompensationPreprocessor::flush()
 
     uncomp_count = comp_ready_count;
     comp_count = comp_ready_count;
+    record_load_balance_sample();
 
-    THEKERNEL->streams->printf(">>FLUSH: EXIT - drain ready uncomp=%d comp=%d\n", uncomp_count, comp_count);
+    COMPENSATION_TRACE_PRINTF(THEKERNEL->streams, ">>FLUSH: EXIT - drain ready uncomp=%d comp=%d\n", uncomp_count, comp_count);
 }
 
 void CompensationPreprocessor::clear()
 {
-    THEKERNEL->streams->printf(">>CLEAR: Starting clear() - comp_count=%d, uncomp_count=%d\n", comp_count, uncomp_count);
+    COMPENSATION_TRACE_PRINTF(THEKERNEL->streams, ">>CLEAR: Starting clear() - comp_count=%d, uncomp_count=%d\n", comp_count, uncomp_count);
     
     // Delete any remaining Gcode objects to prevent memory leaks
     for (int i = 0; i < BUFFER_SIZE; i++) {
         if (comp_ring[i].gcode != nullptr) {
-            THEKERNEL->streams->printf(">>CLEAR: Deleting Gcode* at index %d (ptr=%p)\n", i, (void*)comp_ring[i].gcode);
+            COMPENSATION_TRACE_PRINTF(THEKERNEL->streams, ">>CLEAR: Deleting Gcode* at index %d (ptr=%p)\n", i, (void*)comp_ring[i].gcode);
             delete comp_ring[i].gcode;
             comp_ring[i].gcode = nullptr;
-            THEKERNEL->streams->printf(">>CLEAR: Deleted and nullified index %d\n", i);
+            COMPENSATION_TRACE_PRINTF(THEKERNEL->streams, ">>CLEAR: Deleted and nullified index %d\n", i);
         }
     }
     
-    THEKERNEL->streams->printf(">>CLEAR: All Gcode* objects deleted\n");
+    COMPENSATION_TRACE_PRINTF(THEKERNEL->streams, ">>CLEAR: All Gcode* objects deleted\n");
     
     // Reset buffer indices and counts
     uncomp_head = 0;
@@ -461,8 +574,9 @@ void CompensationPreprocessor::clear()
     initial_position[0] = 0.0f;
     initial_position[1] = 0.0f;
     initial_position[2] = 0.0f;
+    record_load_balance_sample();
     
-    THEKERNEL->streams->printf(">>CLEAR: Buffer indices reset\n");
+    COMPENSATION_TRACE_PRINTF(THEKERNEL->streams, ">>CLEAR: Buffer indices reset\n");
     
     // Zero out buffer memory
     for (int i = 0; i < BUFFER_SIZE; i++) {
@@ -474,7 +588,7 @@ void CompensationPreprocessor::clear()
         comp_ring[i].z = 0.0f;
     }
     
-    THEKERNEL->streams->printf(">>CLEAR: Complete - buffers zeroed\n");
+    COMPENSATION_TRACE_PRINTF(THEKERNEL->streams, ">>CLEAR: Complete - buffers zeroed\n");
 }
 
 void CompensationPreprocessor::set_initial_position(const float position[3])
@@ -487,11 +601,13 @@ void CompensationPreprocessor::set_initial_position(const float position[3])
 
 Gcode* CompensationPreprocessor::serve_compensated_gcode(bool draining)
 {
-    THEKERNEL->streams->printf(">>SERVE_GCODE: ENTRY - draining=%d comp_count=%d comp_ready=%d comp_tail=%d\n",
+    COMPENSATION_TRACE_PRINTF(THEKERNEL->streams, ">>SERVE_GCODE: ENTRY - draining=%d comp_count=%d comp_ready=%d comp_tail=%d\n",
         draining ? 1 : 0, comp_count, comp_ready_count, comp_tail);
 
     if (comp_ready_count == 0) {
-        THEKERNEL->streams->printf(">>SERVE_GCODE: No compensated moves available\n");
+        load_balance_metrics.empty_serve_count++;
+        record_load_balance_sample();
+        COMPENSATION_TRACE_PRINTF(THEKERNEL->streams, ">>SERVE_GCODE: No compensated moves available\n");
         return nullptr;
     }
 
@@ -499,6 +615,7 @@ Gcode* CompensationPreprocessor::serve_compensated_gcode(bool draining)
     comp_ring[comp_tail].gcode = nullptr;
     comp_tail = (comp_tail + 1) % BUFFER_SIZE;
     comp_ready_count--;
+    load_balance_metrics.served_gcode_count++;
 
     if (draining) {
         if (comp_count > 0) {
@@ -511,8 +628,9 @@ Gcode* CompensationPreprocessor::serve_compensated_gcode(bool draining)
             is_flushing = false;
         }
     }
+    record_load_balance_sample();
 
-    THEKERNEL->streams->printf(">>SERVE_GCODE: EXIT - returning %p, counts now uncomp=%d comp=%d ready=%d\n",
+    COMPENSATION_TRACE_PRINTF(THEKERNEL->streams, ">>SERVE_GCODE: EXIT - returning %p, counts now uncomp=%d comp=%d ready=%d\n",
         (void*)result, uncomp_count, comp_count, comp_ready_count);
 
     return result;
@@ -540,8 +658,8 @@ void CompensationPreprocessor::print_buffer_state()
     const char* comp_str = "NONE";
     if (comp_type == CompensationType::LEFT) comp_str = "LEFT";
     else if (comp_type == CompensationType::RIGHT) comp_str = "RIGHT";
-    
-    THEKERNEL->streams->printf(">>BUFFER_STATE: uncomp_count=%d, uncomp_head=%d, uncomp_tail=%d, comp_count=%d, comp=%s, radius=%.3f\n",
+
+    COMPENSATION_TRACE_PRINTF(THEKERNEL->streams, ">>BUFFER_STATE: uncomp_count=%d, uncomp_head=%d, uncomp_tail=%d, comp_count=%d, comp=%s, radius=%.3f\n",
         uncomp_count, uncomp_head, uncomp_tail, comp_count, comp_str, comp_radius);
 }
 
