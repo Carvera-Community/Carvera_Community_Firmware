@@ -618,7 +618,7 @@ void Robot::on_gcode_received(void *argument)
     // PHASE1: Simple pass-through mode - NO BUFFERING when compensation is OFF
     // This isolates the buffer testing to only when explicitly activated
     if (!compensation_preprocessor->is_active()) {
-        gcode->stream->printf(">>PASSTHROUGH: %s (comp=OFF, no buffering)\n", gcode->get_command());
+        COMPENSATION_TRACE_PRINTF(gcode->stream, ">>PASSTHROUGH: %s (comp=OFF, no buffering)\n", gcode->get_command());
         process_buffered_command(gcode);
         return;
     }
@@ -627,14 +627,14 @@ void Robot::on_gcode_received(void *argument)
     // G40 needs to flush the buffer, so it must execute immediately
     // G41/G42 need to clear/reset the buffer, so they must execute immediately
     if (gcode->has_g && (gcode->g == 40 || gcode->g == 41 || gcode->g == 42)) {
-        gcode->stream->printf(">>BYPASS_BUFFER: G%d %s (compensation control command)\n", 
+        COMPENSATION_TRACE_PRINTF(gcode->stream, ">>BYPASS_BUFFER: G%d %s (compensation control command)\n", 
             gcode->g, gcode->get_command());
         process_buffered_command(gcode);
         return;
     }
     
     // Cutter compensation v2.0: Buffer commands when compensation is ON
-    gcode->stream->printf(">>BUFFER: %s (count=%d, comp=%s)\n", 
+    COMPENSATION_TRACE_PRINTF(gcode->stream, ">>BUFFER: %s (count=%d, comp=%s)\n", 
         gcode->get_command(), 
         compensation_preprocessor->get_buffer_count(),
         compensation_preprocessor->is_active() ? "ON" : "OFF");
@@ -642,13 +642,13 @@ void Robot::on_gcode_received(void *argument)
     Gcode* output = compensation_preprocessor->buffer_gcode(gcode);
 
     if (output != nullptr) {
-        gcode->stream->printf(">>OUTPUT: %s (buffer_count=%d)\n",
+        COMPENSATION_TRACE_PRINTF(gcode->stream, ">>OUTPUT: %s (buffer_count=%d)\n",
             output->get_command(), compensation_preprocessor->get_buffer_count());
 
         process_buffered_command(output);
         delete output;
     } else if (compensation_preprocessor->get_buffer_count() > 0) {
-        gcode->stream->printf(">>BUFFERING: need more lookahead (count=%d)\n",
+        COMPENSATION_TRACE_PRINTF(gcode->stream, ">>BUFFERING: need more lookahead (count=%d)\n",
             compensation_preprocessor->get_buffer_count());
     }
 
@@ -826,7 +826,7 @@ void Robot::process_buffered_command(Gcode *gcode)
             // Cutter compensation (v2.0 bolt-on architecture)
             case 40: // G40 - Compensation Off
             {
-                gcode->stream->printf(">>G40: Flushing buffer (count=%d)\n", compensation_preprocessor->get_buffer_count());
+                COMPENSATION_TRACE_PRINTF(gcode->stream, ">>G40: Flushing buffer (count=%d)\n", compensation_preprocessor->get_buffer_count());
                 // CRITICAL: Flush all buffered moves BEFORE disabling compensation
                 compensation_preprocessor->flush();  // Set is_flushing flag to bypass lookahead requirement
                 int flush_count = 0;
@@ -834,7 +834,7 @@ void Robot::process_buffered_command(Gcode *gcode)
                     Gcode* compensated = compensation_preprocessor->get_compensated_gcode();
                     if (compensated != nullptr) {
                         flush_count++;
-                        gcode->stream->printf(">>G40_FLUSH[%d]: %s\n", flush_count, compensated->get_command());
+                        COMPENSATION_TRACE_PRINTF(gcode->stream, ">>G40_FLUSH[%d]: %s\n", flush_count, compensated->get_command());
                         // Process the remaining buffered moves through normal path
                         MOTION_MODE_T motion = NONE;
                         if (compensated->has_g && (compensated->g == 0 || compensated->g == 1)) {
@@ -847,11 +847,13 @@ void Robot::process_buffered_command(Gcode *gcode)
                         }
                         delete compensated;
                     } else {
-                        gcode->stream->printf(">>G40_FLUSH: NULL gcode returned!\n");
+                        COMPENSATION_TRACE_PRINTF(gcode->stream, ">>G40_FLUSH: NULL gcode returned!\n");
                         break;  // Safety: avoid infinite loop if something goes wrong
                     }
                 }
-                gcode->stream->printf(">>G40: Flushed %d moves, compensation OFF\n", flush_count);
+                COMPENSATION_TRACE_PRINTF(gcode->stream, ">>G40: Flushed %d moves, compensation OFF\n", flush_count);
+                // Emit load-balance report now that the run is complete
+                compensation_preprocessor->print_load_balance_report(THEKERNEL->streams);
                 // Now it's safe to disable compensation
                 compensation_preprocessor->set_compensation(CompensationType::NONE, 0.0f);
             }
@@ -860,17 +862,20 @@ void Robot::process_buffered_command(Gcode *gcode)
             case 41: // G41 - Compensation Left
             case 42: // G42 - Compensation Right
             {
-                gcode->stream->printf(">>ROBOT: G%d handler CALLED\n", gcode->g);
+                COMPENSATION_TRACE_PRINTF(gcode->stream, ">>ROBOT: G%d handler CALLED\n", gcode->g);
                 float radius = 0.0f;
                 if (gcode->has_letter('D')) {
                     float diameter = gcode->get_value('D');
                     radius = diameter / 2.0f;  // D word specifies diameter, convert to radius
-                    gcode->stream->printf(">>G%d: D word diameter=%.3f -> radius=%.3f\n", 
+                    COMPENSATION_TRACE_PRINTF(gcode->stream, ">>G%d: D word diameter=%.3f -> radius=%.3f\n", 
                         gcode->g, diameter, radius);
                 }
                 CompensationType type = (gcode->g == 41) ? CompensationType::LEFT : CompensationType::RIGHT;
-                gcode->stream->printf(">>G%d: Compensation %s, radius=%.3f\n", 
+                COMPENSATION_TRACE_PRINTF(gcode->stream, ">>G%d: Compensation %s, radius=%.3f\n", 
                     gcode->g, (type == CompensationType::LEFT ? "LEFT" : "RIGHT"), radius);
+
+                // Start a fresh metrics window for this compensation run.
+                compensation_preprocessor->reset_load_balance_metrics();
                 
                 // CRITICAL: Initialize uncompensated position to current WCS position
                 // Must convert from MCS to WCS because G-code coordinates are in WCS
@@ -882,7 +887,7 @@ void Robot::process_buffered_command(Gcode *gcode)
                 };
                 compensation_preprocessor->set_compensation(type, radius);
                 compensation_preprocessor->set_initial_position(wcs_position);
-                gcode->stream->printf(">>G%d: Initial WCS pos X=%.3f Y=%.3f Z=%.3f\n",
+                COMPENSATION_TRACE_PRINTF(gcode->stream, ">>G%d: Initial WCS pos X=%.3f Y=%.3f Z=%.3f\n",
                     gcode->g, wcs_position[X_AXIS], wcs_position[Y_AXIS], wcs_position[Z_AXIS]);
             }
             break;
