@@ -10,11 +10,12 @@
 
 #include "CompensationTypes.h"
 
+#include <cstddef>
 #include <cmath>
 #include <cstdint>
 
 #ifndef CUTTER_COMPENSATION_TRACE_ENABLED
-#define CUTTER_COMPENSATION_TRACE_ENABLED 0
+#define CUTTER_COMPENSATION_TRACE_ENABLED 1
 #endif
 
 #if CUTTER_COMPENSATION_TRACE_ENABLED
@@ -43,6 +44,7 @@ class CompensationPreprocessor {
 public:
     struct LoadBalanceMetrics {
         uint32_t input_gcode_count;
+        uint32_t arc_input_count;
         uint32_t generated_gcode_count;
         uint32_t served_gcode_count;
         uint32_t compute_count;
@@ -134,6 +136,11 @@ private:
     // Uncompensated buffer: Stores programmed path
     struct UncompPoint {
         float x, y, z;
+        float i;
+        float j;
+        float feedrate;
+        uint8_t motion_g;
+        bool has_feedrate;
     };
     
     // Compensated buffer: Stores offset path coordinates and Gcode pointer
@@ -174,6 +181,11 @@ private:
     int get_comp_head() const { return comp_head; }
     int get_comp_tail() const { return comp_tail; }
     void record_load_balance_sample();
+    uint8_t resolve_motion_g(const Gcode* gcode) const;
+    bool is_arc_motion(uint8_t motion_g) const { return motion_g == 2 || motion_g == 3; }
+    bool get_motion_direction(const float start[3], const UncompPoint& end, bool use_segment_end, float dir[2]) const;
+    void format_compensated_gcode(const float uncomp_start[3], const float comp_start[3], const UncompPoint& curr,
+        const float comp_end[3], char* gcode_str, size_t gcode_str_size) const;
     
     /**
      * Compute compensated coordinates and output
