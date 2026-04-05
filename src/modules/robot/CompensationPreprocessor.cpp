@@ -12,6 +12,7 @@
 #include "libs/Module.h"
 #include "libs/Kernel.h"
 #include "Conveyor.h"
+#include "GcodeDispatch.h"
 #include "libs/StreamOutput.h"
 #include "StreamOutputPool.h"
 
@@ -24,6 +25,7 @@ using namespace std;
 void CompensationPreprocessor::reset_load_balance_metrics()
 {
     load_balance_metrics.input_gcode_count = 0;
+    load_balance_metrics.arc_input_count = 0;
     load_balance_metrics.generated_gcode_count = 0;
     load_balance_metrics.served_gcode_count = 0;
     load_balance_metrics.compute_count = 0;
@@ -67,6 +69,125 @@ void CompensationPreprocessor::record_load_balance_sample()
     load_balance_metrics.cumulative_ready_margin += ready_margin;
 }
 
+uint8_t CompensationPreprocessor::resolve_motion_g(const Gcode* gcode) const
+{
+    if (gcode != nullptr && gcode->has_g && gcode->g <= 3) {
+        return static_cast<uint8_t>(gcode->g);
+    }
+
+    uint8_t modal_g = THEKERNEL->gcode_dispatch->get_modal_command();
+    if (modal_g <= 3) {
+        return modal_g;
+    }
+
+    return last_g;
+}
+
+bool CompensationPreprocessor::get_motion_direction(const float start[3], const UncompPoint& end, bool use_segment_end, float dir[2]) const
+{
+    const float epsilon = 0.0001f;
+
+    if (is_arc_motion(end.motion_g)) {
+        float center_x = start[X_AXIS] + end.i;
+        float center_y = start[Y_AXIS] + end.j;
+        float radius_x = use_segment_end ? (end.x - center_x) : (start[X_AXIS] - center_x);
+        float radius_y = use_segment_end ? (end.y - center_y) : (start[Y_AXIS] - center_y);
+        float mag = sqrtf(radius_x * radius_x + radius_y * radius_y);
+
+        if (mag < epsilon) {
+            return false;
+        }
+
+        radius_x /= mag;
+        radius_y /= mag;
+
+        if (end.motion_g == 2) {
+            dir[0] = radius_y;
+            dir[1] = -radius_x;
+        } else {
+            dir[0] = -radius_y;
+            dir[1] = radius_x;
+        }
+
+        return true;
+    }
+
+    float dx = end.x - start[X_AXIS];
+    float dy = end.y - start[Y_AXIS];
+    float mag = sqrtf(dx * dx + dy * dy);
+    if (mag < epsilon) {
+        return false;
+    }
+
+    dir[0] = dx / mag;
+    dir[1] = dy / mag;
+    return true;
+}
+
+void CompensationPreprocessor::format_compensated_gcode(const float uncomp_start[3], const float comp_start[3], const UncompPoint& curr,
+    const float comp_end[3], char* gcode_str, size_t gcode_str_size) const
+{
+    char feedrate_suffix[32] = {0};
+    if (curr.has_feedrate) {
+        snprintf(feedrate_suffix, sizeof(feedrate_suffix), " F%.3f", curr.feedrate);
+    }
+
+    if (is_arc_motion(curr.motion_g)) {
+        // Arc center in world space (uncompensated)
+        float center_x = uncomp_start[X_AXIS] + curr.i;
+        float center_y = uncomp_start[Y_AXIS] + curr.j;
+
+        // I/J offsets from the compensated arc start to the world center
+        float new_i = center_x - comp_start[X_AXIS];
+        float new_j = center_y - comp_start[Y_AXIS];
+
+        // Derive eff_radius from the uncompensated arc geometry rather than from
+        // comp_start so that positional errors in comp_start (e.g. a miter junction
+        // that does not land exactly on the ideal offset circle) are not inherited.
+        // Rule: G2+G41 or G3+G42 -> outward (larger radius);
+        //       G3+G41 or G2+G42 -> inward (smaller radius).
+        const float epsilon = 0.0001f;
+        float uncomp_radius = sqrtf(
+            (center_x - uncomp_start[X_AXIS]) * (center_x - uncomp_start[X_AXIS]) +
+            (center_y - uncomp_start[Y_AXIS]) * (center_y - uncomp_start[Y_AXIS]));
+        bool outward = (curr.motion_g == 2 && comp_type == CompensationType::LEFT) ||
+                       (curr.motion_g == 3 && comp_type == CompensationType::RIGHT);
+        float eff_radius = outward ? (uncomp_radius + comp_radius)
+                                   : (uncomp_radius - comp_radius);
+        if (eff_radius < 0.0f) eff_radius = 0.0f;
+        // Direction from world center toward the uncompensated endpoint
+        float ex = curr.x - center_x;
+        float ey = curr.y - center_y;
+        float em = sqrtf(ex * ex + ey * ey);
+
+        float arc_end_x = comp_end[X_AXIS];
+        float arc_end_y = comp_end[Y_AXIS];
+        if (em > epsilon && eff_radius > epsilon) {
+            // Place the compensated endpoint exactly on the offset circle,
+            // in the radial direction of the uncompensated endpoint.
+            arc_end_x = center_x + (ex / em) * eff_radius;
+            arc_end_y = center_y + (ey / em) * eff_radius;
+        }
+
+        snprintf(gcode_str, gcode_str_size, "G%d X%.3f Y%.3f Z%.3f I%.3f J%.3f%s",
+            curr.motion_g,
+            arc_end_x,
+            arc_end_y,
+            comp_end[Z_AXIS],
+            new_i,
+            new_j,
+            feedrate_suffix);
+        return;
+    }
+
+    snprintf(gcode_str, gcode_str_size, "G%d X%.3f Y%.3f Z%.3f%s",
+        curr.motion_g <= 1 ? curr.motion_g : 1,
+        comp_end[X_AXIS],
+        comp_end[Y_AXIS],
+        comp_end[Z_AXIS],
+        feedrate_suffix);
+}
+
 CompensationPreprocessor::CompensationPreprocessor()
 {
     reset_load_balance_metrics();
@@ -100,6 +221,11 @@ CompensationPreprocessor::CompensationPreprocessor()
         uncomp_ring[i].x = 0.0f;
         uncomp_ring[i].y = 0.0f;
         uncomp_ring[i].z = 0.0f;
+        uncomp_ring[i].i = 0.0f;
+        uncomp_ring[i].j = 0.0f;
+        uncomp_ring[i].feedrate = 0.0f;
+        uncomp_ring[i].motion_g = 0;
+        uncomp_ring[i].has_feedrate = false;
         comp_ring[i].x = 0.0f;
         comp_ring[i].y = 0.0f;
         comp_ring[i].z = 0.0f;
@@ -158,6 +284,12 @@ Gcode* CompensationPreprocessor::buffer_gcode(Gcode* gcode)
         COMPENSATION_TRACE_PRINTF(THEKERNEL->streams, ">>BUFFER_GCODE: Null gcode pointer\n");
         return nullptr;
     }
+
+    uint8_t motion_g = resolve_motion_g(gcode);
+    last_g = motion_g;
+    if (is_arc_motion(motion_g)) {
+        load_balance_metrics.arc_input_count++;
+    }
     
     // Extract coordinates (modal if not specified)
     float x, y, z;
@@ -181,6 +313,11 @@ Gcode* CompensationPreprocessor::buffer_gcode(Gcode* gcode)
     uncomp_ring[uncomp_head].x = x;
     uncomp_ring[uncomp_head].y = y;
     uncomp_ring[uncomp_head].z = z;
+    uncomp_ring[uncomp_head].i = gcode->has_letter('I') ? gcode->get_value('I') : 0.0f;
+    uncomp_ring[uncomp_head].j = gcode->has_letter('J') ? gcode->get_value('J') : 0.0f;
+    uncomp_ring[uncomp_head].feedrate = gcode->has_letter('F') ? gcode->get_value('F') : 0.0f;
+    uncomp_ring[uncomp_head].motion_g = motion_g;
+    uncomp_ring[uncomp_head].has_feedrate = gcode->has_letter('F');
     
     uncomp_head = (uncomp_head + 1) % BUFFER_SIZE;
     if (uncomp_count < BUFFER_SIZE) {
@@ -262,9 +399,9 @@ void CompensationPreprocessor::compute_and_output()
 
     if (first_output_pending) {
         idx_b = uncomp_tail;
-        idx_a = idx_b; // Onset degenerates to perpendicular offset at the first point.
+        idx_a = idx_b; // kept only so uncomp_start ternary below compiles; actual intersection uses pseudo_prev
         idx_c = (uncomp_tail + 1) % BUFFER_SIZE;
-        COMPENSATION_TRACE_PRINTF(THEKERNEL->streams, ">>COMPUTE: FIRST POINT - A[%d]=B[%d], C[%d]\n", idx_a, idx_b, idx_c);
+        COMPENSATION_TRACE_PRINTF(THEKERNEL->streams, ">>COMPUTE: FIRST POINT - B[%d], C[%d]\n", idx_b, idx_c);
     } else {
         idx_b = uncomp_tail;
         idx_a = (uncomp_tail - 1 + BUFFER_SIZE) % BUFFER_SIZE;
@@ -276,7 +413,23 @@ void CompensationPreprocessor::compute_and_output()
     const UncompPoint& b = uncomp_ring[idx_b];
     const UncompPoint& c = uncomp_ring[idx_c];
 
-    success = calculate_corner_intersection(a, b, c, offset);
+    if (first_output_pending) {
+        // Use initial_position as the incoming start so arc tangents are computed from the
+        // correct arc start.  With idx_a==idx_b the old path used arc_endpoint+I/J as the
+        // center, which is wrong for arcs and produced a bad u_in → wrong miter corner.
+        UncompPoint pseudo_prev;
+        pseudo_prev.x = initial_position[X_AXIS];
+        pseudo_prev.y = initial_position[Y_AXIS];
+        pseudo_prev.z = initial_position[Z_AXIS];
+        pseudo_prev.i = 0.0f;
+        pseudo_prev.j = 0.0f;
+        pseudo_prev.motion_g = 1;
+        pseudo_prev.has_feedrate = false;
+        pseudo_prev.feedrate = 0.0f;
+        success = calculate_corner_intersection(pseudo_prev, b, c, offset);
+    } else {
+        success = calculate_corner_intersection(a, b, c, offset);
+    }
 
     if (success) {
         comp_ring[comp_idx].x = offset[0];
@@ -291,9 +444,20 @@ void CompensationPreprocessor::compute_and_output()
         COMPENSATION_TRACE_PRINTF(THEKERNEL->streams, ">>COMPUTE: Degenerate motion - no offset\n");
     }
 
+    float uncomp_start[3] = { first_output_pending ? initial_position[X_AXIS] : a.x,
+                               first_output_pending ? initial_position[Y_AXIS] : a.y,
+                               first_output_pending ? initial_position[Z_AXIS] : a.z };
+    float comp_start[3] = { initial_position[X_AXIS], initial_position[Y_AXIS], initial_position[Z_AXIS] };
+    if (!first_output_pending) {
+        int prev_comp_idx = (comp_head - 1 + BUFFER_SIZE) % BUFFER_SIZE;
+        comp_start[X_AXIS] = comp_ring[prev_comp_idx].x;
+        comp_start[Y_AXIS] = comp_ring[prev_comp_idx].y;
+        comp_start[Z_AXIS] = comp_ring[prev_comp_idx].z;
+    }
+    float comp_end[3] = { comp_ring[comp_idx].x, comp_ring[comp_idx].y, comp_ring[comp_idx].z };
+
     char gcode_str[128];
-    snprintf(gcode_str, sizeof(gcode_str), "G1 X%.3f Y%.3f Z%.3f",
-             comp_ring[comp_idx].x, comp_ring[comp_idx].y, comp_ring[comp_idx].z);
+    format_compensated_gcode(uncomp_start, comp_start, b, comp_end, gcode_str, sizeof(gcode_str));
 
     print_output(gcode_str);
 
@@ -315,6 +479,60 @@ void CompensationPreprocessor::compute_and_output()
 
 bool CompensationPreprocessor::compute_terminal_output()
 {
+    if (uncomp_count == 0 || comp_ready_count >= BUFFER_SIZE) {
+        return false;
+    }
+
+    // Special case: single move between G41 and G40 with no look-ahead (e.g. bare G41+arc+G40).
+    // compute_and_output never fires (needs uncomp_count>=2), so handle it here.
+    if (uncomp_count == 1 && first_output_pending) {
+        int last_idx = (uncomp_head - 1 + BUFFER_SIZE) % BUFFER_SIZE;
+        int comp_idx = comp_head;
+
+        if (comp_ring[comp_idx].gcode != nullptr) {
+            record_load_balance_sample();
+            return false;
+        }
+
+        const UncompPoint& curr = uncomp_ring[last_idx];
+
+        // Tangent at the end of the move, starting from initial_position.
+        float dir[2] = { 0.0f, 0.0f };
+        bool has_dir = get_motion_direction(initial_position, curr, true, dir);
+
+        float n_x = 0.0f, n_y = 0.0f;
+        if (has_dir) {
+            if (comp_type == CompensationType::LEFT) {
+                n_x = -dir[1]; n_y = dir[0];
+            } else {
+                n_x = dir[1]; n_y = -dir[0];
+            }
+        }
+
+        comp_ring[comp_idx].x = curr.x + n_x * comp_radius;
+        comp_ring[comp_idx].y = curr.y + n_y * comp_radius;
+        comp_ring[comp_idx].z = curr.z;
+
+        float uncomp_start[3] = { initial_position[X_AXIS], initial_position[Y_AXIS], initial_position[Z_AXIS] };
+        float comp_start[3]   = { initial_position[X_AXIS], initial_position[Y_AXIS], initial_position[Z_AXIS] };
+        float comp_end[3]     = { comp_ring[comp_idx].x, comp_ring[comp_idx].y, comp_ring[comp_idx].z };
+
+        char gcode_str[128];
+        format_compensated_gcode(uncomp_start, comp_start, curr, comp_end, gcode_str, sizeof(gcode_str));
+
+        comp_ring[comp_idx].gcode = new Gcode(gcode_str, &StreamOutput::NullStream);
+        load_balance_metrics.generated_gcode_count++;
+
+        comp_head = (comp_head + 1) % BUFFER_SIZE;
+        comp_ready_count++;
+        if (comp_count < BUFFER_SIZE) comp_count++;
+        uncomp_tail = uncomp_head;
+        record_load_balance_sample();
+
+        COMPENSATION_TRACE_PRINTF(THEKERNEL->streams, ">>TERMINAL: Single-move case comp[%d] generated\n", comp_idx);
+        return true;
+    }
+
     if (uncomp_count < 2 || comp_ready_count >= BUFFER_SIZE) {
         return false;
     }
@@ -332,20 +550,41 @@ bool CompensationPreprocessor::compute_terminal_output()
     const UncompPoint& prev = uncomp_ring[prev_idx];
     const UncompPoint& curr = uncomp_ring[last_idx];
 
-    float offset[2];
-    bool success = calculate_corner_intersection(prev, curr, curr, offset);
-    if (success) {
-        comp_ring[comp_idx].x = offset[0];
-        comp_ring[comp_idx].y = offset[1];
+    // Terminal point has no outgoing segment; offset from the endpoint using
+    // the incoming move tangent (line or arc) evaluated at the segment end.
+    float start_in[3] = { prev.x, prev.y, prev.z };
+    float dir[2] = { 0.0f, 0.0f };
+    bool has_dir = get_motion_direction(start_in, curr, true, dir);
+    if (has_dir) {
+        float n_x = 0.0f;
+        float n_y = 0.0f;
+        if (comp_type == CompensationType::LEFT) {
+            n_x = -dir[1];
+            n_y = dir[0];
+        } else {
+            n_x = dir[1];
+            n_y = -dir[0];
+        }
+        comp_ring[comp_idx].x = curr.x + n_x * comp_radius;
+        comp_ring[comp_idx].y = curr.y + n_y * comp_radius;
     } else {
         comp_ring[comp_idx].x = curr.x;
         comp_ring[comp_idx].y = curr.y;
     }
     comp_ring[comp_idx].z = curr.z;
 
+    float uncomp_start[3] = { prev.x, prev.y, prev.z };
+    float comp_start[3] = { initial_position[X_AXIS], initial_position[Y_AXIS], initial_position[Z_AXIS] };
+    if (comp_ready_count > 0 || comp_count > 0) {
+        int prev_comp_idx = (comp_head - 1 + BUFFER_SIZE) % BUFFER_SIZE;
+        comp_start[X_AXIS] = comp_ring[prev_comp_idx].x;
+        comp_start[Y_AXIS] = comp_ring[prev_comp_idx].y;
+        comp_start[Z_AXIS] = comp_ring[prev_comp_idx].z;
+    }
+    float comp_end[3] = { comp_ring[comp_idx].x, comp_ring[comp_idx].y, comp_ring[comp_idx].z };
+
     char gcode_str[128];
-    snprintf(gcode_str, sizeof(gcode_str), "G1 X%.3f Y%.3f Z%.3f",
-             comp_ring[comp_idx].x, comp_ring[comp_idx].y, comp_ring[comp_idx].z);
+    format_compensated_gcode(uncomp_start, comp_start, curr, comp_end, gcode_str, sizeof(gcode_str));
 
     comp_ring[comp_idx].gcode = new Gcode(gcode_str, &StreamOutput::NullStream);
     load_balance_metrics.generated_gcode_count++;
@@ -413,32 +652,24 @@ bool CompensationPreprocessor::calculate_corner_intersection(
 {
     const float epsilon = 0.0001f;
 
-    float u_in[2] = { b.x - a.x, b.y - a.y };
-    float u_out[2] = { c.x - b.x, c.y - b.y };
+    float start_in[3] = { a.x, a.y, a.z };
+    float start_out[3] = { b.x, b.y, b.z };
+    float u_in[2] = { 0.0f, 0.0f };
+    float u_out[2] = { 0.0f, 0.0f };
 
-    float mag_in = sqrtf(u_in[0] * u_in[0] + u_in[1] * u_in[1]);
-    float mag_out = sqrtf(u_out[0] * u_out[0] + u_out[1] * u_out[1]);
+    bool has_in = get_motion_direction(start_in, b, true, u_in);
+    bool has_out = get_motion_direction(start_out, c, false, u_out);
 
-    if (mag_in < epsilon && mag_out < epsilon) {
+    if (!has_in && !has_out) {
         return false;
     }
 
-    if (mag_in >= epsilon) {
-        u_in[0] /= mag_in;
-        u_in[1] /= mag_in;
-    }
-
-    if (mag_out >= epsilon) {
-        u_out[0] /= mag_out;
-        u_out[1] /= mag_out;
-    }
-
     // Degenerate endpoint handling: if one direction is missing, reuse the other.
-    if (mag_in < epsilon) {
+    if (!has_in) {
         u_in[0] = u_out[0];
         u_in[1] = u_out[1];
     }
-    if (mag_out < epsilon) {
+    if (!has_out) {
         u_out[0] = u_in[0];
         u_out[1] = u_in[1];
     }
@@ -499,11 +730,12 @@ void CompensationPreprocessor::print_load_balance_report(StreamOutput* stream) c
         : 100.0f;
 
     stream->printf(
-        "COMP_LB: in=%lu gen=%lu srv=%lu compute=%lu prime_wait=%lu lb_wait=%lu empty_srv=%lu "
+        "COMP_LB: in=%lu arc_in=%lu gen=%lu srv=%lu compute=%lu prime_wait=%lu lb_wait=%lu empty_srv=%lu "
         "pull_req=%lu hit=%.1f%% miss=%.1f%% prod_vs_pull=%.1f%% "
         "samples=%lu avg_margin=%.2f min_margin=%ld max_margin=%ld "
         "max_uncomp=%u max_comp_ready=%u\n",
         (unsigned long)m.input_gcode_count,
+        (unsigned long)m.arc_input_count,
         (unsigned long)m.generated_gcode_count,
         (unsigned long)m.served_gcode_count,
         (unsigned long)m.compute_count,
@@ -583,6 +815,11 @@ void CompensationPreprocessor::clear()
         uncomp_ring[i].x = 0.0f;
         uncomp_ring[i].y = 0.0f;
         uncomp_ring[i].z = 0.0f;
+        uncomp_ring[i].i = 0.0f;
+        uncomp_ring[i].j = 0.0f;
+        uncomp_ring[i].feedrate = 0.0f;
+        uncomp_ring[i].motion_g = 0;
+        uncomp_ring[i].has_feedrate = false;
         comp_ring[i].x = 0.0f;
         comp_ring[i].y = 0.0f;
         comp_ring[i].z = 0.0f;
