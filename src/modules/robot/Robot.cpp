@@ -615,6 +615,28 @@ void Robot::on_gcode_received(void *argument)
 {
     Gcode *gcode = static_cast<Gcode *>(argument);
 
+    if (compensation_preprocessor->is_active() && gcode->has_g && (gcode->g == 2 || gcode->g == 3)) {
+        if (plane_axis_0 != X_AXIS || plane_axis_1 != Y_AXIS || plane_axis_2 != Z_AXIS) {
+            const char* message = "Error: G41/G42 compensation requires G17 (XY plane). G18/G19 compensation is not yet supported. Compensation disabled.\n";
+            THEKERNEL->streams->printf("%s", message);
+            compensation_preprocessor->set_compensation(CompensationType::NONE, 0.0f);
+            gcode->txt_after_ok = message;
+            THEKERNEL->set_halt_reason(MANUAL);
+            THEKERNEL->call_event(ON_HALT, nullptr);
+            return;
+        }
+
+        if (gcode->has_letter('R')) {
+            const char* message = "Error: R-format arc (G2/G3 R...) is not supported with G41/G42 compensation. Use I/J offsets instead. Compensation disabled.\n";
+            THEKERNEL->streams->printf("%s", message);
+            compensation_preprocessor->set_compensation(CompensationType::NONE, 0.0f);
+            gcode->txt_after_ok = message;
+            THEKERNEL->set_halt_reason(MANUAL);
+            THEKERNEL->call_event(ON_HALT, nullptr);
+            return;
+        }
+    }
+
     // PHASE1: Simple pass-through mode - NO BUFFERING when compensation is OFF
     // This isolates the buffer testing to only when explicitly activated
     if (!compensation_preprocessor->is_active()) {
@@ -818,8 +840,20 @@ void Robot::process_buffered_command(Gcode *gcode)
                 break;
 
             case 17: this->select_plane(X_AXIS, Y_AXIS, Z_AXIS);   break;
-            case 18: this->select_plane(X_AXIS, Z_AXIS, Y_AXIS);   break;
-            case 19: this->select_plane(Y_AXIS, Z_AXIS, X_AXIS);   break;
+            case 18:
+            case 19:
+                if (compensation_preprocessor->is_active()) {
+                    const char* message = "Error: G41/G42 compensation requires G17 (XY plane). G18/G19 compensation is not yet supported. Compensation disabled.\n";
+                    THEKERNEL->streams->printf("%s", message);
+                    compensation_preprocessor->set_compensation(CompensationType::NONE, 0.0f);
+                    gcode->txt_after_ok = message;
+                    THEKERNEL->set_halt_reason(MANUAL);
+                    THEKERNEL->call_event(ON_HALT, nullptr);
+                    break;
+                }
+                if (gcode->g == 18) this->select_plane(X_AXIS, Z_AXIS, Y_AXIS);
+                else this->select_plane(Y_AXIS, Z_AXIS, X_AXIS);
+                break;
             case 20: this->inch_mode = true;   break;
             case 21: this->inch_mode = false;   break;
             
@@ -863,6 +897,14 @@ void Robot::process_buffered_command(Gcode *gcode)
             case 42: // G42 - Compensation Right
             {
                 COMPENSATION_TRACE_PRINTF(gcode->stream, ">>ROBOT: G%d handler CALLED\n", gcode->g);
+                if (plane_axis_0 != X_AXIS || plane_axis_1 != Y_AXIS || plane_axis_2 != Z_AXIS) {
+                    const char* message = "Error: G41/G42 compensation requires G17 (XY plane). G18/G19 compensation is not yet supported.\n";
+                    THEKERNEL->streams->printf("%s", message);
+                    gcode->txt_after_ok = message;
+                    THEKERNEL->set_halt_reason(MANUAL);
+                    THEKERNEL->call_event(ON_HALT, nullptr);
+                    break;
+                }
                 float radius = 0.0f;
                 if (gcode->has_letter('D')) {
                     float diameter = gcode->get_value('D');
