@@ -6,6 +6,41 @@ This document tracks the implementation of G41/G42 cutter compensation (tool rad
 ## Project Goal
 Implement full G41 (left compensation) and G42 (right compensation) support to automatically offset tool paths by the tool radius, allowing accurate machining when the programmed path represents the final part geometry rather than the tool center path.
 
+## Current State (April 2026)
+
+This section is the authoritative status of the firmware as currently tested.
+Historical architecture notes in the rest of this document remain useful context,
+but this section should be used for current behavior and expectations.
+
+### Implemented and Working
+
+- Cutter compensation is integrated in the active motion path on branch `cutter-compensation-v2`.
+- G41/G42 compensation works for G17 XY motion with line and arc sequences.
+- Arc endpoint projection now uses the geometric offset radius (`uncomp_radius +/- tool_radius`) instead of deriving radius from compensated start-point drift.
+- Terminal arc handling uses incoming tangent direction at segment end, preventing synthetic outgoing-direction artifacts on final compensated arc output.
+- ARC validation suite (`ARC_01` through `ARC_06`) has passed in machine testing with no compensation hard faults and `COMP_LB miss=0.0%`.
+- Representative Fusion-style finishing program (`cutter comp v6 proper lead ins finishing pass.cnc`) has passed with full compensated throughput (`in=68`, `gen=68`, `srv=68`, `miss=0.0%`).
+
+### Operational Requirements
+
+- Programmed lead-in and lead-out moves are required for reliable cutter compensation in production jobs.
+- In particular, avoid enabling G41/G42 and making the very first compensated move an arc without a programmed approach move.
+- Fusion 360 style posted lead-in/out geometry is the expected workflow and is aligned with current firmware behavior.
+
+### Known Constraints
+
+- R-format arcs with active compensation are not supported; use I/J arc format.
+- Compensation logic is XY-focused (G17). Mixed-plane sections (for example G19 segments while compensation is active) should be treated as a higher-risk area and verified carefully on parts.
+- Intermittent `list index out of range` lines observed near `G28` in Kivy logs appear host-side and are not currently attributed to compensation pipeline failure.
+
+### Recommended Validation Pattern
+
+- Validate with both canonical ARC tests and representative Fusion programs.
+- For each run, verify:
+   - no firmware hard-fault markers (ALARM/hard error/abort)
+   - stable compensation activation/deactivation (G41/G42/G40)
+   - healthy load-balance metrics (`COMP_LB miss=0.0%`, `prod_vs_pull` near 100%)
+
 ---
 
 ## Why Preprocessing is Required
