@@ -238,7 +238,7 @@ bool CartGridStrategy::handleConfig()
     }
 
     // Flex compensation configuration
-    this->flex_x_points = THEKERNEL->config->value(leveling_strategy_checksum, cart_grid_leveling_strategy_checksum, flex_x_points_checksum)->by_default(60)->as_number();
+    this->flex_x_points = THEKERNEL->config->value(leveling_strategy_checksum, cart_grid_leveling_strategy_checksum, flex_x_points_checksum)->by_default(30)->as_number();
     this->flex_x_start = 0.0F;
 
     // Allocate memory for flex compensation data
