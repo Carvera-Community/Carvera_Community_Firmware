@@ -2107,7 +2107,7 @@ void ATCHandler::on_gcode_received(void *argument)
 						THEROBOT->push_state();
 						THEROBOT->get_axis_position(last_pos, 3);
 						set_inner_playing(true);
-						this->clear_script_queue();
+						//this->clear_script_queue();
 						atc_status = CALI;
 						this->fill_cali_scripts(false, true);
 					}
