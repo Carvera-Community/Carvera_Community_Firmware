@@ -78,7 +78,7 @@ void NVIC_DeInit(void)
 	NVIC->ICPR[1] = 0x00000001;
 
 	/* Clear all interrupt priority */
-	for (tmp = 0; tmp < 32; tmp++) {
+	for (tmp = 0; tmp < sizeof(NVIC->IP)/sizeof(NVIC->IP[0]); tmp++) {
 		NVIC->IP[tmp] = 0x00;
 	}
 }
@@ -111,7 +111,7 @@ void NVIC_SCBDeInit(void)
 	SCB->SCR = 0x00000000;
 	SCB->CCR = 0x00000000;
 
-	for (tmp = 0; tmp < 32; tmp++) {
+	for (tmp = 0; tmp < sizeof(SCB->SHP)/sizeof(SCB->SHP[0]); tmp++) {
 		SCB->SHP[tmp] = 0x00;
 	}
 

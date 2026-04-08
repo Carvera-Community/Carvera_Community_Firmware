@@ -960,6 +960,7 @@ void Player::on_get_public_data(void *argument)
             p.percent_complete = roundf(pcnt);
             p.filename = this->filename;
             p.is_playing = true;
+            p.parsed_lines = this->played_lines;
             pdr->set_data_ptr(&p);
             pdr->set_taken();
         } else if(file_size > 0 && !playing_file) {
@@ -970,6 +971,7 @@ void Player::on_get_public_data(void *argument)
             p.percent_complete = (unsigned int)roundf(pcnt);
             p.filename = this->filename;
             p.is_playing = false;
+            p.parsed_lines = this->played_lines;
             pdr->set_data_ptr(&p);
             pdr->set_taken();
         } else if(this->has_last_progress) {
@@ -979,6 +981,7 @@ void Player::on_get_public_data(void *argument)
             p.elapsed_secs = this->last_elapsed_secs;
             p.filename = this->last_filename;
             p.is_playing = false;
+            p.parsed_lines = this->last_played_lines;
             pdr->set_data_ptr(&p);
             pdr->set_taken();
         }
@@ -1298,7 +1301,7 @@ int Player::decompress(string sfilename, string dfilename, uint32_t sfilesize, S
 			k=0;
 			THEKERNEL->call_event(ON_IDLE);
 			memset(fbuff, 0, sizeof(fbuff));
-			sprintf((char*)fbuff, "#Info: decompart = %u\r\n", u32BlockNum);
+			sprintf((char*)fbuff, "#Info: decompart = %lu\r\n", u32BlockNum);
 			stream->printf((char*)fbuff);
 		}
 	}
@@ -1313,7 +1316,7 @@ int Player::decompress(string sfilename, string dfilename, uint32_t sfilesize, S
 	if (f_out!= NULL)
 		fclose(f_out);
 	memset(fbuff, 0, sizeof(fbuff));
-	sprintf((char*)fbuff, "#Info: decompart = %u\r\n", u32BlockNum);
+	sprintf((char*)fbuff, "#Info: decompart = %lu\r\n", u32BlockNum);
 	stream->printf((char*)fbuff);
 	return 1;
 _exit:

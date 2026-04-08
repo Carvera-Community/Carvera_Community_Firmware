@@ -238,7 +238,7 @@ bool CartGridStrategy::handleConfig()
     }
 
     // Flex compensation configuration
-    this->flex_x_points = THEKERNEL->config->value(leveling_strategy_checksum, cart_grid_leveling_strategy_checksum, flex_x_points_checksum)->by_default(60)->as_number();
+    this->flex_x_points = THEKERNEL->config->value(leveling_strategy_checksum, cart_grid_leveling_strategy_checksum, flex_x_points_checksum)->by_default(30)->as_number();
     this->flex_x_start = 0.0F;
 
     // Allocate memory for flex compensation data
@@ -411,7 +411,7 @@ bool CartGridStrategy::load_grid(StreamOutput *stream)
     y_size = y;
 
     // keep track of worst case delta
-    float max_delta, max_z, min_z;
+    float max_delta = 0, max_z = grid[0], min_z = grid[0]; //initilize to sane values
 
     for (int y = 0; y < current_grid_y_size; y++) {
         for (int x = 0; x < current_grid_x_size; x++) {

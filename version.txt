@@ -1,3 +1,38 @@
+[2.1.0c]
+- Fixed: Unused Variables removed
+- Fixed: Removing unused code blocks in simpleshell
+- Fixed: fixing type mismatch bug in wifiprovider that could lead to a memory overflow
+- Fixed: Removed possible memory overflow with get_current machine position writing past mpos
+- Fixed: Overly long strings in some zprobe print commands 
+- Fixed: remove extra parameter in print string in ZProbe
+- Fixed: Type mismatch in time command.
+- Fixed: type mismatch in print string in decompress function in player.cpp
+- Fixed: added // fall through to switch statements when it is intended to remove console error
+- Fixed: initialize sane values in probe grid max delta calculation
+- Fixed: writing past the end of a buffer in Drillingcycles::on_gcode_received
+- Fixed: int declared as NAN in ATCHandler::fill_change_scripts, fixed by setting to -1 and updating code accordingly
+- Fixed: comparison of integer expressions of different signedness
+- Fixed: wait_us could run into issues if the value given is less than zero. Now ignores times less than 0
+- Fixed: "!" is not filtered anymore when not at the beginning of the line. This enables configuration of inverted pins over the config-set command. (e.g. config-set sd atc.detector.detect_pin 0.21!^)
+- Fixed: Manual toolchanges after starting a file on an atc machine should work correctly now
+- Fixed: Changing to the laser on an air with an atc works now
+- Fixed: Clamping the spindle rpm to the max rpm fixed
+- Fixed: No LED change during run to prevent step losses (blinking leads to missing steps and can be clearly heard)
+- Change: added -Slow parameter to windows powershell build script to improve readability of error logs as the cost of speed.
+- Change: removed register specifiers in LPC1768 and mbded libraries used by the project. register has been depreciated for a long time and now falls back to being completely ignored. Looked for library updates first, they haven't been updated.
+- Change: Ext out on the CA1 and extend on C1 will turn off on halt (can be reverted to previous behaviour with config-set sd switch.extendout.failsafe 1)
+- Change: Reduced the default allocation size for the flex comp to 30 instead of 60 to reduce AHB memory usage
+- Enhancement: New config setting "zprobe.three_axis_probe_tlo_correction" allows the user to correct for tlo measurement inaccuracies
+- Enhancement: New "R" Parameter for M491 and M6 to repeat TLO measurement and find the lowest cutting edge on a facemill. The user has to rotate the face mill between cycles
+- Enhancement: New "config-delete sd <key>" command that allows to delete a config setting from the config.txt. It's intended to be used when cleaning up the config.txt or when config keys got misspelled.
+- Enhancement: New config setting "atc.detector.enable" allows to disable the tool laser sensor.
+- Enhancement: M6 can take S1 - S6 as parameter to specify the collet that has to be installed. When doing an ATC toolchange, the machine will move to the manual toolchange position for the user to change the collet.
+- Enhancement: Machine will send the parsed lines in addition to the currently executed line to visualize the lookahead buffer in the controller
+
+[2.1.1c-RC1]
+- Fixed: TLO not calibrated variable was not set to false by M493.3 H / Z. 
+- Fixed: Switch to Laser Mode not dropping tool issue #264 
+
 [2.1.0c-RC1]
 - Enhancement: Move G0 at the configured default_seek_rate configured, defaulting to 3000mm/min, unless a Feed parameter is provided. This returns G0 being a rapid movement command.
 - Enhancement: Tool setter sensor location can now be configured separately. Use config items coordinate.probe_mcs_x coordinate.probe_mcs_y and coordinate.probe_mcs_z. If unset, the original hardcoded values will be used.

@@ -825,24 +825,24 @@ DWORD get_fat (    /* 0xFFFFFFFF:Disk error, 1:Internal error, Else:Cluster stat
     if (clst < 2 || clst >= fs->n_fatent)    /* Chack range */
         return 1;
 
-        switch (fs->fs_type) {
+    switch (fs->fs_type) {
         case FS_FAT12 :
-        bc = (UINT)clst; bc += bc / 2;
-        if (move_window(fs, fs->fatbase + (bc / SS(fs)))) break;
-        wc = fs->win[bc % SS(fs)]; bc++;
-        if (move_window(fs, fs->fatbase + (bc / SS(fs)))) break;
-        wc |= fs->win[bc % SS(fs)] << 8;
-        return (clst & 1) ? (wc >> 4) : (wc & 0xFFF);
+            bc = (UINT)clst; bc += bc / 2;
+            if (move_window(fs, fs->fatbase + (bc / SS(fs)))) break;
+            wc = fs->win[bc % SS(fs)]; bc++;
+            if (move_window(fs, fs->fatbase + (bc / SS(fs)))) break;
+            wc |= fs->win[bc % SS(fs)] << 8;
+            return (clst & 1) ? (wc >> 4) : (wc & 0xFFF);
 
         case FS_FAT16 :
-        if (move_window(fs, fs->fatbase + (clst / (SS(fs) / 2)))) break;
-        p = &fs->win[clst * 2 % SS(fs)];
-        return LD_WORD(p);
+            if (move_window(fs, fs->fatbase + (clst / (SS(fs) / 2)))) break;
+            p = &fs->win[clst * 2 % SS(fs)];
+            return LD_WORD(p);
 
         case FS_FAT32 :
-        if (move_window(fs, fs->fatbase + (clst / (SS(fs) / 4)))) break;
-        p = &fs->win[clst * 4 % SS(fs)];
-        return LD_DWORD(p) & 0x0FFFFFFF;
+            if (move_window(fs, fs->fatbase + (clst / (SS(fs) / 4)))) break;
+            p = &fs->win[clst * 4 % SS(fs)];
+            return LD_DWORD(p) & 0x0FFFFFFF;
     }
 
     return 0xFFFFFFFF;    /* An error occurred at the disk I/O layer */
@@ -2478,7 +2478,7 @@ FRESULT f_write (
     FRESULT res;
     DWORD clst, sect;
     UINT wcnt, cc;
-    const BYTE *wbuff = (BYTE*)buff;
+    const BYTE *wbuff = (const BYTE*)buff;
     BYTE csect;
 
 

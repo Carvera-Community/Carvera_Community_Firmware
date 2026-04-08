@@ -58,7 +58,17 @@ private:
 		BP_COMPLETE,//job complete
 		BP_TOOL, 	//change tools
     } BEEP_STATUS;
+    typedef enum {
+        UNDEFINED = 0,
+        COLLET_3 = 1,
+        COLLET_1_8 = 2,
+        COLLET_4 = 3,
+        COLLET_6 = 4,
+        COLLET_1_4 = 5,
+        COLLET_8 = 6,
+    } COLLET_TYPE;
     
+    COLLET_TYPE target_collet_type;
     ATC_STATUS atc_status;
     
 
@@ -85,13 +95,13 @@ private:
     void abort();
 
     // set tool offset afteer calibrating
-    void set_tool_offset();
+    void set_tool_offset(uint8_t repeat_count = 1);
 
     //
-    void fill_change_scripts(int new_tool, bool clear_z, int old_tool, bool wait_after_empty, float custom_TLO);
+    void fill_change_scripts(int new_tool, bool clear_z, int old_tool, bool wait_after_empty, uint8_t colletIndex, float custom_TLO);
     void fill_drop_scripts(int old_tool);
     void fill_pick_scripts(int new_tool, bool clear_z);
-    void fill_cali_scripts(bool is_probe, bool clear_z);
+    void fill_cali_scripts(bool is_probe, bool clear_z, int repeat_count = 1);
 
     //
     void fill_manual_drop_scripts(int old_tool);
@@ -130,6 +140,7 @@ private:
     uint16_t debounce;
     bool atc_homing;
     bool detecting;
+    bool disable_toolsensor;
 
     bool playing_file;
     bool g28_triggered;
@@ -173,6 +184,7 @@ private:
     float probe_slow_rate;
     float probe_retract_mm;
     float probe_height_mm;
+    float three_axis_probe_tlo_correction;
 
     // Configurable probe position (absolute Machine Coordinate System)
     float probe_mcs_x;
@@ -281,6 +293,8 @@ private:
     float ref_tool_mz;
     float cur_tool_mz;
     float tool_offset;
+    const uint8_t max_tl_mcz_values = 5;
+    deque<float> tl_mcz_values = deque<float>(max_tl_mcz_values, 0.0f);
     int beep_state;
     int beep_count;
 

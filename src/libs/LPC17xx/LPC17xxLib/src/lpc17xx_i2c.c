@@ -500,6 +500,7 @@ next_stage:
 		case I2C_I2STAT_M_TX_ARB_LOST:
 			// update status
 			txrx_setup->status |= I2C_SETUP_STATUS_ARBF;
+			// fall through
 		default:
 			goto retry;
 		}
@@ -582,6 +583,7 @@ send_slar:
 		case I2C_I2STAT_M_RX_ARB_LOST:
 			// update status
 			txrx_setup->status |= I2C_SETUP_STATUS_ARBF;
+			// fall through
 		default:
 retry:
 			// check if retransmission is available

@@ -181,6 +181,63 @@ bool FileConfigSource::write( string setting, string value )
     return true;
 }
 
+// Remove a config setting from the file (delete the line)
+bool FileConfigSource::remove( string setting )
+{
+    if( !this->has_config_file() ) {
+        return false;
+    }
+
+    uint16_t setting_checksums[3];
+    get_checksums(setting_checksums, setting );
+
+    string config_path = this->get_config_file();
+    string tmp_path = config_path + ".tmp";
+
+    FILE *fp = fopen(config_path.c_str(), "r");
+    if( fp == nullptr ) {
+        return false;
+    }
+
+    FILE *tp = fopen(tmp_path.c_str(), "w");
+    if( tp == nullptr ) {
+        fclose(fp);
+        return false;
+    }
+
+    bool found = false;
+    int ln = 0;
+    while(!feof(fp)) {
+        string line;
+        if(readLine(line, ln++, fp)) {
+            if(!process_line_from_ascii_config(line, setting_checksums).empty()) {
+                found = true;
+                continue;  // skip this line (delete it)
+            }
+            fputs(line.c_str(), tp);
+        } else {
+            break;
+        }
+    }
+
+    fclose(fp);
+    fclose(tp);
+
+    if(!found) {
+        ::remove(tmp_path.c_str());
+        return false;
+    }
+
+    if(::remove(config_path.c_str()) != 0) {
+        ::remove(tmp_path.c_str());
+        return false;
+    }
+    if(rename(tmp_path.c_str(), config_path.c_str()) != 0) {
+        return false;
+    }
+    return true;
+}
+
 // Return the value for a specific checksum
 string FileConfigSource::read( uint16_t check_sums[3] )
 {

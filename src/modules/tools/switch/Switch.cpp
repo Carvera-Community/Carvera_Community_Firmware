@@ -70,7 +70,14 @@ void Switch::on_halt(void *arg)
         switch(this->output_type) {
             case DIGITAL: this->digital_pin->set(this->failsafe); break;
             case SIGMADELTA: this->sigmadelta_pin->set(this->failsafe); break;
-            case HWPWM: this->pwm_pin->write(switch_value / 100.0F); break;
+            case HWPWM: 
+                if (this->failsafe == 1){
+                    this->pwm_pin->write(switch_value / 100.0F);
+                }
+                else{
+                    this->pwm_pin->write(0 / 100.0F);
+                }
+                break;
             case SWPWM: this->swpwm_pin->write(switch_value / 100.0F); break;
             case DIGITALPWM: this->digital_pin->set(this->failsafe); break;
             case NONE: return;
