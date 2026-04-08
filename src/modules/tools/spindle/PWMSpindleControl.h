@@ -17,7 +17,8 @@ namespace mbed {
     class InterruptIn;
 }
 
-// This module implements closed loop PID control for spindle RPM.
+// This module implements spindle RPM control with closed-loop PID or open-loop PWM modes.
+// Config: spindle.open_loop (default false) - when true, bypasses PID and uses direct PWM scaling.
 class PWMSpindleControl: public SpindleControl {
     public:
         PWMSpindleControl();
@@ -63,6 +64,7 @@ class PWMSpindleControl: public SpindleControl {
         uint32_t stall_timer;
         float acc_ratio;
         Pin alarm_pin;
+        bool open_loop;   // If true, bypass PID and use direct PWM scaling
 
         // These fields are updated by the interrupt
         uint32_t last_edge; // Timestamp of last edge
