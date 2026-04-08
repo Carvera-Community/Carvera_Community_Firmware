@@ -15,5 +15,6 @@ struct pad_progress {
     unsigned long elapsed_secs;
     std::string filename;
     bool is_playing;  // true only while file is actively playing (not paused, not finished)
+    unsigned long parsed_lines;
 };
 #endif

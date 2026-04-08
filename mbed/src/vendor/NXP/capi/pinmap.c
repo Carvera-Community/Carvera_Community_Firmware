@@ -28,7 +28,7 @@
 #endif
 
 void pin_function(PinName pin, int function) {
-    if (pin == (uint32_t)NC) return;
+    if (pin == (PinName)NC) return;
 
 #if defined(TARGET_LPC1768) || defined(TARGET_LPC2368)
     uint32_t pin_number = (uint32_t)pin - (uint32_t)P0_0;
@@ -51,7 +51,7 @@ void pin_function(PinName pin, int function) {
 }
 
 void pin_mode(PinName pin, PinMode mode) {
-    if (pin == (uint32_t)NC) { return; }
+    if (pin == (PinName)NC) { return; }
 
 #if defined(TARGET_LPC1768) || defined(TARGET_LPC2368)
     uint32_t pin_number = (uint32_t)pin - (uint32_t)P0_0;

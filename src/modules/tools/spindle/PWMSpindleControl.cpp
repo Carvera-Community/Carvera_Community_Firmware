@@ -246,8 +246,7 @@ void PWMSpindleControl::turn_off() {
 
 void PWMSpindleControl::set_speed(int rpm) {
     if (rpm > max_rpm){
-        max_rpm = rpm;
-        return;
+        rpm = max_rpm;
     }
     target_rpm = rpm;
 }

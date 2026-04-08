@@ -27,11 +27,13 @@ static void fill_pattern32(void *dest, uint32_t pattern, size_t size);
 static bool check_pattern32(const void *src, uint32_t pattern, size_t size);
 // Function prototype for validate_pool_integrity needed earlier if called by inline funcs
 static bool validate_pool_integrity_internal(const MemoryPool *pool, bool check_free_pattern);
-#endif
 
+#else
 // Need check_pattern32 declaration outside the #if for the inline pool_check
-static bool check_pattern32(const void *src, uint32_t pattern, size_t size);
+static bool check_pattern32(const void *src, uint32_t pattern, size_t size) __attribute__((unused));
 
+static bool check_pattern32(const void *src, uint32_t pattern, size_t size) {return false;}
+#endif
 // --- Inline Debug/Utility Functions ---
 
 // Conditional printf

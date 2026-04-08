@@ -44,6 +44,7 @@
 #define STEPPER THEROBOT->actuators
 // #define STEPS_PER_MM(a) (STEPPER[a]->get_steps_per_mm())
 
+#define enable_checksum             CHECKSUM("enable")
 #define atc_checksum            	CHECKSUM("atc")
 #define probe_checksum            	CHECKSUM("probe")
 #define endstop_pin_checksum      	CHECKSUM("homing_endstop_pin")
@@ -93,6 +94,7 @@
 #define probe_mcs_y_checksum		CHECKSUM("probe_mcs_y")
 #define probe_mcs_z_checksum		CHECKSUM("probe_mcs_z")
 #define reference_tool_mz_checksum	CHECKSUM("reference_tool_mz")
+#define three_axis_probe_tlo_correction_checksum CHECKSUM("three_axis_probe_tlo_correction")
 
 ATCHandler::ATCHandler()
 {
@@ -129,6 +131,7 @@ ATCHandler::ATCHandler()
     probe_oneoff_y = 0.0;
     probe_oneoff_z = 0.0;
     probe_oneoff_configured = false;
+	target_collet_type = UNDEFINED;
 }
 
 void ATCHandler::clear_script_queue(){
@@ -429,7 +432,7 @@ void ATCHandler::calibrate_set_value(Gcode *gcode)
 	} else{
 		float final_x = 0;
 		float final_y = 0;
-		float final_z = 0;
+		//float final_z = 0;
 		switch ((int)gcode->get_value('P')){
 			case 0:
 				//home off pin
@@ -789,7 +792,7 @@ void ATCHandler::home_machine_with_pin(Gcode *gcode)//M469
 
 
 
-void ATCHandler::fill_change_scripts(int new_tool, bool clear_z, int old_tool = NAN, bool wait_after_empty = false, float custom_TLO = NAN) {
+void ATCHandler::fill_change_scripts(int new_tool, bool clear_z, int old_tool = -1, bool wait_after_empty = false, uint8_t colletIndex = 0, float custom_TLO = NAN) {
 	char buff[100];
 
 	// move to tool change position
@@ -803,7 +806,7 @@ void ATCHandler::fill_change_scripts(int new_tool, bool clear_z, int old_tool = 
 	this->script_queue.push("M497.2");
 
 	if (THEKERNEL->factory_set->FuncSetting & (1<<2)){
-		if (!isnan(old_tool) && old_tool != -1){
+		if (old_tool != -1){
 			// Enter tool changing waiting status
 			this->script_queue.push("M490.3");
 		}
@@ -813,6 +816,11 @@ void ATCHandler::fill_change_scripts(int new_tool, bool clear_z, int old_tool = 
 		if (new_tool != -1){
 			snprintf(buff, sizeof(buff), "M493.5 T%d", new_tool);
 			this->script_queue.push(buff);
+			if (colletIndex != 0){
+				// change collet
+				snprintf(buff, sizeof(buff), "M493.6 S%d", colletIndex);
+				this->script_queue.push(buff);
+			}
 			// Enter tool changing waiting status
 			this->script_queue.push("M490.3");
 			//close
@@ -826,10 +834,21 @@ void ATCHandler::fill_change_scripts(int new_tool, bool clear_z, int old_tool = 
 			// set new tool
 			snprintf(buff, sizeof(buff), "M493.2 T%d", new_tool);
 			this->script_queue.push(buff);
+			// wait after empty is only true when dropping a manual tool followed by an atc tool
 			if (wait_after_empty){
+				if (colletIndex != 0){
+					// change collet
+					snprintf(buff, sizeof(buff), "M493.6 S%d", colletIndex);
+					this->script_queue.push(buff);
+				}
 				// Enter tool changing waiting status for calibration
 				this->script_queue.push("M490.3");
 			}
+		}
+
+		if (colletIndex != 0){
+			// set target collet back to undefined after change
+			this->script_queue.push("M493.6 S0");
 		}
 
 		if (!isnan(custom_TLO)) {
@@ -841,6 +860,11 @@ void ATCHandler::fill_change_scripts(int new_tool, bool clear_z, int old_tool = 
 			this->script_queue.push(buff);
 		}
 	}else{
+		if (colletIndex != 0){
+			// change collet
+			snprintf(buff, sizeof(buff), "M493.6 S%d", colletIndex);
+			this->script_queue.push(buff);
+		}
 		this->script_queue.push("M490.1");
 		// set new tool
 		snprintf(buff, sizeof(buff), "M493.2 T%d", new_tool);
@@ -850,7 +874,7 @@ void ATCHandler::fill_change_scripts(int new_tool, bool clear_z, int old_tool = 
 
 void ATCHandler::fill_manual_drop_scripts(int old_tool) {
 	char buff[100];
-	struct atc_tool *current_tool = &atc_tools[old_tool];
+	//struct atc_tool *current_tool = &atc_tools[old_tool];
 	// set atc status
 	this->script_queue.push("M497.1");
 	//make extra sure the spindle is off
@@ -886,7 +910,7 @@ void ATCHandler::fill_manual_drop_scripts(int old_tool) {
 
 void ATCHandler::fill_manual_pickup_scripts(int new_tool, bool clear_z, bool auto_calibrate = false, float custom_TLO = NAN) {
 	char buff[100];
-	struct atc_tool *current_tool = &atc_tools[new_tool];
+	//struct atc_tool *current_tool = &atc_tools[new_tool];
 	// set atc status
 	this->script_queue.push("M497.2");
 	// lift z to safe position with fast speed
@@ -912,7 +936,7 @@ void ATCHandler::fill_manual_pickup_scripts(int new_tool, bool clear_z, bool aut
 
 	if (auto_calibrate){
 		//print status
-		snprintf(buff, sizeof(buff), ";Tool is now installed.\nRemove hands from the machine\nResume will auto calibrate the tool and continue program\n");
+		snprintf(buff, sizeof(buff), ";Tool is now installed.\nRemove hands from the machine\nResume will auto calibrate and continue\n");
 		this->script_queue.push(buff);
 		//pause
 		snprintf(buff, sizeof(buff), "M600.5");
@@ -1025,7 +1049,7 @@ void ATCHandler::fill_pick_scripts(int new_tool, bool clear_z) {
 
 }
 
-void ATCHandler::fill_cali_scripts(bool is_probe, bool clear_z) {
+void ATCHandler::fill_cali_scripts(bool is_probe, bool clear_z, int repeat_count) {
 	char buff[100];
 	if (!THEROBOT->is_homed_all_axes()) {
 		return;
@@ -1049,43 +1073,56 @@ void ATCHandler::fill_cali_scripts(bool is_probe, bool clear_z) {
 		clear_z = true;
 	}
 	
-	// lift z to safe position with fast speed
-	snprintf(buff, sizeof(buff), "G53 G0 Z%.3f", THEROBOT->from_millimeters(clear_z ? this->clearance_z : this->safe_z_mm));
-	this->script_queue.push(buff);
-	// move x and y to calibrate position
-	// Use one-off offsets if configured, otherwise use standard probe position
-	float probe_x = probe_mx_mm + (this->probe_oneoff_configured ? this->probe_oneoff_x : 0.0);
-	float probe_y = probe_my_mm + (this->probe_oneoff_configured ? this->probe_oneoff_y : 0.0);
-	snprintf(buff, sizeof(buff), "G53 G0 X%.3f Y%.3f", THEROBOT->from_millimeters(probe_x), THEROBOT->from_millimeters(probe_y));
-	this->script_queue.push(buff);
-	// do calibrate with fast speed
-    if(CARVERA == THEKERNEL->factory_set->MachineModel)	//ATC 
-    {
-		// Use one-off Z offset if configured, otherwise use standard probe Z position
-		float probe_z = probe_mz_mm + (this->probe_oneoff_configured ? this->probe_oneoff_z : 0.0);
-		snprintf(buff, sizeof(buff), "G38.6 Z%.3f F%.3f", probe_z, probe_fast_rate);
+	for(int i = 1; i <= repeat_count; i++){
+		if(i == 1){
+		// lift z to safe position with fast speed
+		snprintf(buff, sizeof(buff), "G53 G0 Z%.3f", THEROBOT->from_millimeters(clear_z ? this->clearance_z : this->safe_z_mm));
+		this->script_queue.push(buff);
+		}
+		// move x and y to calibrate position
+		// Use one-off offsets if configured, otherwise use standard probe position
+		float probe_x = probe_mx_mm + (this->probe_oneoff_configured ? this->probe_oneoff_x : 0.0);
+		float probe_y = probe_my_mm + (this->probe_oneoff_configured ? this->probe_oneoff_y : 0.0);
+		snprintf(buff, sizeof(buff), "G53 G0 X%.3f Y%.3f", THEROBOT->from_millimeters(probe_x), THEROBOT->from_millimeters(probe_y));
+		this->script_queue.push(buff);
+		// do calibrate with fast speed
+		if(CARVERA == THEKERNEL->factory_set->MachineModel)	//ATC 
+		{
+			// Use one-off Z offset if configured, otherwise use standard probe Z position
+			float probe_z = probe_mz_mm + (this->probe_oneoff_configured ? this->probe_oneoff_z : 0.0);
+			snprintf(buff, sizeof(buff), "G38.6 Z%.3f F%.3f", probe_z, probe_fast_rate);
+		}
+		else	//Manual Tool Change
+		{
+			// Use one-off Z offset if configured, otherwise use toolrack Z position
+			float probe_z = toolrack_z - 10 + (this->probe_oneoff_configured ? this->probe_oneoff_z : 0.0);
+			snprintf(buff, sizeof(buff), "G38.6 Z%.3f F%.3f", probe_z, probe_fast_rate);
+		}
+		this->script_queue.push(buff);
+		// lift a bit
+		snprintf(buff, sizeof(buff), "G91 G0 Z%.3f", THEROBOT->from_millimeters(probe_retract_mm));
+		this->script_queue.push(buff);
+		// do calibrate with slow speed
+		// Use one-off Z offset if configured, otherwise use standard offset
+		float slow_probe_z = -1 - probe_retract_mm + (this->probe_oneoff_configured ? this->probe_oneoff_z : 0.0);
+		snprintf(buff, sizeof(buff), "G38.6 Z%.3f F%.3f", slow_probe_z, probe_slow_rate);
+		this->script_queue.push(buff);
+		if(i == repeat_count){
+			// save new tool offset
+			snprintf(buff, sizeof(buff), "M493.1 R%d", i);
+			this->script_queue.push(buff);
+			// lift z to safe position with fast speed
+			snprintf(buff, sizeof(buff), "G53 G0 Z%.3f", THEROBOT->from_millimeters(this->clearance_z));
+			this->script_queue.push(buff);
+		}else{
+			// save new tool offset
+			this->script_queue.push("M493.1");
+			// lift a bit
+			snprintf(buff, sizeof(buff), "G91 G0 Z%.3f", THEROBOT->from_millimeters(25.0));
+			this->script_queue.push(buff);
+		}
+		
 	}
-	else	//Manual Tool Change
-	{
-		// Use one-off Z offset if configured, otherwise use toolrack Z position
-		float probe_z = toolrack_z - 10 + (this->probe_oneoff_configured ? this->probe_oneoff_z : 0.0);
-		snprintf(buff, sizeof(buff), "G38.6 Z%.3f F%.3f", probe_z, probe_fast_rate);
-	}
-	this->script_queue.push(buff);
-	// lift a bit
-	snprintf(buff, sizeof(buff), "G91 G0 Z%.3f", THEROBOT->from_millimeters(probe_retract_mm));
-	this->script_queue.push(buff);
-	// do calibrate with slow speed
-	// Use one-off Z offset if configured, otherwise use standard offset
-	float slow_probe_z = -1 - probe_retract_mm + (this->probe_oneoff_configured ? this->probe_oneoff_z : 0.0);
-	snprintf(buff, sizeof(buff), "G38.6 Z%.3f F%.3f", slow_probe_z, probe_slow_rate);
-	this->script_queue.push(buff);
-	// save new tool offset
-	this->script_queue.push("M493.1");
-	// lift z to safe position with fast speed
-	snprintf(buff, sizeof(buff), "G53 G0 Z%.3f", THEROBOT->from_millimeters(this->safe_z_mm));
-	this->script_queue.push(buff);
-
 	// check if wireless probe is will be triggered
 	if (is_probe) {
 		this->script_queue.push("M492.3");
@@ -1416,6 +1453,7 @@ void ATCHandler::on_config_reload(void *argument)
 	detector_info.detect_pin.from_string( THEKERNEL->config->value(atc_checksum, detector_checksum, detect_pin_checksum)->by_default("0.20^" )->as_string())->as_input();
 	detector_info.detect_rate = THEKERNEL->config->value(atc_checksum, detector_checksum, detect_rate_mm_s_checksum)->by_default(1  )->as_number();
 	detector_info.detect_travel = THEKERNEL->config->value(atc_checksum, detector_checksum, detect_travel_mm_checksum)->by_default(1  )->as_number();
+	this->disable_toolsensor = !THEKERNEL->config->value(atc_checksum, detector_checksum, enable_checksum)->by_default(true)->as_bool();
 
 	this->safe_z_mm = THEKERNEL->config->value(atc_checksum, safe_z_checksum)->by_default(-10)->as_number();
 	this->safe_z_empty_mm = THEKERNEL->config->value(atc_checksum, safe_z_empty_checksum)->by_default(-20)->as_number();
@@ -1537,7 +1575,7 @@ void ATCHandler::on_config_reload(void *argument)
 	this->rotation_width = THEKERNEL->config->value(coordinate_checksum, rotation_width_checksum)->by_default(100 )->as_number();
 
 	this->skip_path_origin = THEKERNEL->config->value(atc_checksum, skip_path_origin_checksum)->by_default(false)->as_bool();
-
+	this->three_axis_probe_tlo_correction = THEKERNEL->config->value(zprobe_checksum, three_axis_probe_tlo_correction_checksum)->by_default(0.0f)->as_number();
 	if(CARVERA == THEKERNEL->factory_set->MachineModel || CARVERA_AIR == THEKERNEL->factory_set->MachineModel){
 		this->ref_tool_mz = THEKERNEL->config->value(coordinate_checksum, reference_tool_mz_checksum)->by_default(-115.34f)->as_number(); // Represents the machine Z coordinate when the tool length is 0
 	}else{
@@ -1634,7 +1672,7 @@ uint32_t ATCHandler::read_detector(uint32_t dummy)
 // Called every second in an ISR
 uint32_t ATCHandler::countdown_probe_laser(uint32_t dummy)
 {
-	if(CARVERA == THEKERNEL->factory_set->FuncSetting)	//ATC 
+	if(CARVERA == THEKERNEL->factory_set->MachineModel)	//ATC 
 	{
 		if (this->probe_laser_last < 120) {
 			this->probe_laser_last ++;
@@ -1828,7 +1866,7 @@ void ATCHandler::loose_tool()
 	THEKERNEL->streams->printf("ATC loosed!\r\n");
 }
 
-void ATCHandler::set_tool_offset()
+void ATCHandler::set_tool_offset(uint8_t repeat_count)
 {
     float px, py, pz;
     uint8_t ps;
@@ -1836,8 +1874,35 @@ void ATCHandler::set_tool_offset()
     if (ps == 1) {
         cur_tool_mz = pz;
         if (ref_tool_mz < 1) {
-        	tool_offset = cur_tool_mz - ref_tool_mz;
-        	const float offset[3] = {0.0, 0.0, tool_offset};
+			tl_mcz_values.push_front(cur_tool_mz);
+			if (tl_mcz_values.size() == max_tl_mcz_values)tl_mcz_values.pop_back();
+			float lowest_tl_mcz = tl_mcz_values[repeat_count - 1];
+			if (repeat_count > 1 && repeat_count <= tl_mcz_values.size()) {
+				int index_lowest = 0;
+				int index_highest = repeat_count - 1;
+				float highest_tl_mcz = lowest_tl_mcz;
+				THEKERNEL->streams->printf("------------------ Measurements--------------------\n");
+				for (int i = repeat_count - 1; i >= 0; i--) {
+					if (tl_mcz_values[i] < lowest_tl_mcz) {
+						lowest_tl_mcz = tl_mcz_values[i];
+						index_lowest = i;
+					}
+					if (tl_mcz_values[i] > highest_tl_mcz) {
+						highest_tl_mcz = tl_mcz_values[i];
+						index_highest = i;
+					}
+					THEKERNEL->streams->printf("TLO value from measurement %d: %.3f\n", (-1 * (i - repeat_count)), tl_mcz_values[i] - ref_tool_mz);
+				}
+				THEKERNEL->streams->printf("------------------ Results------------------------------\n");
+				THEKERNEL->streams->printf("Using TLO value from measurement %d: %.3f\n", (-1 * (index_highest - repeat_count)), highest_tl_mcz - ref_tool_mz);
+				THEKERNEL->streams->printf("Max delta: %.3f\n", highest_tl_mcz - lowest_tl_mcz);
+				THEKERNEL->streams->printf("Lowest cutting edge: %d, Highest cutting edge: %d\n", (-1 * (index_highest - repeat_count)), (-1 * (index_lowest - repeat_count)));
+				THEKERNEL->streams->printf("-----------------------------------------------------------\n");
+			}
+			tool_offset = lowest_tl_mcz - ref_tool_mz;
+        	float z_save = tool_offset;
+        	if (this->active_tool >= 999990) z_save += this->three_axis_probe_tlo_correction;
+        	const float offset[3] = {0.0, 0.0, z_save};
         	THEROBOT->saveToolOffset(offset, cur_tool_mz);
 		} else{
 			THEKERNEL->eeprom_data->REFMZ = -10;
@@ -1856,7 +1921,7 @@ void ATCHandler::set_tool_offset()
 
 void ATCHandler::set_tlo_by_offset(float z_axis_offset){
 	// new TLO = Current TLO - (current WCS - z_axis_offset)
-	float mpos[3];
+	float mpos[THEROBOT->get_number_registered_motors()] = {0};
 	Robot::wcs_t pos;
 	THEROBOT->get_current_machine_position(mpos);
 	// current_position/mpos includes the compensation transform so we need to get the inverse to get actual position
@@ -1930,6 +1995,21 @@ void ATCHandler::on_gcode_received(void *argument)
 			this->probe_oneoff_y = 0.0;
 			this->probe_oneoff_z = 0.0;
 			this->probe_oneoff_configured = false;
+			uint8_t repeat_count = 1;
+
+
+			if (gcode->has_letter('R')) {
+				if (gcode->get_value('R') > 0) {
+					repeat_count = gcode->get_value('R');
+				}
+			}
+			uint8_t colletIndex = 0;
+			if (gcode->has_letter('S') && THEKERNEL->factory_set->FuncSetting & (1<<2)) {
+				colletIndex = gcode->get_value('S');
+				if (colletIndex < 1 || colletIndex > 5) {
+					colletIndex = 0;
+				}
+			}
 
 			if (gcode->has_letter('X')) {
 				this->probe_oneoff_x = gcode->get_value('X');
@@ -1956,16 +2036,29 @@ void ATCHandler::on_gcode_received(void *argument)
 					THEKERNEL->set_halt_reason(ATC_TOOL_INVALID);
 					gcode->stream->printf("ALARM: Tool T%d not defined in tool slots\r\n", new_tool);
 				} else if (new_tool != active_tool) {
-					if (new_tool > -1 && THEKERNEL->get_laser_mode()) {
+					if (new_tool > -1 && THEKERNEL->get_laser_mode() && CARVERA == THEKERNEL->factory_set->MachineModel) {
 						THEKERNEL->streams->printf("ALARM: Can not do ATC in laser mode!\n");
 						return;
 					}
 					
 					// push old state
 					bool auto_calibrate = true;
+					bool active_is_atc_tool = (this->active_tool >= this->lowest_tool_number && this->active_tool <= this->tool_number) // tool is inside the atc tool range
+										|| this->is_custom_tool_defined(this->active_tool); 									 		// or tool is a custom tool
+
+					bool new_is_atc_tool = (new_tool >= this->lowest_tool_number && new_tool <= this->tool_number) 	// tool is inside the atc tool range
+										|| this->is_custom_tool_defined(new_tool); 									// or tool is a custom tool
+
+					bool manual_drop = !active_is_atc_tool			// active tool is not an atc tool
+										&& this->active_tool != -1; // there is a tool that needs to be dropped
+
+					bool manual_pickup = !new_is_atc_tool			// new tool is not an atc tool
+										  && new_tool != -1; 		// there is a tool that needs to be picked up
+
 					float custom_TLO = NAN;
 					THEROBOT->push_state();
 					THEROBOT->get_axis_position(last_pos, 3);
+					THEKERNEL->streams->printf("Saved XY position: X%.3f Y%.3f\n", last_pos[0], last_pos[1]);
 					set_inner_playing(true);
 					this->clear_script_queue();
 
@@ -1977,32 +2070,35 @@ void ATCHandler::on_gcode_received(void *argument)
 						auto_calibrate = gcode->get_value('C');
 					}
 					//drop current tool
-					if (this->active_tool >= this->lowest_tool_number && (this->is_custom_tool_defined(this->active_tool) || this->active_tool <= this->tool_number)){ //drop atc tool
+					if (active_is_atc_tool){ //drop atc tool
 						THEKERNEL->streams->printf("Start dropping current tool: T%d\r\n", this->active_tool);
-						// just drop tool
 						atc_status = DROP;
 						this->fill_drop_scripts(active_tool);
-					}else if((this->active_tool > this->tool_number || this->active_tool < this->lowest_tool_number) && !this->is_custom_tool_defined(this->active_tool) && this->active_tool != -1){ //drop manual tool
+					}else if(manual_drop){ //drop manual tool
 						THEKERNEL->streams->printf("Start manually dropping current tool: T%d\r\n", this->active_tool);
 						atc_status = CHANGE;
 						this->target_tool = -1;
-						if (new_tool >= 0 && (this->is_custom_tool_defined(new_tool) || new_tool <= this->tool_number)){
-							this->fill_change_scripts(-1, true, active_tool, true);
+						if (!manual_pickup){
+							this->fill_change_scripts(-1, true, active_tool, true, colletIndex);
 						}else{
 							this->fill_change_scripts(-1, true, active_tool, false);
 						}
 					}
 					
 					//pick up new tool
-					if((new_tool > this->tool_number || new_tool < this->lowest_tool_number) && !this->is_custom_tool_defined(new_tool) && new_tool != -1){
+					if(manual_pickup){
 						THEKERNEL->streams->printf("Start manually picking new tool: T%d\r\n", new_tool);
 						atc_status = CHANGE;
-						this->fill_change_scripts(new_tool, true, -1, false, custom_TLO);
+						this->fill_change_scripts(new_tool, true, -1, false, colletIndex, custom_TLO);
 						
 						if (auto_calibrate){
-							this->fill_cali_scripts((new_tool == 0 || new_tool >= 999990), true); 
+							this->fill_cali_scripts((new_tool == 0 || new_tool >= 999990), true, repeat_count); 
 						}
-					}else if(new_tool >= 0 && (this->is_custom_tool_defined(new_tool) || new_tool <= this->tool_number)){ //standard ATC
+					}else if(new_is_atc_tool){ //standard ATC
+						// add change script to change collets
+						if (colletIndex != 0 && !manual_drop) {
+							this->fill_change_scripts(-1, true, -1, true, colletIndex);
+						}
 						THEKERNEL->streams->printf("Start picking new tool: T%d\r\n", new_tool);
 						atc_status = PICK;
 						this->fill_pick_scripts(new_tool, true);
@@ -2011,11 +2107,11 @@ void ATCHandler::on_gcode_received(void *argument)
 						THEROBOT->push_state();
 						THEROBOT->get_axis_position(last_pos, 3);
 						set_inner_playing(true);
-						this->clear_script_queue();
+						//this->clear_script_queue();
 						atc_status = CALI;
 						this->fill_cali_scripts(false, true);
 					}
-				} else if (new_tool == active_tool && THEROBOT->get_tool_not_calibrated()) {
+				} else if (new_tool == active_tool && THEROBOT->get_tool_not_calibrated() && (new_tool != -1 || (CARVERA == THEKERNEL->factory_set->MachineModel && THEKERNEL->get_laser_mode()))) {
 					// Tool is already selected but needs calibration (e.g., after e-stop during previous calibration)
 					THEKERNEL->streams->printf("Tool T%d needs TLO calibration\r\n", new_tool);
 					THEROBOT->push_state();
@@ -2026,7 +2122,7 @@ void ATCHandler::on_gcode_received(void *argument)
 					// Set TLO calibration flag to disable 3D probe crash detection
 					bool tlo_calibrating = true;
 					PublicData::set_value( zprobe_checksum, set_tlo_calibrating_checksum, &tlo_calibrating );
-					this->fill_cali_scripts(new_tool == 0 || new_tool >= 999990, true);
+					this->fill_cali_scripts(new_tool == 0 || new_tool >= 999990, true, repeat_count);
 				}
 	        }
 	        else	//Manual Tool Change for AIR
@@ -2042,21 +2138,21 @@ void ATCHandler::on_gcode_received(void *argument)
 					// just pick up tool
 					atc_status = CHANGE;
 					this->target_tool = new_tool;
-					this->fill_change_scripts(new_tool, true, active_tool);
+					this->fill_change_scripts(new_tool, true, active_tool, false, colletIndex);
 					this->fill_cali_scripts((new_tool == 0 || new_tool >= 999990), true);
-						} else if (new_tool == active_tool && THEROBOT->get_tool_not_calibrated()) {
-							// Tool is already selected but needs calibration (e.g., after e-stop during previous calibration)
-							THEKERNEL->streams->printf("Tool T%d needs TLO calibration\r\n", new_tool);
-							THEROBOT->push_state();
-							THEROBOT->get_axis_position(last_pos, 3);
-							set_inner_playing(true);
-							this->clear_script_queue();
-							atc_status = CALI;
-							// Set TLO calibration flag to disable 3D probe crash detection
-							bool tlo_calibrating = true;
-							PublicData::set_value( zprobe_checksum, set_tlo_calibrating_checksum, &tlo_calibrating );
-							this->fill_cali_scripts((new_tool == 0 || new_tool >= 999990), true);
-						}
+				} else if (new_tool == active_tool && THEROBOT->get_tool_not_calibrated() && new_tool != -1) {
+					// Tool is already selected but needs calibration (e.g., after e-stop during previous calibration)
+					THEKERNEL->streams->printf("Tool T%d needs TLO calibration\r\n", new_tool);
+					THEROBOT->push_state();
+					THEROBOT->get_axis_position(last_pos, 3);
+					set_inner_playing(true);
+					this->clear_script_queue();
+					atc_status = CALI;
+					// Set TLO calibration flag to disable 3D probe crash detection
+					bool tlo_calibrating = true;
+					PublicData::set_value( zprobe_checksum, set_tlo_calibrating_checksum, &tlo_calibrating );
+					this->fill_cali_scripts((new_tool == 0 || new_tool >= 999990), true);
+				}
 	        }
 		} else if (gcode->m == 460){
 			
@@ -2217,6 +2313,7 @@ void ATCHandler::on_gcode_received(void *argument)
 				// do calibrate to find new TLO
 				THEROBOT->push_state();
 				THEROBOT->get_axis_position(last_pos, 3);
+				THEKERNEL->streams->printf("Saved XY position: X%.3f Y%.3f\n", last_pos[0], last_pos[1]);
 				set_inner_playing(true);
 				this->clear_script_queue();
 				
@@ -2281,6 +2378,12 @@ void ATCHandler::on_gcode_received(void *argument)
 				this->probe_oneoff_y = 0.0;
 				this->probe_oneoff_z = 0.0;
 				this->probe_oneoff_configured = false;
+				uint8_t repeat_count = 1;
+				if (gcode->has_letter('R')) {
+					if (gcode->get_value('R') > 0) {
+						repeat_count = gcode->get_value('R');
+					}
+				}
 
 				if (gcode->has_letter('X')) {
 					this->probe_oneoff_x = gcode->get_value('X');
@@ -2298,26 +2401,27 @@ void ATCHandler::on_gcode_received(void *argument)
 				// do calibrate
 				THEROBOT->push_state();
 				THEROBOT->get_axis_position(last_pos, 3);
+				THEKERNEL->streams->printf("Saved XY position: X%.3f Y%.3f\n", last_pos[0], last_pos[1]);
 				set_inner_playing(true);
 				this->clear_script_queue();
 				atc_status = CALI;
 				// Set TLO calibration flag to disable 3D probe crash detection
 				bool tlo_calibrating = true;
 				PublicData::set_value( zprobe_checksum, set_tlo_calibrating_checksum, &tlo_calibrating );
-				this->fill_cali_scripts(active_tool == 0 || active_tool >= 999990, true);
+				this->fill_cali_scripts(active_tool == 0 || active_tool >= 999990, true, repeat_count);
 
 			}
 		} else if (gcode->m == 492) {
 			if(THEKERNEL->factory_set->FuncSetting & (1<<2))	//ATC 
 			{
-				if (gcode->subcode == 0 || gcode->subcode == 1) {
+				if ((gcode->subcode == 0 || gcode->subcode == 1) && !this->disable_toolsensor) {
 					// check true
-					if (!laser_detect() && CARVERA == THEKERNEL->factory_set->MachineModel) {
+					if (!laser_detect()) {
 				        THEKERNEL->set_halt_reason(ATC_NO_TOOL);
 				        THEKERNEL->call_event(ON_HALT, nullptr);
 				        THEKERNEL->streams->printf("ERROR: Unexpected tool absence detected, please check tool rack!\n");
 					}
-				} else if (gcode->subcode == 2) {
+				} else if ((gcode->subcode == 2) && !this->disable_toolsensor) {
 					// check false
 					if (laser_detect()) {
 				        THEKERNEL->set_halt_reason(ATC_HAS_TOOL);
@@ -2348,7 +2452,7 @@ void ATCHandler::on_gcode_received(void *argument)
 		} else if (gcode->m == 493) {
 			if (gcode->subcode == 0 || gcode->subcode == 1) {
 				THEROBOT->set_tool_not_calibrated(false);
-				set_tool_offset();
+				set_tool_offset(gcode->has_letter('R') ? gcode->get_value('R') : 1);
 			} else if (gcode->subcode == 2) {
 				// set new tool
 				if (gcode->has_letter('T')) {
@@ -2381,6 +2485,7 @@ void ATCHandler::on_gcode_received(void *argument)
 						tool_offset = cur_tool_mz;// + ref_tool_mz;
 						const float offset[3] = {0.0, 0.0, tool_offset};
 						THEROBOT->saveToolOffset(offset, cur_tool_mz);
+						THEROBOT->set_tool_not_calibrated(false);
 					}else{
 						THEKERNEL->eeprom_data->REFMZ = -10;
 						THEKERNEL->write_eeprom_data();
@@ -2395,7 +2500,7 @@ void ATCHandler::on_gcode_received(void *argument)
 				}
 				if (gcode->has_letter('H')) { //set tlo from current position. H is offset above Z0
 					this->set_tlo_by_offset(gcode->get_value('H'));
-					
+					THEROBOT->set_tool_not_calibrated(false);
 				}
 
 
@@ -2416,6 +2521,14 @@ void ATCHandler::on_gcode_received(void *argument)
 				// set new tool
 				if (gcode->has_letter('T')) {
 		    		this->target_tool = gcode->get_value('T');
+				}
+			}else if (gcode->subcode == 6) {
+				// set new target collet
+				if (gcode->has_letter('S')) {
+					this->target_collet_type = static_cast<COLLET_TYPE>(gcode->get_value('S'));
+					if (this->target_collet_type < COLLET_3 || this->target_collet_type > COLLET_8) {
+						this->target_collet_type = UNDEFINED;
+					}
 				}
 			}
 		} else if (gcode->m == 494) {
@@ -2538,13 +2651,25 @@ void ATCHandler::on_gcode_received(void *argument)
 									                
 							if(THEKERNEL->factory_set->FuncSetting & (1<<2))	//ATC 
 							{
-				        		if (active_tool > 0 && active_tool < 999990) {
-				        			// drop current tool
-				            		int old_tool = active_tool;
-				            		// change to probe tool
-				            		this->fill_drop_scripts(old_tool);
-				        		}
-			            		this->fill_pick_scripts(0, active_tool <= 0);
+								//drop current tool
+								if (this->active_tool >= this->lowest_tool_number && (this->is_custom_tool_defined(this->active_tool) || this->active_tool <= this->tool_number)){ //drop atc tool
+									THEKERNEL->streams->printf("Start dropping current tool: T%d\r\n", this->active_tool);
+									// just drop tool
+									this->fill_drop_scripts(active_tool);
+								}else if((this->active_tool > this->tool_number || this->active_tool < this->lowest_tool_number) && !this->is_custom_tool_defined(this->active_tool) && this->active_tool != -1){ //drop manual tool
+									THEKERNEL->streams->printf("Start manually dropping current tool: T%d\r\n", this->active_tool);
+									this->target_tool = -1;
+									if (CARVERA == THEKERNEL->factory_set->MachineModel){
+										this->fill_change_scripts(-1, true, active_tool, true);
+									}else{
+										this->fill_change_scripts(-1, true, active_tool, false);
+									}
+								}
+								if (CARVERA == THEKERNEL->factory_set->MachineModel) {
+			            			this->fill_pick_scripts(0, active_tool <= 0);
+								}else{
+									this->fill_change_scripts(0, true);
+								}
 			            		this->fill_cali_scripts(true, false);
 			            	}
 			            	else	//Manual Tool Change
@@ -2777,7 +2902,7 @@ void ATCHandler::on_main_loop(void *argument)
 		if (this->atc_status != AUTOMATION) {
 	        // return to z clearance position
 	        rapid_move(true, NAN, NAN, this->clearance_z, NAN, NAN);
-
+			THEKERNEL->streams->printf("Return to XY position: X%.3f Y%.3f\n", last_pos[0], last_pos[1]);
 	        // return to saved x and y position
 	        rapid_move(true, last_pos[0], last_pos[1], NAN, NAN, NAN);
 		}
@@ -3078,6 +3203,7 @@ void ATCHandler::on_get_public_data(void* argument)
     	}else{
             t->tool_offset = 0.0; 
 		}
+		t->target_collet_type = this->target_collet_type;
 		pdr->set_taken();
     } else if (pdr->second_element_is(get_atc_pin_status_checksum)) {
         char *data = static_cast<char *>(pdr->get_data_ptr());
@@ -3120,6 +3246,10 @@ void ATCHandler::on_set_public_data(void* argument)
     } else if (pdr->second_element_is(abort_checksum)) {
 		this->abort();
 		pdr->set_taken();
+	} else if (pdr->second_element_is(set_target_collet_type_checksum)) {
+		uint8_t* data = static_cast<uint8_t*>(pdr->get_data_ptr());
+		this->target_collet_type = static_cast<COLLET_TYPE>(*data);
+		pdr->set_taken();
 	}
 	
 	if(CARVERA_AIR == THEKERNEL->factory_set->MachineModel)
@@ -3148,7 +3278,6 @@ void ATCHandler::set_inner_playing(bool inner_playing)
 {
 	this->playing_file = PublicData::set_value( player_checksum, inner_playing_checksum, &inner_playing );
 }
-
 
 // Called every 100ms in an ISR
 uint32_t ATCHandler::beep_beep(uint32_t dummy)

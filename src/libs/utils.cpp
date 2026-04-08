@@ -153,7 +153,7 @@ string shift_parameter( string &parameters )
             }
             
             // Decode special characters
-            for (int i = 0; i < result.length(); i ++) {
+            for (unsigned int i = 0; i < result.length(); i ++) {
             	if (result[i] == 0x01) {
             		result[i] = ' ';
             	} else if (result[i] == 0x02) {
@@ -178,7 +178,7 @@ string shift_parameter( string &parameters )
     if ( beginning == string::npos ) {
         string temp = parameters;
         parameters = "";
-        for (int i = 0; i < temp.length(); i ++) {
+        for (unsigned int i = 0; i < temp.length(); i ++) {
         	if (temp[i] == 0x01) {
         		temp[i] = ' ';
         	} else if (temp[i] == 0x02) {
@@ -195,7 +195,7 @@ string shift_parameter( string &parameters )
     }
     string temp = parameters.substr( 0, beginning );
     parameters = parameters.substr(beginning + 1, parameters.size());
-    for (int i = 0; i < temp.length(); i ++) {
+    for (unsigned int i = 0; i < temp.length(); i ++) {
     	if (temp[i] == 0x01) {
     		temp[i] = ' ';
     	} else if (temp[i] == 0x02) {
@@ -335,8 +335,8 @@ void check_and_make_path( std::string origin )
 {
 	size_t pos = 0;
     std::string dir;
-    int res;
-    int ret = 0;
+    //int res;
+    //int ret = 0;
 
     while ((pos = origin.find_first_of('/', pos)) != std::string::npos) {
         dir = origin.substr(0, pos++);

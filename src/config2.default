@@ -133,6 +133,7 @@ switch.powerfan.input_on_command			M801			# Command that will turn this switch o
 switch.powerfan.input_off_command			M802			# Command that will turn this switch off
 switch.powerfan.output_pin					2.3			# Pin this module controls
 switch.powerfan.output_type					hwpwm			# Digital means this is just an on or off pin
+switch.powerfan.failsafe_set_to				1				#
 switch.powerfan.default_on_value			30				#
 
 switch.spindlefan.enable					true			# Enable this module
@@ -140,6 +141,7 @@ switch.spindlefan.input_on_command			M811			# Command that will turn this switch
 switch.spindlefan.input_off_command			M812			# Command that will turn this switch off
 switch.spindlefan.output_pin				2.1				# Pin this module controls
 switch.spindlefan.output_type				hwpwm			# Digital means this is just an on or off pin
+switch.spindlefan.failsafe_set_to			1				# 
 switch.spindlefan.default_on_value			50				#
 
 switch.light.enable							true			# Enable this module
@@ -463,6 +465,7 @@ atc.homing_retract_mm 0					# Retract distance after homing (mm)
 atc.action_mm 70					 	# Action distance when drop tool (mm)
 atc.detector.detect_rate_mm_s 20		# Tool detect speed (mm / second)	
 atc.detector.detect_travel_mm 5	        # Tool detect back and forth distance (mm)
+atc.detector.enable true				# Enable or disable the toolsensor
 
 atc.safe_z_mm -20.0						# Safety Z height when clamping tool
 atc.safe_z_empty_mm -40.0				# Safety Z height when not clamping tool
