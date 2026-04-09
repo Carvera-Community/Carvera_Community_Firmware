@@ -193,8 +193,8 @@ class Kernel {
 
         void set_flex_compensation_active(bool f) { flex_compensation_active = f; }
         bool is_flex_compensation_active() const { return flex_compensation_active; }
-        void set_flex_compensation_load_error(bool f) { flex_compensation_load_error = f; }
-        bool is_flex_compensation_load_error() const { return flex_compensation_load_error; }
+        void set_flex_compensation_load_error(float f) { flex_compensation_load_error = f; }
+        float is_flex_compensation_load_error() const { return flex_compensation_load_error; }
 
         void set_probeLaser(bool f) { probeLaserOn = f; }
         bool is_probeLaserOn() const { return probeLaserOn; }
@@ -265,6 +265,7 @@ class Kernel {
         mbed::I2C* i2c;
         std::array<std::vector<Module*>, NUMBER_OF_DEFINED_EVENTS> hooks;
         uint32_t stop_request_time;
+        uint8_t flex_compensation_load_error;
         struct {
             bool use_leds:1;
             bool halted:1;
@@ -292,7 +293,6 @@ class Kernel {
             bool disable_serial_console:1;
             bool halt_on_error_debug:1;
             bool flex_compensation_active:1;
-            bool flex_compensation_load_error:1;
         };
         int iic_page_write(unsigned char u8PageNum, unsigned char u8len, unsigned char *pu8Array);
 
