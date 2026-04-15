@@ -84,7 +84,7 @@ void AnalogSpindleControl::on_module_loaded()
         Pin *smoothie_pin = new Pin();
         smoothie_pin->from_string(THEKERNEL->config->value(spindle_checksum, spindle_feedback_pin_checksum)->by_default("nc")->as_string());
         feedback_pin = NULL;
-        if (smoothie_pin->valid) {
+        if (smoothie_pin->connected()) {
             smoothie_pin->as_input();
             if (smoothie_pin->port_number == 0 || smoothie_pin->port_number == 2) {
                 PinName pinname = port_pin((PortName)smoothie_pin->port_number, smoothie_pin->pin);
