@@ -1,3 +1,6 @@
+[unreleased]
+- Enhancement: AnalogSpindleControl now supports optional RPM feedback and Alarm pin functionality, same as PWMSpindleControl. Same configuration keys (spindle.feedback_pin, spindle.pulses_per_rev, spindle.acc_ratio, and spindle.control_smoothing, spindle.alarm_pin)
+
 [2.1.0c]
 - Fixed: Unused Variables removed
 - Fixed: Removing unused code blocks in simpleshell
