@@ -17,7 +17,6 @@ namespace mbed {
     class InterruptIn;
 }
 
-// Analog 0–10V spindle control with optional tachometer feedback and alarm input (same config keys as PWM spindle).
 class AnalogSpindleControl: public SpindleControl {
     public:
         AnalogSpindleControl() : feedback_pin(nullptr) {};
