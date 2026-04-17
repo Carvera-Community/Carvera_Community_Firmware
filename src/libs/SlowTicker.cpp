@@ -82,8 +82,10 @@ void SlowTicker::tick(){
 
     // Enter MRI mode if the ISP button is pressed
     // TODO: This should have it's own module
+#if MRI_ENABLE
     if (ispbtn.get() == 0)
         __debugbreak();
+#endif
 
 }
 

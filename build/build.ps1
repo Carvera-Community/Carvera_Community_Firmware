@@ -25,6 +25,10 @@ If the path is an existing directory, the artifact will be copied into it as `ma
 If the path points to a non-existent file in an existing directory, the artifact will be copied to that path.
 The destination directory must exist.
 
+.PARAMETER Debug
+Build with MRI debug monitor linked (BUILD_TYPE=Debug). Enables GDB attach
+via serial and __debugbreak() calls. Uses -Og optimization for debugging.
+
 .PARAMETER Slow
 runs the build command single threaded to prevent issues with multiple threads
 writing error messages over eachother
@@ -51,7 +55,7 @@ to be passed to the make command.
 
 .EXAMPLE
 # Build with default GCC and enable debug monitor
-./build/build.ps1 ENABLE_DEBUG_MONITOR=1
+./build/build.ps1 --Debug
 
 .NOTES
 Relies on ./build/gcc.ps1 being present in the same directory.
@@ -72,6 +76,9 @@ param(
 
     [Parameter(Mandatory=$false)]
     [string]$OutputPath,
+
+    [Parameter(Mandatory=$false)]
+    [switch]$Debug,
 
     [Parameter(Mandatory=$false)]
     [switch]$Help,
@@ -126,6 +133,10 @@ if ($PSVersionTable.PSEdition -eq "Desktop" -or
 if ($Slow){
     $cpuCount = "1"
 }
+# Determine build type
+$buildType = if ($Debug) { "Debug" } else { "Release" }
+
+Write-Host "Build type: $buildType" -ForegroundColor Cyan
 Write-Host "Using GCC version: $requestedGccVersion" -ForegroundColor Cyan
 Write-Host "Using $cpuCount parallel jobs for make." -ForegroundColor Cyan
 if ($Clean) {
@@ -160,6 +171,7 @@ $makeArgsList = New-Object System.Collections.Generic.List[string]
 $makeArgsList.Add("make")
 $makeArgsList.Add("-j$cpuCount")
 $makeArgsList.AddRange($BaseMakeArgs.Split(' '))
+$makeArgsList.Add("BUILD_TYPE=$buildType")
 if ($MakeExtraArgs.Length -gt 0) {
     $makeArgsList.AddRange($MakeExtraArgs)
 }

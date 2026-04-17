@@ -104,7 +104,9 @@ void Conveyor::on_idle(void*)
     // we can garbage collect the block queue here
     if (queue.tail_i != queue.isr_tail_i) {
         if (queue.is_empty()) {
+#if MRI_ENABLE
             __debugbreak();
+#endif
         } else {
             // Cleanly delete block
             Block* block = queue.tail_ref();
@@ -264,7 +266,9 @@ bool Conveyor::get_next_block(Block **block)
     Block *b= queue.item_ref(queue.isr_tail_i);
     // we cannot use this now if it is being updated
     if(!b->locked) {
+#if MRI_ENABLE
         if(!b->is_ready) __debugbreak(); // should never happen
+#endif
 
         b->is_ticking= true;
         b->recalculate_flag= false;

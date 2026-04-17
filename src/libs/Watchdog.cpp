@@ -54,5 +54,7 @@ extern "C" void WDT_IRQHandler(void)
 
     WDT_ClrTimeOutFlag(); // bootloader uses this flag to enter DFU mode
     WDT_Feed();
+#if MRI_ENABLE
     __debugbreak();
+#endif
 }
