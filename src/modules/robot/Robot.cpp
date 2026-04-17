@@ -382,7 +382,10 @@ uint8_t Robot::register_motor(StepperMotor *motor)
     if(n_motors >= k_max_actuators) {
         // this is a fatal error
         THEKERNEL->streams->printf("FATAL: too many motors, increase k_max_actuators\n");
+#if MRI_ENABLE
         __debugbreak();
+#endif
+        return 0;
     }
     actuators.push_back(motor);
     motor->set_motor_id(n_motors);

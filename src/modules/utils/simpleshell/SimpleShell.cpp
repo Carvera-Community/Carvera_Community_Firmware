@@ -1542,8 +1542,12 @@ void SimpleShell::dfu_command( string parameters, StreamOutput *stream)
 // Break out into the MRI debugging system
 void SimpleShell::break_command( string parameters, StreamOutput *stream)
 {
+#if MRI_ENABLE
     stream->printf("Entering MRI debug mode...\r\n");
     __debugbreak();
+#else
+    stream->printf("MRI debug monitor not available (release build)\r\n");
+#endif
 }
 
 static int get_active_tool()
