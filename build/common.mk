@@ -335,10 +335,18 @@ $(OUTDIR)/%.o : %.s makefile
 	$(Q) $(MKDIR) $(call convert-slash,$(dir $@)) $(QUIET)
 	$(Q) $(AS) $(AS_FLAGS) -o $@ $<
 
-$(OUTDIR)/configdefault.o : config.default
-	$(Q) $(OBJCOPY) -I binary -O elf32-littlearm -B arm --readonly-text --rename-section .data=.rodata.configdefault $< $@
+# Minify config files before embedding to save flash space.
+# The minifier strips comments, blank lines, and excess whitespace.
+# We write the minified file with the same basename so objcopy generates
+# the expected symbols (_binary_config_default_start/end, etc.).
+$(OUTDIR)/configdefault.o : config.default $(BUILD_DIR)/minify-config.sh
+	$(Q) $(MKDIR) $(call convert-slash,$(OUTDIR)/_minified) $(QUIET)
+	$(Q) $(BUILD_DIR)/minify-config.sh $< $(OUTDIR)/_minified/config.default
+	$(Q) cd $(OUTDIR)/_minified && $(OBJCOPY) -I binary -O elf32-littlearm -B arm --readonly-text --rename-section .data=.rodata.configdefault config.default ../configdefault.o
 
-$(OUTDIR)/config2default.o : config2.default
-	$(Q) $(OBJCOPY) -I binary -O elf32-littlearm -B arm --readonly-text --rename-section .data=.rodata.config2default $< $@
+$(OUTDIR)/config2default.o : config2.default $(BUILD_DIR)/minify-config.sh
+	$(Q) $(MKDIR) $(call convert-slash,$(OUTDIR)/_minified) $(QUIET)
+	$(Q) $(BUILD_DIR)/minify-config.sh $< $(OUTDIR)/_minified/config2.default
+	$(Q) cd $(OUTDIR)/_minified && $(OBJCOPY) -I binary -O elf32-littlearm -B arm --readonly-text --rename-section .data=.rodata.config2default config2.default ../config2default.o
 
 #########################################################################
