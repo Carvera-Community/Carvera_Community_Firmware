@@ -100,12 +100,12 @@ void SpindleControl::on_gcode_received(void *argument)
         {	// M222 - rpm override percentage
             if (gcode->has_letter('S')) {
                 float factor = gcode->get_value('S');
-                // enforce minimum 50% speed
-                if (factor < 50.0F)
-                    factor = 50.0F;
+                // enforce minimum 10% speed
+                if (factor < 10.0F)
+                    factor = 10.0F;
                 // enforce maximum 2x speed
-                if (factor > 200.0F)
-                    factor = 200.0F;
+                if (factor > 300.0F)
+                    factor = 300.0F;
                 set_factor(factor);
             }
         }

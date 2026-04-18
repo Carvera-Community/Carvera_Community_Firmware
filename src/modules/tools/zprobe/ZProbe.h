@@ -62,7 +62,6 @@ struct probe_parameters{
     float side_depth;
     float feed_rate;
     float rapid_rate;
-    float slowZprobeRate;
     float retract_distance;
     float clearance_height;
     float clearance_world_pos;

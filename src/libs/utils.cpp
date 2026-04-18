@@ -119,13 +119,66 @@ string remove_non_number( string str )
 }
 
 // Get the first parameter, and remove it from the original string
+// Handles quoted strings properly to support file paths with spaces
 string shift_parameter( string &parameters )
 {
+    // Skip leading whitespace
+    size_t start = parameters.find_first_not_of(" \t");
+    if (start == string::npos) {
+        parameters = "";
+        return "";
+    }
+    
+    // Check if the parameter starts with a quote
+    if (parameters[start] == '"' || parameters[start] == '\'') {
+        char quote_char = parameters[start];
+        size_t end = start + 1;
+        
+        // Find the closing quote
+        while (end < parameters.length() && parameters[end] != quote_char) {
+            end++;
+        }
+        
+        if (end < parameters.length()) {
+            // Found closing quote
+            string result = parameters.substr(start + 1, end - start - 1);
+            parameters = parameters.substr(end + 1);
+            
+            // Skip whitespace after the parameter
+            size_t next_start = parameters.find_first_not_of(" \t");
+            if (next_start != string::npos) {
+                parameters = parameters.substr(next_start);
+            } else {
+                parameters = "";
+            }
+            
+            // Decode special characters
+            for (unsigned int i = 0; i < result.length(); i ++) {
+            	if (result[i] == 0x01) {
+            		result[i] = ' ';
+            	} else if (result[i] == 0x02) {
+            		result[i] = '?';
+            	} else if (result[i] == 0x03) {
+            		result[i] = '*';
+            	} else if (result[i] == 0x04) {
+            		result[i] = '!';
+            	} else if (result[i] == 0x05) {
+            		result[i] = '~';
+            	}
+            }
+            
+            return result;
+        } else {
+            // No closing quote found - treat as unquoted
+        }
+    }
+    
+    // Handle unquoted parameter (original logic)
     size_t beginning = parameters.find_first_of(" ");
     if ( beginning == string::npos ) {
         string temp = parameters;
         parameters = "";
-        for (int i = 0; i < temp.length(); i ++) {
+        for (unsigned int i = 0; i < temp.length(); i ++) {
         	if (temp[i] == 0x01) {
         		temp[i] = ' ';
         	} else if (temp[i] == 0x02) {
@@ -142,7 +195,7 @@ string shift_parameter( string &parameters )
     }
     string temp = parameters.substr( 0, beginning );
     parameters = parameters.substr(beginning + 1, parameters.size());
-    for (int i = 0; i < temp.length(); i ++) {
+    for (unsigned int i = 0; i < temp.length(); i ++) {
     	if (temp[i] == 0x01) {
     		temp[i] = ' ';
     	} else if (temp[i] == 0x02) {
@@ -282,8 +335,8 @@ void check_and_make_path( std::string origin )
 {
 	size_t pos = 0;
     std::string dir;
-    int res;
-    int ret = 0;
+    //int res;
+    //int ret = 0;
 
     while ((pos = origin.find_first_of('/', pos)) != std::string::npos) {
         dir = origin.substr(0, pos++);

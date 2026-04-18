@@ -53,6 +53,7 @@
 #include "LPC17xx.h"
 #include "MSCFileSystemPublicAccess.h"
 #include "WifiPublicAccess.h"
+#include "SerialConsole.h"
 
 #include "mbed.h" // for wait_ms()
 #include <strings.h> // For strncasecmp
@@ -124,6 +125,7 @@ const SimpleShell::ptentry_t SimpleShell::commands_table[] = {
     {"fset",  SimpleShell::fset_command},
     {"enable_4th_hd", SimpleShell::enable_4th_hd},
     {"disable_4th_hd", SimpleShell::disable_4th_hd},
+    {"baud",         SimpleShell::baud_command},
 
     // unknown command
     {NULL, NULL}
@@ -273,7 +275,16 @@ void SimpleShell::on_gcode_received(void *argument)
 		} else if (gcode->m == 336) { // turn off optional stop mode
 			THEKERNEL->set_line_by_line_exec_mode(true);
 			gcode->stream->printf("turning line by line execute mode on.\r\nPlaying file will pause after every valid gcode line, skipping empty and commented lines\r\n");
-		}
+		}else if (gcode->m == 337){
+            struct led_rgb colors;
+            colors.r = 0;
+            colors.g = 0;
+            colors.b = 0;
+            if (gcode->has_letter('R')) colors.r = gcode->get_value('R');
+            if (gcode->has_letter('U')) colors.g = gcode->get_value('U');
+            if (gcode->has_letter('B')) colors.b = gcode->get_value('B');
+            PublicData::set_value(main_button_checksum, set_led_bar_checksum, &colors);
+        }
     }
 }
 
@@ -350,6 +361,14 @@ void SimpleShell::on_console_line_received( void *argument )
                 }
                 break;
 
+            case 'F': //feed rate override
+                feed_override(possible_command, new_message.stream);
+                break;
+            
+            case 'O': //spindle speed override
+                spindle_override(possible_command, new_message.stream);
+                break;
+
             default:
                 new_message.stream->printf("error:Invalid statement\n");
                 break;
@@ -366,6 +385,9 @@ void SimpleShell::on_console_line_received( void *argument )
 
         } else if (cmd == "config-set"){
             THEKERNEL->configurator->config_set_command(  possible_command, new_message.stream );
+
+        } else if (cmd == "config-delete"){
+            THEKERNEL->configurator->config_delete_command(  possible_command, new_message.stream );
 
         } else if (cmd == "config-load"){
             THEKERNEL->configurator->config_load_command(  possible_command, new_message.stream );
@@ -830,6 +852,7 @@ void SimpleShell::mem_command( string parameters, StreamOutput *stream)
     stream->printf("Block size: %u bytes, Tickinfo size: %u bytes\n", sizeof(Block), sizeof(Block::tickinfo_t) * Block::n_actuators);
 }
 
+/*
 static uint32_t getDeviceType()
 {
 #define IAP_LOCATION 0x1FFF1FF1
@@ -847,7 +870,7 @@ static uint32_t getDeviceType()
 
     return result[1];
 }
-
+*/
 
 // get network config
 void SimpleShell::time_command( string parameters, StreamOutput *stream)
@@ -857,7 +880,7 @@ void SimpleShell::time_command( string parameters, StreamOutput *stream)
     	set_time(new_time);
     } else {
     	time_t old_time = time(NULL);
-    	stream->printf("time = %ld\n", old_time);
+    	stream->printf("time = %lld\n", old_time);
     }
 }
 
@@ -1040,7 +1063,7 @@ void SimpleShell::diagnose_command( string parameters, StreamOutput *stream)
 
     // get switchs state
     struct pad_switch pad;
-    if(THEKERNEL->factory_set->FuncSetting & (1<<2))	//ATC 
+    if(CARVERA == THEKERNEL->factory_set->MachineModel)	//ATC 
     {
     	ok = PublicData::get_value(switch_checksum, get_checksum("vacuum"), 0, &pad);
     }
@@ -1203,7 +1226,10 @@ void SimpleShell::model_command( string parameters, StreamOutput *stream )
 			break;
 		case CARVERA_AIR:			
 			stream->printf("model = %s, %d, %d, %d\n", "CA1", THEKERNEL->factory_set->MachineModel, THEKERNEL->factory_set->FuncSetting, THEKERNEL->probe_addr);
-			break;
+            if(THEKERNEL->is_flex_compensation_load_error()) {
+                stream->printf("ERROR: Could not load flex compensation data\n");
+            }
+            break;
 		default:			
 			stream->printf("model = %s, %d, %d, %d\n", "C1", THEKERNEL->factory_set->MachineModel, THEKERNEL->factory_set->FuncSetting, THEKERNEL->probe_addr);
 			break;
@@ -1353,7 +1379,7 @@ void SimpleShell::test_led_command( string parameters, StreamOutput *stream )
 // set factory settings
 void SimpleShell::fset_command( string parameters, StreamOutput *stream)
 {
-	uint8_t channel;
+	//uint8_t channel;
 	char buff[32];
 	memset(buff, 0, sizeof(buff));
     if (!parameters.empty() ) {
@@ -1484,6 +1510,28 @@ void SimpleShell::disable_4th_hd( string parameters, StreamOutput *stream)
 		stream->printf("Failed! This command is only for Carvera!\n");
 	}
 }
+
+void SimpleShell::baud_command(string parameters, StreamOutput *stream)
+{
+    if (THEKERNEL->serial == nullptr) {
+        stream->printf("error:Serial console not available\n");
+        return;
+    }
+    string arg = shift_parameter(parameters);
+    if (arg.empty()) {
+        stream->printf("%d\n", THEKERNEL->serial->get_baud());
+        return;
+    }
+    char *end = nullptr;
+    long new_baud = strtol(arg.c_str(), &end, 10);
+    if (end == arg.c_str() || *end != '\0' || new_baud <= 0 || new_baud > 4000000) {
+        stream->printf("error:Invalid baud rate\n");
+        return;
+    }
+    stream->printf("ok\n");
+    static_cast<SerialConsole *>(THEKERNEL->serial)->set_baud_temporary(static_cast<int>(new_baud));
+}
+
 // go into dfu boot mode
 void SimpleShell::dfu_command( string parameters, StreamOutput *stream)
 {
@@ -1687,7 +1735,7 @@ void SimpleShell::get_command( string parameters, StreamOutput *stream)
     } else if (what == "state") {
         // also $G and $I
         // [G0 G54 G17 G21 G90 G94 M0 M5 M9 T0 F0.]
-        stream->printf("[G%d %s G%d G%d G%d G94 M0 M%c M%c T%d F%1.4f S%1.4f]\n",
+        stream->printf("[G%d %s G%d G%d G%d G%d M0 M%c M%c T%d F%1.4f S%1.4f]\n",
             THEKERNEL->gcode_dispatch->get_modal_command(),
             wcs2gcode(THEROBOT->get_current_wcs()).c_str(),
             THEROBOT->plane_axis_0 == X_AXIS && THEROBOT->plane_axis_1 == Y_AXIS && THEROBOT->plane_axis_2 == Z_AXIS ? 17 :
@@ -1695,6 +1743,7 @@ void SimpleShell::get_command( string parameters, StreamOutput *stream)
               THEROBOT->plane_axis_0 == Y_AXIS && THEROBOT->plane_axis_1 == Z_AXIS && THEROBOT->plane_axis_2 == X_AXIS ? 19 : 17,
             THEROBOT->inch_mode ? 20 : 21,
             THEROBOT->absolute_mode ? 90 : 91,
+            THEROBOT->inverse_time_mode ? 93 : 94,
             get_switch_state("spindle") ? '3' : '5',
             get_switch_state("mist") ? '7' : get_switch_state("flood") ? '8' : '9',
             get_active_tool(),
@@ -2050,7 +2099,7 @@ void SimpleShell::jog(string parameters, StreamOutput *stream)
     }
 
     bool cont_mode= false;
-    bool send_ok= false;
+    //bool send_ok= false;
     while(!parameters.empty()) {
         string p= shift_parameter(parameters);
 
@@ -2061,7 +2110,7 @@ void SimpleShell::jog(string parameters, StreamOutput *stream)
                     cont_mode= true;
                     break;
                 case 'R': // send ok when done use this when sending $J in a gcode file
-                    send_ok= true;
+                    //send_ok= true;
                     break;
                 default:
                     stream->printf("error:illegal option %c\n", p[1]);
@@ -2147,8 +2196,8 @@ void SimpleShell::jog(string parameters, StreamOutput *stream)
 
     float dist_to_min[3] ={0,0,0};
     float dist_to_max[3] ={0,0,0};
-    int min_axis = 0;
-    int max_axis = 0;
+    //int min_axis = 0;
+    //int max_axis = 0;
 
     float min_time= 0.05;
     if(cont_mode) {
@@ -2269,7 +2318,7 @@ void SimpleShell::jog(string parameters, StreamOutput *stream)
 
         this->keep_alive_time = us_ticker_read() / 1000;
         uint32_t block_interval_ms = (uint32_t)((ta + 0.5 *min_time) * 1000.0f);
-        float time_start_to_end_block = 0;
+        //float time_start_to_end_block = 0;
         int stage = 0;
         THECONVEYOR->set_continuous_mode(true);
 
@@ -2311,7 +2360,7 @@ void SimpleShell::jog(string parameters, StreamOutput *stream)
                 
                 THEROBOT->delta_move(delta_const, fr, n_motors);
                 if(stage == 0) {
-                    time_start_to_end_block = current_time - last_block_time;
+                    //time_start_to_end_block = current_time - last_block_time;
                     block_interval_ms = (uint32_t)((min_time) * 1000.0f);
                     stage++;
                 }
@@ -2393,6 +2442,81 @@ void SimpleShell::jog(string parameters, StreamOutput *stream)
     }
 }
 
+void SimpleShell::spindle_override(string parameters, StreamOutput *stream) //M223 SXXX equivalent
+{
+    //bool send_ok = false;
+    // $S is first parameter
+    shift_parameter(parameters);
+    if(parameters.empty()) {
+        stream->printf("usage: $O S100\n");
+        return;
+    }
+
+    while(!parameters.empty()) {
+        string p= shift_parameter(parameters);
+
+        char ax= toupper(p[0]);
+        if(ax == 'S') {
+            // get speed scale
+            float factor= strtof(p.substr(1).c_str(), NULL);
+            // enforce minimum 10% speed
+            if (factor < 10.0F)
+                factor = 10.0F;
+            // enforce maximum 3x speed
+            if (factor > 300.0F)
+                factor = 300.0F;
+
+            struct spindle_status ss;
+            bool pwm_spindle = PublicData::get_value(pwm_spindle_control_checksum, get_spindle_status_checksum, &ss);
+            if (pwm_spindle) {
+                ss.factor = factor;
+                PublicData::set_value(pwm_spindle_control_checksum, get_spindle_status_checksum, &ss);
+            }
+            continue;
+        }
+
+    }
+
+    // turn off queue delay and run it now
+    THECONVEYOR->force_queue();
+}
+
+void SimpleShell::feed_override(string parameters, StreamOutput *stream) //M220 SXXX equivalent
+{
+    //bool send_ok = false;
+    // $S is first parameter
+    shift_parameter(parameters);
+    if(parameters.empty()) {
+        stream->printf("usage: $O S100\n");
+        return;
+    }
+
+    while(!parameters.empty()) {
+        string p= shift_parameter(parameters);
+
+        char ax= toupper(p[0]);
+        if(ax == 'S') {
+            // get speed scale
+            float scale= strtof(p.substr(1).c_str(), NULL);
+            // enforce minimum 10% speed
+            if (scale < 10.0F)
+                scale = 10.0F;
+            // enforce maximum 10x speed
+            if (scale > 1000.0F)
+                scale = 1000.0F;
+            THEROBOT->set_seconds_per_minute(6000.0F / scale);
+            continue;
+        }
+
+    }
+
+    // turn off queue delay and run it now
+    THECONVEYOR->force_queue();
+}
+
+
+
+
 void SimpleShell::help_command( string parameters, StreamOutput *stream )
 {
     stream->printf("Commands:\r\n");
@@ -2413,6 +2537,7 @@ void SimpleShell::help_command( string parameters, StreamOutput *stream )
     stream->printf("break - break into debugger\r\n");
     stream->printf("config-get [<configuration_source>] <configuration_setting>\r\n");
     stream->printf("config-set [<configuration_source>] <configuration_setting> <value>\r\n");
+    stream->printf("config-delete [<configuration_source>] <configuration_setting>\r\n");
     stream->printf("get [pos|wcs|state|status|fk|ik]\r\n");
     stream->printf("get temp [bed|hotend]\r\n");
     stream->printf("set_temp bed|hotend 185\r\n");

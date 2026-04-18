@@ -24,6 +24,7 @@ public:
     void transfer_values_to_cache( ConfigCache *cache, const char * file_name );
     bool is_named( uint16_t check_sum );
     bool write( string setting, string value );
+    bool remove( string setting );
     string read( uint16_t check_sums[3] );
     bool has_config_file();
     void try_config_file(string candidate);

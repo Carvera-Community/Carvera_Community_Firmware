@@ -257,7 +257,8 @@ try_again:
 
 						case 30: // end of program
 							if(!THEKERNEL->is_grbl_mode()) break; // Special case M30 as it is also delete sd card file so only do this if in grbl mode
-							// fall through to M2
+							// fall through to M2. Next line informs the compiler. Do not edit it
+							// fall through
 						case 2:
 							{
 								modal_group_1= 1; // set to G1
@@ -350,6 +351,12 @@ try_again:
 							new_message.stream->printf("ok\r\n");
 							return;
 						}
+
+						case 400: // M400 Wait for all moves to complete (sync point before M-codes)
+							THEKERNEL->conveyor->wait_for_idle();
+							delete gcode;
+							new_message.stream->printf("ok\r\n");
+							return;
 
 						case 500: // M500 save volatile settings to config-override
 							THEKERNEL->conveyor->wait_for_idle(); //just to be safe as it can take a while to run

@@ -143,6 +143,7 @@ switch.spindlefan.input_on_command			M811			# Command that will turn this switch
 switch.spindlefan.input_off_command			M812			# Command that will turn this switch off
 switch.spindlefan.output_pin				2.1				# Pin this module controls
 switch.spindlefan.output_type				hwpwm			# Digital means this is just an on or off pin
+switch.spindlefan.failsafe_set_to			1				# 
 switch.spindlefan.default_on_value			50				#
 
 switch.light.enable							true			# Enable this module
@@ -271,13 +272,13 @@ zprobe.calibration_safety_margin              0.1             # max distance to 
 # Leveling strategy
 leveling-strategy.rectangular-grid.enable					true
 leveling-strategy.rectangular-grid.size						15
-leveling-strategy.rectangular-grid.x_size					50
-leveling-strategy.rectangular-grid.y_size					50
+leveling-strategy.rectangular-grid.x_size					20
+leveling-strategy.rectangular-grid.y_size					20
 leveling-strategy.rectangular-grid.human_readable			true
 leveling-strategy.rectangular-grid.only_by_two_corners		true
 
 # Flex part
-leveling-strategy.rectangular-grid.flex_grid_x_size    				60
+leveling-strategy.rectangular-grid.flex_grid_x_size    				30
 leveling-strategy.rectangular-grid.flex_compensation_always_active 	false
 
 ## Network settings
@@ -342,6 +343,7 @@ spindle.alarm_pin							0.19^			# spindle alarm trigger pin
 #spindle.stall_count_rpm						8000			# don't calculate stall when lower than this RPM
 #spindle.stall_alarm_rpm						5000			# consider as stall alarm if lower than this RPM
 
+#spindle.max_rpm						   15000			#hard limit on maximum spindle speed
 
 # Light
 # light.turn_off_min							0
@@ -390,6 +392,13 @@ coordinate.toolrack_offset_x 356		# Tool 6 X Offset relative to anchor1
 coordinate.toolrack_offset_y 0.0		# Tool 6 Y Offset relative to anchor1
 coordinate.toolrack_z -112.5			# ATC Z axis machine coordinates
 
+# Tool setter (probe) position in absolute Machine Coordinate System
+# If not set, uses hardcoded values: X=-4.158, Y=-42.568, Z=-157.0 for CARVERA
+# Set these values to configure a custom probe position, leave unset to use defaults
+#coordinate.probe_mcs_x -4.158		# Tool setter X position in MCS (mm)
+#coordinate.probe_mcs_y -42.568		# Tool setter Y position in MCS (mm)  
+#coordinate.probe_mcs_z -157.0		# Tool setter Z position in MCS (mm)
+
 coordinate.rotation_offset_x 3.5		# Rotation module X Offset relative to anchor1
 coordinate.rotation_offset_y 37.5		# Rotation module Y Offset relative to anchor1
 coordinate.rotation_offset_z 23		    # Rotation module Z Offset relative to chuck center
@@ -433,6 +442,7 @@ atc.homing_retract_mm 0.4 				# Retract distance after homing (mm)
 atc.action_mm 1.6					 	# Action distance when drop tool (mm)
 atc.detector.detect_rate_mm_s 20		# Tool detect speed (mm / second)	
 atc.detector.detect_travel_mm 5	        # Tool detect back and forth distance (mm)
+atc.detector.enable true				# Enable or disable the toolsensor
 
 atc.safe_z_mm -20.0						# Safety Z height when clamping tool
 atc.safe_z_empty_mm -50.0				# Safety Z height when not clamping tool
@@ -458,7 +468,7 @@ temperatureswitch.spindle.cooldown_power_laser 80.0		# cooldown power for laser 
 laser_module_clustering false				#
 
 # Z-probe
-zprobe.slow_feedrate 1.5				# Z probe slow speed (mm/s)
+zprobe.slow_feedrate 0.8				# Z probe slow speed (mm/s)
 zprobe.fast_feedrate 5					# Z probe fast speed (mm/s)
 zprobe.return_feedrate 20				# Z probe return speed (mm/s)
 zprobe.probe_height 2					# How much above bed to start probe

@@ -161,12 +161,18 @@ void WifiProvider::receive_wifi_data() {
 				THEKERNEL->set_keep_alive_request(true);
 				continue;
 			}
-	        if(THEKERNEL->is_feed_hold_enabled()) {
+			bool at_line_start;
+			at_line_start = (this->buffer.head == this->buffer.tail);
+			if (!at_line_start) {
+				int last_idx = this->buffer.prev_block_index(this->buffer.head);
+				at_line_start = (this->buffer.buffer[last_idx] == '\n' || this->buffer.buffer[last_idx] == '\r');
+			}
+
+	        if(THEKERNEL->is_feed_hold_enabled() && at_line_start) {
 	            if(WifiData[i] == '!') { // safe pause
 	                THEKERNEL->set_feed_hold(true);
 	                continue;
 	            }
-
 	            if(WifiData[i] == '~') { // safe resume
 	                THEKERNEL->set_feed_hold(false);
 	                continue;
@@ -206,10 +212,12 @@ void WifiProvider::int_to_ip(uint32_t i_ip, char *ip_addr, size_t buffer_size) {
 	snprintf(ip_addr, buffer_size, "%d.%d.%d.%d", bytes[3], bytes[2], bytes[1], bytes[0]);
 }
 
-uint32_t WifiProvider::ip_to_int(char* ip_addr) {
-  unsigned char bytes[4];
-  sscanf(ip_addr, "%u.%u.%u.%u", &bytes[0], &bytes[1], &bytes[2], &bytes[3]);
-  return bytes[0] * 16777216 + bytes[1] * 65536 + bytes[2] * 256 + bytes[3];
+uint32_t WifiProvider::ip_to_int(const char* ip_addr) {
+    unsigned int bytes[4];
+    if (sscanf(ip_addr, "%u.%u.%u.%u", &bytes[0], &bytes[1], &bytes[2], &bytes[3]) != 4) {
+        return 0;
+    }
+    return (bytes[0] << 24) | (bytes[1] << 16) | (bytes[2] << 8) | bytes[3];
 }
 
 void WifiProvider::on_second_tick(void *)

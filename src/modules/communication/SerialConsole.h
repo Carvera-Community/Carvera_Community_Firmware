@@ -39,11 +39,18 @@ class SerialConsole : public Module, public StreamOutput {
         bool ready();
         char getc_result;
 
+        int get_baud() const { return current_baud_rate; }
+        void set_baud_temporary(int new_baud);
+
         //string receive_buffer;                 // Received chars are stored here until a newline character is received
         //vector<std::string> received_lines;    // Received lines are stored here until they are requested
         RingBuffer<char,256> buffer;             // Receive buffer
         mbed::Serial* serial;
         char previous_char;                       // Track previous character for ?1 detection
+        int current_baud_rate;
+        int default_baud_rate;
+        int temp_baud_rate;                       // non-zero = temporary baud active
+        uint32_t last_activity_ms;                // for 15s timeout revert
         struct {
           bool query_flag:1;
           bool halt_flag:1;
