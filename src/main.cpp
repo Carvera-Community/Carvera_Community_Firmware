@@ -151,21 +151,21 @@ void init() {
 #endif
 
     // Create and add main modules
-    kernel->add_module( new Player() );
+    kernel->add_module( new(AHB) Player() );
 
     // ATC Handler
-    kernel->add_module( new ATCHandler() );
+    kernel->add_module( new(AHB) ATCHandler() );
 
     // MSC File System Handler
-    kernel->add_module( new MSCFileSystem("ud") );
+    kernel->add_module( new(AHB) MSCFileSystem("ud") );
 
     // Serial Console handles IO with the wireless probe
-    kernel->add_module( new(AHB) SerialConsole2() ); // must stay in AHB: UART RxIrq writes RingBuffer
+    kernel->add_module( new(AHB) SerialConsole2() );
 
-    kernel->add_module( new MainButton() );
+    kernel->add_module( new(AHB) MainButton() );
 
     // Wifi Provider
-    kernel->add_module( new WifiProvider);
+    kernel->add_module( new(AHB) WifiProvider);
 
     // these modules can be completely disabled in the Makefile by adding to EXCLUDE_MODULES
     #ifndef NO_TOOLS_SWITCH
@@ -183,20 +183,20 @@ void init() {
 
     // #ifndef NO_TOOLS_TEMPERATURECONTROL
     // Note order is important here must be after extruder so Tn as a parameter will get executed first
-    TemperatureControlPool *tp= new TemperatureControlPool();
+    TemperatureControlPool *tp= new(AHB) TemperatureControlPool();
     tp->load_tools();
     delete tp;
 
     // #endif
     #ifndef NO_TOOLS_ENDSTOPS
-    kernel->add_module( new Endstops() );
+    kernel->add_module( new(AHB) Endstops() );
     #endif
     #ifndef NO_TOOLS_LASER
-    kernel->add_module( new Laser() );
+    kernel->add_module( new(AHB) Laser() );
     #endif
 
     #ifndef NO_TOOLS_SPINDLE
-    SpindleMaker *sm = new SpindleMaker();
+    SpindleMaker *sm = new(AHB) SpindleMaker();
     sm->load_spindle();
     delete sm;
     //kernel->add_module( new(AHB) Spindle() );
@@ -205,23 +205,23 @@ void init() {
     // kernel->add_module( new(AHB) Panel() );
     #endif
     #ifndef NO_TOOLS_ZPROBE
-    kernel->add_module( new ZProbe() );
+    kernel->add_module( new(AHB) ZProbe() );
     #endif
     #ifndef NO_TOOLS_SCARACAL
-    kernel->add_module( new SCARAcal() );
+    kernel->add_module( new(AHB) SCARAcal() );
     #endif
     #ifndef NO_TOOLS_ROTARYDELTACALIBRATION
-    kernel->add_module( new RotaryDeltaCalibration() );
+    kernel->add_module( new(AHB) RotaryDeltaCalibration() );
     #endif
 //    #ifndef NONETWORK
 //    kernel->add_module( new Network() );
 //    #endif
     #ifndef NO_TOOLS_TEMPERATURESWITCH
     // Must be loaded after TemperatureControl
-    kernel->add_module( new TemperatureSwitch() );
+    kernel->add_module( new(AHB) TemperatureSwitch() );
     #endif
     #ifndef NO_TOOLS_DRILLINGCYCLES
-    kernel->add_module( new Drillingcycles() );
+    kernel->add_module( new(AHB) Drillingcycles() );
     #endif
     // Create and initialize USB stuff
     // u.init();
@@ -241,7 +241,7 @@ void init() {
     /* disable USB module
     kernel->add_module( &usbserial );
     if( kernel->config->value( second_usb_serial_enable_checksum )->by_default(false)->as_bool() ){
-        kernel->add_module( new USBSerial(&u) );
+        kernel->add_module( new(AHB) USBSerial(&u) );
     }
     */
 
@@ -256,7 +256,7 @@ void init() {
     float t= kernel->config->value( watchdog_timeout_checksum )->by_default(10.0F)->as_number();
     if(t > 0.1F) {
         // NOTE setting WDT_RESET with the current bootloader would leave it in DFU mode which would be suboptimal
-        kernel->add_module( new Watchdog(t * 1000000, WDT_RESET )); // WDT_RESET));
+        kernel->add_module( new(AHB) Watchdog(t * 1000000, WDT_RESET )); // WDT_RESET));
         kernel->streams->printf("Watchdog enabled for %1.3f seconds\n", t);
     }else{
         kernel->streams->printf("WARNING Watchdog is disabled\n");
