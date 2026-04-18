@@ -101,7 +101,7 @@ Kernel::Kernel()
     this->i2c = new mbed::I2C(P0_27, P0_28);
     this->i2c->frequency(200000);
     
-    this->factory_set = new FACTORY_SET();
+    this->factory_set = new(AHB) FACTORY_SET();
     // read Factory setting data from eeprom
     this->read_Factory_data();
     // read Factory settings data from sd
@@ -109,12 +109,12 @@ Kernel::Kernel()
 
 
     // Config next, but does not load cache yet
-    this->config = new Config();
+    this->config = new(AHB) Config();
 
     // Pre-load the config cache
     this->config->config_cache_load();
 
-    this->streams = new StreamOutputPool();
+    this->streams = new(AHB) StreamOutputPool();
 
     this->current_path   = "/";
 
@@ -151,7 +151,7 @@ Kernel::Kernel()
     add_module( this->slow_ticker = new(AHB) SlowTicker());
 
     this->step_ticker = new(AHB) StepTicker();
-    this->adc = new Adc();
+    this->adc = new(AHB) Adc();
 
     // TODO : These should go into platform-specific files
     // LPC17xx-specific
@@ -187,20 +187,20 @@ Kernel::Kernel()
     this->step_ticker->set_frequency( this->base_stepping_frequency );
     this->step_ticker->set_unstep_time( microseconds_per_step_pulse );
 
-    this->eeprom_data = new EEPROM_data();
+    this->eeprom_data = new(AHB) EEPROM_data();
     // read eeprom data
     this->read_eeprom_data();
     // check eeprom data
     this->check_eeprom_data();
 
     // Core modules
-    this->add_module( this->simpleshell    = new SimpleShell()   );
-    this->add_module( this->conveyor       = new(AHB) Conveyor()      ); // must stay in AHB: shares volatile queue indices with step ISR
-    this->add_module( this->gcode_dispatch = new GcodeDispatch() );
-    this->add_module( this->robot          = new Robot()         );
+    this->add_module( this->simpleshell    = new(AHB) SimpleShell()   );
+    this->add_module( this->conveyor       = new(AHB) Conveyor()      );
+    this->add_module( this->gcode_dispatch = new(AHB) GcodeDispatch() );
+    this->add_module( this->robot          = new(AHB) Robot()         );
 
-    this->planner = new Planner();
-    this->configurator = new Configurator();
+    this->planner = new(AHB) Planner();
+    this->configurator = new(AHB) Configurator();
 }
 
 // get current state
