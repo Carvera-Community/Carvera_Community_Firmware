@@ -32,7 +32,7 @@
 *.app
 
 *.DS_Store
-
+/make*/
 /gcc-arm-none-eabi*
 /LPC1768
 /mbed/drop
