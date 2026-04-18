@@ -193,6 +193,7 @@ endif
 # Compiler Options
 GCFLAGS += -O$(OPTIMIZATION) -g3 $(DEVICE_CFLAGS)
 GCFLAGS += -ffunction-sections -fdata-sections  -fno-exceptions -fno-delete-null-pointer-checks
+GCFLAGS += -flto -flto-partition=max
 GCFLAGS += $(patsubst %,-I%,$(INCDIRS))
 GCFLAGS += $(DEFINES)
 GCFLAGS += $(DEPFLAGS)
@@ -201,8 +202,7 @@ GCFLAGS += -Wall -Wextra -Wno-unused-parameter -fomit-frame-pointer \
 
 ifeq ($(IS_GCC_10_3_OR_LATER),1)
 GCFLAGS += -fanalyzer -floop-unroll-and-jam \
-	-floop-interchange -fstack-clash-protection -mfix-cortex-m3-ldrd \
- 	-ftree-vectorize
+	-floop-interchange -mfix-cortex-m3-ldrd
 endif
 
 
@@ -215,7 +215,7 @@ AS_FLAGS += -g3 $(DEVICE_FLAGS)
 
 # Linker Options.
 LDFLAGS = $(DEVICE_FLAGS) -specs=$(BUILD_DIR)/startfile.spec
-LDFLAGS += -Wl,-Map=$(OUTDIR)/$(PROJECT).map,--cref,--gc-sections,--wrap=_isatty,--wrap=malloc,--wrap=realloc,--wrap=free$(MRI_WRAPS)
+LDFLAGS += -flto -flto-partition=max -Wl,-Map=$(OUTDIR)/$(PROJECT).map,--cref,--gc-sections,--wrap=_isatty,--wrap=malloc,--wrap=realloc,--wrap=free$(MRI_WRAPS)
 LDFLAGS += -T$(LSCRIPT)  -L $(EXTERNAL_DIR)/gcc/LPC1768
 #LDFLAGS += -L $(BUILD_DIR) -lM8266WIFI
 ifneq "$(NO_FLOAT_SCANF)" "1"
