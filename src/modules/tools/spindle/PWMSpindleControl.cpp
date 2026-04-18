@@ -65,26 +65,26 @@ void PWMSpindleControl::on_module_loaded()
     
     factor = 100;
 
-    pulses_per_rev = THEKERNEL->config->value(spindle_checksum, spindle_pulses_per_rev_checksum)->by_default(1.0f)->as_number();
-    target_rpm = THEKERNEL->config->value(spindle_checksum, spindle_default_rpm_checksum)->by_default( 15000.0f)->as_number();
+    pulses_per_rev = THEKERNEL->config->value(spindle_checksum, spindle_pulses_per_rev_checksum)->as_number(1.0f);
+    target_rpm = THEKERNEL->config->value(spindle_checksum, spindle_default_rpm_checksum)->as_number( 15000.0f);
     if(CARVERA == THEKERNEL->factory_set->MachineModel) {
-        max_rpm = THEKERNEL->config->value(spindle_checksum, spindle_max_rpm_checksum)->by_default(15000.0f)->as_number();
+        max_rpm = THEKERNEL->config->value(spindle_checksum, spindle_max_rpm_checksum)->as_number(15000.0f);
     } else {
-        max_rpm = THEKERNEL->config->value(spindle_checksum, spindle_max_rpm_checksum)->by_default(13000.0f)->as_number();
+        max_rpm = THEKERNEL->config->value(spindle_checksum, spindle_max_rpm_checksum)->as_number(13000.0f);
     }
-    control_P_term = THEKERNEL->config->value(spindle_checksum, spindle_control_P_checksum)->by_default(0.0001f)->as_number();
-    control_I_term = THEKERNEL->config->value(spindle_checksum, spindle_control_I_checksum)->by_default(0.0001f)->as_number();
-    control_D_term = THEKERNEL->config->value(spindle_checksum, spindle_control_D_checksum)->by_default(0.0001f)->as_number();
+    control_P_term = THEKERNEL->config->value(spindle_checksum, spindle_control_P_checksum)->as_number(0.0001f);
+    control_I_term = THEKERNEL->config->value(spindle_checksum, spindle_control_I_checksum)->as_number(0.0001f);
+    control_D_term = THEKERNEL->config->value(spindle_checksum, spindle_control_D_checksum)->as_number(0.0001f);
 
-    delay_s        = THEKERNEL->config->value(spindle_checksum, spindle_delay_s_checksum)->by_default(3)->as_number();
-    stall_s        = THEKERNEL->config->value(spindle_checksum, spindle_stall_s_checksum)->by_default(100)->as_number();
-    stall_count_rpm = THEKERNEL->config->value(spindle_checksum, spindle_stall_count_rpm_checksum)->by_default(8000)->as_number();
-    stall_alarm_rpm = THEKERNEL->config->value(spindle_checksum, spindle_stall_alarm_rpm_checksum)->by_default(5000)->as_number();
-    acc_ratio      = THEKERNEL->config->value(spindle_checksum, spindle_acc_ratio_checksum)->by_default(1.0f)->as_number();
-    alarm_pin.from_string(THEKERNEL->config->value(spindle_checksum, spindle_alarm_pin_checksum)->by_default("nc")->as_string())->as_input();
+    delay_s        = THEKERNEL->config->value(spindle_checksum, spindle_delay_s_checksum)->as_number(3);
+    stall_s        = THEKERNEL->config->value(spindle_checksum, spindle_stall_s_checksum)->as_number(100);
+    stall_count_rpm = THEKERNEL->config->value(spindle_checksum, spindle_stall_count_rpm_checksum)->as_number(8000);
+    stall_alarm_rpm = THEKERNEL->config->value(spindle_checksum, spindle_stall_alarm_rpm_checksum)->as_number(5000);
+    acc_ratio      = THEKERNEL->config->value(spindle_checksum, spindle_acc_ratio_checksum)->as_number(1.0f);
+    alarm_pin.from_string(THEKERNEL->config->value(spindle_checksum, spindle_alarm_pin_checksum)->as_string("nc"))->as_input();
 
     // Smoothing value is low pass filter time constant in seconds.
-    float smoothing_time = THEKERNEL->config->value(spindle_checksum, spindle_control_smoothing_checksum)->by_default(0.1f)->as_number();
+    float smoothing_time = THEKERNEL->config->value(spindle_checksum, spindle_control_smoothing_checksum)->as_number(0.1f);
     if (smoothing_time * UPDATE_FREQ < 1.0f)
         smoothing_decay = 1.0f;
     else
@@ -93,7 +93,7 @@ void PWMSpindleControl::on_module_loaded()
     // Get the pin for hardware pwm
     {
         Pin *smoothie_pin = new Pin();
-        smoothie_pin->from_string(THEKERNEL->config->value(spindle_checksum, spindle_pwm_pin_checksum)->by_default("nc")->as_string());
+        smoothie_pin->from_string(THEKERNEL->config->value(spindle_checksum, spindle_pwm_pin_checksum)->as_string("nc"));
         pwm_pin = smoothie_pin->as_output()->hardware_pwm();
         output_inverted = smoothie_pin->is_inverting();
         delete smoothie_pin;
@@ -106,13 +106,13 @@ void PWMSpindleControl::on_module_loaded()
         return;
     }
 
-    max_pwm = THEKERNEL->config->value(spindle_checksum, spindle_max_pwm_checksum)->by_default(1.0f)->as_number();
+    max_pwm = THEKERNEL->config->value(spindle_checksum, spindle_max_pwm_checksum)->as_number(1.0f);
     if(CARVERA_AIR == THEKERNEL->factory_set->MachineModel)
     {
     	max_pwm = 0.9;
     }
     
-    int period = THEKERNEL->config->value(spindle_checksum, spindle_pwm_period_checksum)->by_default(1000)->as_int();
+    int period = THEKERNEL->config->value(spindle_checksum, spindle_pwm_period_checksum)->as_int(1000);
     THEKERNEL->Spindle_period_us = period;
     pwm_pin->period_us(period);
     pwm_pin->write(output_inverted ? 1 : 0);
@@ -120,7 +120,7 @@ void PWMSpindleControl::on_module_loaded()
     // Get the pin for interrupt
     {
         Pin *smoothie_pin = new Pin();
-        smoothie_pin->from_string(THEKERNEL->config->value(spindle_checksum, spindle_feedback_pin_checksum)->by_default("nc")->as_string());
+        smoothie_pin->from_string(THEKERNEL->config->value(spindle_checksum, spindle_feedback_pin_checksum)->as_string("nc"));
         smoothie_pin->as_input();
         if (smoothie_pin->port_number == 0 || smoothie_pin->port_number == 2) {
             PinName pinname = port_pin((PortName)smoothie_pin->port_number, smoothie_pin->pin);
