@@ -647,9 +647,11 @@ void Kernel::call_event(_EVENT_ENUM id_event, void * argument)
     if(id_event == ON_HALT) {
         // If we just entered a halt state AND the debug flag is enabled, break into the debugger.
         // This happens after ON_HALT handlers have run, presumably stopping motion planners etc.
+#if MRI_ENABLE
         if (this->halted && this->halt_on_error_debug) {
              __debugbreak(); // Enter debugger
         }
+#endif
 
         if(!this->halted || !was_idle) {
             // if we were running and this is a HALT
