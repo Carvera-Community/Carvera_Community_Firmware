@@ -30,9 +30,11 @@
 #include "us_ticker_api.h"
 #include "ATCHandlerPublicAccess.h"
 // strategies we know about
+#ifndef CARTGRID_ONLY
 #include "DeltaCalibrationStrategy.h"
 #include "ThreePointStrategy.h"
 #include "DeltaGridStrategy.h"
+#endif
 #include "CartGridStrategy.h"
 
 #include <vector>
@@ -127,6 +129,7 @@ void ZProbe::config_load()
 
             // check with each known strategy and load it if it matches
             switch(cs) {
+#ifndef CARTGRID_ONLY
                 case delta_calibration_strategy_checksum:
                     ls= new DeltaCalibrationStrategy(this);
                     found= true;
@@ -142,7 +145,7 @@ void ZProbe::config_load()
                     ls= new DeltaGridStrategy(this);
                     found= true;
                     break;
-
+#endif
                 case cart_grid_leveling_strategy_checksum:
                     ls= new CartGridStrategy(this);
                     found= true;
@@ -164,12 +167,14 @@ void ZProbe::config_load()
 
     // default for backwards compatibility add DeltaCalibrationStrategy if a delta
     // may be deprecated
+#ifndef CARTGRID_ONLY
     if(this->strategies.empty()) {
         if(this->is_delta) {
             this->strategies.push_back(new DeltaCalibrationStrategy(this));
             this->strategies.back()->handleConfig();
         }
     }
+#endif
 
     this->probe_height  = THEKERNEL->config->value(zprobe_checksum, probe_height_checksum)->by_default(5)->as_number();
     this->slow_feedrate = THEKERNEL->config->value(zprobe_checksum, slow_feedrate_checksum)->by_default(5)->as_number(); // feedrate in mm/sec
