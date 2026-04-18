@@ -78,9 +78,6 @@ param(
     [string]$OutputPath,
 
     [Parameter(Mandatory=$false)]
-    [switch]$Debug,
-
-    [Parameter(Mandatory=$false)]
     [switch]$Help,
 
     [Parameter(Mandatory=$false)]
