@@ -119,6 +119,52 @@ EXL = $(patsubst %,$(SRC)/modules/%/%,$(EXCLUDED_MODULES))
 CPPSRCS3 = $(filter-out $(EXL),$(CPPSRCS21))
 DEFINES += $(call uc, $(subst /,_,$(patsubst %,-DNO_%,$(EXCLUDED_MODULES))))
 
+# CARTESIAN_ONLY: exclude all non-Cartesian arm solutions
+ifdef CARTESIAN_ONLY
+CPPSRCS3 := $(filter-out \
+  $(SRC)/modules/robot/arm_solutions/HBotSolution.cpp \
+  $(SRC)/modules/robot/arm_solutions/CoreXZSolution.cpp \
+  $(SRC)/modules/robot/arm_solutions/LinearDeltaSolution.cpp \
+  $(SRC)/modules/robot/arm_solutions/ExperimentalDeltaSolution.cpp \
+  $(SRC)/modules/robot/arm_solutions/RotaryDeltaSolution.cpp \
+  $(SRC)/modules/robot/arm_solutions/MorganSCARASolution.cpp \
+  $(SRC)/modules/robot/arm_solutions/RotatableCartesianSolution.cpp \
+  ,$(CPPSRCS3))
+DEFINES += -DCARTESIAN_ONLY
+endif
+
+# CARTGRID_ONLY: exclude delta/three-point leveling strategies
+ifdef CARTGRID_ONLY
+CPPSRCS3 := $(filter-out \
+  $(SRC)/modules/tools/zprobe/DeltaGridStrategy.cpp \
+  $(SRC)/modules/tools/zprobe/DeltaCalibrationStrategy.cpp \
+  $(SRC)/modules/tools/zprobe/ThreePointStrategy.cpp \
+  ,$(CPPSRCS3))
+DEFINES += -DCARTGRID_ONLY
+endif
+
+# NO_MODBUS_SPINDLE: exclude modbus/huanyang spindle types and SoftSerial library
+ifdef NO_MODBUS_SPINDLE
+CPPSRCS3 := $(filter-out \
+  $(SRC)/modules/tools/spindle/HuanyangSpindleControl.cpp \
+  $(SRC)/modules/tools/spindle/ModbusSpindleControl.cpp \
+  $(SRC)/modules/tools/spindle/Modbus/Modbus.cpp \
+  $(SRC)/modules/tools/spindle/SoftSerial/BufferedSoftSerial.cpp \
+  $(SRC)/modules/tools/spindle/SoftSerial/SoftSerial.cpp \
+  $(SRC)/modules/tools/spindle/SoftSerial/SoftSerial_rx.cpp \
+  $(SRC)/modules/tools/spindle/SoftSerial/SoftSerial_tx.cpp \
+  ,$(CPPSRCS3))
+DEFINES += -DNO_MODBUS_SPINDLE
+endif
+
+# NO_PID_AUTOTUNE: exclude PID autotuner (not needed when no heaters are connected)
+ifdef NO_PID_AUTOTUNE
+CPPSRCS3 := $(filter-out \
+  $(SRC)/modules/tools/temperaturecontrol/PID_Autotuner.cpp \
+  ,$(CPPSRCS3))
+DEFINES += -DNO_PID_AUTOTUNE
+endif
+
 # do not compile the src/testframework as that can only be done with rake
 CPPSRCS = $(filter-out $(SRC)/testframework/%,$(CPPSRCS3))
 

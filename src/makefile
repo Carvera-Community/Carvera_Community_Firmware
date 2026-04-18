@@ -76,7 +76,13 @@ ifeq "$(EXCLUDE_MODULES)" ""
 ifeq "$(CNC)" "1"
 # CNC build excludes these
 #export EXCLUDE_MODULES = tools/filamentdetector tools/scaracal tools/temperaturecontrol tools/temperatureswitch tools/extruder
-export EXCLUDE_MODULES = tools/filamentdetector tools/scaracal tools/extruder
+export EXCLUDE_MODULES = tools/filamentdetector tools/scaracal tools/extruder tools/rotarydeltacalibration
+# Exclude non-Cartesian arm solutions, delta/3-point leveling strategies, and
+# modbus/huanyang spindle types. Only Cartesian, CartGrid, and PWM/Analog are needed.
+export CARTESIAN_ONLY = 1
+export CARTGRID_ONLY = 1
+export NO_MODBUS_SPINDLE = 1
+export NO_PID_AUTOTUNE = 1
 else
 # 3D build excludes these
 export EXCLUDE_MODULES = tools/drillingcycles tools/spindle

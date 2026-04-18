@@ -11,7 +11,9 @@
 #include "SpindleControl.h"
 #include "PWMSpindleControl.h"
 #include "AnalogSpindleControl.h"
+#ifndef NO_MODBUS_SPINDLE
 #include "HuanyangSpindleControl.h"
+#endif
 #include "Config.h"
 #include "checksumm.h"
 #include "ConfigValue.h"
@@ -42,13 +44,15 @@ void SpindleMaker::load_spindle(){
         spindle = new PWMSpindleControl();
     } else if ( spindle_type.compare("analog") == 0 ) {
         spindle = new AnalogSpindleControl();
+#ifndef NO_MODBUS_SPINDLE
     } else if ( spindle_type.compare("modbus") == 0 ) {
-        if(vfd_type.compare("huanyang") == 0) { 
+        if(vfd_type.compare("huanyang") == 0) {
             spindle = new HuanyangSpindleControl();
         } else {
             delete spindle;
             THEKERNEL->streams->printf("ERROR: No valid spindle VFD type defined\n");
         }
+#endif
     } else {
         delete spindle;
         THEKERNEL->streams->printf("ERROR: No valid spindle type defined\n");
