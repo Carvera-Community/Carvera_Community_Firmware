@@ -9,6 +9,8 @@
 #include "libs/Kernel.h"
 
 #include "Robot.h"
+#include "CompensationPreprocessor.h"
+#include "CompensationTypes.h"
 #include "Planner.h"
 #include "Conveyor.h"
 #include "Pin.h"
@@ -141,6 +143,9 @@ Robot::Robot()
     this->n_motors= 0;
     memset(this->sin_r, 0, sizeof sin_r);
     memset(this->r, 0, sizeof r);
+    
+    // Initialize cutter compensation preprocessor (v2.0)
+    this->compensation_preprocessor = new CompensationPreprocessor();
 }
 
 //Called when the module has just been loaded
@@ -599,6 +604,47 @@ void Robot::on_gcode_received(void *argument)
     enum MOTION_MODE_T motion_mode= NONE;
 
     if( gcode->has_g) {
+        // CRITICAL: Flush compensation buffer before non-move G-codes
+        // This ensures buffered moves execute BEFORE commands like G28, G4, G10, etc.
+        bool is_move_gcode = (gcode->g == 0 || gcode->g == 1 || gcode->g == 2 || gcode->g == 3);
+        bool is_comp_gcode = (gcode->g == 40 || gcode->g == 41 || gcode->g == 42);
+        
+        if (compensation_preprocessor->is_active() && !is_move_gcode && !is_comp_gcode) {
+            // Non-move G-code encountered while compensation active - flush buffer first
+            int buffer_count = compensation_preprocessor->get_buffer_count();
+            if (buffer_count > 0) {
+                gcode->stream->printf(">>AUTO_FLUSH: G%d encountered, flushing %d buffered moves\n", 
+                    gcode->g, buffer_count);
+                
+                // Set flushing flag so remaining moves are output
+                compensation_preprocessor->flush();
+                
+                int flush_count = 0;
+                while (compensation_preprocessor->get_buffer_count() > 0) {
+                    Gcode* compensated = compensation_preprocessor->get_compensated_gcode();
+                    if (compensated != nullptr) {
+                        flush_count++;
+                        gcode->stream->printf(">>AUTO_FLUSH[%d]: %s\n", flush_count, compensated->get_command());
+                        // Process the buffered move
+                        MOTION_MODE_T motion = NONE;
+                        if (compensated->has_g && (compensated->g == 0 || compensated->g == 1)) {
+                            motion = (compensated->g == 0) ? SEEK : LINEAR;
+                        } else if (compensated->has_g && (compensated->g == 2 || compensated->g == 3)) {
+                            motion = (compensated->g == 2) ? CW_ARC : CCW_ARC;
+                        }
+                        if (motion != NONE) {
+                            process_move(compensated, motion);
+                        }
+                        delete compensated;
+                    } else {
+                        gcode->stream->printf(">>AUTO_FLUSH: NULL gcode (expected, buffer empty)\n");
+                        break;
+                    }
+                }
+                gcode->stream->printf(">>AUTO_FLUSH: Complete, flushed %d moves\n", flush_count);
+            }
+        }
+        
         switch( gcode->g ) {
             case 0:  motion_mode = SEEK;    break;
             case 1:  motion_mode = LINEAR;  break;
@@ -740,6 +786,67 @@ void Robot::on_gcode_received(void *argument)
                 return;
             }
             case 21: this->inch_mode = false;   break;
+            
+            // Cutter compensation (v2.0 bolt-on architecture)
+            case 40: // G40 - Compensation Off
+            {
+                gcode->stream->printf(">>G40: Flushing buffer (count=%d)\n", compensation_preprocessor->get_buffer_count());
+                // CRITICAL: Flush all buffered moves BEFORE disabling compensation
+                compensation_preprocessor->flush();  // Set is_flushing flag to bypass lookahead requirement
+                int flush_count = 0;
+                while (compensation_preprocessor->get_buffer_count() > 0) {
+                    Gcode* compensated = compensation_preprocessor->get_compensated_gcode();
+                    if (compensated != nullptr) {
+                        flush_count++;
+                        gcode->stream->printf(">>G40_FLUSH[%d]: %s\n", flush_count, compensated->get_command());
+                        // Process the remaining buffered moves through normal path
+                        MOTION_MODE_T motion = NONE;
+                        if (compensated->has_g && (compensated->g == 0 || compensated->g == 1)) {
+                            motion = (compensated->g == 0) ? SEEK : LINEAR;
+                        } else if (compensated->has_g && (compensated->g == 2 || compensated->g == 3)) {
+                            motion = (compensated->g == 2) ? CW_ARC : CCW_ARC;
+                        }
+                        if (motion != NONE) {
+                            process_move(compensated, motion);
+                        }
+                        delete compensated;
+                    } else {
+                        gcode->stream->printf(">>G40_FLUSH: NULL gcode returned!\n");
+                        break;  // Safety: avoid infinite loop if something goes wrong
+                    }
+                }
+                gcode->stream->printf(">>G40: Flushed %d moves, compensation OFF\n", flush_count);
+                // Now it's safe to disable compensation
+                compensation_preprocessor->set_compensation(CompensationType::NONE, 0.0f);
+                break;
+            }
+                
+            case 41: // G41 - Compensation Left
+            case 42: // G42 - Compensation Right
+            {
+                float radius = 0.0f;
+                if (gcode->has_letter('D')) {
+                    radius = gcode->get_value('D');
+                }
+                CompensationType type = (gcode->g == 41) ? CompensationType::LEFT : CompensationType::RIGHT;
+                gcode->stream->printf(">>G%d: Compensation %s, radius=%.3f\n", 
+                    gcode->g, (type == CompensationType::LEFT ? "LEFT" : "RIGHT"), radius);
+                
+                // CRITICAL: Initialize uncompensated position to current WCS position
+                // Must convert from MCS to WCS because G-code coordinates are in WCS
+                wcs_t wcs_pos = mcs2wcs(machine_position);
+                float wcs_position[3] = {
+                    std::get<X_AXIS>(wcs_pos),
+                    std::get<Y_AXIS>(wcs_pos),
+                    std::get<Z_AXIS>(wcs_pos)
+                };
+                compensation_preprocessor->set_initial_position(wcs_position);
+                gcode->stream->printf(">>G%d: Initial WCS pos X=%.3f Y=%.3f Z=%.3f\n",
+                    gcode->g, wcs_position[X_AXIS], wcs_position[Y_AXIS], wcs_position[Z_AXIS]);
+                
+                compensation_preprocessor->set_compensation(type, radius);
+            }
+            break;
 
             case 54: case 55: case 56: case 57: case 58: case 59:
                 // select WCS 0-8: G54..G59, G59.1, G59.2, G59.3
@@ -1215,9 +1322,36 @@ void Robot::on_gcode_received(void *argument)
         }
     }
 
+    // Cutter compensation v2.0: Buffer or process moves
     if( motion_mode != NONE) {
         is_g123= motion_mode != SEEK;
-        process_move(gcode, motion_mode);
+        
+        if (compensation_preprocessor->is_active()) {
+            // Compensation is active - buffer the G-code
+            gcode->stream->printf(">>BUFFER_IN: %s (count=%d)\n", 
+                gcode->get_command(), compensation_preprocessor->get_buffer_count());
+            if (compensation_preprocessor->buffer_gcode(gcode)) {
+                // Successfully buffered - now try to get compensated output
+                Gcode* compensated = compensation_preprocessor->get_compensated_gcode();
+                if (compensated != nullptr) {
+                    gcode->stream->printf(">>COMP_OUT: %s (buffer_count=%d)\n", 
+                        compensated->get_command(), compensation_preprocessor->get_buffer_count());
+                    // Process the compensated G-code through normal path
+                    process_move(compensated, motion_mode);
+                    delete compensated;  // Clean up after processing
+                } else {
+                    gcode->stream->printf(">>BUFFERING: waiting for lookahead (count=%d)\n", 
+                        compensation_preprocessor->get_buffer_count());
+                }
+            } else {
+                // Buffer full - this shouldn't happen with 10 slots
+                THEKERNEL->streams->printf("ERROR: Compensation buffer full\n");
+                process_move(gcode, motion_mode);  // Fall back to uncompensated
+            }
+        } else {
+            // No compensation - normal path
+            process_move(gcode, motion_mode);
+        }
         // THEKERNEL->streams->printf("GCode: [%s], mode:[%d]\n", gcode->get_command(), motion_mode);
     } else {
         is_g123= false;
