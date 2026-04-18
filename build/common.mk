@@ -381,14 +381,21 @@ $(OUTDIR)/%.o : %.s makefile
 # The minifier strips comments, blank lines, and excess whitespace.
 # We write the minified file with the same basename so objcopy generates
 # the expected symbols (_binary_config_default_start/end, etc.).
-$(OUTDIR)/configdefault.o : config.default $(BUILD_DIR)/minify-config.sh
+# Select the appropriate minify script for the current OS.
+ifeq "$(OS)" "Windows_NT"
+MINIFY = powershell -ExecutionPolicy Bypass -File $(BUILD_DIR)/minify-config.ps1
+else
+MINIFY = $(BUILD_DIR)/minify-config.sh
+endif
+
+$(OUTDIR)/configdefault.o : config.default $(BUILD_DIR)/minify-config.sh $(BUILD_DIR)/minify-config.ps1
 	$(Q) $(MKDIR) $(call convert-slash,$(OUTDIR)/_minified) $(QUIET)
-	$(Q) $(BUILD_DIR)/minify-config.sh $< $(OUTDIR)/_minified/config.default
+	$(Q) $(MINIFY) $< $(OUTDIR)/_minified/config.default
 	$(Q) cd $(OUTDIR)/_minified && $(OBJCOPY) -I binary -O elf32-littlearm -B arm --readonly-text --rename-section .data=.rodata.configdefault config.default ../configdefault.o
 
-$(OUTDIR)/config2default.o : config2.default $(BUILD_DIR)/minify-config.sh
+$(OUTDIR)/config2default.o : config2.default $(BUILD_DIR)/minify-config.sh $(BUILD_DIR)/minify-config.ps1
 	$(Q) $(MKDIR) $(call convert-slash,$(OUTDIR)/_minified) $(QUIET)
-	$(Q) $(BUILD_DIR)/minify-config.sh $< $(OUTDIR)/_minified/config2.default
+	$(Q) $(MINIFY) $< $(OUTDIR)/_minified/config2.default
 	$(Q) cd $(OUTDIR)/_minified && $(OBJCOPY) -I binary -O elf32-littlearm -B arm --readonly-text --rename-section .data=.rodata.config2default config2.default ../config2default.o
 
 #########################################################################
