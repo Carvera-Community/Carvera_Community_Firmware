@@ -81,12 +81,12 @@ void WifiProvider::on_module_loaded()
     this->init_wifi_module(false);
 
     // Add interrupt for WIFI data receving
-    Pin *smoothie_pin = new(AHB) Pin();
+    Pin *smoothie_pin = new Pin();
     smoothie_pin->from_string(THEKERNEL->config->value(wifi_checksum, wifi_interrupt_pin_checksum)->by_default("2.11")->as_string());
     smoothie_pin->as_input();
     if (smoothie_pin->port_number == 0 || smoothie_pin->port_number == 2) {
         PinName pinname = port_pin((PortName)smoothie_pin->port_number, smoothie_pin->pin);
-        wifi_interrupt_pin = new(AHB) mbed::InterruptIn(pinname);
+        wifi_interrupt_pin = new mbed::InterruptIn(pinname);
         wifi_interrupt_pin->rise(this, &WifiProvider::on_pin_rise);
         NVIC_SetPriority(EINT3_IRQn, 16);
     } else {
