@@ -83,6 +83,8 @@ ifeq "$(CNC)" "1"
 # CNC build excludes these
 #export EXCLUDE_MODULES = tools/filamentdetector tools/scaracal tools/temperaturecontrol tools/temperatureswitch tools/extruder
 export EXCLUDE_MODULES = tools/filamentdetector tools/scaracal tools/extruder
+# No heaters on CNC — exclude PID autotuner (saves ~200 B heap + ~1.8 KB flash)
+DEFINES += -DNO_PID_AUTOTUNE
 else
 # 3D build excludes these
 export EXCLUDE_MODULES = tools/drillingcycles tools/spindle
