@@ -108,20 +108,20 @@ DeltaGridStrategy::~DeltaGridStrategy()
 
 bool DeltaGridStrategy::handleConfig()
 {
-    grid_size = THEKERNEL->config->value(leveling_strategy_checksum, delta_grid_leveling_strategy_checksum, grid_size_checksum)->by_default(7)->as_number();
-    tolerance = THEKERNEL->config->value(leveling_strategy_checksum, delta_grid_leveling_strategy_checksum, tolerance_checksum)->by_default(0.03F)->as_number();
-    save = THEKERNEL->config->value(leveling_strategy_checksum, delta_grid_leveling_strategy_checksum, save_checksum)->by_default(false)->as_bool();
-    do_home = THEKERNEL->config->value(leveling_strategy_checksum, delta_grid_leveling_strategy_checksum, do_home_checksum)->by_default(true)->as_bool();
-    is_square = THEKERNEL->config->value(leveling_strategy_checksum, delta_grid_leveling_strategy_checksum, is_square_checksum)->by_default(false)->as_bool();
-    grid_radius = THEKERNEL->config->value(leveling_strategy_checksum, delta_grid_leveling_strategy_checksum, grid_radius_checksum)->by_default(50.0F)->as_number();
+    grid_size = THEKERNEL->config->value(leveling_strategy_checksum, delta_grid_leveling_strategy_checksum, grid_size_checksum)->as_number(7);
+    tolerance = THEKERNEL->config->value(leveling_strategy_checksum, delta_grid_leveling_strategy_checksum, tolerance_checksum)->as_number(0.03F);
+    save = THEKERNEL->config->value(leveling_strategy_checksum, delta_grid_leveling_strategy_checksum, save_checksum)->as_bool(false);
+    do_home = THEKERNEL->config->value(leveling_strategy_checksum, delta_grid_leveling_strategy_checksum, do_home_checksum)->as_bool(true);
+    is_square = THEKERNEL->config->value(leveling_strategy_checksum, delta_grid_leveling_strategy_checksum, is_square_checksum)->as_bool(false);
+    grid_radius = THEKERNEL->config->value(leveling_strategy_checksum, delta_grid_leveling_strategy_checksum, grid_radius_checksum)->as_number(50.0F);
 
     // the initial height above the bed we stop the intial move down after home to find the bed
     // this should be a height that is enough that the probe will not hit the bed and is an offset from max_z (can be set to 0 if max_z takes into account the probe offset)
-    this->initial_height = THEKERNEL->config->value(leveling_strategy_checksum, delta_grid_leveling_strategy_checksum, initial_height_checksum)->by_default(10)->as_number();
+    this->initial_height = THEKERNEL->config->value(leveling_strategy_checksum, delta_grid_leveling_strategy_checksum, initial_height_checksum)->as_number(10);
 
     // Probe offsets xxx,yyy,zzz
     {
-        std::string po = THEKERNEL->config->value(leveling_strategy_checksum, delta_grid_leveling_strategy_checksum, probe_offsets_checksum)->by_default("0,0,0")->as_string();
+        std::string po = THEKERNEL->config->value(leveling_strategy_checksum, delta_grid_leveling_strategy_checksum, probe_offsets_checksum)->as_string("0,0,0");
         std::vector<float> v = parse_number_list(po.c_str());
         if(v.size() >= 3) {
             this->probe_offsets = std::make_tuple(v[0], v[1], v[2]);

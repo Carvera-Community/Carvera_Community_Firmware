@@ -257,7 +257,7 @@ AS_FLAGS += -g3 $(DEVICE_FLAGS)
 
 # Linker Options.
 LDFLAGS = $(DEVICE_FLAGS) -specs=$(BUILD_DIR)/startfile.spec
-LDFLAGS += -flto -flto-partition=max -Wl,-Map=$(OUTDIR)/$(PROJECT).map,--cref,--gc-sections,--wrap=_isatty,--wrap=malloc,--wrap=realloc,--wrap=free$(MRI_WRAPS)
+LDFLAGS += -flto=auto -flto-partition=max -Wl,-Map=$(OUTDIR)/$(PROJECT).map,--cref,--gc-sections,--wrap=_isatty,--wrap=malloc,--wrap=realloc,--wrap=free$(MRI_WRAPS)
 LDFLAGS += -T$(LSCRIPT)  -L $(EXTERNAL_DIR)/gcc/LPC1768
 #LDFLAGS += -L $(BUILD_DIR) -lM8266WIFI
 ifneq "$(NO_FLOAT_SCANF)" "1"

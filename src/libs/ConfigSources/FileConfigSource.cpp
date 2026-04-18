@@ -82,7 +82,7 @@ void FileConfigSource::transfer_values_to_cache( ConfigCache *cache, const char 
 
             // if this line is an include directive then attempt to read the included file
             if(cv->check_sums[0] == include_checksum) {
-                string inc_file_name = cv->value.c_str();
+                string inc_file_name = cv->value;
                 cache->pop(); // we do not need to keep this around or leave it on the list
 
                 if(!file_exists(inc_file_name)) {

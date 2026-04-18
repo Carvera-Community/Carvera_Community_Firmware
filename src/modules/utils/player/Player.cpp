@@ -92,18 +92,18 @@ void Player::on_module_loaded()
     this->register_for_event(ON_GCODE_RECEIVED);
     this->register_for_event(ON_HALT);
 
-    this->on_boot_gcode = THEKERNEL->config->value(on_boot_gcode_checksum)->by_default("/sd/on_boot.gcode")->as_string();
-    this->on_boot_gcode_enable = THEKERNEL->config->value(on_boot_gcode_enable_checksum)->by_default(false)->as_bool();
+    this->on_boot_gcode = THEKERNEL->config->value(on_boot_gcode_checksum)->as_string("/sd/on_boot.gcode");
+    this->on_boot_gcode_enable = THEKERNEL->config->value(on_boot_gcode_enable_checksum)->as_bool(false);
 
-    this->home_on_boot = THEKERNEL->config->value(home_on_boot_checksum)->by_default(true)->as_bool();
+    this->home_on_boot = THEKERNEL->config->value(home_on_boot_checksum)->as_bool(true);
 
-    this->after_suspend_gcode = THEKERNEL->config->value(after_suspend_gcode_checksum)->by_default("")->as_string();
-    this->before_resume_gcode = THEKERNEL->config->value(before_resume_gcode_checksum)->by_default("")->as_string();
+    this->after_suspend_gcode = THEKERNEL->config->value(after_suspend_gcode_checksum)->as_string("");
+    this->before_resume_gcode = THEKERNEL->config->value(before_resume_gcode_checksum)->as_string("");
     std::replace( this->after_suspend_gcode.begin(), this->after_suspend_gcode.end(), '_', ' '); // replace _ with space
     std::replace( this->before_resume_gcode.begin(), this->before_resume_gcode.end(), '_', ' '); // replace _ with space
-    this->leave_heaters_on = THEKERNEL->config->value(leave_heaters_on_suspend_checksum)->by_default(false)->as_bool();
+    this->leave_heaters_on = THEKERNEL->config->value(leave_heaters_on_suspend_checksum)->as_bool(false);
 
-    this->laser_clustering = THEKERNEL->config->value(laser_module_clustering_checksum)->by_default(false)->as_bool();
+    this->laser_clustering = THEKERNEL->config->value(laser_module_clustering_checksum)->as_bool(false);
 }
 
 void Player::on_halt(void* argument)
