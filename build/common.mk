@@ -48,23 +48,19 @@ WRITE_BUFFER_DISABLE ?= 0
 STACK_SIZE ?= 0
 
 
-# Configure MRI variables based on BUILD_TYPE build type variable.
+# Configure MRI variables based on BUILD_TYPE variable.
+#   Release - Production firmware. Optimized for size (-Os), no MRI debug monitor.
+#   Debug   - Development firmware. Optimized for debugging (-Og), MRI debug monitor
+#             linked. Allows GDB attach via serial and __debugbreak() calls.
+#             Uses -Og (not -O0) because unoptimized code overflows flash on LPC1768.
 ifeq "$(BUILD_TYPE)" "Release"
-OPTIMIZATION ?= 2
+OPTIMIZATION ?= s
 MRI_ENABLE = 0
 MRI_SEMIHOST_STDIO ?= 0
 endif
 
-
 ifeq "$(BUILD_TYPE)" "Debug"
-OPTIMIZATION = 0
-MRI_ENABLE ?= 1
-MRI_SEMIHOST_STDIO ?= 1
-endif
-
-
-ifeq "$(BUILD_TYPE)" "Checked"
-OPTIMIZATION ?= s
+OPTIMIZATION ?= g
 MRI_ENABLE = 1
 MRI_SEMIHOST_STDIO ?= 1
 endif

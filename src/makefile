@@ -2,11 +2,14 @@ PROJECT=main
 BUILD_DIR=../build
 DEVICES=lpc1768
 
-# BUILD_TYPE can be set to the following values:
-#  Checked - Optimizations enabled with MRI debug monitor support. (Recommended Type)
-#  Release - Optimizations enabled.
-#  Debug - Optimization disabled with MRI debug monitor support.
-BUILD_TYPE=Checked
+# BUILD_TYPE controls the firmware build profile:
+#   Release - Production firmware. Size-optimized (-Os), no MRI debug monitor.
+#   Debug   - Development firmware. Debug-optimized (-Og), MRI debug monitor linked
+#             for GDB attach via serial.
+#
+# Use 'build/build.sh --debug' or 'make build-debug' for debug builds.
+# Default is Release.
+BUILD_TYPE?=Release
 
 # Set to 1 to tag each heap allocation with the caller's return address.
 # NOTE: Can't be enabled with latest build as not compatible with newlib nano.
@@ -15,24 +18,15 @@ HEAP_TAGS=0
 # Set to 1 configure MPU to disable write buffering and eliminate imprecise bus faults.
 WRITE_BUFFER_DISABLE=0
 
-# Set to 1 to allow MRI debug monitor to take full control of UART0 and use it
-# as a dedicated debug channel.  If you are using the USB based serial port for
-# the console then this should cause you no problems.  Set MRI_BREAK_ON_INIT to
-# 0 if you don't want to break into GDB at startup.
-ENABLE_DEBUG_MONITOR?=0
-
-# this is the default UART baud rate used if it is not set in config
-# it is also the baud rate used to report any errors found while parsing the config file
+# UART baud rate used if not set in config, and for config parse error reporting.
 DEFAULT_SERIAL_BAUD_RATE?=115200
 
-ifeq "$(ENABLE_DEBUG_MONITOR)" "1"
-# Can add MRI_UART_BAUD=115200 to next line if GDB fails to connect to MRI.
-# Tends to happen on some Linux distros but not Windows and OS X.
+# MRI debug monitor UART configuration (only used when BUILD_TYPE=Debug).
 MRI_UART=MRI_UART_2 MRI_UART_BAUD=$(DEFAULT_SERIAL_BAUD_RATE)
-MRI_BREAK_ON_INIT=1
+ifeq "$(BUILD_TYPE)" "Debug"
+MRI_BREAK_ON_INIT?=0
 MRI_SEMIHOST_STDIO=1
 else
-MRI_UART=MRI_UART_2 MRI_UART_BAUD=$(DEFAULT_SERIAL_BAUD_RATE)
 MRI_BREAK_ON_INIT=0
 MRI_SEMIHOST_STDIO=0
 endif

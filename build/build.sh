@@ -49,13 +49,18 @@ print_help() {
   echo "                   Supported versions are determined by build/gcc.sh."
   echo "  --clean          Run 'make clean' before starting the build."
   echo "  --output <path>  Specify the output path for the build artifact."
+  echo "  --debug          Build with MRI debug monitor linked (BUILD_TYPE=Debug)."
+  echo "                   Enables GDB attach via serial and __debugbreak() calls."
+  echo "                   Uses -Og optimization for debugging."
+  echo "  --release        Build production firmware (default). Size-optimized (-Os),"
+  echo "                   no MRI debug monitor."
   echo "  --help           Display this help message and exit."
   echo ""
   echo "Example:"
-  echo "  $0                            # Build with default GCC (${DEFAULT_GCC_VERSION})"
-  echo "  $0 --clean                    # Clean then build with default GCC"
+  echo "  $0                            # Release build with default GCC (${DEFAULT_GCC_VERSION})"
+  echo "  $0 --clean                    # Clean then release build with default GCC"
+  echo "  $0 --debug --clean            # Clean then debug build with MRI monitor"
   echo "  $0 --gcc 4.8 --clean VERBOSE=1 # Clean then build with GCC 4.8, verbose output"
-  echo "  $0 ENABLE_DEBUG_MONITOR=1     # Build with default GCC and enable debug monitor"
 }
 
 # --- Main Execution ---
@@ -63,6 +68,7 @@ main() {
     local requested_gcc_version_user="$DEFAULT_GCC_VERSION"
     local run_clean=false
     local show_help=false
+    local build_type="Release"
     local make_extra_args=()
     local output_path=""
     local os
@@ -95,6 +101,14 @@ main() {
                 output_path="$2"
                 shift 2
                 ;;
+            --debug)
+                build_type="Debug"
+                shift 1
+                ;;
+            --release)
+                build_type="Release"
+                shift 1
+                ;;
             --help)
                 show_help=true
                 shift 1
@@ -126,6 +140,7 @@ main() {
     cpu_count=$(get_cpu_count "$os")
 
     echo "Detected OS: $os" >&2
+    echo "Build type: $build_type" >&2
     echo "Using GCC version: $requested_gcc_version_user" >&2
     echo "Using $cpu_count parallel jobs for make." >&2
     [[ "$run_clean" == true ]] && echo "Will run 'make clean' first." >&2
@@ -140,7 +155,7 @@ main() {
     # Construct the final make command
     # We need eval here to correctly handle potential spaces or special chars
     # in make_extra_args if they were quoted on the command line.
-    make_cmd=(make "-j${cpu_count}" ${BASE_MAKE_ARGS})
+    make_cmd=(make "-j${cpu_count}" ${BASE_MAKE_ARGS} "BUILD_TYPE=${build_type}")
     make_cmd+=(${make_extra_args[@]+"${make_extra_args[@]}"}) # Append extra args
 
     # --- Execution ---
