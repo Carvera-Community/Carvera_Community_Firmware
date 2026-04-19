@@ -117,7 +117,7 @@ Endstops::Endstops()
 void Endstops::on_module_loaded()
 {
     // Do not do anything if not enabled or if no pins are defined
-    if (THEKERNEL->config->value( endstops_module_enable_checksum )->by_default(true)->as_bool()) {
+    if (THEKERNEL->config->value( endstops_module_enable_checksum )->as_bool(true)) {
         if(!load_old_config()) {
             delete this;
             return;
@@ -169,23 +169,23 @@ bool Endstops::load_old_config()
 	        hinfo.pin_info = nullptr;
 	
 	        // rates in mm/sec
-	        hinfo.fast_rate = THEKERNEL->config->value(checksums[i][FAST_RATE])->by_default(100)->as_number();
-	        hinfo.slow_rate = THEKERNEL->config->value(checksums[i][SLOW_RATE])->by_default(10)->as_number();
+	        hinfo.fast_rate = THEKERNEL->config->value(checksums[i][FAST_RATE])->as_number(100);
+	        hinfo.slow_rate = THEKERNEL->config->value(checksums[i][SLOW_RATE])->as_number(10);
 	
 	        // retract in mm
-	        hinfo.retract = THEKERNEL->config->value(checksums[i][RETRACT])->by_default(5)->as_number();
+	        hinfo.retract = THEKERNEL->config->value(checksums[i][RETRACT])->as_number(5);
 	
 	        // get homing direction and convert to boolean where true is home to min, and false is home to max
-	        hinfo.home_direction = THEKERNEL->config->value(checksums[i][DIRECTION])->by_default("home_to_min")->as_string() != "home_to_max";
+	        hinfo.home_direction = THEKERNEL->config->value(checksums[i][DIRECTION])->as_string("home_to_min") != "home_to_max";
 	
 	        // homing cartesian position
-	        hinfo.homing_position = hinfo.home_direction ? THEKERNEL->config->value(checksums[i][MIN])->by_default(0)->as_number() : THEKERNEL->config->value(checksums[i][MAX])->by_default(200)->as_number();
+	        hinfo.homing_position = hinfo.home_direction ? THEKERNEL->config->value(checksums[i][MIN])->as_number(0) : THEKERNEL->config->value(checksums[i][MAX])->as_number(200);
 	
 	        // used to set maximum movement on homing, set by alpha_max_travel if defined
-	        hinfo.max_travel = THEKERNEL->config->value(checksums[i][MAX_TRAVEL])->by_default(500)->as_number();
+	        hinfo.max_travel = THEKERNEL->config->value(checksums[i][MAX_TRAVEL])->as_number(500);
 	
 	        // motor alarm info
-	        if (THEKERNEL->config->value(checksums[i][ALARM_PIN])->by_default("nc" )->as_string() != "nc") {
+	        if (THEKERNEL->config->value(checksums[i][ALARM_PIN])->as_string("nc" ) != "nc") {
 	        	motor_alarm_info_t *info = new motor_alarm_info_t;
 	        	info->pin.from_string(THEKERNEL->config->value(checksums[i][ALARM_PIN])->as_string())->as_input();
 	            info->debounce = 0;
@@ -194,12 +194,12 @@ bool Endstops::load_old_config()
 	            motor_alarms.push_back(info);
 	        }
 	
-	        hinfo.motor_alarm_pin.from_string(THEKERNEL->config->value(checksums[i][ALARM_PIN])->by_default("nc" )->as_string())->as_input();
+	        hinfo.motor_alarm_pin.from_string(THEKERNEL->config->value(checksums[i][ALARM_PIN])->as_string("nc" ))->as_input();
 	
 	        // pin definitions for endstop pins
 	        for (int j = MIN_PIN; j <= MAX_PIN; ++j) {
 	            endstop_info_t *info = new endstop_info_t;
-	            info->pin.from_string(THEKERNEL->config->value(checksums[i][j])->by_default("nc" )->as_string())->as_input();
+	            info->pin.from_string(THEKERNEL->config->value(checksums[i][j])->as_string("nc" ))->as_input();
 	            if (!info->pin.connected()){
 	                // no pin defined try next
 	                delete info;
@@ -218,7 +218,7 @@ bool Endstops::load_old_config()
 	            info->axis_index = i;
 	
 	            // limits enabled
-	            info->limit_enable = THEKERNEL->config->value(checksums[i][LIMIT])->by_default(false)->as_bool();
+	            info->limit_enable = THEKERNEL->config->value(checksums[i][LIMIT])->as_bool(false);
 	            limit_enabled |= info->limit_enable;
 	        }
 	
@@ -238,23 +238,23 @@ bool Endstops::load_old_config()
 	        hinfo.pin_info = nullptr;
 	
 	        // rates in mm/sec
-	        hinfo.fast_rate = THEKERNEL->config->value(checksums[i][FAST_RATE])->by_default(100)->as_number();
-	        hinfo.slow_rate = THEKERNEL->config->value(checksums[i][SLOW_RATE])->by_default(10)->as_number();
+	        hinfo.fast_rate = THEKERNEL->config->value(checksums[i][FAST_RATE])->as_number(100);
+	        hinfo.slow_rate = THEKERNEL->config->value(checksums[i][SLOW_RATE])->as_number(10);
 	
 	        // retract in mm
-	        hinfo.retract = THEKERNEL->config->value(checksums[i][RETRACT])->by_default(5)->as_number();
+	        hinfo.retract = THEKERNEL->config->value(checksums[i][RETRACT])->as_number(5);
 	
 	        // get homing direction and convert to boolean where true is home to min, and false is home to max
-	        hinfo.home_direction = THEKERNEL->config->value(checksums[i][DIRECTION])->by_default("home_to_min")->as_string() != "home_to_max";
+	        hinfo.home_direction = THEKERNEL->config->value(checksums[i][DIRECTION])->as_string("home_to_min") != "home_to_max";
 	
 	        // homing cartesian position
-	        hinfo.homing_position = hinfo.home_direction ? THEKERNEL->config->value(checksums[i][MIN])->by_default(0)->as_number() : THEKERNEL->config->value(checksums[i][MAX])->by_default(200)->as_number();
+	        hinfo.homing_position = hinfo.home_direction ? THEKERNEL->config->value(checksums[i][MIN])->as_number(0) : THEKERNEL->config->value(checksums[i][MAX])->as_number(200);
 	
 	        // used to set maximum movement on homing, set by alpha_max_travel if defined
-	        hinfo.max_travel = THEKERNEL->config->value(checksums[i][MAX_TRAVEL])->by_default(500)->as_number();
+	        hinfo.max_travel = THEKERNEL->config->value(checksums[i][MAX_TRAVEL])->as_number(500);
 	
 	        // motor alarm info
-	        if (THEKERNEL->config->value(checksums[i][ALARM_PIN])->by_default("nc" )->as_string() != "nc") {
+	        if (THEKERNEL->config->value(checksums[i][ALARM_PIN])->as_string("nc" ) != "nc") {
 	        	motor_alarm_info_t *info = new motor_alarm_info_t;
 	        	info->pin.from_string(THEKERNEL->config->value(checksums[i][ALARM_PIN])->as_string())->as_input();
 	            info->debounce = 0;
@@ -263,12 +263,12 @@ bool Endstops::load_old_config()
 	            motor_alarms.push_back(info);
 	        }
 	
-	        hinfo.motor_alarm_pin.from_string(THEKERNEL->config->value(checksums[i][ALARM_PIN])->by_default("nc" )->as_string())->as_input();
+	        hinfo.motor_alarm_pin.from_string(THEKERNEL->config->value(checksums[i][ALARM_PIN])->as_string("nc" ))->as_input();
 	
 	        // pin definitions for endstop pins
 	        for (int j = MIN_PIN; j <= MAX_PIN; ++j) {
 	            endstop_info_t *info = new endstop_info_t;
-	            info->pin.from_string(THEKERNEL->config->value(checksums[i][j])->by_default("nc" )->as_string())->as_input();
+	            info->pin.from_string(THEKERNEL->config->value(checksums[i][j])->as_string("nc" ))->as_input();
 	            if (!info->pin.connected()){
 	                // no pin defined try next
 	                delete info;
@@ -287,7 +287,7 @@ bool Endstops::load_old_config()
 	            info->axis_index = i;
 	
 	            // limits enabled
-	            info->limit_enable = THEKERNEL->config->value(checksums[i][LIMIT])->by_default(false)->as_bool();
+	            info->limit_enable = THEKERNEL->config->value(checksums[i][LIMIT])->as_bool(false);
 	            limit_enabled |= info->limit_enable;
 	        }
 	
@@ -347,14 +347,14 @@ bool Endstops::load_config()
         if(!THEKERNEL->config->value(endstop_checksum, cs, enable_checksum )->as_bool()) continue;
 
         endstop_info_t *pin_info= new endstop_info_t;
-        pin_info->pin.from_string(THEKERNEL->config->value(endstop_checksum, cs, pin_checksum)->by_default("nc" )->as_string())->as_input();
+        pin_info->pin.from_string(THEKERNEL->config->value(endstop_checksum, cs, pin_checksum)->as_string("nc" ))->as_input();
         if(!pin_info->pin.connected()){
             // no pin defined try next
             delete pin_info;
             continue;
         }
 
-        string axis= THEKERNEL->config->value(endstop_checksum, cs, axis_checksum)->by_default("")->as_string();
+        string axis= THEKERNEL->config->value(endstop_checksum, cs, axis_checksum)->as_string("");
         if(axis.empty()){
             // axis is required
             delete pin_info;
@@ -391,14 +391,14 @@ bool Endstops::load_config()
         pin_info->axis_index= i;
 
         // are limits enabled
-        pin_info->limit_enable= THEKERNEL->config->value(endstop_checksum, cs, limit_checksum)->by_default(false)->as_bool();
+        pin_info->limit_enable= THEKERNEL->config->value(endstop_checksum, cs, limit_checksum)->as_bool(false);
         limit_enabled |= pin_info->limit_enable;
 
         // enter into endstop array
         endstops.push_back(pin_info);
 
         // if set to none it means not used for homing (maybe limit only) so do not add to the homing array
-        string direction= THEKERNEL->config->value(endstop_checksum, cs, direction_checksum)->by_default("none")->as_string();
+        string direction= THEKERNEL->config->value(endstop_checksum, cs, direction_checksum)->as_string("none");
         if(direction == "none") {
             continue;
         }
@@ -414,20 +414,20 @@ bool Endstops::load_config()
         hinfo.pin_info= pin_info;
 
         // rates in mm/sec
-        hinfo.fast_rate= THEKERNEL->config->value(endstop_checksum, cs, fast_rate_checksum)->by_default(100)->as_number();
-        hinfo.slow_rate= THEKERNEL->config->value(endstop_checksum, cs, slow_rate_checksum)->by_default(10)->as_number();
+        hinfo.fast_rate= THEKERNEL->config->value(endstop_checksum, cs, fast_rate_checksum)->as_number(100);
+        hinfo.slow_rate= THEKERNEL->config->value(endstop_checksum, cs, slow_rate_checksum)->as_number(10);
 
         // retract in mm
-        hinfo.retract= THEKERNEL->config->value(endstop_checksum, cs, retract_checksum)->by_default(5)->as_number();
+        hinfo.retract= THEKERNEL->config->value(endstop_checksum, cs, retract_checksum)->as_number(5);
 
         // homing direction and convert to boolean where true is home to min, and false is home to max
         hinfo.home_direction=  direction == "home_to_min";
 
         // homing cartesian position
-        hinfo.homing_position= THEKERNEL->config->value(endstop_checksum, cs, position_checksum)->by_default(hinfo.home_direction ? 0 : 200)->as_number();
+        hinfo.homing_position= THEKERNEL->config->value(endstop_checksum, cs, position_checksum)->as_number(hinfo.home_direction ? 0 : 200);
 
         // used to set maximum movement on homing, set by max_travel if defined
-        hinfo.max_travel= THEKERNEL->config->value(endstop_checksum, cs, max_travel_checksum)->by_default(500)->as_number();
+        hinfo.max_travel= THEKERNEL->config->value(endstop_checksum, cs, max_travel_checksum)->as_number(500);
 
         // stick into array in correct place
         temp_axis_array[hinfo.axis_index]= hinfo;
@@ -479,24 +479,24 @@ bool Endstops::load_config()
 void Endstops::get_global_configs()
 {
     // NOTE the debounce count is in milliseconds so probably does not need to beset anymore
-    this->debounce_ms= THEKERNEL->config->value(endstop_debounce_ms_checksum)->by_default(10)->as_number();
-    this->debounce_count= THEKERNEL->config->value(endstop_debounce_count_checksum)->by_default(100)->as_number();
+    this->debounce_ms= THEKERNEL->config->value(endstop_debounce_ms_checksum)->as_number(10);
+    this->debounce_count= THEKERNEL->config->value(endstop_debounce_count_checksum)->as_number(100);
 
-    this->is_corexy= THEKERNEL->config->value(corexy_homing_checksum)->by_default(false)->as_bool();
-    this->is_delta=  THEKERNEL->config->value(delta_homing_checksum)->by_default(false)->as_bool();
-    this->is_rdelta= THEKERNEL->config->value(rdelta_homing_checksum)->by_default(false)->as_bool();
-    this->is_scara=  THEKERNEL->config->value(scara_homing_checksum)->by_default(false)->as_bool();
+    this->is_corexy= THEKERNEL->config->value(corexy_homing_checksum)->as_bool(false);
+    this->is_delta=  THEKERNEL->config->value(delta_homing_checksum)->as_bool(false);
+    this->is_rdelta= THEKERNEL->config->value(rdelta_homing_checksum)->as_bool(false);
+    this->is_scara=  THEKERNEL->config->value(scara_homing_checksum)->as_bool(false);
 
-    this->home_z_first= THEKERNEL->config->value(home_z_first_checksum)->by_default(true)->as_bool();
+    this->home_z_first= THEKERNEL->config->value(home_z_first_checksum)->as_bool(true);
 
-    this->trim_mm[0] = THEKERNEL->config->value(alpha_trim_checksum)->by_default(0)->as_number();
-    this->trim_mm[1] = THEKERNEL->config->value(beta_trim_checksum)->by_default(0)->as_number();
-    this->trim_mm[2] = THEKERNEL->config->value(gamma_trim_checksum)->by_default(0)->as_number();
+    this->trim_mm[0] = THEKERNEL->config->value(alpha_trim_checksum)->as_number(0);
+    this->trim_mm[1] = THEKERNEL->config->value(beta_trim_checksum)->as_number(0);
+    this->trim_mm[2] = THEKERNEL->config->value(gamma_trim_checksum)->as_number(0);
 
-	this->cover_endstop_pin.from_string( THEKERNEL->config->value(cover_endstop_checksum)->by_default("1.9^" )->as_string())->as_input();
+	this->cover_endstop_pin.from_string( THEKERNEL->config->value(cover_endstop_checksum)->as_string("1.9^" ))->as_input();
 
     // see if an order has been specified, must be three or more characters, XYZABC or ABYXZ etc
-    string order = THEKERNEL->config->value(homing_order_checksum)->by_default("")->as_string();
+    string order = THEKERNEL->config->value(homing_order_checksum)->as_string("");
     this->homing_order = 0;
     if(order.size() >= 3 && order.size() <= homing_axis.size() && !(this->is_delta || this->is_rdelta)) {
         int shift = 0;
@@ -514,9 +514,9 @@ void Endstops::get_global_configs()
     }
 
     // set to true by default for deltas due to trim, false on cartesians
-    this->move_to_origin_after_home = THEKERNEL->config->value(move_to_origin_checksum)->by_default(is_delta)->as_bool();
+    this->move_to_origin_after_home = THEKERNEL->config->value(move_to_origin_checksum)->as_bool(is_delta);
     if(!this->move_to_origin_after_home) {
-        this->park_after_home = THEKERNEL->config->value(park_after_home_checksum)->by_default(false)->as_bool();
+        this->park_after_home = THEKERNEL->config->value(park_after_home_checksum)->as_bool(false);
     }else{
         this->park_after_home= false;
     }

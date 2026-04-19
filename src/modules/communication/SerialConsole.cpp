@@ -47,7 +47,7 @@ void SerialConsole::on_module_loaded() {
     diagnose_flag = false;
 	this->attach_irq(true);
 
-    default_baud_rate = THEKERNEL->config->value(uart_checksum, baud_rate_setting_checksum)->by_default(current_baud_rate)->as_number();
+    default_baud_rate = THEKERNEL->config->value(uart_checksum, baud_rate_setting_checksum)->as_number(current_baud_rate);
 
     // We only call the command dispatcher in the main loop, nowhere else
     this->register_for_event(ON_MAIN_LOOP);

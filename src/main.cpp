@@ -137,7 +137,7 @@ void init() {
 
 	/*
     // attempt to be able to disable msd in config
-    if(sdok && !kernel->config->value( disable_msd_checksum )->by_default(true)->as_bool()){
+    if(sdok && !kernel->config->value( disable_msd_checksum )->as_bool(true)){
         // HACK to zero the memory USBMSD uses as it and its objects seem to not initialize properly in the ctor
         size_t n= sizeof(USBMSD);
         void *v = AHB.alloc(n);
@@ -151,21 +151,21 @@ void init() {
 #endif
 
     // Create and add main modules
-    kernel->add_module( new(AHB) Player() );
+    kernel->add_module( new Player() );
 
     // ATC Handler
-    kernel->add_module( new(AHB) ATCHandler() );
+    kernel->add_module( new ATCHandler() );
 
     // MSC File System Handler
-    kernel->add_module( new(AHB) MSCFileSystem("ud") );
+    kernel->add_module( new MSCFileSystem("ud") );
 
     // Serial Console handles IO with the wireless probe
-    kernel->add_module( new(AHB) SerialConsole2() );
+    kernel->add_module( new(AHB) SerialConsole2() ); // must stay in AHB: UART RxIrq writes RingBuffer
 
-    kernel->add_module( new(AHB) MainButton() );
+    kernel->add_module( new MainButton() );
 
     // Wifi Provider
-    kernel->add_module( new(AHB) WifiProvider);
+    kernel->add_module( new WifiProvider);
 
     // these modules can be completely disabled in the Makefile by adding to EXCLUDE_MODULES
     #ifndef NO_TOOLS_SWITCH
@@ -183,20 +183,20 @@ void init() {
 
     // #ifndef NO_TOOLS_TEMPERATURECONTROL
     // Note order is important here must be after extruder so Tn as a parameter will get executed first
-    TemperatureControlPool *tp= new(AHB) TemperatureControlPool();
+    TemperatureControlPool *tp= new TemperatureControlPool();
     tp->load_tools();
     delete tp;
 
     // #endif
     #ifndef NO_TOOLS_ENDSTOPS
-    kernel->add_module( new(AHB) Endstops() );
+    kernel->add_module( new Endstops() );
     #endif
     #ifndef NO_TOOLS_LASER
-    kernel->add_module( new(AHB) Laser() );
+    kernel->add_module( new Laser() );
     #endif
 
     #ifndef NO_TOOLS_SPINDLE
-    SpindleMaker *sm = new(AHB) SpindleMaker();
+    SpindleMaker *sm = new SpindleMaker();
     sm->load_spindle();
     delete sm;
     //kernel->add_module( new(AHB) Spindle() );
@@ -205,23 +205,23 @@ void init() {
     // kernel->add_module( new(AHB) Panel() );
     #endif
     #ifndef NO_TOOLS_ZPROBE
-    kernel->add_module( new(AHB) ZProbe() );
+    kernel->add_module( new ZProbe() );
     #endif
     #ifndef NO_TOOLS_SCARACAL
-    kernel->add_module( new(AHB) SCARAcal() );
+    kernel->add_module( new SCARAcal() );
     #endif
     #ifndef NO_TOOLS_ROTARYDELTACALIBRATION
-    kernel->add_module( new(AHB) RotaryDeltaCalibration() );
+    kernel->add_module( new RotaryDeltaCalibration() );
     #endif
 //    #ifndef NONETWORK
 //    kernel->add_module( new Network() );
 //    #endif
     #ifndef NO_TOOLS_TEMPERATURESWITCH
     // Must be loaded after TemperatureControl
-    kernel->add_module( new(AHB) TemperatureSwitch() );
+    kernel->add_module( new TemperatureSwitch() );
     #endif
     #ifndef NO_TOOLS_DRILLINGCYCLES
-    kernel->add_module( new(AHB) Drillingcycles() );
+    kernel->add_module( new Drillingcycles() );
     #endif
     // Create and initialize USB stuff
     // u.init();
@@ -232,7 +232,7 @@ void init() {
         kernel->add_module( msc );
     }
 #else
-    if (!kernel->config->value( disable_msd_checksum )->by_default(false)->as_bool()) {
+    if (!kernel->config->value( disable_msd_checksum )->as_bool(false)) {
         kernel->add_module( &msc );
     }
 #endif
@@ -240,12 +240,12 @@ void init() {
 
     /* disable USB module
     kernel->add_module( &usbserial );
-    if( kernel->config->value( second_usb_serial_enable_checksum )->by_default(false)->as_bool() ){
-        kernel->add_module( new(AHB) USBSerial(&u) );
+    if( kernel->config->value( second_usb_serial_enable_checksum )->as_bool(false) ){
+        kernel->add_module( new USBSerial(&u) );
     }
     */
 
-    // if( kernel->config->value( dfu_enable_checksum )->by_default(false)->as_bool() ){
+    // if( kernel->config->value( dfu_enable_checksum )->as_bool(false) ){
     //     kernel->add_module( new(AHB) DFU(&u));
     // }
 
@@ -253,10 +253,10 @@ void init() {
 
     // LUKE : DISABLED
 
-    float t= kernel->config->value( watchdog_timeout_checksum )->by_default(10.0F)->as_number();
+    float t= kernel->config->value( watchdog_timeout_checksum )->as_number(10.0F);
     if(t > 0.1F) {
         // NOTE setting WDT_RESET with the current bootloader would leave it in DFU mode which would be suboptimal
-        kernel->add_module( new(AHB) Watchdog(t * 1000000, WDT_RESET )); // WDT_RESET));
+        kernel->add_module( new Watchdog(t * 1000000, WDT_RESET )); // WDT_RESET));
         kernel->streams->printf("Watchdog enabled for %1.3f seconds\n", t);
     }else{
         kernel->streams->printf("WARNING Watchdog is disabled\n");

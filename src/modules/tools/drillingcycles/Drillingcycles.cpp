@@ -40,7 +40,7 @@ Drillingcycles::Drillingcycles() {}
 void Drillingcycles::on_module_loaded()
 {
     // if the module is disabled -> do nothing
-    if(! THEKERNEL->config->value(drillingcycles_checksum, enable_checksum)->by_default(false)->as_bool()) {
+    if(! THEKERNEL->config->value(drillingcycles_checksum, enable_checksum)->as_bool(false)) {
         // as this module is not needed free up the resource
         delete this;
         return;
@@ -65,7 +65,7 @@ void Drillingcycles::on_module_loaded()
 void Drillingcycles::on_config_reload(void *argument)
 {
     // take the dwell units configured by user, or select S (seconds) by default
-    string dwell_units = THEKERNEL->config->value(drillingcycles_checksum, dwell_units_checksum)->by_default("S")->as_string();
+    string dwell_units = THEKERNEL->config->value(drillingcycles_checksum, dwell_units_checksum)->as_string("S");
     this->dwell_units  = (dwell_units == "P") ? DWELL_UNITS_P : DWELL_UNITS_S;
 }
 
