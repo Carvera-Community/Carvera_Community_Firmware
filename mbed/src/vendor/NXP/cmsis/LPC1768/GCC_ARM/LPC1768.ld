@@ -165,13 +165,6 @@ SECTIONS
 
         . = ALIGN(4);
 
-        PROVIDE(__ohci_registers_t_start = Image$$RW_IRAM1$$Base);
-
-        /* Reserve 0x200 bytes for USB OHCI controller registers */
-        . = . + 0x200;
-
-        PROVIDE(__ohci_registers_t_end = .);
-
         *(AHBSRAM)
         Image$$RW_IRAM1$$ZI$$Limit = .;
         PROVIDE(__AHB_dyn_start = .);
