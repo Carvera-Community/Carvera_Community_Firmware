@@ -157,6 +157,14 @@ CPPSRCS3 := $(filter-out \
 DEFINES += -DNO_MODBUS_SPINDLE
 endif
 
+# NO_VESC_SPINDLE: exclude VESC USB spindle driver
+ifdef NO_VESC_SPINDLE
+CPPSRCS3 := $(filter-out \
+  $(SRC)/modules/tools/spindle/VESCSpindleControl.cpp \
+  ,$(CPPSRCS3))
+DEFINES += -DNO_VESC_SPINDLE
+endif
+
 # NO_PID_AUTOTUNE: exclude PID autotuner (not needed when no heaters are connected)
 ifdef NO_PID_AUTOTUNE
 CPPSRCS3 := $(filter-out \

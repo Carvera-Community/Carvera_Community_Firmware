@@ -80,7 +80,7 @@ int MSCFileSystem::initialise_msc()
     //print_clock();
     Host_Init();               /* Initialize the  host controller                                    */
 
-    rc = Host_EnumDev();       /* Enumerate the device connected                                            */
+    rc = MS_Enumerate();       /* Enumerate the device connected                                            */
     if (rc != OK)
     {
         // fprintf(stderr, "Could not enumerate device: %d\n", rc) ;
@@ -116,7 +116,7 @@ int MSCFileSystem::disk_initialize()
 
 int MSCFileSystem::disk_write(const char *buffer, uint32_t block_number, uint32_t count)
 {
-    if ( OK == MS_BulkSend(block_number, 1, (USB_INT08U *)buffer) )
+    if ( OK == MS_BulkSend(block_number, 1, reinterpret_cast<const volatile USB_INT08U *>(buffer)) )
         return 0;
     return 1;
 }
