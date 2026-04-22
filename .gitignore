@@ -49,3 +49,4 @@ gcc-arm-none-eabi*
 .analyzer/**
 .cursor
 /comp_preprocess_bolt_on_refactor
+/config_files
