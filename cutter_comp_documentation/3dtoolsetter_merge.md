@@ -198,8 +198,14 @@ A slow second-pass probe (commented out in the commit) is preserved as comments 
 
 ## Progress
 
+- [x] Add M4 command handling to spindle control command path
+- [x] Extend `G38.6` calibration motion to accept X/Y/Z moves (`ZProbe::calibrate_Z`)
+- [x] Add tool-diameter touch sequence into `ATCHandler::fill_cali_scripts()` final calibration pass
+- [x] Add persistent `TOOL_DIA` field/storage in EEPROM data
+- [x] Add G41/G42 fallback to `TOOL_DIA` when D is missing/zero
+- [x] Verify clean build (GCC 4.8)
+
 - [ ] Apply 7-file toolsetter changes to working tree
-- [ ] Verify clean build
 - [ ] Implement `M493.2` to store measured diameter into `TOOL_DIA`
 - [ ] Decouple M491 tool sensor location from tool-1 offset chain and use G53 machine coordinates (X/Y)
 - [ ] Keep decoupling implementation compatible with PR #171/#179/#186 naming and behavior direction
