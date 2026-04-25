@@ -101,7 +101,7 @@ private:
     void fill_change_scripts(int new_tool, bool clear_z, int old_tool, bool wait_after_empty, uint8_t colletIndex, float custom_TLO);
     void fill_drop_scripts(int old_tool);
     void fill_pick_scripts(int new_tool, bool clear_z);
-    void fill_cali_scripts(bool is_probe, bool clear_z, int repeat_count = 1);
+    void fill_cali_scripts(bool is_probe, bool clear_z, int repeat_count = 1, bool measure_diameter = false);
 
     //
     void fill_manual_drop_scripts(int old_tool);
@@ -112,6 +112,8 @@ private:
     void fill_zprobe_scripts(float x_pos, float y_pos, float x_offset, float y_offset);
     void fill_zprobe_abs_scripts();
     void fill_xyzprobe_scripts(float tool_dia, float probe_height);
+
+    bool finalize_tool_dia_measurement(const char* source_tag);
 
     //
     void set_tlo_by_offset(float z_axis_offset);
@@ -293,6 +295,8 @@ private:
     float ref_tool_mz;
     float cur_tool_mz;
     float tool_offset;
+    float tool_dia_probe_start_x;
+    bool tool_dia_probe_start_valid;
     const uint8_t max_tl_mcz_values = 5;
     deque<float> tl_mcz_values = deque<float>(max_tl_mcz_values, 0.0f);
     int beep_state;

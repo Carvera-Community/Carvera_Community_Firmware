@@ -44,6 +44,15 @@
 #include <string>
 #include <algorithm>
 
+namespace {
+constexpr float TOOL_DIA_M4912_MARKER = 4912.0f;
+
+inline bool tool_dia_from_m4912(const EEPROM_data* data)
+{
+    return fabsf(data->reserve - TOOL_DIA_M4912_MARKER) < 0.25f;
+}
+}
+
 #define  default_seek_rate_checksum          CHECKSUM("default_seek_rate")
 #define  default_feed_rate_checksum          CHECKSUM("default_feed_rate")
 #define  mm_per_line_segment_checksum        CHECKSUM("mm_per_line_segment")
@@ -884,6 +893,23 @@ void Robot::process_buffered_command(Gcode *gcode)
                     radius = diameter / 2.0f;  // D word specifies diameter, convert to radius
                     COMPENSATION_TRACE_PRINTF(gcode->stream, ">>G%d: D word diameter=%.3f -> radius=%.3f\n", 
                         gcode->g, diameter, radius);
+                } else if (THEKERNEL->eeprom_data->TOOL_DIA > 0.0f && tool_dia_from_m4912(THEKERNEL->eeprom_data)) {
+                    float diameter = THEKERNEL->eeprom_data->TOOL_DIA;
+                    radius = diameter / 2.0f;
+                    COMPENSATION_TRACE_PRINTF(gcode->stream, ">>G%d: Using TOOL_DIA fallback diameter=%.3f -> radius=%.3f\n",
+                        gcode->g, diameter, radius);
+                }
+
+                if (radius <= 0.0f) {
+                    const char* message = "Error: G41/G42 requires D diameter or M491.2-certified TOOL_DIA > 0\n";
+                    THEKERNEL->streams->printf("%s", message);
+                    if (!gcode->has_letter('D') && THEKERNEL->eeprom_data->TOOL_DIA > 0.0f && !tool_dia_from_m4912(THEKERNEL->eeprom_data)) {
+                        THEKERNEL->streams->printf("Error: Stored TOOL_DIA exists but is not M491.2-certified. Run M491.2 before cutter compensation without D.\n");
+                    }
+                    gcode->txt_after_ok = message;
+                    THEKERNEL->set_halt_reason(MANUAL);
+                    THEKERNEL->call_event(ON_HALT, nullptr);
+                    break;
                 }
                 CompensationType type = (gcode->g == 41) ? CompensationType::LEFT : CompensationType::RIGHT;
                 COMPENSATION_TRACE_PRINTF(gcode->stream, ">>G%d: Compensation %s, radius=%.3f\n", 
