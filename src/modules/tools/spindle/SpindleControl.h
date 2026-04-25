@@ -10,6 +10,9 @@
 
 #include "libs/Module.h"
 
+class Pin;
+class StreamOutput;
+
 class SpindleControl: public Module {
     public:
         SpindleControl() {};
@@ -17,11 +20,19 @@ class SpindleControl: public Module {
         virtual void on_module_loaded() {};
 
     protected:
+        void init_direction_control_from_config();
+
         bool spindle_on;
 
     private:
         void on_gcode_received(void *argument);
         void on_halt(void *argument);
+
+        bool apply_direction(bool reverse, StreamOutput* stream);
+
+        Pin* direction_pin {nullptr};
+        bool direction_control_enabled {false};
+        bool current_direction_reverse {false};
         
         virtual void turn_on(void) {};
         virtual void turn_off(void) {};
