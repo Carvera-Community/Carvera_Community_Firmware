@@ -6,5 +6,6 @@
 #define get_zprobe_pin_states_checksum CHECKSUM("zprobe_pin_states")
 #define get_zprobe_time_checksum CHECKSUM("zprobe_time")
 #define set_tlo_calibrating_checksum CHECKSUM("set_tlo_calibrating")
+#define set_m491_2_mode_checksum CHECKSUM("set_m491_2_mode")
 
 #endif

@@ -6,10 +6,16 @@ description: Build and deploy Carvera CNC firmware with proper naming convention
 
 ## Build Commands
 
-### PowerShell Build (Current Method)
+### PowerShell Build (Preferred Method)
 ```powershell
 cd C:\Users\Matth\Desktop\Personal\equipment_and_tools\Carvera_CNC\Carvera_Community_Firmware
-.\build\build.ps1 -Clean
+.\build\build.ps1 -Clean VERSION=2.1.0c TOOLSETTER=1 VERBOSE=1
+```
+
+### Parameterized PowerShell Build (When Version Changes)
+```powershell
+cd C:\Users\Matth\Desktop\Personal\equipment_and_tools\Carvera_CNC\Carvera_Community_Firmware
+.\build\build.ps1 -Clean VERSION=<firmware_version> TOOLSETTER=1 VERBOSE=1
 ```
 
 ### Alternative: Make Build
@@ -35,7 +41,10 @@ make all AXIS=5 PAXIS=3 CNC=1
 ## Post-Build Procedure
 
 ### 1. Verify Build Success
-Check for "Build finished successfully." message at end of output.
+Check for all of the following at end of output:
+- "Build finished successfully."
+- No linker or compiler errors (warnings are acceptable unless user asks to resolve all warnings)
+- Output artifacts exist: `LPC1768/main.bin`, `LPC1768/main.hex`, `LPC1768/main.elf`
 
 ### 2. Copy Binary to FirmwareBin Folder with Descriptive Name
 ```powershell
@@ -72,7 +81,8 @@ Copy-Item LPC1768\main.bin -Destination FirmwareBin\firmware_Exp_CutComp.bin
 - **Linker errors**: Run with `-Clean` flag to force full rebuild
 
 ### Build Script Syntax
-- ✅ Correct: `.\build\build.ps1 -Clean`
+- ✅ Correct (preferred): `.\build\build.ps1 -Clean VERSION=2.1.0c TOOLSETTER=1 VERBOSE=1`
+- ✅ Correct (versioned): `.\build\build.ps1 -Clean VERSION=<firmware_version> TOOLSETTER=1 VERBOSE=1`
 - ❌ Wrong: `.\build\build.ps1 --Clean`
 
 ## Current Implementation Status
