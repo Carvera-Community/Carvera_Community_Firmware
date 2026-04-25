@@ -372,13 +372,10 @@ uint32_t ZProbe::read_calibrate(uint32_t dummy)
                     for (auto &a : THEROBOT->actuators) a->stop_moving();                    
                 }
             } else {
-                // M491.2 probe-safe mode: bypass probe-correlation check, use probe_safe_margin instead
-                calibrate_current_z = STEPPER[moving_axis]->get_current_position();
-                distance_moved = fabs(calibrate_current_z - calibrate_pin_position);
-                if (distance_moved > probe_safe_margin) {
-                    // Exceeded probe-safe margin in M491.2 mode - stop but don't halt
-                    for (auto &a : THEROBOT->actuators) a->stop_moving();
-                }
+                // M491.2 probe-safe mode: stop immediately once the calibrate pin is debounced.
+                // This minimizes sensor contact dwell on the side touch pass.
+                for (auto &a : THEROBOT->actuators) a->stop_moving();
+                cali_debounce = 0;
             }
         } else {
             // The endstop was not hit yet

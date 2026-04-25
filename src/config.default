@@ -168,7 +168,7 @@ switch.probecharger.ignore_on_halt			true			# ignore on halt
 switch.probecharger.startup_state			true			# wireless probe startup state
 
 
-switch.extend.enable						true			# Enable this module
+switch.extend.enable						false			# Disabled by default to avoid conflicts with spindle.dir_pin on EXT
 # switch.extend.input_pin						0.21			# Pin this module controls
 switch.extend.output_pin					2.2				# Pin this module controls
 switch.extend.output_type					hwpwm			# Digital means this is just an on or off pin
@@ -327,6 +327,7 @@ e_stop_pin									0.26!^			# Emergency stop pin
 #spindle.enable								true			# set this to false to disable the spindle module
 #spindle.type								pwm				# sets the spindle module to PWM mode
 spindle.pwm_pin								2.5				# Big Mosfet Q7. Pin must be hardware PWM capable.
+spindle.dir_pin								2.2				# Spindle direction pin (EXT). Add ! to invert FW/REV polarity.
 spindle.pwm_period							1000			# default 1000, sets the PWM frequency
 spindle.feedback_pin						2.7				# Pin must be interrupt capable. 
 spindle.pulses_per_rev						12				# default 1. Defines the number of pulses occur for each rotation 

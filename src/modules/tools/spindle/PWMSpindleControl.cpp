@@ -62,6 +62,9 @@ void PWMSpindleControl::on_module_loaded()
     stall_timer = 0;
     max_rpm = 12000;
     spindle_on = false;
+
+    // Initialize optional spindle FW/REV pin while config is available.
+    init_direction_control_from_config();
     
     factor = 100;
 

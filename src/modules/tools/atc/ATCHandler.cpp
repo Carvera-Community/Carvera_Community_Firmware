@@ -170,7 +170,7 @@ bool ATCHandler::finalize_tool_dia_measurement(const char* source_tag)
 		THEKERNEL->streams->printf("ERROR: Tool diameter probe failed (%s)\n", src);
 		THEKERNEL->streams->printf("DEBUG: M493.8 start_x=%.3f last_prb_x=%.3f last_prb_y=%.3f last_prb_z=%.3f ps=%d\n",
 			this->tool_dia_probe_start_x, px, py, pz, ps);
-		THEKERNEL->streams->printf("DEBUG: Expected M491.2 side probe move was G38.6 X5.0 F30\n");
+		THEKERNEL->streams->printf("DEBUG: Expected M491.2 side probe debounce sequence was G38.6 X5.0 F60, retract, then G38.6 X1.0 F20\n");
 		this->tool_dia_probe_start_valid = false;
 		return false;
 	}
@@ -1174,10 +1174,16 @@ void ATCHandler::fill_cali_scripts(bool is_probe, bool clear_z, int repeat_count
 				this->script_queue.push("G91 G1 Z-4.0 F100");
 				this->script_queue.push("M4 S2000");
 				this->script_queue.push("M493.7");
-				// Allow more X travel to improve trigger reliability on small tools/sensor geometry.
-				this->script_queue.push("G38.6 X5.0 F30");
-				this->script_queue.push("M493.8");
+				// Debounced diameter touch: fast approach, retract, then slow approach for final capture.
+				// This minimizes contact dwell while keeping final measurement from the slow touch.
+				this->script_queue.push("G38.6 X5.0 F60");
 				this->script_queue.push("G91 G0 X-0.5");
+				this->script_queue.push("G38.6 X1.0 F20");
+				// Retract immediately after final touch to reduce time pressing on the sensor.
+				this->script_queue.push("G91 G0 X-0.5");
+				// Ensure retract motion is complete before finishing measurement and stopping spindle.
+				this->script_queue.push("M400");
+				this->script_queue.push("M493.8");
 				this->script_queue.push("M5");
 			}
 
