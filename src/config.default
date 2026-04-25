@@ -169,11 +169,12 @@ switch.probecharger.ignore_on_halt			true			# ignore on halt
 switch.probecharger.startup_state			true			# wireless probe startup state
 
 
-switch.extendout.enable						true			# Enable this module
-switch.extendout.output_pin					0.29			# Pin this module controls
-switch.extendout.output_type				swpwm			# Digital means this is just an on or off pin
-switch.extendout.input_on_command			M851			# Command that will turn this switch on
-switch.extendout.input_off_command			M852			# Command that will turn this switch off
+switch.extend.enable						false			# Disabled by default to avoid conflicts with spindle.dir_pin on EXT
+# switch.extend.input_pin						0.21			# Pin this module controls
+switch.extend.output_pin					2.2				# Pin this module controls
+switch.extend.output_type					hwpwm			# Digital means this is just an on or off pin
+switch.extend.input_on_command				M851			# Command that will turn this switch on
+switch.extend.input_off_command				M852			# Command that will turn this switch off
 
 switch.air.enable							true			# Enable this module
 switch.air.output_pin						0.11				# Pin this module controls
@@ -328,6 +329,7 @@ e_stop_pin									0.26!^			# Emergency stop pin
 #spindle.type								pwm				# sets the spindle module to PWM mode
 spindle_suspend_restore_enable              true            # On suspend: if spindle is running, stop it and remember RPM. On resume: restore only if it was running.
 spindle.pwm_pin								2.5				# Big Mosfet Q7. Pin must be hardware PWM capable.
+spindle.dir_pin								2.2				# Spindle direction pin (EXT). Add ! to invert FW/REV polarity.
 spindle.pwm_period							1000			# default 1000, sets the PWM frequency
 spindle.feedback_pin						2.7				# Pin must be interrupt capable. 
 spindle.pulses_per_rev						12				# default 1. Defines the number of pulses occur for each rotation 
