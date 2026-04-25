@@ -155,6 +155,7 @@ private:
     void reset_probe_tracking();
     uint8_t check_probe_tool();
     void set_tlo_calibrating(bool state);
+    void set_m491_2_mode(bool state);
 
     float slow_feedrate;
     float fast_feedrate;
@@ -210,11 +211,15 @@ private:
     // zprobe.calibrate_safety_margin
     float probe_calibration_safety_margin;
     bool require_probe_trigger_for_calibration = true;
+    // zprobe.probe_safe_margin - separate margin for M491.2 probe-safe measurements
+    float probe_safe_margin;
     // Z position when probe pin triggered        
     volatile float probe_pin_position;
     volatile float calibrate_current_z;
     volatile bool safety_margin_exceeded;
     volatile float distance_moved;
+    // M491.2 probe-safe measurement mode flag - bypasses probe-correlation check
+    volatile bool m491_2_mode;
 };
 
 #endif /* ZPROBE_H_ */
