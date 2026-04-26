@@ -6,6 +6,7 @@
 */
 
 #include "libs/Kernel.h"
+#include "libs/StreamOutputPool.h"
 #include "ConfigValue.h"
 #include "FileConfigSource.h"
 #include "ConfigCache.h"
@@ -35,8 +36,10 @@ bool FileConfigSource::readLine(string& line, int lineno, FILE *fp)
             // truncate long lines
             if(lineno != 0) {
                 // report if it is not truncating a comment
-                if(strchr(buf, '#') == NULL)
-                    printf("Truncated long line %d in: %s\n", lineno, config_file.c_str());
+                if(strchr(buf, '#') == NULL) {
+                    THEKERNEL->streams->printf("Truncated long line %d in: %s\n", lineno, config_file.c_str());
+                    THEKERNEL->set_config_load_error(true);
+                }
             }
             // read until the next \n or eof
             int c;
@@ -95,7 +98,7 @@ void FileConfigSource::transfer_values_to_cache( ConfigCache *cache, const char 
                     else if(file_exists("/local" + inc_file_name)) inc_file_name = "/local" + inc_file_name;
                 }
                 if(file_exists(inc_file_name)) {
-                    printf("Including config file: %s\n", inc_file_name.c_str());
+                    THEKERNEL->streams->printf("Including config file: %s\n", inc_file_name.c_str());
 
                     // save position in current config file
                     fpos_t pos;
@@ -109,7 +112,8 @@ void FileConfigSource::transfer_values_to_cache( ConfigCache *cache, const char 
                     freopen(file_name, "r", lp);
                     fsetpos(lp, &pos);
                 }else{
-                    printf("Unable to find included config file: %s\n", inc_file_name.c_str());
+                    THEKERNEL->streams->printf("Unable to find included config file: %s\n", inc_file_name.c_str());
+                    THEKERNEL->set_config_load_error(true);
                 }
             }
 
@@ -294,7 +298,8 @@ string FileConfigSource::get_config_file()
     if( this->has_config_file() ) {
         return this->config_file;
     } else {
-        printf("ERROR: no config file found\r\n");
+        THEKERNEL->streams->printf("ERROR: no config file found\r\n");
+        THEKERNEL->set_config_load_error(true);
         return "";
     }
 }

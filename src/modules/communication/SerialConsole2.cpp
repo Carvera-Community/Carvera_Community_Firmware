@@ -42,7 +42,7 @@ SerialConsole2::SerialConsole2() {
 // Called when the module has just been loaded
 void SerialConsole2::on_module_loaded() {
 
-	this->serial = new mbed::Serial( USBTX, USBRX );
+	this->serial = new mbed::Serial( P0_2, P0_3 );
     this->serial->baud(THEKERNEL->config->value(uart_checksum, baud_rate_setting_checksum)->by_default(DEFAULT_SERIAL_BAUD_RATE)->as_number());
 
     // We want to be called every time a new char is received
