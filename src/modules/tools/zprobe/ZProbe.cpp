@@ -48,6 +48,7 @@
 #define probe_tip_diameter_checksum CHECKSUM("probe_tip_diameter")
 #define probe_calibration_safety_margin_checksum CHECKSUM("calibration_safety_margin")
 #define probe_safe_margin_checksum CHECKSUM("probe_safe_margin")
+#define use_3dtoolsetter_checksum CHECKSUM("use_3dtoolsetter")
 #define toolZeroIs3Axis_checksum  CHECKSUM("tool_zero_is_3axis")
 #define gamma_max_checksum       CHECKSUM("gamma_max")
 #define max_z_checksum           CHECKSUM("max_z")
@@ -118,6 +119,7 @@ void ZProbe::config_load()
     this->debounce_ms    = THEKERNEL->config->value(zprobe_checksum, debounce_ms_checksum)->by_default(0  )->as_number();
     this->probe_calibration_safety_margin = THEKERNEL->config->value(zprobe_checksum, probe_calibration_safety_margin_checksum)->by_default(0.1F)->as_number();
     this->probe_safe_margin = THEKERNEL->config->value(zprobe_checksum, probe_safe_margin_checksum)->by_default(0.1F)->as_number();
+    this->probe_tool_tlo_toolsetter_only = THEKERNEL->config->value(zprobe_checksum, use_3dtoolsetter_checksum)->by_default(false)->as_bool();
     this->halt_pending = false;
     this->probe_triggered = false;
     this->m491_2_mode = false;
@@ -352,11 +354,11 @@ uint32_t ZProbe::read_calibrate(uint32_t dummy)
                 calibrate_pin_position = STEPPER[moving_axis]->get_current_position();
             }
 
-            if (!probing || probe_detected) {
+            if (!probing || probe_detected || (tlo_calibrating && probe_tool_tlo_toolsetter_only && check_probe_tool() > 0)) {
                 // if we are not probing, e.g. doing a regular TLO calibration,
-                // or we are probing and the probe was detected we signal the
-                // motors to stop, which will preempt any moves on that axis we
-                // do all motors as it may be a delta
+                // or we are probing and the probe was detected, or this probe-tool
+                // TLO calibration is configured to stop on the toolsetter alone,
+                // we signal the motors to stop. We do all motors as it may be a delta.
                 for (auto &a : THEROBOT->actuators) a->stop_moving();
                 cali_debounce = 0;
             } else if (!m491_2_mode) {

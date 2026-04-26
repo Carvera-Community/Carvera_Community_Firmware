@@ -209,6 +209,7 @@ private:
     float probe_calibration_safety_margin;
     // zprobe.probe_safe_margin - separate margin for M491.2 probe-safe measurements
     float probe_safe_margin;
+    bool probe_tool_tlo_toolsetter_only;
     // Z position when probe pin triggered        
     volatile float probe_pin_position;
     volatile float calibrate_current_z;

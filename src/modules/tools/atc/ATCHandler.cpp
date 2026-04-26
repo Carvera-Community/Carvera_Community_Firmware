@@ -104,6 +104,9 @@ inline bool tool_dia_from_m4912(const EEPROM_data* data)
 #define probe_mcs_z_checksum		CHECKSUM("probe_mcs_z")
 #define reference_tool_mz_checksum	CHECKSUM("reference_tool_mz")
 #define three_axis_probe_tlo_correction_checksum CHECKSUM("three_axis_probe_tlo_correction")
+#define use_3dtoolsetter_checksum CHECKSUM("use_3dtoolsetter")
+#define disk_diameter_checksum CHECKSUM("disk_diameter")
+#define three_d_toolsetter_checksum CHECKSUM("3dtoolsetter")
 
 ATCHandler::ATCHandler()
 {
@@ -116,6 +119,7 @@ ATCHandler::ATCHandler()
     tool_offset = 0.0;
 	tool_dia_probe_start_x = 0.0;
 	tool_dia_probe_start_valid = false;
+	toolsetter_disk_diameter = 10.0f;
     last_pos[0] = 0.0;
     last_pos[1] = 0.0;
     last_pos[2] = 0.0;
@@ -176,7 +180,22 @@ bool ATCHandler::finalize_tool_dia_measurement(const char* source_tag)
 	}
 
 	float travel = px - this->tool_dia_probe_start_x;
-	float diameter = fabsf(THEROBOT->from_millimeters(travel)) * 2.0f;
+	float diameter = fabsf(THEROBOT->from_millimeters(travel));
+
+	if (this->use_3dtoolsetter) {
+		// In 3D toolsetter mode, the X touch is a single-side contact on the disk OD.
+		// Compute tool radius from center-to-touch distance minus disk radius, then double.
+		float probe_center_x = probe_mx_mm + (this->probe_oneoff_configured ? this->probe_oneoff_x : 0.0f);
+		float center_to_touch = fabsf(THEROBOT->from_millimeters(probe_center_x - px));
+		float disk_radius = this->toolsetter_disk_diameter * 0.5f;
+		float tool_radius = center_to_touch - disk_radius;
+		diameter = tool_radius * 2.0f;
+		THEKERNEL->streams->printf("DEBUG: TOOL_DIA 3D toolsetter geometry: center_x=%.3f touch_x=%.3f center_to_touch=%.3f disk_r=%.3f tool_r=%.3f\n",
+			THEROBOT->from_millimeters(probe_center_x), px, center_to_touch, disk_radius, tool_radius);
+	}
+
+	THEKERNEL->streams->printf("DEBUG: TOOL_DIA finalize (%s): start_x=%.3f prb_x=%.3f travel=%.3f stored_dia=%.3f\n",
+		src, this->tool_dia_probe_start_x, px, THEROBOT->from_millimeters(travel), diameter);
 	if (diameter > 0.0f) {
 		THEKERNEL->eeprom_data->TOOL_DIA = diameter;
 		THEKERNEL->eeprom_data->reserve = TOOL_DIA_M4912_MARKER;
@@ -1110,6 +1129,13 @@ void ATCHandler::fill_cali_scripts(bool is_probe, bool clear_z, int repeat_count
 	};
 
 	if(is_probe){
+		// Probe-tool TLO calibration must run with the ZProbe TLO gate enabled,
+		// otherwise read_calibrate() will keep waiting for probe pin correlation
+		// and can raise a safety-margin alarm even when toolsetter contact is valid.
+		bool tlo_calibrating = true;
+		bool m491_2_mode = false;
+		PublicData::set_value( zprobe_checksum, set_tlo_calibrating_checksum, &tlo_calibrating );
+		PublicData::set_value( zprobe_checksum, set_m491_2_mode_checksum, &m491_2_mode );
 	// open probe laser
 		this->script_queue.push("M494.1");
 	}
@@ -1199,8 +1225,9 @@ void ATCHandler::fill_cali_scripts(bool is_probe, bool clear_z, int repeat_count
 		}
 		
 	}
-	// check if wireless probe is will be triggered
-	if (is_probe) {
+	// Legacy probe-tool flow verifies the wireless probe can trigger.
+	// In 3D toolsetter mode, probe-tool TLO is allowed to stop on the toolsetter alone.
+	if (is_probe && !this->use_3dtoolsetter) {
 		this->script_queue.push("M492.3");
 	}
 	
@@ -1646,6 +1673,8 @@ void ATCHandler::on_config_reload(void *argument)
 
 	this->skip_path_origin = THEKERNEL->config->value(atc_checksum, skip_path_origin_checksum)->by_default(false)->as_bool();
 	this->three_axis_probe_tlo_correction = THEKERNEL->config->value(zprobe_checksum, three_axis_probe_tlo_correction_checksum)->by_default(0.0f)->as_number();
+	this->use_3dtoolsetter = THEKERNEL->config->value(zprobe_checksum, use_3dtoolsetter_checksum)->by_default(false)->as_bool();
+	this->toolsetter_disk_diameter = THEKERNEL->config->value(three_d_toolsetter_checksum, disk_diameter_checksum)->by_default(10.0f)->as_number();
 	if(CARVERA == THEKERNEL->factory_set->MachineModel || CARVERA_AIR == THEKERNEL->factory_set->MachineModel){
 		this->ref_tool_mz = THEKERNEL->config->value(coordinate_checksum, reference_tool_mz_checksum)->by_default(-115.34f)->as_number(); // Represents the machine Z coordinate when the tool length is 0
 	}else{
