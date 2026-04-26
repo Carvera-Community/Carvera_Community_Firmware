@@ -504,3 +504,10 @@ python3 $(which scan-view) .analyzer/*
 ```
 
 
+## Updating Makera Code potential issues
+
+The way config files are handled has changed, losing the ->by_default
+So to read a bool config value you would use: 
+this->config->value( disable_leds_checksum )->as_bool(false);
+instead of
+this->config->value( disable_leds_checksum )->by_default(false)->as_bool();
