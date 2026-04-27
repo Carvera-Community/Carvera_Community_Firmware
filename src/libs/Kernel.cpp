@@ -94,13 +94,21 @@ Kernel::Kernel()
     disable_serial_console = false;
     keep_alive_request = false;
     flex_compensation_load_error = false;
+    config_load_error = false;
 
-    instance = this; // setup the Singleton instance of the kernel    
-    
+    instance = this; // setup the Singleton instance of the kernel
+
     // init I2C
     this->i2c = new mbed::I2C(P0_27, P0_28);
     this->i2c->frequency(200000);
-    
+
+    // Bring up streams + serial console first so factory and config parser
+    // errors are visible on the host link. Baud is hard-coded here and gets
+    // re-applied from config later in SerialConsole::on_module_loaded().
+    this->streams = new(AHB) StreamOutputPool();
+    this->serial  = new(AHB) SerialConsole(P2_8, P2_9, 115200);
+    this->streams->append_stream(this->serial);
+
     this->factory_set = new(AHB) FACTORY_SET();
     // read Factory setting data from eeprom
     this->read_Factory_data();
@@ -113,8 +121,6 @@ Kernel::Kernel()
 
     // Pre-load the config cache
     this->config->config_cache_load();
-
-    this->streams = new(AHB) StreamOutputPool();
 
     this->current_path   = "/";
 
@@ -141,9 +147,13 @@ Kernel::Kernel()
     // Check if we should break into the debugger on halt
     this->halt_on_error_debug = this->config->value( halt_on_error_debug_checksum )->by_default(false)->as_bool();
 
-    if (!this->disable_serial_console) {
-        int uart_baud = this->config->value(uart_checksum, baud_rate_setting_checksum)->by_default(115200)->as_number();
-        this->serial = new(AHB) SerialConsole(P2_8, P2_9, uart_baud);
+    if (this->disable_serial_console) {
+        this->streams->remove_stream(this->serial);
+        delete this->serial;
+        this->serial = nullptr;
+    } else {
+        // add_module() runs SerialConsole::on_module_loaded() which re-reads
+        // uart.baud_rate from config and applies it to the hardware.
         this->add_module( this->serial );
     }
 
@@ -1059,7 +1069,7 @@ bool Kernel::Factroy_readLine(string& line, int lineno, FILE *fp)
             if(lineno != 0) {
                 // report if it is not truncating a comment
                 if(strchr(buf, '#') == NULL)
-                    printf("Truncated long line %d in: %s\n", lineno, "Factory file");
+                    THEKERNEL->streams->printf("Truncated long line %d in: %s\n", lineno, "Factory file");
             }
             // read until the next \n or eof
             int c;
@@ -1086,13 +1096,13 @@ bool Kernel::process_line(const string &buffer, uint16_t *check_sum, unsigned ch
     
     size_t end_key = buffer.find_first_of(" \t", begin_key);
     if(end_key == string::npos) {
-        printf("ERROR: factory file line %s is invalid, no key value pair found\r\n", buffer.c_str());
+        THEKERNEL->streams->printf("ERROR: factory file line %s is invalid, no key value pair found\r\n", buffer.c_str());
         return false;
     }
 
     size_t begin_value = buffer.find_first_not_of(" \t", end_key);
     if(begin_value == string::npos || buffer[begin_value] == '#') {
-        printf("ERROR: factory file line %s has no value\r\n", buffer.c_str());
+        THEKERNEL->streams->printf("ERROR: factory file line %s has no value\r\n", buffer.c_str());
         return false;
     }
     

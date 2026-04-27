@@ -716,7 +716,10 @@ void Player::on_main_loop(void *argument)
         }
 
         if (this->on_boot_gcode_enable) {
-            this->play_command(this->on_boot_gcode, THEKERNEL->serial);
+            StreamOutput *stream = THEKERNEL->serial != nullptr
+                                 ? static_cast<StreamOutput *>(THEKERNEL->serial)
+                                 : &StreamOutput::NullStream;
+            this->play_command(this->on_boot_gcode, stream);
         }
 
     }

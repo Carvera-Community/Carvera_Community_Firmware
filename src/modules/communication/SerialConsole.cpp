@@ -29,8 +29,8 @@ using std::string;
 // Serial reading module
 // Treats every received line as a command and passes it ( via event call ) to the command dispatcher.
 // The command dispatcher will then ask other modules if they can do something with it
-SerialConsole::SerialConsole( PinName rx_pin, PinName tx_pin, int baud_rate ){
-    this->serial = new mbed::Serial( rx_pin, tx_pin );
+SerialConsole::SerialConsole( PinName tx_pin, PinName rx_pin, int baud_rate ){
+    this->serial = new mbed::Serial( tx_pin, rx_pin );
     this->serial->baud(baud_rate);
     this->previous_char = 0;
     this->current_baud_rate = baud_rate;
@@ -39,15 +39,24 @@ SerialConsole::SerialConsole( PinName rx_pin, PinName tx_pin, int baud_rate ){
     this->last_activity_ms = 0;
 }
 
+SerialConsole::~SerialConsole(){
+    delete this->serial;
+}
+
 // Called when the module has just been loaded
 void SerialConsole::on_module_loaded() {
     // We want to be called every time a new char is received
     query_flag = false;
     halt_flag = false;
     diagnose_flag = false;
-	this->attach_irq(true);
 
     default_baud_rate = THEKERNEL->config->value(uart_checksum, baud_rate_setting_checksum)->by_default(current_baud_rate)->as_number();
+    if (default_baud_rate != current_baud_rate) {
+        this->serial->baud(default_baud_rate);
+        this->current_baud_rate = default_baud_rate;
+    }
+
+    this->attach_irq(true);
 
     // We only call the command dispatcher in the main loop, nowhere else
     this->register_for_event(ON_MAIN_LOOP);

@@ -76,7 +76,7 @@ static void init_serial() {
     if (stdio_uart_inited) return;
     serial_init(&stdio_uart, STDIO_UART_TX, STDIO_UART_RX);
     serial_format(&stdio_uart, 8, ParityNone, 1);
-    serial_baud(&stdio_uart, 9600);
+    serial_baud(&stdio_uart, 115200);
 #endif
 }
 
