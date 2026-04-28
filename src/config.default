@@ -476,6 +476,7 @@ zprobe.fast_feedrate 5					# Z probe fast speed (mm/s)
 zprobe.return_feedrate 20				# Z probe return speed (mm/s)
 zprobe.probe_height 2					# How much above bed to start probe
 zprobe.max_z 100						# Max action distance when doing z probe
+zprobe.three_axis_probe_tlo_correction 0.8   #value used to set the spring descrepancy between when the TLO and 3d probe trigger
 
 # Spindle
 spindle.default_rpm 10000				# Default RPM value in case no RPM is provided
