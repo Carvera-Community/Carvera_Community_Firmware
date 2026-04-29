@@ -44,9 +44,13 @@ win_install.log
 .cache/*
 **/.DS_Store
 .vscode
+.github
 gcc-arm-none-eabi*
 .analzyer
 .analyzer/**
 .cursor
 /comp_preprocess_bolt_on_refactor
 /config_files
+/cutter_comp_documentation
+/copilot_chat
+
