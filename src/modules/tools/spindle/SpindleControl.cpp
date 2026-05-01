@@ -147,7 +147,8 @@ void SpindleControl::on_gcode_received(void *argument)
         {
             if(THEKERNEL->is_halted()) return; // if in halted state ignore any commands
             if (!THEKERNEL->get_laser_mode()) {
-                if (!apply_direction(true, gcode->stream)) return;
+                bool reverse = (gcode->m == 4);
+                if (!apply_direction(reverse, gcode->stream)) return;
                 // current tool number and tool offset
                 struct tool_status tool;
                 bool tool_ok = PublicData::get_value( atc_handler_checksum, get_tool_status_checksum, &tool );
@@ -169,13 +170,13 @@ void SpindleControl::on_gcode_received(void *argument)
                     PublicData::set_value( switch_checksum, vacuum_checksum, state_checksum, &b );
                 }
 
-                // M4 with S value provided: set speed
+                // M3/M4 with S value provided: set speed
                 if (gcode->has_letter('S'))
                 {
                     set_speed(gcode->get_value('S'));
                 }
 
-                // M4: start spindle (direction pin handling remains spindle-driver-specific)
+                // M3/M4: start spindle
                 if (!spindle_on) {
                     turn_on();
                 }

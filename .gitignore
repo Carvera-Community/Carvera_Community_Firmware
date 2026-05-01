@@ -53,4 +53,5 @@ gcc-arm-none-eabi*
 /config_files
 /cutter_comp_documentation
 /copilot_chat
+/FirmwareBin/*
 
