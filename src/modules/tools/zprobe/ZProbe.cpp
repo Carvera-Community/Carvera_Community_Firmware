@@ -64,7 +64,7 @@
 #define state_checksum              CHECKSUM("state")
 #define ignore_on_halt_checksum     CHECKSUM("ignore_on_halt")
 #define set_tlo_calibrating_checksum CHECKSUM("set_tlo_calibrating")
-#define set_m491_2_mode_checksum    CHECKSUM("set_m491_2_mode")
+#define set_m491_3_mode_checksum    CHECKSUM("set_m491_3_mode")
 
 #define X_AXIS 0
 #define Y_AXIS 1
@@ -122,7 +122,7 @@ void ZProbe::config_load()
     this->probe_tool_tlo_toolsetter_only = THEKERNEL->config->value(zprobe_checksum, use_3dtoolsetter_checksum)->by_default(false)->as_bool();
     this->halt_pending = false;
     this->probe_triggered = false;
-    this->m491_2_mode = false;
+    this->m491_3_mode = false;
 
     // get strategies to load
     vector<uint16_t> modules;
@@ -358,15 +358,15 @@ uint32_t ZProbe::read_calibrate(uint32_t dummy)
                 // if we are not probing, e.g. doing a regular TLO calibration,
                 // or we are probing and the probe was detected, or this probe-tool
                 // TLO calibration is configured to stop on the toolsetter alone,
-                // we signal the motors to stop. We do all motors as it may be a delta.
+                // then we signal the motors to stop.
                 for (auto &a : THEROBOT->actuators) a->stop_moving();
                 cali_debounce = 0;
-            } else if (!m491_2_mode) {
-                // We have a probe tool and NOT in M491.2 probe-safe mode
+            } else if (!m491_3_mode) {
+                // We have a probe tool and NOT in M491.3 probe-safe mode
                 // We must make sure we don't move too far (standard dual-pin correlation check)
                 // Store the current Z position for later reporting if necessary.
-                calibrate_current_z = STEPPER[moving_axis]->get_current_position();
-                distance_moved = fabs(calibrate_current_z - calibrate_pin_position);
+                calibrate_current_axis_pos = STEPPER[moving_axis]->get_current_position();
+                distance_moved = fabs(calibrate_current_axis_pos - calibrate_pin_position);
                 // If we've exceeded the calibration distance, set PROBE_FAIL.
                 // The error will be reported in calibrate_Z.
                 if (distance_moved > probe_calibration_safety_margin) {
@@ -374,7 +374,7 @@ uint32_t ZProbe::read_calibrate(uint32_t dummy)
                     for (auto &a : THEROBOT->actuators) a->stop_moving();                    
                 }
             } else {
-                // M491.2 probe-safe mode: stop immediately once the calibrate pin is debounced.
+                // M491.3 probe-safe mode: stop immediately once the calibrate pin is debounced.
                 // This minimizes sensor contact dwell on the side touch pass.
                 for (auto &a : THEROBOT->actuators) a->stop_moving();
                 cali_debounce = 0;
@@ -808,7 +808,7 @@ void ZProbe::reset_probe_tracking() {
     safety_margin_exceeded = false;
     calibrate_pin_position = 0.0F;
     probe_pin_position = 0.0F;
-    calibrate_current_z = 0.0F;
+    calibrate_current_axis_pos = 0.0F;
 }
 
 // special way to probe in the X or Y or Z direction using planned moves, should work with any kinematics
@@ -926,8 +926,8 @@ void ZProbe::set_tlo_calibrating(bool state) {
     tlo_calibrating = state;
 }
 
-void ZProbe::set_m491_2_mode(bool state) {
-    m491_2_mode = state;
+void ZProbe::set_m491_3_mode(bool state) {
+    m491_3_mode = state;
 }
 
 void ZProbe::on_set_public_data(void* argument) {
@@ -940,9 +940,9 @@ void ZProbe::on_set_public_data(void* argument) {
         this->set_tlo_calibrating(*state);
         pdr->set_taken();
     }
-    else if(pdr->second_element_is(set_m491_2_mode_checksum)) {
+    else if(pdr->second_element_is(set_m491_3_mode_checksum)) {
         bool *state = static_cast<bool*>(pdr->get_data_ptr());
-        this->set_m491_2_mode(*state);
+        this->set_m491_3_mode(*state);
         pdr->set_taken();
     }
 }
@@ -1036,7 +1036,7 @@ bool ZProbe::calibrate_Z(Gcode *gcode)
         gcode->stream->printf("Probe pin triggered: %d, position: %.3f\n", probe_detected, probe_pin_position);
         gcode->stream->printf("Calibrate pin triggered: %d, position: %.3f\n", calibrate_detected, calibrate_pin_position);
         gcode->stream->printf("Current position: %.3f\n", THEKERNEL->robot->from_millimeters(pos[Z_AXIS]));
-        gcode->stream->printf("Error detected at position: %.3f\n", calibrate_current_z);
+        gcode->stream->printf("Error detected at position: %.3f\n", calibrate_current_axis_pos);
         gcode->stream->printf("Safety Margin Value: %.3f\n",  probe_calibration_safety_margin);
         gcode->stream->printf("debounce: %d, cali_debounce: %d, debounce_ms: %d\n", debounce, cali_debounce, debounce_ms);
         return false;

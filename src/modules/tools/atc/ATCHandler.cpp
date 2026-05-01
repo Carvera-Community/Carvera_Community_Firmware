@@ -40,15 +40,6 @@
 #include "FileStream.h"
 #include <math.h>
 
-namespace {
-constexpr float TOOL_DIA_M4912_MARKER = 4912.0f;
-
-inline bool tool_dia_from_m4912(const EEPROM_data* data)
-{
-	return fabsf(data->reserve - TOOL_DIA_M4912_MARKER) < 0.25f;
-}
-}
-
 #define ATC_AXIS 4
 #define STEPPER THEROBOT->actuators
 // #define STEPS_PER_MM(a) (STEPPER[a]->get_steps_per_mm())
@@ -159,8 +150,6 @@ bool ATCHandler::finalize_tool_dia_measurement(const char* source_tag)
 {
 	const char* src = (source_tag != nullptr) ? source_tag : "unknown";
 	if (!this->tool_dia_probe_start_valid) {
-		THEKERNEL->eeprom_data->reserve = 0.0f;
-		THEKERNEL->write_eeprom_data();
 		THEKERNEL->streams->printf("ERROR: Tool diameter start point not captured (%s)\n", src);
 		return false;
 	}
@@ -169,12 +158,10 @@ bool ATCHandler::finalize_tool_dia_measurement(const char* source_tag)
 	uint8_t ps;
 	std::tie(px, py, pz, ps) = THEROBOT->get_last_probe_position();
 	if (ps != 1) {
-		THEKERNEL->eeprom_data->reserve = 0.0f;
-		THEKERNEL->write_eeprom_data();
 		THEKERNEL->streams->printf("ERROR: Tool diameter probe failed (%s)\n", src);
 		THEKERNEL->streams->printf("DEBUG: M493.8 start_x=%.3f last_prb_x=%.3f last_prb_y=%.3f last_prb_z=%.3f ps=%d\n",
 			this->tool_dia_probe_start_x, px, py, pz, ps);
-		THEKERNEL->streams->printf("DEBUG: Expected M491.2 side probe debounce sequence was G38.6 X5.0 F60, retract, then G38.6 X1.0 F20\n");
+		THEKERNEL->streams->printf("DEBUG: Expected M491.3 side probe debounce sequence was G38.6 X5.0 F60, retract, then G38.6 X1.0 F20\n");
 		this->tool_dia_probe_start_valid = false;
 		return false;
 	}
@@ -198,15 +185,12 @@ bool ATCHandler::finalize_tool_dia_measurement(const char* source_tag)
 		src, this->tool_dia_probe_start_x, px, THEROBOT->from_millimeters(travel), diameter);
 	if (diameter > 0.0f) {
 		THEKERNEL->eeprom_data->TOOL_DIA = diameter;
-		THEKERNEL->eeprom_data->reserve = TOOL_DIA_M4912_MARKER;
 		THEKERNEL->write_eeprom_data();
-		THEKERNEL->streams->printf("Measured tool diameter [%.3f] saved to TOOL_DIA (M491.2-certified, %s)\n", diameter, src);
+		THEKERNEL->streams->printf("Measured tool diameter [%.3f] saved via M491.3 (%s)\n", diameter, src);
 		this->tool_dia_probe_start_valid = false;
 		return true;
 	}
 
-	THEKERNEL->eeprom_data->reserve = 0.0f;
-	THEKERNEL->write_eeprom_data();
 	THEKERNEL->streams->printf("ERROR: Invalid measured tool diameter (%s)\n", src);
 	this->tool_dia_probe_start_valid = false;
 	return false;
@@ -1133,9 +1117,9 @@ void ATCHandler::fill_cali_scripts(bool is_probe, bool clear_z, int repeat_count
 		// otherwise read_calibrate() will keep waiting for probe pin correlation
 		// and can raise a safety-margin alarm even when toolsetter contact is valid.
 		bool tlo_calibrating = true;
-		bool m491_2_mode = false;
+		bool m491_3_mode = false;
 		PublicData::set_value( zprobe_checksum, set_tlo_calibrating_checksum, &tlo_calibrating );
-		PublicData::set_value( zprobe_checksum, set_m491_2_mode_checksum, &m491_2_mode );
+		PublicData::set_value( zprobe_checksum, set_m491_3_mode_checksum, &m491_3_mode );
 	// open probe laser
 		this->script_queue.push("M494.1");
 	}
@@ -1192,7 +1176,7 @@ void ATCHandler::fill_cali_scripts(bool is_probe, bool clear_z, int repeat_count
 			snprintf(buff, sizeof(buff), "M493.1 R%d", i);
 			this->script_queue.push(buff);
 
-			// Tool diameter measurement is only enabled for the explicit M491.2 path.
+			// Tool diameter measurement is only enabled for the explicit M491.3 path.
 			if (measure_diameter && !is_probe) {
 				this->script_queue.push("G91 G0 Z2");
 				this->script_queue.push("G91 G0 X-10.5");
@@ -1609,7 +1593,7 @@ void ATCHandler::on_config_reload(void *argument)
 
 	if (atc_tools.empty()){
 		// Use default tool slot configuration
-		if(THEKERNEL->factory_set->FuncSetting & (1<<3))		//for CE1 expand
+		if(THEKERNEL->factory_set->FuncSetting & (1<<3))	//for CE1 expand
 		{
 			for (int i = 0; i <=  8; i ++) {
 				struct atc_tool tool;
@@ -2020,7 +2004,7 @@ void ATCHandler::set_tool_offset(uint8_t repeat_count)
 
 void ATCHandler::set_tlo_by_offset(float z_axis_offset){
 	// new TLO = Current TLO - (current WCS - z_axis_offset)
-	float mpos[3] = {0};
+	float mpos[5] = {0};
 	Robot::wcs_t pos;
 	THEROBOT->get_current_machine_position(mpos);
 	// current_position/mpos includes the compensation transform so we need to get the inverse to get actual position
@@ -2433,88 +2417,92 @@ void ATCHandler::on_gcode_received(void *argument)
 				this->script_queue.push(buff);
 				snprintf(buff, sizeof(buff), "M491.2 H%.3f , P%.3f", tolerance, tlo);
 				this->script_queue.push(buff);
+				
+				
+
 
 			}else if (gcode->subcode == 2){
+				float tlo = 0;
+				float tolerance = 0.1;
 				THECONVEYOR->wait_for_idle();
-				bool is_tool_break_check = gcode->has_letter('P');
-				
-				if (is_tool_break_check) {
-					float tlo = 0;
-					float tolerance = 0.1;
-					if (gcode->has_letter('H')) {
-		    				tolerance = gcode->get_value('H');
-						if (tolerance < 0.02) {
-							THEKERNEL->streams->printf("ERROR: Tool Break Check - tolerance set too small\n");
-							THEKERNEL->call_event(ON_HALT, nullptr);
-							THEKERNEL->set_halt_reason(CALIBRATE_FAIL);
-							return;
-						}
-					}
-					if (gcode->has_letter('P')) {
-		    				tlo = gcode->get_value('P');
-						if (tlo == 0) {
-							THEKERNEL->streams->printf("No previous TLO included, aborting\n");
-							return;
-						}
-					}
-					float new_tlo = THEKERNEL->eeprom_data->TLO;
-					THEKERNEL->streams->printf("Old: %.3f , new: %.3f\n",tlo,new_tlo);
-					if (fabs(tlo - new_tlo) > tolerance) {
-						THEKERNEL->streams->printf("ERROR: Tool Break Check - check tool for breakage\n");
+				if (gcode->has_letter('H')) {
+				tolerance = gcode->get_value('H');
+					if (tolerance < 0.02) {
+						THEKERNEL->streams->printf("ERROR: Tool Break Check - tolerance set too small\n");
 						THEKERNEL->call_event(ON_HALT, nullptr);
 						THEKERNEL->set_halt_reason(CALIBRATE_FAIL);
 						return;
 					}
 
-				} else {
-					if (active_tool == 0 || active_tool >= 999990) {
-						THEKERNEL->streams->printf("ALARM: M491.2 cannot run with probe tool installed. Please select a regular tool.\n");
-						THEKERNEL->call_event(ON_HALT, nullptr);
-						THEKERNEL->set_halt_reason(PROBE_FAIL);
+				}
+				if (gcode->has_letter('P')) {
+				tlo = gcode->get_value('P');
+					if (tlo == 0) {
+						THEKERNEL->streams->printf("No previous TLO included, aborting\n");
 						return;
 					}
 
-					this->probe_oneoff_x = 0.0;
-					this->probe_oneoff_y = 0.0;
-					this->probe_oneoff_z = 0.0;
-					this->probe_oneoff_configured = false;
-					uint8_t repeat_count = 1;
-					if (gcode->has_letter('R')) {
-						if (gcode->get_value('R') > 0) {
-							repeat_count = gcode->get_value('R');
-						}
-					}
-					if (gcode->has_letter('X')) {
-						this->probe_oneoff_x = gcode->get_value('X');
-						this->probe_oneoff_configured = true;
-					}
-					if (gcode->has_letter('Y')) {
-						this->probe_oneoff_y = gcode->get_value('Y');
-						this->probe_oneoff_configured = true;
-					}
-					if (gcode->has_letter('Z')) {
-						this->probe_oneoff_z = gcode->get_value('Z');
-						this->probe_oneoff_configured = true;
-					}
-
-					THEKERNEL->streams->printf("M491.2 Probe-Safe Diameter Measurement\n");
-					// Invalidate previous M491.2 certification until this run completes successfully.
-					THEKERNEL->eeprom_data->reserve = 0.0f;
-					THEKERNEL->write_eeprom_data();
-					THEROBOT->push_state();
-					THEROBOT->get_axis_position(last_pos, 3);
-					THEKERNEL->streams->printf("Saved XY position: X%.3f Y%.3f\n", last_pos[0], last_pos[1]);
-					set_inner_playing(true);
-					this->clear_script_queue();
-					this->script_queue.push("M5");
-					atc_status = CALI;
-
-					bool m491_2_mode = true;
-					PublicData::set_value( zprobe_checksum, set_m491_2_mode_checksum, &m491_2_mode );
-					bool tlo_calibrating = true;
-					PublicData::set_value( zprobe_checksum, set_tlo_calibrating_checksum, &tlo_calibrating );
-					this->fill_cali_scripts(false, true, repeat_count, true);
 				}
+				float new_tlo = THEKERNEL->eeprom_data->TLO;
+				THEKERNEL->streams->printf("Old: %.3f , new: %.3f\n",tlo,new_tlo);
+				//test for breakage
+				if (fabs(tlo - new_tlo) > tolerance) {
+					THEKERNEL->streams->printf("ERROR: Tool Break Check - check tool for breakage\n");
+					THEKERNEL->call_event(ON_HALT, nullptr);
+					THEKERNEL->set_halt_reason(CALIBRATE_FAIL);
+					return;
+				}
+
+			}else if (gcode->subcode == 3){
+				THECONVEYOR->wait_for_idle();
+				if (gcode->has_letter('P') || gcode->has_letter('H')) {
+					THEKERNEL->streams->printf("INFO: M491.3 ignores H/P; use M491.2 for tool break check\n");
+				}
+				if (active_tool == 0 || active_tool >= 999990) {
+					THEKERNEL->streams->printf("ALARM: M491.3 cannot run with probe tool installed. Please select a regular tool.\n");
+					THEKERNEL->call_event(ON_HALT, nullptr);
+					THEKERNEL->set_halt_reason(PROBE_FAIL);
+					return;
+				}
+
+				this->probe_oneoff_x = 0.0;
+				this->probe_oneoff_y = 0.0;
+				this->probe_oneoff_z = 0.0;
+				this->probe_oneoff_configured = false;
+				uint8_t repeat_count = 1;
+				if (gcode->has_letter('R')) {
+					if (gcode->get_value('R') > 0) {
+						repeat_count = gcode->get_value('R');
+					}
+				}
+				if (gcode->has_letter('X')) {
+					this->probe_oneoff_x = gcode->get_value('X');
+					this->probe_oneoff_configured = true;
+				}
+				if (gcode->has_letter('Y')) {
+					this->probe_oneoff_y = gcode->get_value('Y');
+					this->probe_oneoff_configured = true;
+				}
+				if (gcode->has_letter('Z')) {
+					this->probe_oneoff_z = gcode->get_value('Z');
+					this->probe_oneoff_configured = true;
+				}
+
+				THEKERNEL->streams->printf("M491.3 Probe-Safe Diameter Measurement\n");
+				// Invalidate previous M491.3 measurement until this run completes successfully.
+				THEROBOT->push_state();
+				THEROBOT->get_axis_position(last_pos, 3);
+				THEKERNEL->streams->printf("Saved XY position: X%.3f Y%.3f\n", last_pos[0], last_pos[1]);
+				set_inner_playing(true);
+				this->clear_script_queue();
+				this->script_queue.push("M5");
+				atc_status = CALI;
+
+				bool m491_3_mode = true;
+				PublicData::set_value( zprobe_checksum, set_m491_3_mode_checksum, &m491_3_mode );
+				bool tlo_calibrating = true;
+				PublicData::set_value( zprobe_checksum, set_tlo_calibrating_checksum, &tlo_calibrating );
+				this->fill_cali_scripts(false, true, repeat_count, true);
 
 			} else {
 				this->probe_oneoff_x = 0.0;
@@ -2593,23 +2581,10 @@ void ATCHandler::on_gcode_received(void *argument)
 				THEROBOT->set_tool_not_calibrated(false);
 				set_tool_offset(gcode->has_letter('R') ? gcode->get_value('R') : 1);
 			} else if (gcode->subcode == 2) {
-				if (gcode->has_letter('D')) {
-					float dia = gcode->get_value('D');
-					if (dia > 0.0f) {
-						THEKERNEL->eeprom_data->TOOL_DIA = dia;
-						THEKERNEL->eeprom_data->reserve = 0.0f;
-						THEKERNEL->write_eeprom_data();
-						THEKERNEL->streams->printf("Tool diameter set to %.3fmm (manual, not M491.2-certified)\n", dia);
-					} else {
-						THEKERNEL->streams->printf("ERROR: Tool diameter must be > 0\n");
-					}
-				}
 				// set new tool
 				if (gcode->has_letter('T')) {
 		    		this->active_tool = gcode->get_value('T');
 					THEROBOT->set_tool_not_calibrated(true);
-					// Tool changes invalidate previously measured cutter diameter provenance.
-					THEKERNEL->eeprom_data->reserve = 0.0f;
 		    		// save current tool data to eeprom
 		    		if (THEKERNEL->eeprom_data->TOOL != this->active_tool) {
 		        	    THEKERNEL->eeprom_data->TOOL = this->active_tool;
@@ -2654,13 +2629,21 @@ void ATCHandler::on_gcode_received(void *argument)
 					this->set_tlo_by_offset(gcode->get_value('H'));
 					THEROBOT->set_tool_not_calibrated(false);
 				}
-
+				if (gcode->has_letter('D')) { //set stored tool diameter
+					float diameter = gcode->get_value('D');
+					if (diameter > 0.0f) {
+						THEKERNEL->eeprom_data->TOOL_DIA = diameter;
+						THEKERNEL->write_eeprom_data();
+						THEKERNEL->streams->printf("Tool diameter set to %.3fmm\n", diameter);
+					} else {
+						THEKERNEL->streams->printf("ERROR: Tool diameter must be > 0\n");
+					}
+				}
 
 				THEKERNEL->streams->printf("current tool offset [%.3f] , reference tool offset [%.3f]\n",cur_tool_mz,ref_tool_mz);
 			} else if (gcode->subcode == 4) { //report current TLO
 				THEKERNEL->streams->printf("current tool offset [%.3f] , reference tool offset [%.3f]\n",cur_tool_mz,ref_tool_mz);
 				THEKERNEL->streams->printf("stored tool diameter [%.3f]\n", THEKERNEL->eeprom_data->TOOL_DIA);
-				THEKERNEL->streams->printf("TOOL_DIA source: %s\n", tool_dia_from_m4912(THEKERNEL->eeprom_data) ? "M491.2-certified" : "manual/unknown");
 				if (this->probe_oneoff_configured) {
 					THEKERNEL->streams->printf("one-off tool setter position offsets: X[%.3f] Y[%.3f] Z[%.3f]\n", this->probe_oneoff_x, this->probe_oneoff_y, this->probe_oneoff_z);
 				} else {
@@ -3032,11 +3015,11 @@ void ATCHandler::on_main_loop(void *argument)
             	this->clear_script_queue();
 
 				this->atc_status = NONE;
-				// Clear TLO calibration flag and M491.2 mode to re-enable 3D probe crash detection
+				// Clear TLO calibration flag and M491.3 mode to re-enable 3D probe crash detection
 				bool tlo_calibrating = false;
-				bool m491_2_mode = false;
+				bool m491_3_mode = false;
 				PublicData::set_value( zprobe_checksum, set_tlo_calibrating_checksum, &tlo_calibrating );
-				PublicData::set_value( zprobe_checksum, set_m491_2_mode_checksum, &m491_2_mode );
+				PublicData::set_value( zprobe_checksum, set_m491_3_mode_checksum, &m491_3_mode );
 				set_inner_playing(false);
 				THEKERNEL->set_atc_state(ATC_NONE);
 
@@ -3064,7 +3047,7 @@ void ATCHandler::on_main_loop(void *argument)
         }
 
 		if (this->tool_dia_probe_start_valid) {
-			THEKERNEL->streams->printf("DEBUG: Finalizing pending M491.2 diameter at ATC completion\n");
+			THEKERNEL->streams->printf("DEBUG: Finalizing pending M491.3 diameter at ATC completion\n");
 			this->finalize_tool_dia_measurement("ATC completion fallback");
 		}
 
@@ -3077,12 +3060,11 @@ void ATCHandler::on_main_loop(void *argument)
 		}
 
         this->atc_status = NONE;
-			// Clear TLO calibration flag and M491.2 mode to re-enable 3D probe crash detection
+			// Clear TLO calibration flag and M491.3 mode to re-enable 3D probe crash detection
 			bool tlo_calibrating = false;
-			bool m491_2_mode = false;
+			bool m491_3_mode = false;
 			PublicData::set_value( zprobe_checksum, set_tlo_calibrating_checksum, &tlo_calibrating );
-			PublicData::set_value( zprobe_checksum, set_m491_2_mode_checksum, &m491_2_mode );
-		set_inner_playing(false);
+			PublicData::set_value( zprobe_checksum, set_m491_3_mode_checksum, &m491_3_mode );
 
 		THEKERNEL->set_atc_state(ATC_NONE);
 

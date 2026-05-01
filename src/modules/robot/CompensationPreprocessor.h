@@ -33,8 +33,7 @@ class StreamOutput;
  * Design Philosophy:
  * - Gcode-in, Gcode-out: Modifies G-code coordinates, not internal structures
  * - Single execution path: ALL moves go through Robot::process_move()
- * - Lookahead buffer: 3-move window for corner detection
- * - Circular buffer: No heap allocation (10 slots fixed)
+ * - Lookahead buffer: 3-move window for corner detection and compensation
  * - String reconstruction: Rebuild G-code from modified coordinates
  * 
  * Memory cost: ~2.2KB (10 slots × ~220 bytes/Gcode)

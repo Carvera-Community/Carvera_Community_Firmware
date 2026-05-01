@@ -44,15 +44,6 @@
 #include <string>
 #include <algorithm>
 
-namespace {
-constexpr float TOOL_DIA_M4912_MARKER = 4912.0f;
-
-inline bool tool_dia_from_m4912(const EEPROM_data* data)
-{
-    return fabsf(data->reserve - TOOL_DIA_M4912_MARKER) < 0.25f;
-}
-}
-
 #define  default_seek_rate_checksum          CHECKSUM("default_seek_rate")
 #define  default_feed_rate_checksum          CHECKSUM("default_feed_rate")
 #define  mm_per_line_segment_checksum        CHECKSUM("mm_per_line_segment")
@@ -612,20 +603,18 @@ void Robot::on_gcode_received(void *argument)
 
     if (compensation_preprocessor->is_active() && gcode->has_g && (gcode->g == 2 || gcode->g == 3)) {
         if (plane_axis_0 != X_AXIS || plane_axis_1 != Y_AXIS || plane_axis_2 != Z_AXIS) {
-            const char* message = "Error: G41/G42 compensation requires G17 (XY plane). G18/G19 compensation is not yet supported. Compensation disabled.\n";
-            THEKERNEL->streams->printf("%s", message);
+            THEKERNEL->streams->printf("Error: G41/G42 compensation requires G17 (XY plane). G18/G19 compensation is not yet supported. Compensation disabled.\n");
             compensation_preprocessor->set_compensation(CompensationType::NONE, 0.0f);
-            gcode->txt_after_ok = message;
+            gcode->txt_after_ok = "Error: G41/G42 compensation requires G17 (XY plane). G18/G19 compensation is not yet supported. Compensation disabled.\n";
             THEKERNEL->set_halt_reason(MANUAL);
             THEKERNEL->call_event(ON_HALT, nullptr);
             return;
         }
 
         if (gcode->has_letter('R')) {
-            const char* message = "Error: R-format arc (G2/G3 R...) is not supported with G41/G42 compensation. Use I/J offsets instead. Compensation disabled.\n";
-            THEKERNEL->streams->printf("%s", message);
+            THEKERNEL->streams->printf("Error: R-format arc (G2/G3 R...) is not supported with G41/G42 compensation. Use I/J offsets instead. Compensation disabled.\n");
             compensation_preprocessor->set_compensation(CompensationType::NONE, 0.0f);
-            gcode->txt_after_ok = message;
+            gcode->txt_after_ok = "Error: R-format arc (G2/G3 R...) is not supported with G41/G42 compensation. Use I/J offsets instead. Compensation disabled.\n";
             THEKERNEL->set_halt_reason(MANUAL);
             THEKERNEL->call_event(ON_HALT, nullptr);
             return;
@@ -818,10 +807,9 @@ void Robot::process_buffered_command(Gcode *gcode)
             case 18:
             case 19:
                 if (compensation_preprocessor->is_active()) {
-                    const char* message = "Error: G41/G42 compensation requires G17 (XY plane). G18/G19 compensation is not yet supported. Compensation disabled.\n";
-                    THEKERNEL->streams->printf("%s", message);
+                    THEKERNEL->streams->printf("Error: G41/G42 compensation requires G17 (XY plane). G18/G19 compensation is not yet supported. Compensation disabled.\n");
                     compensation_preprocessor->set_compensation(CompensationType::NONE, 0.0f);
-                    gcode->txt_after_ok = message;
+                    gcode->txt_after_ok = "Error: G41/G42 compensation requires G17 (XY plane). G18/G19 compensation is not yet supported. Compensation disabled.\n";
                     THEKERNEL->set_halt_reason(MANUAL);
                     THEKERNEL->call_event(ON_HALT, nullptr);
                     break;
@@ -880,9 +868,8 @@ void Robot::process_buffered_command(Gcode *gcode)
             {
                 COMPENSATION_TRACE_PRINTF(gcode->stream, ">>ROBOT: G%d handler CALLED\n", gcode->g);
                 if (plane_axis_0 != X_AXIS || plane_axis_1 != Y_AXIS || plane_axis_2 != Z_AXIS) {
-                    const char* message = "Error: G41/G42 compensation requires G17 (XY plane). G18/G19 compensation is not yet supported.\n";
-                    THEKERNEL->streams->printf("%s", message);
-                    gcode->txt_after_ok = message;
+                    THEKERNEL->streams->printf("Error: G41/G42 compensation requires G17 (XY plane). G18/G19 compensation is not yet supported.\n");
+                    gcode->txt_after_ok = "Error: G41/G42 compensation requires G17 (XY plane). G18/G19 compensation is not yet supported.\n";
                     THEKERNEL->set_halt_reason(MANUAL);
                     THEKERNEL->call_event(ON_HALT, nullptr);
                     break;
@@ -893,7 +880,7 @@ void Robot::process_buffered_command(Gcode *gcode)
                     radius = diameter / 2.0f;  // D word specifies diameter, convert to radius
                     COMPENSATION_TRACE_PRINTF(gcode->stream, ">>G%d: D word diameter=%.3f -> radius=%.3f\n", 
                         gcode->g, diameter, radius);
-                } else if (THEKERNEL->eeprom_data->TOOL_DIA > 0.0f && tool_dia_from_m4912(THEKERNEL->eeprom_data)) {
+                } else if (THEKERNEL->eeprom_data->TOOL_DIA > 0.0f) {
                     float diameter = THEKERNEL->eeprom_data->TOOL_DIA;
                     radius = diameter / 2.0f;
                     COMPENSATION_TRACE_PRINTF(gcode->stream, ">>G%d: Using TOOL_DIA fallback diameter=%.3f -> radius=%.3f\n",
@@ -901,12 +888,8 @@ void Robot::process_buffered_command(Gcode *gcode)
                 }
 
                 if (radius <= 0.0f) {
-                    const char* message = "Error: G41/G42 requires D diameter or M491.2-certified TOOL_DIA > 0\n";
-                    THEKERNEL->streams->printf("%s", message);
-                    if (!gcode->has_letter('D') && THEKERNEL->eeprom_data->TOOL_DIA > 0.0f && !tool_dia_from_m4912(THEKERNEL->eeprom_data)) {
-                        THEKERNEL->streams->printf("Error: Stored TOOL_DIA exists but is not M491.2-certified. Run M491.2 before cutter compensation without D.\n");
-                    }
-                    gcode->txt_after_ok = message;
+                    THEKERNEL->streams->printf("Error: G41/G42 requires D diameter or TOOL_DIA > 0\n");
+                    gcode->txt_after_ok = "Error: G41/G42 requires D diameter or TOOL_DIA > 0\n";
                     THEKERNEL->set_halt_reason(MANUAL);
                     THEKERNEL->call_event(ON_HALT, nullptr);
                     break;
@@ -1411,11 +1394,13 @@ void Robot::process_buffered_command(Gcode *gcode)
     if( motion_mode != NONE) {
         is_g123= motion_mode != SEEK;
         process_move(gcode, motion_mode);
-        current_motion_mode = motion_mode;
+        // THEKERNEL->streams->printf("GCode: [%s], mode:[%d]\n", gcode->get_command(), motion_mode);
     } else {
         is_g123= false;
     }
     
+    current_motion_mode = motion_mode;
+
     next_command_is_MCS = false; // must be on same line as G0 or G1
 }
 

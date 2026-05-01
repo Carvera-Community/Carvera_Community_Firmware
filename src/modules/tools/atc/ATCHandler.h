@@ -188,7 +188,7 @@ private:
     float probe_height_mm;
     float three_axis_probe_tlo_correction;
     bool use_3dtoolsetter;
-    float toolsetter_disk_diameter;  // Effective 3D toolsetter disk diameter for M491.2 measurement correction
+    float toolsetter_disk_diameter;  // Effective 3D toolsetter disk diameter for M491.3 measurement correction
 
     // Configurable probe position (absolute Machine Coordinate System)
     float probe_mcs_x;

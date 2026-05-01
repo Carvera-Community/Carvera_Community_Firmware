@@ -268,8 +268,8 @@ zprobe.debounce_ms							1				# Set if noisy
 zprobe.calibrate_pin						0.5^			# calibrate_pin
 zprobe.probe_tip_diameter					1.6				#3 axis probe tip diamter
 zprobe.calibration_safety_margin              0.1             # max distance to move after calibrate pin but before probe pin detected
-# zprobe.use_3dtoolsetter                    true            # Optional: for 3D probe tools on a 3D tool setter, stop TLO calibration on toolsetter hit only
-# 3dtoolsetter.disk_diameter                 10.0            # Optional: 3D toolsetter disk diameter (mm) used for M491.2 geometry-based diameter solve
+# zprobe.use_3dtoolsetter                    false            # Optional: for 3D probe tools on a 3D tool setter, stop TLO calibration on toolsetter hit only
+# 3dtoolsetter.disk_diameter                 10.0            # Optional: 3D toolsetter disk diameter (mm) used for M491.3 geometry-based diameter solve
 
 # Leveling strategy
 leveling-strategy.rectangular-grid.enable					true
@@ -476,7 +476,7 @@ zprobe.fast_feedrate 5					# Z probe fast speed (mm/s)
 zprobe.return_feedrate 20				# Z probe return speed (mm/s)
 zprobe.probe_height 2					# How much above bed to start probe
 zprobe.max_z 100						# Max action distance when doing z probe
-zprobe.three_axis_probe_tlo_correction 0.8   #value used to set the spring descrepancy between when the TLO and 3d probe trigger
+# zprobe.three_axis_probe_tlo_correction 0.8   #value used to set the spring descrepancy between when the TLO and 3d probe trigger
 
 # Spindle
 spindle.default_rpm 10000				# Default RPM value in case no RPM is provided

@@ -89,49 +89,12 @@ void SpindleControl::on_gcode_received(void *argument)
             report_settings();
           
         }
-        else if (gcode->m == 3)
-        {
-        	if(THEKERNEL->is_halted()) return; // if in halted state ignore any commands
-        	if (!THEKERNEL->get_laser_mode()) {
-				if (!apply_direction(false, gcode->stream)) return;
-                // current tool number and tool offset
-                struct tool_status tool;
-                bool tool_ok = PublicData::get_value( atc_handler_checksum, get_tool_status_checksum, &tool );
-                if (tool_ok) {
-                	tool_ok = (tool.active_tool > 0  && tool.active_tool < 100000);
-                }
-            	// check if is tool -1 or tool 0
-            	if (!tool_ok) {
-        			THEKERNEL->set_halt_reason(MANUAL);
-        			THEKERNEL->call_event(ON_HALT, nullptr);
-        			THEKERNEL->streams->printf("ERROR: No tool or probe tool!\n");
-        			return;
-            	}
-
-                THECONVEYOR->wait_for_idle();
-                // open vacuum if set
-            	if (THEKERNEL->get_vacuum_mode()) {
-            		// open vacuum
-            		bool b = true;
-                    PublicData::set_value( switch_checksum, vacuum_checksum, state_checksum, &b );
-            	}
-
-                // M3 with S value provided: set speed
-                if (gcode->has_letter('S'))
-                {
-                    set_speed(gcode->get_value('S'));
-                }
-                // M3: Spindle on
-                if (!spindle_on) {
-                    turn_on();
-                }
-        	}
-        }
-        else if (gcode->m == 4)
+        else if (gcode->m == 3 || gcode->m == 4)
         {
             if(THEKERNEL->is_halted()) return; // if in halted state ignore any commands
             if (!THEKERNEL->get_laser_mode()) {
-                if (!apply_direction(true, gcode->stream)) return;
+                bool reverse = (gcode->m == 4);
+                if (!apply_direction(reverse, gcode->stream)) return;
                 // current tool number and tool offset
                 struct tool_status tool;
                 bool tool_ok = PublicData::get_value( atc_handler_checksum, get_tool_status_checksum, &tool );
@@ -153,13 +116,13 @@ void SpindleControl::on_gcode_received(void *argument)
                     PublicData::set_value( switch_checksum, vacuum_checksum, state_checksum, &b );
                 }
 
-                // M4 with S value provided: set speed
+                // M3/M4 with S value provided: set speed
                 if (gcode->has_letter('S'))
                 {
                     set_speed(gcode->get_value('S'));
                 }
 
-                // M4: start spindle (direction pin handling remains spindle-driver-specific)
+                // M3/M4: start spindle
                 if (!spindle_on) {
                     turn_on();
                 }
