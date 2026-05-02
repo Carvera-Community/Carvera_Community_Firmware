@@ -50,6 +50,9 @@
 #define udp_send_port_checksum		      CHECKSUM("udp_send_port")
 #define udp_recv_port_checksum		      CHECKSUM("udp_recv_port")
 #define tcp_timeout_s_checksum			  CHECKSUM("tcp_timeout_s")
+#define ap_auto_disable_checksum          CHECKSUM("ap_auto_disable")
+
+#define WIFI_AP_OFF_DELAY_S          3
 
 
 WifiProvider::WifiProvider()
@@ -59,6 +62,9 @@ WifiProvider::WifiProvider()
 	wifi_init_ok = false;
 	has_data_flag = false;
 	connection_fail_count = 0;
+	sta_stable_seconds = 0;
+	ap_auto_disable = false;
+	ap_currently_on = true;
 }
 
 void WifiProvider::on_module_loaded()
@@ -73,12 +79,21 @@ void WifiProvider::on_module_loaded()
 	this->udp_send_port = THEKERNEL->config->value(wifi_checksum, udp_send_port_checksum)->by_default(3333)->as_int();
 	this->udp_recv_port = THEKERNEL->config->value(wifi_checksum, udp_recv_port_checksum)->by_default(4444)->as_int();
 	this->tcp_timeout_s = THEKERNEL->config->value(wifi_checksum, tcp_timeout_s_checksum)->by_default(10)->as_int();
+	this->ap_auto_disable = THEKERNEL->config->value(wifi_checksum, ap_auto_disable_checksum)->by_default(false)->as_bool();
     std::string config_name = THEKERNEL->config->value(wifi_checksum, machine_name_checksum)->by_default("CARVERA")->as_string();
     strncpy(this->machine_name, config_name.c_str(), sizeof(this->machine_name) - 1);
     this->machine_name[sizeof(this->machine_name) - 1] = '\0'; // Ensure null termination
 
     // Init Wifi Module
     this->init_wifi_module(false);
+
+    // force AP on at boot so a stale mode-1 in flash can't lock us out (saved=0)
+    if (this->ap_auto_disable) {
+        u16 op_status = 0;
+        M8266WIFI_SPI_Set_Opmode(3, 0, &op_status);
+        this->ap_currently_on = true;
+        this->sta_stable_seconds = 0;
+    }
 
     // Add interrupt for WIFI data receving
     Pin *smoothie_pin = new(AHB) Pin();
@@ -286,7 +301,31 @@ void WifiProvider::on_second_tick(void *)
 		connection_fail_count = 0;
 	}
 
+	// AP off when STA is up, AP back on when STA drops. saved=0 to avoid flash wear.
+	if (this->ap_auto_disable) {
+		if (connection_status == 5) {
+			if (this->sta_stable_seconds < WIFI_AP_OFF_DELAY_S) {
+				this->sta_stable_seconds++;
+			}
+			if (this->sta_stable_seconds >= WIFI_AP_OFF_DELAY_S && this->ap_currently_on) {
+				u16 op_status = 0;
+				if (M8266WIFI_SPI_Set_Opmode(1, 0, &op_status)) {
+					this->ap_currently_on = false;
+				}
+			}
+		} else {
+			this->sta_stable_seconds = 0;
+			if (!this->ap_currently_on) {
+				u16 op_status = 0;
+				if (M8266WIFI_SPI_Set_Opmode(3, 0, &op_status)) {
+					this->ap_currently_on = true;
+				}
+			}
+		}
+	}
+
 	// send ap info through UDP
+	if (!this->ap_currently_on) return;
 	memset(udp_buff, 0, sizeof(udp_buff));
 	{
 		// Inlined get_broadcast_from_ip_and_netmask
@@ -808,8 +847,11 @@ void WifiProvider::on_set_public_data(void *argument)
     	bool *enable_op = static_cast<bool *>(pdr->get_data_ptr());
     	if (*enable_op) {
         	set_wifi_op_mode(3);
+        	this->ap_currently_on = true;
+        	this->sta_stable_seconds = 0;
     	} else {
         	set_wifi_op_mode(1);
+        	this->ap_currently_on = false;
     	}
     }
 	pdr->set_taken();
