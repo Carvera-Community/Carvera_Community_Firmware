@@ -75,6 +75,7 @@ private:
 	int udp_recv_port;
 	int tcp_timeout_s;
 	int connection_fail_count;
+	int sta_stable_seconds;
 	char machine_name[64]; // Fixed-size buffer to avoid std::string heap allocation
 	char ap_address[16];
 	char ap_netmask[16];
@@ -85,6 +86,8 @@ private:
     	u8  tcp_link_no;
     	u8  udp_link_no;
     	bool wifi_init_ok:1;
+    	bool ap_auto_disable:1;
+    	bool ap_currently_on:1;
     	volatile bool halt_flag:1;
     	volatile bool query_flag:1;
     	volatile bool diagnose_flag:1;

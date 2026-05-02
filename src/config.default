@@ -86,6 +86,7 @@ epsilon_steps_per_mm						43200			# 1:27 rate may be steps per degree for exampl
 # wifi.udp_recv_port							4444
 # wifi.tcp_timeout_s							10
 # wifi.machine_name							CARVERA_01001
+# wifi.ap_auto_disable							false			# true to auto-disable AP when STA is connected
 
 # ATC
 # atc.enable									true
