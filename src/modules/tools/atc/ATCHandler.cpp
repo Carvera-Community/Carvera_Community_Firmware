@@ -2630,13 +2630,27 @@ void ATCHandler::on_gcode_received(void *argument)
 					THEROBOT->set_tool_not_calibrated(false);
 				}
 				if (gcode->has_letter('D')) { //set stored tool diameter
+					// Immutability latch: diameter must not change while G41/G42 is modal
+					if (THEROBOT->is_compensation_active()) {
+						bool is_playing = false;
+						PublicData::get_value(player_checksum, is_playing_checksum, &is_playing);
+						if (is_playing) {
+							THEKERNEL->streams->printf("ALARM: Cannot change tool diameter while G41/G42 compensation is active\n");
+							THEKERNEL->call_event(ON_HALT, nullptr);
+							THEKERNEL->set_halt_reason(MANUAL);
+							return;
+						} else {
+							THEKERNEL->streams->printf("WARNING: Tool diameter not changed - G41/G42 compensation is active. Issue G40 first.\n");
+							return;
+						}
+					}
 					float diameter = gcode->get_value('D');
 					if (diameter > 0.0f) {
 						THEKERNEL->eeprom_data->TOOL_DIA = diameter;
 						THEKERNEL->write_eeprom_data();
 						THEKERNEL->streams->printf("Tool diameter set to %.3fmm\n", diameter);
 					} else {
-						THEKERNEL->streams->printf("ERROR: Tool diameter must be > 0\n");
+						THEKERNEL->streams->printf("WARNING: Tool diameter not changed - value must be > 0 (got %.3f)\n", diameter);
 					}
 				}
 
@@ -3065,6 +3079,7 @@ void ATCHandler::on_main_loop(void *argument)
 			bool m491_3_mode = false;
 			PublicData::set_value( zprobe_checksum, set_tlo_calibrating_checksum, &tlo_calibrating );
 			PublicData::set_value( zprobe_checksum, set_m491_3_mode_checksum, &m491_3_mode );
+			set_inner_playing(false);
 
 		THEKERNEL->set_atc_state(ATC_NONE);
 

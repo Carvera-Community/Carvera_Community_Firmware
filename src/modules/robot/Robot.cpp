@@ -664,13 +664,12 @@ void Robot::on_gcode_received(void *argument)
 // Process a command that has come out of the buffer (or bypassed due to buffer full)
 void Robot::process_buffered_command(Gcode *gcode)
 {
-    // DEBUG: Show what G-code we're processing
     if (gcode->has_g) {
-        gcode->stream->printf(">>PROCESS_BUFFERED: G%d '%s'\n", gcode->g, gcode->get_command());
+        COMPENSATION_TRACE_PRINTF(gcode->stream, ">>PROCESS_BUFFERED: G%d '%s'\n", gcode->g, gcode->get_command());
     } else {
-        gcode->stream->printf(">>PROCESS_BUFFERED: no G-code '%s'\n", gcode->get_command());
+        COMPENSATION_TRACE_PRINTF(gcode->stream, ">>PROCESS_BUFFERED: no G-code '%s'\n", gcode->get_command());
     }
-    
+
     enum MOTION_MODE_T motion_mode= NONE;
 
     if( gcode->has_g) {
@@ -875,25 +874,16 @@ void Robot::process_buffered_command(Gcode *gcode)
                     break;
                 }
                 float radius = 0.0f;
-                if (gcode->has_letter('D')) {
-                    float diameter = gcode->get_value('D');
-                    radius = diameter / 2.0f;  // D word specifies diameter, convert to radius
-                    COMPENSATION_TRACE_PRINTF(gcode->stream, ">>G%d: D word diameter=%.3f -> radius=%.3f\n", 
-                        gcode->g, diameter, radius);
-                } else if (THEKERNEL->eeprom_data->TOOL_DIA > 0.0f) {
-                    float diameter = THEKERNEL->eeprom_data->TOOL_DIA;
-                    radius = diameter / 2.0f;
-                    COMPENSATION_TRACE_PRINTF(gcode->stream, ">>G%d: Using TOOL_DIA fallback diameter=%.3f -> radius=%.3f\n",
-                        gcode->g, diameter, radius);
-                }
-
-                if (radius <= 0.0f) {
-                    THEKERNEL->streams->printf("Error: G41/G42 requires D diameter or TOOL_DIA > 0\n");
-                    gcode->txt_after_ok = "Error: G41/G42 requires D diameter or TOOL_DIA > 0\n";
+                if (!compensation_preprocessor->resolve_diameter(
+                        gcode->has_letter('D'), gcode->has_letter('D') ? gcode->get_value('D') : 0.0f,
+                        THEKERNEL->eeprom_data->TOOL_DIA,
+                        gcode->stream, &radius)) {
+                    gcode->txt_after_ok = "ERROR: G41/G42 failed to resolve tool diameter\n";
                     THEKERNEL->set_halt_reason(MANUAL);
                     THEKERNEL->call_event(ON_HALT, nullptr);
                     break;
                 }
+                COMPENSATION_TRACE_PRINTF(gcode->stream, ">>G%d: resolved radius=%.3f\n", gcode->g, radius);
                 CompensationType type = (gcode->g == 41) ? CompensationType::LEFT : CompensationType::RIGHT;
                 COMPENSATION_TRACE_PRINTF(gcode->stream, ">>G%d: Compensation %s, radius=%.3f\n", 
                     gcode->g, (type == CompensationType::LEFT ? "LEFT" : "RIGHT"), radius);
@@ -2471,6 +2461,11 @@ void Robot::clearToolOffset()
 
     THEKERNEL->eeprom_data->TLO = 0;
 
+}
+
+bool Robot::is_compensation_active() const
+{
+    return compensation_preprocessor->is_active();
 }
 
 void Robot::loadToolOffset(const float offset[N_PRIMARY_AXIS]) {

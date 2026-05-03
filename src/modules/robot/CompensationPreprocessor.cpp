@@ -22,8 +22,33 @@
 
 using namespace std;
 
-void CompensationPreprocessor::reset_load_balance_metrics()
+bool CompensationPreprocessor::resolve_diameter(bool has_d_word, float d_word_value,
+                                                float eeprom_tool_dia,
+                                                StreamOutput* stream, float* out_radius)
 {
+    if (has_d_word) {
+        if (d_word_value <= 0.0f) {
+            THEKERNEL->streams->printf("ERROR: G41/G42 D word diameter must be > 0 (got %.3f)\n", d_word_value);
+            return false;
+        }
+        *out_radius = d_word_value / 2.0f;
+        THEKERNEL->streams->printf("Compensation diameter: G-code D word %.3fmm (radius=%.3fmm)\n",
+            d_word_value, *out_radius);
+        return true;
+    }
+
+    if (eeprom_tool_dia > 0.0f) {
+        *out_radius = eeprom_tool_dia / 2.0f;
+        THEKERNEL->streams->printf("Compensation diameter: stored TOOL_DIA %.3fmm (radius=%.3fmm)\n",
+            eeprom_tool_dia, *out_radius);
+        return true;
+    }
+
+    THEKERNEL->streams->printf("ERROR: G41/G42 requires a D diameter word or a stored TOOL_DIA > 0\n");
+    return false;
+}
+
+void CompensationPreprocessor::reset_load_balance_metrics(){
     load_balance_metrics.input_gcode_count = 0;
     load_balance_metrics.arc_input_count = 0;
     load_balance_metrics.generated_gcode_count = 0;
