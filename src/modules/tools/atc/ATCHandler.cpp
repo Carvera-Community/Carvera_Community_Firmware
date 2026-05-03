@@ -159,9 +159,6 @@ bool ATCHandler::finalize_tool_dia_measurement(const char* source_tag)
 	std::tie(px, py, pz, ps) = THEROBOT->get_last_probe_position();
 	if (ps != 1) {
 		THEKERNEL->streams->printf("ERROR: Tool diameter probe failed (%s)\n", src);
-		THEKERNEL->streams->printf("DEBUG: M493.8 start_x=%.3f last_prb_x=%.3f last_prb_y=%.3f last_prb_z=%.3f ps=%d\n",
-			this->tool_dia_probe_start_x, px, py, pz, ps);
-		THEKERNEL->streams->printf("DEBUG: Expected M491.3 side probe debounce sequence was G38.6 X5.0 F60, retract, then G38.6 X1.0 F20\n");
 		this->tool_dia_probe_start_valid = false;
 		return false;
 	}
@@ -177,12 +174,8 @@ bool ATCHandler::finalize_tool_dia_measurement(const char* source_tag)
 		float disk_radius = this->toolsetter_disk_diameter * 0.5f;
 		float tool_radius = center_to_touch - disk_radius;
 		diameter = tool_radius * 2.0f;
-		THEKERNEL->streams->printf("DEBUG: TOOL_DIA 3D toolsetter geometry: center_x=%.3f touch_x=%.3f center_to_touch=%.3f disk_r=%.3f tool_r=%.3f\n",
-			THEROBOT->from_millimeters(probe_center_x), px, center_to_touch, disk_radius, tool_radius);
 	}
 
-	THEKERNEL->streams->printf("DEBUG: TOOL_DIA finalize (%s): start_x=%.3f prb_x=%.3f travel=%.3f stored_dia=%.3f\n",
-		src, this->tool_dia_probe_start_x, px, THEROBOT->from_millimeters(travel), diameter);
 	if (diameter > 0.0f) {
 		THEKERNEL->eeprom_data->TOOL_DIA = diameter;
 		THEKERNEL->write_eeprom_data();
@@ -1191,9 +1184,9 @@ void ATCHandler::fill_cali_scripts(bool is_probe, bool clear_z, int repeat_count
 				this->script_queue.push("G38.6 X1.0 F20");
 				// Retract immediately after final touch to reduce time pressing on the sensor.
 				this->script_queue.push("G91 G0 X-0.5");
-				// Ensure retract motion is complete before finishing measurement and stopping spindle.
+				// Ensure retract motion is complete before stopping spindle.
+				// Diameter finalization is handled by the ATC completion fallback in on_main_loop.
 				this->script_queue.push("M400");
-				this->script_queue.push("M493.8");
 				this->script_queue.push("M5");
 			}
 
@@ -2578,8 +2571,15 @@ void ATCHandler::on_gcode_received(void *argument)
 			}
 		} else if (gcode->m == 493) {
 			if (gcode->subcode == 0 || gcode->subcode == 1) {
-				THEROBOT->set_tool_not_calibrated(false);
-				set_tool_offset(gcode->has_letter('R') ? gcode->get_value('R') : 1);
+				// Guard: refuse to write TLO if a diameter measurement is in progress.
+				// tool_dia_probe_start_valid=true means the X-probe sequence has begun and
+				// last_probe_position holds an X-probe Z, not a Z-probe Z.
+				if (this->tool_dia_probe_start_valid) {
+					THEKERNEL->streams->printf("WARNING: M493.%d TLO write blocked — diameter measurement in progress (tool_dia_probe_start_valid=TRUE)\n", gcode->subcode);
+				} else {
+					THEROBOT->set_tool_not_calibrated(false);
+					set_tool_offset(gcode->has_letter('R') ? gcode->get_value('R') : 1);
+				}
 			} else if (gcode->subcode == 2) {
 				// set new tool
 				if (gcode->has_letter('T')) {
@@ -3061,7 +3061,6 @@ void ATCHandler::on_main_loop(void *argument)
         }
 
 		if (this->tool_dia_probe_start_valid) {
-			THEKERNEL->streams->printf("DEBUG: Finalizing pending M491.3 diameter at ATC completion\n");
 			this->finalize_tool_dia_measurement("ATC completion fallback");
 		}
 
