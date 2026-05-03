@@ -1,10 +1,3 @@
-/*
-      This file is part of Smoothie (http://smoothieware.org/).
-      Smoothie is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
-      Smoothie is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.
-      You should have received a copy of the GNU General Public License along with Smoothie. If not, see <http://www.gnu.org/licenses/>.
-*/
-
 #ifndef COMPENSATION_PREPROCESSOR_H
 #define COMPENSATION_PREPROCESSOR_H
 
@@ -15,7 +8,7 @@
 #include <cstdint>
 
 #ifndef CUTTER_COMPENSATION_TRACE_ENABLED
-#define CUTTER_COMPENSATION_TRACE_ENABLED 1
+#define CUTTER_COMPENSATION_TRACE_ENABLED 0
 #endif
 
 #if CUTTER_COMPENSATION_TRACE_ENABLED
@@ -72,6 +65,26 @@ public:
      * Check if compensation is active
      */
     bool is_active() const { return comp_active; }
+
+    /**
+     * Resolve the compensation diameter from the G-code D word or EEPROM fallback.
+     *
+     * Precedence:
+     *   1. G-code D word (if has_d_word is true)
+     *   2. EEPROM stored TOOL_DIA (eeprom_tool_dia, if > 0)
+     *
+     * Prints the diameter source to stream so the operator can verify it.
+     *
+     * @param has_d_word      True if the G-code contained a D word.
+     * @param d_word_value    Value of the D word (diameter, mm). Ignored when has_d_word is false.
+     * @param eeprom_tool_dia Value of THEKERNEL->eeprom_data->TOOL_DIA.
+     * @param stream          Stream for operator feedback.
+     * @param out_radius      [out] Resolved radius on success.
+     * @return true on success; false when no valid diameter is available (caller must alarm).
+     */
+    bool resolve_diameter(bool has_d_word, float d_word_value,
+                          float eeprom_tool_dia,
+                          StreamOutput* stream, float* out_radius);
 
     /**
      * Get cumulative load-balance metrics for the dual-buffer pipeline.
