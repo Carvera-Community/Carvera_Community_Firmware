@@ -1,0 +1,269 @@
+#ifndef COMPENSATION_PREPROCESSOR_H
+#define COMPENSATION_PREPROCESSOR_H
+
+#include "CompensationTypes.h"
+
+#include <cstddef>
+#include <cmath>
+#include <cstdint>
+
+#ifndef CUTTER_COMPENSATION_TRACE_ENABLED
+#define CUTTER_COMPENSATION_TRACE_ENABLED 0
+#endif
+
+#if CUTTER_COMPENSATION_TRACE_ENABLED
+#define COMPENSATION_TRACE_PRINTF(stream, ...) do { (stream)->printf(__VA_ARGS__); } while (0)
+#else
+#define COMPENSATION_TRACE_PRINTF(stream, ...) do { } while (0)
+#endif
+
+class Gcode;
+class StreamOutput;
+
+/**
+ * Cutter Compensation Preprocessor v2.0 - Bolt-On Architecture
+ * 
+ * Design Philosophy:
+ * - Gcode-in, Gcode-out: Modifies G-code coordinates, not internal structures
+ * - Single execution path: ALL moves go through Robot::process_move()
+ * - Lookahead buffer: 3-move window for corner detection and compensation
+ * - String reconstruction: Rebuild G-code from modified coordinates
+ * 
+ * Memory cost: ~2.2KB (10 slots × ~220 bytes/Gcode)
+ * Code savings: -150 lines (removes duplicate transform logic)
+ */
+class CompensationPreprocessor {
+public:
+    struct LoadBalanceMetrics {
+        uint32_t input_gcode_count;
+        uint32_t arc_input_count;
+        uint32_t generated_gcode_count;
+        uint32_t served_gcode_count;
+        uint32_t compute_count;
+        uint32_t priming_wait_count;
+        uint32_t load_balance_wait_count;
+        uint32_t empty_serve_count;
+        uint32_t sample_count;
+        int32_t cumulative_ready_margin;
+        int32_t min_ready_margin;
+        int32_t max_ready_margin;
+        uint8_t max_uncomp_depth;
+        uint8_t max_comp_ready_depth;
+    };
+
+    CompensationPreprocessor();
+    ~CompensationPreprocessor();
+    
+    /**
+     * Enable/disable compensation
+     * @param type - NONE (G40), LEFT (G41), or RIGHT (G42)
+     * @param radius - Tool radius (D word value)
+     */
+    void set_compensation(CompensationType type, float radius);
+    
+    /**
+     * Check if compensation is active
+     */
+    bool is_active() const { return comp_active; }
+
+    /**
+     * Resolve the compensation diameter from the G-code D word or EEPROM fallback.
+     *
+     * Precedence:
+     *   1. G-code D word (if has_d_word is true)
+     *   2. EEPROM stored TOOL_DIA (eeprom_tool_dia, if > 0)
+     *
+     * Prints the diameter source to stream so the operator can verify it.
+     *
+     * @param has_d_word      True if the G-code contained a D word.
+     * @param d_word_value    Value of the D word (diameter, mm). Ignored when has_d_word is false.
+     * @param eeprom_tool_dia Value of THEKERNEL->eeprom_data->TOOL_DIA.
+     * @param stream          Stream for operator feedback.
+     * @param out_radius      [out] Resolved radius on success.
+     * @return true on success; false when no valid diameter is available (caller must alarm).
+     */
+    bool resolve_diameter(bool has_d_word, float d_word_value,
+                          float eeprom_tool_dia,
+                          StreamOutput* stream, float* out_radius);
+
+    /**
+     * Get cumulative load-balance metrics for the dual-buffer pipeline.
+     */
+    const LoadBalanceMetrics& get_load_balance_metrics() const { return load_balance_metrics; }
+
+    /**
+     * Reset cumulative load-balance metrics without disturbing buffer state.
+     */
+    void reset_load_balance_metrics();
+
+    /**
+     * Print a human-readable load-balance report to the given stream.
+     * Called once at the end of a G40 flush so the report appears in the
+     * operator console without adding any per-move I/O overhead.
+     */
+    void print_load_balance_report(StreamOutput* stream) const;
+    
+    /**
+     * Buffer a G-code for processing
+        * @param gcode - G-code to buffer
+        * @return Next compensated Gcode for this clock tick, or nullptr while priming
+     */
+        Gcode* buffer_gcode(Gcode* gcode);
+    
+    /**
+     * Get next compensated G-code
+     * @return Pointer to compensated Gcode, or nullptr if buffer empty
+     */
+    Gcode* get_compensated_gcode();
+    
+    /**
+     * Get current buffer count
+     * @return Number of moves currently buffered
+     */
+    int get_buffer_count() const { return uncomp_count; }
+    
+    /**
+     * Flush remaining buffered moves
+     * Called when compensation is turned off (G40)
+     */
+    void flush();
+    
+    /**
+     * Clear all buffered moves
+     */
+    void clear();
+    
+    /**
+     * Set initial uncompensated position
+     * Called when compensation is activated (G41/G42) to initialize position tracking
+     * @param position - Current machine position [X, Y, Z]
+     */
+    void set_initial_position(const float position[3]);
+    
+private:
+    // ========================================================================
+    // PHASE-LOCKED DUAL RING BUFFER ARCHITECTURE
+    // ========================================================================
+    
+    // Uncompensated buffer: Stores programmed path
+    struct UncompPoint {
+        float x, y, z;
+        float i;
+        float j;
+        float feedrate;
+        uint8_t motion_g;
+        bool has_feedrate;
+    };
+    
+    // Compensated buffer: Stores offset path coordinates and Gcode pointer
+    struct CompPoint {
+        float x, y, z;
+        Gcode* gcode;  // Compensated Gcode to return to Robot.cpp
+    };
+    
+    // Ring buffer size (3 slots for lookahead)
+    static const int BUFFER_SIZE = 3;
+    
+    // Uncompensated buffer (source of truth for programmed path)
+    UncompPoint uncomp_ring[BUFFER_SIZE];
+    int uncomp_head;   // Next slot to write
+    int uncomp_tail;   // Next slot to compute
+    int uncomp_count;  // Occupied slots (0..3), stays 3 when full
+    
+    // Compensated buffer (computed offset path)
+    CompPoint comp_ring[BUFFER_SIZE];
+    int comp_head;     // Next slot to write compensated output
+    int comp_tail;     // Next slot to serve/drain
+    int comp_count;    // Logical fullness of comp ring
+    int comp_ready_count; // Actual queued Gcode pointers waiting to be served
+    
+    // Compensation state
+    CompensationType comp_type;    // LEFT (G41), RIGHT (G42), or NONE (G40)
+    float comp_radius;              // Tool radius (D word value)
+    bool comp_active;               // Is compensation active?
+    bool is_flushing;               // True when flushing remaining moves
+    bool pipeline_primed;           // True after initial double-compute priming
+    bool first_output_pending;      // True until the first compensated point is computed
+    bool has_initial_position;      // True once G41/G42 starting position is captured
+    uint8_t last_g;                 // Last G-code number seen (for modal G-codes)
+    float initial_position[3];      // WCS position captured when compensation activates
+    LoadBalanceMetrics load_balance_metrics;
+    
+    // Helper functions
+    int get_comp_head() const { return comp_head; }
+    int get_comp_tail() const { return comp_tail; }
+    void record_load_balance_sample();
+    uint8_t resolve_motion_g(const Gcode* gcode) const;
+    bool is_arc_motion(uint8_t motion_g) const { return motion_g == 2 || motion_g == 3; }
+    bool get_motion_direction(const float start[3], const UncompPoint& end, bool use_segment_end, float dir[2]) const;
+    void format_compensated_gcode(const float uncomp_start[3], const float comp_start[3], const UncompPoint& curr,
+        const float comp_end[3], char* gcode_str, size_t gcode_str_size) const;
+    
+    /**
+     * Compute compensated coordinates and output
+     * Phase-locked: Computes comp_ring[comp_head] using uncomp_ring data
+     */
+    void compute_and_output();
+
+    /**
+     * Compute the terminal compensated point during G40 flush.
+     * Uses the last segment direction and offsets the final point.
+     */
+    bool compute_terminal_output();
+
+    /**
+     * Serve one compensated Gcode from the tail of the comp ring.
+     * @param draining - When true, decrement ring counts for explicit flush draining.
+     */
+    Gcode* serve_compensated_gcode(bool draining);
+    
+    /**
+     * Calculate perpendicular offset for Phase 2
+     * @param prev - Previous point (for direction)
+     * @param curr - Current point (to be offset)
+     * @param output - Output array [x, y] for offset point
+     * @return true if offset calculated, false if zero-length move
+     */
+    bool calculate_perpendicular_offset(
+        const UncompPoint& prev,
+        const UncompPoint& curr,
+        float output[2]
+    );
+
+    /**
+     * Calculate compensated corner point for B using A-B-C triplet.
+     * Degenerate cases (A==B or B==C) reduce to a perpendicular offset.
+     */
+    bool calculate_corner_intersection(
+        const UncompPoint& a,
+        const UncompPoint& b,
+        const UncompPoint& c,
+        float output[2]
+    );
+    
+    // Geometry utilities
+    float cross_product_2d(const float v1[2], const float v2[2]) {
+        return v1[0] * v2[1] - v1[1] * v2[0];
+    }
+    
+    void normalize_vector(float v[3]) {
+        float mag = sqrtf(v[0]*v[0] + v[1]*v[1] + v[2]*v[2]);
+        if (mag > 0.00001f) {
+            v[0] /= mag;
+            v[1] /= mag;
+            v[2] /= mag;
+        }
+    }
+    
+    // ========================================================================
+    // PHASE 2: TRACE OUTPUT FUNCTIONS FOR DUAL BUFFER VISIBILITY
+    // ========================================================================
+    void print_uncomp_buffered();
+    void print_offset_calc(const UncompPoint& prev, const UncompPoint& curr, 
+                          const float dir[2], const float normal[2], 
+                          const float offset[2]);
+    void print_output(const char* gcode_str);
+    void print_buffer_state();
+};
+
+#endif // COMPENSATION_PREPROCESSOR_H

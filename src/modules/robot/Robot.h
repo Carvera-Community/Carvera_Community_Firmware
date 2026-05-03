@@ -23,6 +23,7 @@ using std::string;
 class Gcode;
 class BaseSolution;
 class StepperMotor;
+class CompensationPreprocessor;
 
 // 9 WCS offsets
 #define MAX_WCS 9UL
@@ -33,6 +34,7 @@ class Robot : public Module {
         Robot();
         void on_module_loaded();
         void on_gcode_received(void* argument);
+        void process_buffered_command(Gcode* gcode);  // Process command from buffer
 
         void reset_axis_position(float position, int axis);
         void reset_axis_position(float x, float y, float z);
@@ -78,6 +80,9 @@ class Robot : public Module {
 
         bool is_homed_all_axes();
         void override_homed_check(bool home_override_value);
+
+        // Cutter compensation state query (avoids exposing the preprocessor pointer)
+        bool is_compensation_active() const;
 
         BaseSolution* arm_solution;                           // Selected Arm solution ( millimeters to step calculation )
 
@@ -201,6 +206,9 @@ class Robot : public Module {
         float soft_endstop_min[3], soft_endstop_max[3];
 
         uint8_t n_motors;                                    //count of the motors/axis registered
+        
+        // Cutter compensation preprocessor (v2.0 bolt-on architecture)
+        CompensationPreprocessor* compensation_preprocessor;
 
         // Used by Planner
         friend class Planner;

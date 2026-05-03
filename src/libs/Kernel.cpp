@@ -831,6 +831,11 @@ void Kernel::check_eeprom_data()
 			}
 		}
 	}
+
+    if (isnan(this->eeprom_data->TOOL_DIA) || this->eeprom_data->TOOL_DIA < 0) {
+        this->eeprom_data->TOOL_DIA = 0;
+        needrewtite = true;
+    }
     if(!((this->eeprom_data->tool_not_calibrated & ~1) == 0))
 	{
 		this->eeprom_data->tool_not_calibrated = true;

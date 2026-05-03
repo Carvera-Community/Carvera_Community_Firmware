@@ -105,6 +105,7 @@ typedef struct {
     int current_wcs;
     float WCScoord[6][4];
     float WCSrotation[6];
+    float TOOL_DIA;
 } EEPROM_data;
 
 typedef struct {

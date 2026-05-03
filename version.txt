@@ -1,3 +1,9 @@
+[2.1.0c_comp_merge_candidate]
+- Enhancement: Compensation pre processor files consisting of core functionality of dual buffer and ABC intersection functions. Entry points into Robot.
+- Enhancement: ATC handler and zprobe modifications to incorperate the functions of the physical 3d tool setter.  EEPROM entry into Kernel.
+- Enhancement: Spindle FW / REV support driven by config.txt
+- Enhancement: Many new configs available to activate the functionality of the features above without requiring default community firmware behavior changes
+
 [2.1.0c]
 - Fixed: Unused Variables removed
 - Fixed: Removing unused code blocks in simpleshell
