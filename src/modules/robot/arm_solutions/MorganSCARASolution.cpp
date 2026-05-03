@@ -27,23 +27,23 @@
 MorganSCARASolution::MorganSCARASolution(Config* config)
 {
     // arm1_length is the length of the inner main arm from hinge to hinge
-    arm1_length         = config->value(arm1_length_checksum)->by_default(150.0f)->as_number();
+    arm1_length         = config->value(arm1_length_checksum)->as_number(150.0f);
     // arm2_length is the length of the inner main arm from hinge to hinge
-    arm2_length         = config->value(arm2_length_checksum)->by_default(150.0f)->as_number();
+    arm2_length         = config->value(arm2_length_checksum)->as_number(150.0f);
     // morgan_offset_x is the x offset of bed zero position towards the SCARA tower center
-    morgan_offset_x     = config->value(morgan_offset_x_checksum)->by_default(100.0f)->as_number();
+    morgan_offset_x     = config->value(morgan_offset_x_checksum)->as_number(100.0f);
     // morgan_offset_y is the y offset of bed zero position towards the SCARA tower center
-    morgan_offset_y     = config->value(morgan_offset_y_checksum)->by_default(-60.0f)->as_number();
+    morgan_offset_y     = config->value(morgan_offset_y_checksum)->as_number(-60.0f);
     // Axis scaling is used in final calibration
-    morgan_scaling_x    = config->value(morgan_scaling_x_checksum)->by_default(1.0F)->as_number(); // 1 = 100% : No scaling
-    morgan_scaling_y    = config->value(morgan_scaling_y_checksum)->by_default(1.0F)->as_number();
+    morgan_scaling_x    = config->value(morgan_scaling_x_checksum)->as_number(1.0F); // 1 = 100% : No scaling
+    morgan_scaling_y    = config->value(morgan_scaling_y_checksum)->as_number(1.0F);
     // morgan_undefined is the ratio at which the SCARA position is undefined.
     // required to prevent the arm moving through singularity points
     // min: head close to tower
-    morgan_undefined_min  = config->value(morgan_undefined_min_checksum)->by_default(0.95f)->as_number();
+    morgan_undefined_min  = config->value(morgan_undefined_min_checksum)->as_number(0.95f);
     // max: head on maximum reach
-    morgan_undefined_max  = config->value(morgan_undefined_max_checksum)->by_default(0.95f)->as_number();
-    real_scara  = config->value(real_scara_checksum)->by_default(false)->as_bool();
+    morgan_undefined_max  = config->value(morgan_undefined_max_checksum)->as_number(0.95f);
+    real_scara  = config->value(real_scara_checksum)->as_bool(false);
     
     init();
 }

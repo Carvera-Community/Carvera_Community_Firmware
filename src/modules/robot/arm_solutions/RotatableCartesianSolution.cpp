@@ -9,7 +9,7 @@
 
 RotatableCartesianSolution::RotatableCartesianSolution(Config* config)
 {
-    float alpha_angle  = config->value(alpha_angle_checksum)->by_default(0.0f)->as_number() * DEG2RAD;
+    float alpha_angle  = config->value(alpha_angle_checksum)->as_number(0.0f) * DEG2RAD;
     sin_alpha          = sinf(alpha_angle);
     cos_alpha          = cosf(alpha_angle);
 }

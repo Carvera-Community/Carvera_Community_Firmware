@@ -8,8 +8,8 @@
 
 CoreXZSolution::CoreXZSolution(Config* config)
 {
-    x_reduction = config->value(x_reduction_checksum)->by_default(1.0f)->as_number();
-    z_reduction = config->value(z_reduction_checksum)->by_default(3.0f)->as_number();
+    x_reduction = config->value(x_reduction_checksum)->as_number(1.0f);
+    z_reduction = config->value(z_reduction_checksum)->as_number(3.0f);
 }
 
 void CoreXZSolution::cartesian_to_actuator(const float cartesian_mm[], ActuatorCoordinates &actuator_mm ) const {

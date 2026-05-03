@@ -94,14 +94,22 @@ Kernel::Kernel()
     disable_serial_console = false;
     keep_alive_request = false;
     flex_compensation_load_error = false;
+    config_load_error = false;
 
-    instance = this; // setup the Singleton instance of the kernel    
-    
+    instance = this; // setup the Singleton instance of the kernel
+
     // init I2C
     this->i2c = new mbed::I2C(P0_27, P0_28);
     this->i2c->frequency(200000);
-    
-    this->factory_set = new(AHB) FACTORY_SET();
+
+    // Bring up streams + serial console first so factory and config parser
+    // errors are visible on the host link. Baud is hard-coded here and gets
+    // re-applied from config later in SerialConsole::on_module_loaded().
+    this->streams = new StreamOutputPool();
+    this->serial  = new(AHB) SerialConsole(P2_8, P2_9, 115200);
+    this->streams->append_stream(this->serial);
+
+    this->factory_set = new FACTORY_SET();
     // read Factory setting data from eeprom
     this->read_Factory_data();
     // read Factory settings data from sd
@@ -109,41 +117,43 @@ Kernel::Kernel()
 
 
     // Config next, but does not load cache yet
-    this->config = new(AHB) Config();
+    this->config = new Config();
 
     // Pre-load the config cache
     this->config->config_cache_load();
-
-    this->streams = new(AHB) StreamOutputPool();
 
     this->current_path   = "/";
 
     NVIC_SetPriorityGrouping(0);
     //some boards don't have leds.. TOO BAD!
-    this->use_leds = !this->config->value( disable_leds_checksum )->by_default(false)->as_bool();
+    this->use_leds = !this->config->value( disable_leds_checksum )->as_bool(false);
 
 #ifdef CNC
-    this->grbl_mode = this->config->value( grbl_mode_checksum )->by_default(true)->as_bool();
+    this->grbl_mode = this->config->value( grbl_mode_checksum )->as_bool(true);
 #else
-    this->grbl_mode = this->config->value( grbl_mode_checksum )->by_default(false)->as_bool();
+    this->grbl_mode = this->config->value( grbl_mode_checksum )->as_bool(false);
 #endif
 
-    this->enable_feed_hold = this->config->value( feed_hold_enable_checksum )->by_default(this->grbl_mode)->as_bool();
+    this->enable_feed_hold = this->config->value( feed_hold_enable_checksum )->as_bool(this->grbl_mode);
 
     // we expect ok per line now not per G code, setting this to false will return to the old (incorrect) way of ok per G code
-    this->ok_per_line = this->config->value( ok_per_line_checksum )->by_default(true)->as_bool();
+    this->ok_per_line = this->config->value( ok_per_line_checksum )->as_bool(true);
 
     // Option to disable serial console. Useful primarily if MRI is enabled and
     // you want to keep the serial port dedicated for such traffic. Or you want
     // to save some memory?
-    this->disable_serial_console = this->config->value( disable_serial_console_checksum )->by_default(false)->as_bool();
+    this->disable_serial_console = this->config->value( disable_serial_console_checksum )->as_bool(false);
     
     // Check if we should break into the debugger on halt
-    this->halt_on_error_debug = this->config->value( halt_on_error_debug_checksum )->by_default(false)->as_bool();
+    this->halt_on_error_debug = this->config->value( halt_on_error_debug_checksum )->as_bool(false);
 
-    if (!this->disable_serial_console) {
-        int uart_baud = this->config->value(uart_checksum, baud_rate_setting_checksum)->by_default(115200)->as_number();
-        this->serial = new(AHB) SerialConsole(P2_8, P2_9, uart_baud);
+    if (this->disable_serial_console) {
+        this->streams->remove_stream(this->serial);
+        delete this->serial;
+        this->serial = nullptr;
+    } else {
+        // add_module() runs SerialConsole::on_module_loaded() which re-reads
+        // uart.baud_rate from config and applies it to the hardware.
         this->add_module( this->serial );
     }
 
@@ -151,7 +161,7 @@ Kernel::Kernel()
     add_module( this->slow_ticker = new(AHB) SlowTicker());
 
     this->step_ticker = new(AHB) StepTicker();
-    this->adc = new(AHB) Adc();
+    this->adc = new Adc();
 
     // TODO : These should go into platform-specific files
     // LPC17xx-specific
@@ -180,27 +190,27 @@ Kernel::Kernel()
     }
 
     // Configure the step ticker
-    this->base_stepping_frequency = this->config->value(base_stepping_frequency_checksum)->by_default(100000)->as_number();
-    float microseconds_per_step_pulse = this->config->value(microseconds_per_step_pulse_checksum)->by_default(1)->as_number();
+    this->base_stepping_frequency = this->config->value(base_stepping_frequency_checksum)->as_number(100000);
+    float microseconds_per_step_pulse = this->config->value(microseconds_per_step_pulse_checksum)->as_number(1);
 
     // Configure the step ticker
     this->step_ticker->set_frequency( this->base_stepping_frequency );
     this->step_ticker->set_unstep_time( microseconds_per_step_pulse );
 
-    this->eeprom_data = new(AHB) EEPROM_data();
+    this->eeprom_data = new EEPROM_data();
     // read eeprom data
     this->read_eeprom_data();
     // check eeprom data
     this->check_eeprom_data();
 
     // Core modules
-    this->add_module( this->simpleshell    = new(AHB) SimpleShell()   );
-    this->add_module( this->conveyor       = new(AHB) Conveyor()      );
-    this->add_module( this->gcode_dispatch = new(AHB) GcodeDispatch() );
-    this->add_module( this->robot          = new(AHB) Robot()         );
+    this->add_module( this->simpleshell    = new SimpleShell()   );
+    this->add_module( this->conveyor       = new(AHB) Conveyor()      ); // must stay in AHB: shares volatile queue indices with step ISR
+    this->add_module( this->gcode_dispatch = new GcodeDispatch() );
+    this->add_module( this->robot          = new Robot()         );
 
-    this->planner = new(AHB) Planner();
-    this->configurator = new(AHB) Configurator();
+    this->planner = new Planner();
+    this->configurator = new Configurator();
 }
 
 // get current state
@@ -1059,7 +1069,7 @@ bool Kernel::Factroy_readLine(string& line, int lineno, FILE *fp)
             if(lineno != 0) {
                 // report if it is not truncating a comment
                 if(strchr(buf, '#') == NULL)
-                    printf("Truncated long line %d in: %s\n", lineno, "Factory file");
+                    THEKERNEL->streams->printf("Truncated long line %d in: %s\n", lineno, "Factory file");
             }
             // read until the next \n or eof
             int c;
@@ -1086,13 +1096,13 @@ bool Kernel::process_line(const string &buffer, uint16_t *check_sum, unsigned ch
     
     size_t end_key = buffer.find_first_of(" \t", begin_key);
     if(end_key == string::npos) {
-        printf("ERROR: factory file line %s is invalid, no key value pair found\r\n", buffer.c_str());
+        THEKERNEL->streams->printf("ERROR: factory file line %s is invalid, no key value pair found\r\n", buffer.c_str());
         return false;
     }
 
     size_t begin_value = buffer.find_first_not_of(" \t", end_key);
     if(begin_value == string::npos || buffer[begin_value] == '#') {
-        printf("ERROR: factory file line %s has no value\r\n", buffer.c_str());
+        THEKERNEL->streams->printf("ERROR: factory file line %s has no value\r\n", buffer.c_str());
         return false;
     }
     

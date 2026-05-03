@@ -69,9 +69,9 @@ typedef enum {
      CAN_2 = (int)LPC_CAN2_BASE
 } CANName;
 
-#define STDIO_UART_TX     USBTX
-#define STDIO_UART_RX     USBRX
-#define STDIO_UART        UART_0
+#define STDIO_UART_TX     P2_8
+#define STDIO_UART_RX     P2_9
+#define STDIO_UART        UART_2
 
 #ifdef __cplusplus
 }

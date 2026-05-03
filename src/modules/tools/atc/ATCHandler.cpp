@@ -1437,61 +1437,61 @@ void ATCHandler::on_config_reload(void *argument)
 	
 	if(CARVERA == THEKERNEL->factory_set->MachineModel)
 	{
-		atc_home_info.pin.from_string( THEKERNEL->config->value(atc_checksum, endstop_pin_checksum)->by_default("1.0^" )->as_string())->as_input();
+		atc_home_info.pin.from_string( THEKERNEL->config->value(atc_checksum, endstop_pin_checksum)->as_string("1.0^" ))->as_input();
 	}
 	else
 	{
-		atc_home_info.pin.from_string( THEKERNEL->config->value(atc_checksum, endstop_pin_checksum)->by_default("1.4^" )->as_string())->as_input();
+		atc_home_info.pin.from_string( THEKERNEL->config->value(atc_checksum, endstop_pin_checksum)->as_string("1.4^" ))->as_input();
 	}
-	atc_home_info.debounce_ms    = THEKERNEL->config->value(atc_checksum, debounce_ms_checksum)->by_default(1  )->as_number();
-	atc_home_info.max_travel    = THEKERNEL->config->value(atc_checksum, max_travel_mm_checksum)->by_default(8  )->as_number();
-	atc_home_info.retract    = THEKERNEL->config->value(atc_checksum, homing_retract_mm_checksum)->by_default(3  )->as_number();
-	atc_home_info.action_dist    = THEKERNEL->config->value(atc_checksum, action_mm_checksum)->by_default(1  )->as_number();
-	atc_home_info.homing_rate    = THEKERNEL->config->value(atc_checksum, homing_rate_mm_s_checksum)->by_default(0.4f )->as_number();
-	atc_home_info.action_rate    = THEKERNEL->config->value(atc_checksum, action_rate_mm_s_checksum)->by_default(0.25f)->as_number();
+	atc_home_info.debounce_ms    = THEKERNEL->config->value(atc_checksum, debounce_ms_checksum)->as_number(1  );
+	atc_home_info.max_travel    = THEKERNEL->config->value(atc_checksum, max_travel_mm_checksum)->as_number(8  );
+	atc_home_info.retract    = THEKERNEL->config->value(atc_checksum, homing_retract_mm_checksum)->as_number(3  );
+	atc_home_info.action_dist    = THEKERNEL->config->value(atc_checksum, action_mm_checksum)->as_number(1  );
+	atc_home_info.homing_rate    = THEKERNEL->config->value(atc_checksum, homing_rate_mm_s_checksum)->as_number(0.4f );
+	atc_home_info.action_rate    = THEKERNEL->config->value(atc_checksum, action_rate_mm_s_checksum)->as_number(0.25f);
 
-	detector_info.detect_pin.from_string( THEKERNEL->config->value(atc_checksum, detector_checksum, detect_pin_checksum)->by_default("0.20^" )->as_string())->as_input();
-	detector_info.detect_rate = THEKERNEL->config->value(atc_checksum, detector_checksum, detect_rate_mm_s_checksum)->by_default(1  )->as_number();
-	detector_info.detect_travel = THEKERNEL->config->value(atc_checksum, detector_checksum, detect_travel_mm_checksum)->by_default(1  )->as_number();
-	this->disable_toolsensor = !THEKERNEL->config->value(atc_checksum, detector_checksum, enable_checksum)->by_default(true)->as_bool();
+	detector_info.detect_pin.from_string( THEKERNEL->config->value(atc_checksum, detector_checksum, detect_pin_checksum)->as_string("0.20^" ))->as_input();
+	detector_info.detect_rate = THEKERNEL->config->value(atc_checksum, detector_checksum, detect_rate_mm_s_checksum)->as_number(1  );
+	detector_info.detect_travel = THEKERNEL->config->value(atc_checksum, detector_checksum, detect_travel_mm_checksum)->as_number(1  );
+	this->disable_toolsensor = !THEKERNEL->config->value(atc_checksum, detector_checksum, enable_checksum)->as_bool(true);
 
-	this->safe_z_mm = THEKERNEL->config->value(atc_checksum, safe_z_checksum)->by_default(-10)->as_number();
-	this->safe_z_empty_mm = THEKERNEL->config->value(atc_checksum, safe_z_empty_checksum)->by_default(-20)->as_number();
-	this->safe_z_offset_mm = THEKERNEL->config->value(atc_checksum, safe_z_offset_checksum)->by_default(10)->as_number();
-	this->fast_z_rate = THEKERNEL->config->value(atc_checksum, fast_z_rate_checksum)->by_default(500)->as_number();
-	this->slow_z_rate = THEKERNEL->config->value(atc_checksum, slow_z_rate_checksum)->by_default(60)->as_number();
-	this->margin_rate = THEKERNEL->config->value(atc_checksum, margin_rate_checksum)->by_default(1000)->as_number();
+	this->safe_z_mm = THEKERNEL->config->value(atc_checksum, safe_z_checksum)->as_number(-10);
+	this->safe_z_empty_mm = THEKERNEL->config->value(atc_checksum, safe_z_empty_checksum)->as_number(-20);
+	this->safe_z_offset_mm = THEKERNEL->config->value(atc_checksum, safe_z_offset_checksum)->as_number(10);
+	this->fast_z_rate = THEKERNEL->config->value(atc_checksum, fast_z_rate_checksum)->as_number(500);
+	this->slow_z_rate = THEKERNEL->config->value(atc_checksum, slow_z_rate_checksum)->as_number(60);
+	this->margin_rate = THEKERNEL->config->value(atc_checksum, margin_rate_checksum)->as_number(1000);
 
-	this->probe_fast_rate = THEKERNEL->config->value(atc_checksum, probe_checksum, fast_rate_mm_m_checksum)->by_default(300  )->as_number();
-	this->probe_slow_rate = THEKERNEL->config->value(atc_checksum, probe_checksum, slow_rate_mm_m_checksum)->by_default(60   )->as_number();
-	this->probe_retract_mm = THEKERNEL->config->value(atc_checksum, probe_checksum, retract_mm_checksum)->by_default(2   )->as_number();
-	this->probe_height_mm = THEKERNEL->config->value(atc_checksum, probe_checksum, probe_height_mm_checksum)->by_default(0   )->as_number();
+	this->probe_fast_rate = THEKERNEL->config->value(atc_checksum, probe_checksum, fast_rate_mm_m_checksum)->as_number(300  );
+	this->probe_slow_rate = THEKERNEL->config->value(atc_checksum, probe_checksum, slow_rate_mm_m_checksum)->as_number(60   );
+	this->probe_retract_mm = THEKERNEL->config->value(atc_checksum, probe_checksum, retract_mm_checksum)->as_number(2   );
+	this->probe_height_mm = THEKERNEL->config->value(atc_checksum, probe_checksum, probe_height_mm_checksum)->as_number(0   );
 	
-	this->anchor_width = THEKERNEL->config->value(coordinate_checksum, anchor_width_checksum)->by_default(15  )->as_number();
-	this->anchor1_x = THEKERNEL->config->value(coordinate_checksum, anchor1_x_checksum)->by_default(-359  )->as_number();
-	this->anchor1_y = THEKERNEL->config->value(coordinate_checksum, anchor1_y_checksum)->by_default(-234  )->as_number();
-	this->anchor2_offset_x = THEKERNEL->config->value(coordinate_checksum, anchor2_offset_x_checksum)->by_default(90  )->as_number();
-	this->anchor2_offset_y = THEKERNEL->config->value(coordinate_checksum, anchor2_offset_y_checksum)->by_default(45.65F  )->as_number();
+	this->anchor_width = THEKERNEL->config->value(coordinate_checksum, anchor_width_checksum)->as_number(15  );
+	this->anchor1_x = THEKERNEL->config->value(coordinate_checksum, anchor1_x_checksum)->as_number(-359  );
+	this->anchor1_y = THEKERNEL->config->value(coordinate_checksum, anchor1_y_checksum)->as_number(-234  );
+	this->anchor2_offset_x = THEKERNEL->config->value(coordinate_checksum, anchor2_offset_x_checksum)->as_number(90  );
+	this->anchor2_offset_y = THEKERNEL->config->value(coordinate_checksum, anchor2_offset_y_checksum)->as_number(45.65F  );
 	
 	if(CARVERA == THEKERNEL->factory_set->MachineModel)
 	{
-		this->toolrack_z = THEKERNEL->config->value(coordinate_checksum, toolrack_z_checksum)->by_default(-105  )->as_number();
-		this->toolrack_offset_x = THEKERNEL->config->value(coordinate_checksum, toolrack_offset_x_checksum)->by_default(356  )->as_number();
-		this->toolrack_offset_y = THEKERNEL->config->value(coordinate_checksum, toolrack_offset_y_checksum)->by_default(0  )->as_number();
+		this->toolrack_z = THEKERNEL->config->value(coordinate_checksum, toolrack_z_checksum)->as_number(-105  );
+		this->toolrack_offset_x = THEKERNEL->config->value(coordinate_checksum, toolrack_offset_x_checksum)->as_number(356  );
+		this->toolrack_offset_y = THEKERNEL->config->value(coordinate_checksum, toolrack_offset_y_checksum)->as_number(0  );
 		this->lowest_tool_number = 0;
 	}
 	else if(CARVERA_AIR == THEKERNEL->factory_set->MachineModel)
 	{
-		this->toolrack_z = THEKERNEL->config->value(coordinate_checksum, toolrack_z_checksum)->by_default(-108  )->as_number();
-		this->toolrack_offset_x = THEKERNEL->config->value(coordinate_checksum, toolrack_offset_x_checksum)->by_default(126  )->as_number();
-		this->toolrack_offset_y = THEKERNEL->config->value(coordinate_checksum, toolrack_offset_y_checksum)->by_default(196  )->as_number();
+		this->toolrack_z = THEKERNEL->config->value(coordinate_checksum, toolrack_z_checksum)->as_number(-108  );
+		this->toolrack_offset_x = THEKERNEL->config->value(coordinate_checksum, toolrack_offset_x_checksum)->as_number(126  );
+		this->toolrack_offset_y = THEKERNEL->config->value(coordinate_checksum, toolrack_offset_y_checksum)->as_number(196  );
 		this->lowest_tool_number = 1;
 	}
 
 	// Load configurable probe position (absolute MCS coordinates) before first use
-	this->probe_mcs_x = THEKERNEL->config->value(coordinate_checksum, probe_mcs_x_checksum)->by_default(NAN)->as_number();
-	this->probe_mcs_y = THEKERNEL->config->value(coordinate_checksum, probe_mcs_y_checksum)->by_default(NAN)->as_number();
-	this->probe_mcs_z = THEKERNEL->config->value(coordinate_checksum, probe_mcs_z_checksum)->by_default(NAN)->as_number();
+	this->probe_mcs_x = THEKERNEL->config->value(coordinate_checksum, probe_mcs_x_checksum)->as_number(NAN);
+	this->probe_mcs_y = THEKERNEL->config->value(coordinate_checksum, probe_mcs_y_checksum)->as_number(NAN);
+	this->probe_mcs_z = THEKERNEL->config->value(coordinate_checksum, probe_mcs_z_checksum)->as_number(NAN);
 	this->probe_position_configured = !isnan(this->probe_mcs_x) || !isnan(this->probe_mcs_y) || !isnan(this->probe_mcs_z);
 	
 	// Load custom tool slots configuration
@@ -1554,32 +1554,32 @@ void ATCHandler::on_config_reload(void *argument)
 	
 	if(CARVERA == THEKERNEL->factory_set->MachineModel)
 	{
-		this->rotation_offset_x = THEKERNEL->config->value(coordinate_checksum, rotation_offset_x_checksum)->by_default(-8  )->as_number();
-		this->rotation_offset_y = THEKERNEL->config->value(coordinate_checksum, rotation_offset_y_checksum)->by_default(37.5F  )->as_number();
-		this->rotation_offset_z = THEKERNEL->config->value(coordinate_checksum, rotation_offset_z_checksum)->by_default(22.5F  )->as_number();
+		this->rotation_offset_x = THEKERNEL->config->value(coordinate_checksum, rotation_offset_x_checksum)->as_number(-8  );
+		this->rotation_offset_y = THEKERNEL->config->value(coordinate_checksum, rotation_offset_y_checksum)->as_number(37.5F  );
+		this->rotation_offset_z = THEKERNEL->config->value(coordinate_checksum, rotation_offset_z_checksum)->as_number(22.5F  );
 	
-		this->clearance_x = THEKERNEL->config->value(coordinate_checksum, clearance_x_checksum)->by_default(-75  )->as_number();
-		this->clearance_y = THEKERNEL->config->value(coordinate_checksum, clearance_y_checksum)->by_default(-3  )->as_number();
-		this->clearance_z = THEKERNEL->config->value(coordinate_checksum, clearance_z_checksum)->by_default(-3  )->as_number();
+		this->clearance_x = THEKERNEL->config->value(coordinate_checksum, clearance_x_checksum)->as_number(-75  );
+		this->clearance_y = THEKERNEL->config->value(coordinate_checksum, clearance_y_checksum)->as_number(-3  );
+		this->clearance_z = THEKERNEL->config->value(coordinate_checksum, clearance_z_checksum)->as_number(-3  );
 	}
 	else if(CARVERA_AIR == THEKERNEL->factory_set->MachineModel)
 	{
-		this->rotation_offset_x = THEKERNEL->config->value(coordinate_checksum, rotation_offset_x_checksum)->by_default(30.0F)->as_number();
-		this->rotation_offset_y = THEKERNEL->config->value(coordinate_checksum, rotation_offset_y_checksum)->by_default(82.5F  )->as_number();
-		this->rotation_offset_z = THEKERNEL->config->value(coordinate_checksum, rotation_offset_z_checksum)->by_default(23.0F  )->as_number();
+		this->rotation_offset_x = THEKERNEL->config->value(coordinate_checksum, rotation_offset_x_checksum)->as_number(30.0F);
+		this->rotation_offset_y = THEKERNEL->config->value(coordinate_checksum, rotation_offset_y_checksum)->as_number(82.5F  );
+		this->rotation_offset_z = THEKERNEL->config->value(coordinate_checksum, rotation_offset_z_checksum)->as_number(23.0F  );
 	
-		this->clearance_x = THEKERNEL->config->value(coordinate_checksum, clearance_x_checksum)->by_default(-5  )->as_number();
-		this->clearance_y = THEKERNEL->config->value(coordinate_checksum, clearance_y_checksum)->by_default(-21  )->as_number();
-		this->clearance_z = THEKERNEL->config->value(coordinate_checksum, clearance_z_checksum)->by_default(-5  )->as_number();
+		this->clearance_x = THEKERNEL->config->value(coordinate_checksum, clearance_x_checksum)->as_number(-5  );
+		this->clearance_y = THEKERNEL->config->value(coordinate_checksum, clearance_y_checksum)->as_number(-21  );
+		this->clearance_z = THEKERNEL->config->value(coordinate_checksum, clearance_z_checksum)->as_number(-5  );
 	}
-	this->rotation_width = THEKERNEL->config->value(coordinate_checksum, rotation_width_checksum)->by_default(100 )->as_number();
+	this->rotation_width = THEKERNEL->config->value(coordinate_checksum, rotation_width_checksum)->as_number(100 );
 
-	this->skip_path_origin = THEKERNEL->config->value(atc_checksum, skip_path_origin_checksum)->by_default(false)->as_bool();
-	this->three_axis_probe_tlo_correction = THEKERNEL->config->value(zprobe_checksum, three_axis_probe_tlo_correction_checksum)->by_default(0.0f)->as_number();
+	this->skip_path_origin = THEKERNEL->config->value(atc_checksum, skip_path_origin_checksum)->as_bool(false);
+	this->three_axis_probe_tlo_correction = THEKERNEL->config->value(zprobe_checksum, three_axis_probe_tlo_correction_checksum)->as_number(0.0f);
 	if(CARVERA == THEKERNEL->factory_set->MachineModel || CARVERA_AIR == THEKERNEL->factory_set->MachineModel){
-		this->ref_tool_mz = THEKERNEL->config->value(coordinate_checksum, reference_tool_mz_checksum)->by_default(-115.34f)->as_number(); // Represents the machine Z coordinate when the tool length is 0
+		this->ref_tool_mz = THEKERNEL->config->value(coordinate_checksum, reference_tool_mz_checksum)->as_number(-115.34f); // Represents the machine Z coordinate when the tool length is 0
 	}else{
-		this->ref_tool_mz = THEKERNEL->config->value(coordinate_checksum, reference_tool_mz_checksum)->by_default(-115.34f)->as_number(); // In preparation for the Z1. Update this value when the Z1 is implemented
+		this->ref_tool_mz = THEKERNEL->config->value(coordinate_checksum, reference_tool_mz_checksum)->as_number(-115.34f); // In preparation for the Z1. Update this value when the Z1 is implemented
 	}
 }
 

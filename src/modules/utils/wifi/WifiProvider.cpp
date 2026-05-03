@@ -63,17 +63,17 @@ WifiProvider::WifiProvider()
 
 void WifiProvider::on_module_loaded()
 {
-    if( !THEKERNEL->config->value( wifi_checksum,  wifi_enable)->by_default(true)->as_bool() ) {
+    if( !THEKERNEL->config->value( wifi_checksum,  wifi_enable)->as_bool(true) ) {
         // as not needed free up resource
         delete this;
         return;
     }
 
-	this->tcp_port = THEKERNEL->config->value(wifi_checksum, tcp_port_checksum)->by_default(2222)->as_int();
-	this->udp_send_port = THEKERNEL->config->value(wifi_checksum, udp_send_port_checksum)->by_default(3333)->as_int();
-	this->udp_recv_port = THEKERNEL->config->value(wifi_checksum, udp_recv_port_checksum)->by_default(4444)->as_int();
-	this->tcp_timeout_s = THEKERNEL->config->value(wifi_checksum, tcp_timeout_s_checksum)->by_default(10)->as_int();
-    std::string config_name = THEKERNEL->config->value(wifi_checksum, machine_name_checksum)->by_default("CARVERA")->as_string();
+	this->tcp_port = THEKERNEL->config->value(wifi_checksum, tcp_port_checksum)->as_int(2222);
+	this->udp_send_port = THEKERNEL->config->value(wifi_checksum, udp_send_port_checksum)->as_int(3333);
+	this->udp_recv_port = THEKERNEL->config->value(wifi_checksum, udp_recv_port_checksum)->as_int(4444);
+	this->tcp_timeout_s = THEKERNEL->config->value(wifi_checksum, tcp_timeout_s_checksum)->as_int(10);
+    std::string config_name = THEKERNEL->config->value(wifi_checksum, machine_name_checksum)->as_string("CARVERA");
     strncpy(this->machine_name, config_name.c_str(), sizeof(this->machine_name) - 1);
     this->machine_name[sizeof(this->machine_name) - 1] = '\0'; // Ensure null termination
 
@@ -81,12 +81,12 @@ void WifiProvider::on_module_loaded()
     this->init_wifi_module(false);
 
     // Add interrupt for WIFI data receving
-    Pin *smoothie_pin = new(AHB) Pin();
-    smoothie_pin->from_string(THEKERNEL->config->value(wifi_checksum, wifi_interrupt_pin_checksum)->by_default("2.11")->as_string());
+    Pin *smoothie_pin = new Pin();
+    smoothie_pin->from_string(THEKERNEL->config->value(wifi_checksum, wifi_interrupt_pin_checksum)->as_string("2.11"));
     smoothie_pin->as_input();
     if (smoothie_pin->port_number == 0 || smoothie_pin->port_number == 2) {
         PinName pinname = port_pin((PortName)smoothie_pin->port_number, smoothie_pin->pin);
-        wifi_interrupt_pin = new(AHB) mbed::InterruptIn(pinname);
+        wifi_interrupt_pin = new mbed::InterruptIn(pinname);
         wifi_interrupt_pin->rise(this, &WifiProvider::on_pin_rise);
         NVIC_SetPriority(EINT3_IRQn, 16);
     } else {
