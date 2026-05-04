@@ -255,6 +255,10 @@ class Kernel {
         uint16_t probe_addr;
         bool checkled;
         bool spindleon;
+
+        struct {
+            bool slowticker_profiling:1;
+        } debug_flags;
         float local_vars[20];
         float probe_outputs[6];
         float probe_tip_diameter = 1.6;

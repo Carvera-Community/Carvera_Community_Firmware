@@ -90,6 +90,7 @@ Kernel::Kernel()
     probe_addr = 0;
     checkled = false;
     spindleon = false;
+    debug_flags = {};
     cachewait = false;
     disable_serial_console = false;
     keep_alive_request = false;

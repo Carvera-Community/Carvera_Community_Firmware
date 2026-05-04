@@ -13,6 +13,8 @@
 #include "libs/Hook.h"
 #include "modules/robot/Conveyor.h"
 #include "Gcode.h"
+#include "StreamOutputPool.h"
+#include "us_ticker_api.h"
 
 #include <mri.h>
 
@@ -35,6 +37,8 @@ SlowTicker::SlowTicker(){
     max_frequency = 5;  // initial max frequency is set to 5Hz
     set_frequency(max_frequency);
     flag_1s_flag = 0;
+    tick_max_us = 0;
+    tick_last_us = 0;
 }
 
 void SlowTicker::start()
@@ -60,6 +64,7 @@ void SlowTicker::set_frequency( int frequency ){
 void SlowTicker::tick(){
 
     // Call all hooks that need to be called
+    uint32_t t0 = THEKERNEL->debug_flags.slowticker_profiling ? us_ticker_read() : 0;
     for (Hook* hook : this->hooks){
         hook->countdown -= this->interval;
         if (hook->countdown < 0)
@@ -67,6 +72,11 @@ void SlowTicker::tick(){
             hook->countdown += hook->interval;
             hook->call();
         }
+    }
+    if (THEKERNEL->debug_flags.slowticker_profiling) {
+        uint32_t elapsed = us_ticker_read() - t0;
+        tick_last_us = elapsed;
+        if (elapsed > tick_max_us) tick_max_us = elapsed;
     }
 
     // deduct tick time from second counter
@@ -117,9 +127,15 @@ void SlowTicker::on_idle(void*)
     }
 
     // if interrupt has set the 1 second flag
-    if (flag_1s())
+    if (flag_1s()) {
         // fire the on_second_tick event
         THEKERNEL->call_event(ON_SECOND_TICK);
+        if (THEKERNEL->debug_flags.slowticker_profiling) {
+            THEKERNEL->streams->printf("SlowTicker: freq=%luHz  last=%luus  max=%luus  budget=%luus\n",
+                max_frequency, tick_last_us, tick_max_us, (uint32_t)(1000000UL / max_frequency));
+            tick_max_us = 0;  // reset peak each second
+        }
+    }
 }
 
 extern "C" void TIMER2_IRQHandler (void){
