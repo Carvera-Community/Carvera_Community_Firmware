@@ -18,6 +18,7 @@
 
 #include "libs/StepTicker.h"
 #include "libs/PublicData.h"
+#include "us_ticker_api.h"
 #include "modules/communication/SerialConsole.h"
 #include "modules/communication/GcodeDispatch.h"
 #include "modules/robot/Planner.h"
@@ -641,8 +642,16 @@ void Kernel::call_event(_EVENT_ENUM id_event, void * argument)
     }
 
     // send to all registered modules
-    for (auto m : hooks[id_event]) {
-        (m->*kernel_callback_functions[id_event])(argument);
+    if (id_event == ON_IDLE && debug_flags.cpu_load) {
+        uint32_t t0 = us_ticker_read();
+        for (auto m : hooks[id_event]) {
+            (m->*kernel_callback_functions[id_event])(argument);
+        }
+        slow_ticker->idle_us_accum += us_ticker_read() - t0;
+    } else {
+        for (auto m : hooks[id_event]) {
+            (m->*kernel_callback_functions[id_event])(argument);
+        }
     }
 
     if(id_event == ON_HALT) {
