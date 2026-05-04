@@ -1,3 +1,8 @@
+[unreleased]
+- Enhancement: `debugmode` shell command to turn on/off firmware diagnostic tools that are continiously running 
+- Enhancement: Added `debugmode slowticker` to output SlowTicker ISR duration stats once per second to console
+- Enhancement: Added `debugmode cpuload` to output the % of time spent not in on_idle once per second to console
+
 [2.1.0c]
 - Fixed: Unused Variables removed
 - Fixed: Removing unused code blocks in simpleshell
