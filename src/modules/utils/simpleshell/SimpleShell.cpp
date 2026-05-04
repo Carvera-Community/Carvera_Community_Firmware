@@ -1565,7 +1565,7 @@ void SimpleShell::debugmode_command(string parameters, StreamOutput *stream)
     if (arg == "cpuload") {
         THEKERNEL->debug_flags.cpu_load = true;
         THEKERNEL->slow_ticker->idle_us_accum = 0;
-        stream->printf("CPU load monitoring enabled - busy % once per second\n");
+        stream->printf("CPU load monitoring enabled - busy percentage once per second\n");
         return;
     }
 
