@@ -60,6 +60,7 @@ protected:
 public:
     volatile uint32_t tick_max_us;
     volatile uint32_t tick_last_us;
+    uint32_t idle_us_accum;
 };
 
 

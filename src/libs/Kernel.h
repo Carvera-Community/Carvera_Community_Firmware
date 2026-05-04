@@ -258,6 +258,7 @@ class Kernel {
 
         struct {
             bool slowticker_profiling:1;
+            bool cpu_load:1;
         } debug_flags;
         float local_vars[20];
         float probe_outputs[6];

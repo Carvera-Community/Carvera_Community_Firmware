@@ -39,6 +39,7 @@ SlowTicker::SlowTicker(){
     flag_1s_flag = 0;
     tick_max_us = 0;
     tick_last_us = 0;
+    idle_us_accum = 0;
 }
 
 void SlowTicker::start()
@@ -134,6 +135,15 @@ void SlowTicker::on_idle(void*)
             THEKERNEL->streams->printf("SlowTicker: freq=%luHz  last=%luus  max=%luus  budget=%luus\n",
                 max_frequency, tick_last_us, tick_max_us, (uint32_t)(1000000UL / max_frequency));
             tick_max_us = 0;  // reset peak each second
+        }
+        if (THEKERNEL->debug_flags.cpu_load) {
+            // idle_us_accum is the total µs spent inside ON_IDLE this second.
+            // Everything else (ON_MAIN_LOOP + interrupts) is "busy".
+            uint32_t idle_us = idle_us_accum;
+            idle_us_accum = 0;
+            uint32_t busy_us = (idle_us < 1000000) ? (1000000 - idle_us) : 0;
+            uint32_t busy_pct = busy_us / 10000;   // integer %, 0-100
+            THEKERNEL->streams->printf("CPU: %lu%% busy\n", busy_pct);
         }
     }
 }

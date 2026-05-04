@@ -18,6 +18,7 @@
 #include "libs/StreamOutputPool.h"
 #include "libs/gpio.h"
 #include "Conveyor.h"
+#include "SlowTicker.h"
 #include "DirHandle.h"
 #include "mri.h"
 #include "version.h"
@@ -126,6 +127,7 @@ const SimpleShell::ptentry_t SimpleShell::commands_table[] = {
     {"enable_4th_hd", SimpleShell::enable_4th_hd},
     {"disable_4th_hd", SimpleShell::disable_4th_hd},
     {"baud",         SimpleShell::baud_command},
+    {"debugmode",    SimpleShell::debugmode_command},
 
     // unknown command
     {NULL, NULL}
@@ -1530,6 +1532,44 @@ void SimpleShell::baud_command(string parameters, StreamOutput *stream)
     }
     stream->printf("ok\n");
     static_cast<SerialConsole *>(THEKERNEL->serial)->set_baud_temporary(static_cast<int>(new_baud));
+}
+
+void SimpleShell::debugmode_command(string parameters, StreamOutput *stream)
+{
+    string arg = shift_parameter(parameters);
+
+    if (arg.empty()) {
+        stream->printf("Available debug modes (currently active marked with *):\n");
+        stream->printf("  slowticker  - print SlowTicker ISR duration stats once per second%s\n",
+            THEKERNEL->debug_flags.slowticker_profiling ? " *" : "");
+        stream->printf("  cpuload - print CPU load percentage once per second%s\n",
+            THEKERNEL->debug_flags.cpu_load ? " *" : "");
+        stream->printf("Usage: debugmode <mode>  or  debugmode off\n");
+        return;
+    }
+
+    if (arg == "off") {
+        THEKERNEL->debug_flags.slowticker_profiling = false;
+        THEKERNEL->debug_flags.cpu_load = false;
+        stream->printf("All debug modes disabled\n");
+        return;
+    }
+
+    if (arg == "slowticker") {
+        THEKERNEL->debug_flags.slowticker_profiling = true;
+        THEKERNEL->slow_ticker->tick_max_us = 0;
+        stream->printf("SlowTicker profiling enabled - stats will print once per second\n");
+        return;
+    }
+
+    if (arg == "cpuload") {
+        THEKERNEL->debug_flags.cpu_load = true;
+        THEKERNEL->slow_ticker->idle_us_accum = 0;
+        stream->printf("CPU load monitoring enabled - busy % once per second\n");
+        return;
+    }
+
+    stream->printf("Unknown debug mode: %s\nRun 'debugmode' with no arguments to list options\n", arg.c_str());
 }
 
 // go into dfu boot mode
