@@ -44,7 +44,7 @@ win_install.log
 .cache/*
 **/.DS_Store
 .vscode
-.github
+.github/skills
 gcc-arm-none-eabi*
 .analzyer
 .analyzer/**
