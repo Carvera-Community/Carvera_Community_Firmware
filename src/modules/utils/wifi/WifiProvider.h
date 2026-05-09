@@ -88,6 +88,7 @@ private:
     	bool wifi_init_ok:1;
     	bool ap_auto_disable:1;
     	bool ap_currently_on:1;
+    	bool ap_off_by_auto_toggle:1;
     	volatile bool halt_flag:1;
     	volatile bool query_flag:1;
     	volatile bool diagnose_flag:1;

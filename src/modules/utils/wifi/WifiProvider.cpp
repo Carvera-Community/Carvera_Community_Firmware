@@ -63,8 +63,9 @@ WifiProvider::WifiProvider()
 	has_data_flag = false;
 	connection_fail_count = 0;
 	sta_stable_seconds = 0;
-	ap_auto_disable = false;
+	ap_auto_disable = true;
 	ap_currently_on = true;
+	ap_off_by_auto_toggle = false;
 }
 
 void WifiProvider::on_module_loaded()
@@ -75,13 +76,12 @@ void WifiProvider::on_module_loaded()
         return;
     }
 
-
 	this->tcp_port = THEKERNEL->config->value(wifi_checksum, tcp_port_checksum)->as_int(2222);
 	this->udp_send_port = THEKERNEL->config->value(wifi_checksum, udp_send_port_checksum)->as_int(3333);
 	this->udp_recv_port = THEKERNEL->config->value(wifi_checksum, udp_recv_port_checksum)->as_int(4444);
 	this->tcp_timeout_s = THEKERNEL->config->value(wifi_checksum, tcp_timeout_s_checksum)->as_int(10);
     std::string config_name = THEKERNEL->config->value(wifi_checksum, machine_name_checksum)->as_string("CARVERA");
-	this->ap_auto_disable = THEKERNEL->config->value(wifi_checksum, ap_auto_disable_checksum)->as_bool(false);
+	this->ap_auto_disable = THEKERNEL->config->value(wifi_checksum, ap_auto_disable_checksum)->as_bool(true);
 
     strncpy(this->machine_name, config_name.c_str(), sizeof(this->machine_name) - 1);
     this->machine_name[sizeof(this->machine_name) - 1] = '\0'; // Ensure null termination
@@ -89,12 +89,12 @@ void WifiProvider::on_module_loaded()
     // Init Wifi Module
     this->init_wifi_module(false);
 
-    // force AP on at boot so a stale mode-1 in flash can't lock us out (saved=0)
-    if (this->ap_auto_disable) {
+    // sync ap_currently_on with the saved op-mode the M8266 booted into
+    {
+        u8 boot_op_mode = 3;
         u16 op_status = 0;
-        M8266WIFI_SPI_Set_Opmode(3, 0, &op_status);
-        this->ap_currently_on = true;
-        this->sta_stable_seconds = 0;
+        M8266WIFI_SPI_Get_Opmode(&boot_op_mode, &op_status);
+        this->ap_currently_on = (boot_op_mode != 1);
     }
 
     // Add interrupt for WIFI data receving
@@ -313,14 +313,17 @@ void WifiProvider::on_second_tick(void *)
 				u16 op_status = 0;
 				if (M8266WIFI_SPI_Set_Opmode(1, 0, &op_status)) {
 					this->ap_currently_on = false;
+					this->ap_off_by_auto_toggle = true;
 				}
 			}
 		} else {
 			this->sta_stable_seconds = 0;
-			if (!this->ap_currently_on) {
+			// only re-enable if we were the ones who turned it off; ap disable stays off
+			if (!this->ap_currently_on && this->ap_off_by_auto_toggle) {
 				u16 op_status = 0;
 				if (M8266WIFI_SPI_Set_Opmode(3, 0, &op_status)) {
 					this->ap_currently_on = true;
+					this->ap_off_by_auto_toggle = false;
 				}
 			}
 		}
@@ -851,9 +854,11 @@ void WifiProvider::on_set_public_data(void *argument)
         	set_wifi_op_mode(3);
         	this->ap_currently_on = true;
         	this->sta_stable_seconds = 0;
+        	this->ap_off_by_auto_toggle = false;
     	} else {
         	set_wifi_op_mode(1);
         	this->ap_currently_on = false;
+        	this->ap_off_by_auto_toggle = false;
     	}
     }
 	pdr->set_taken();
