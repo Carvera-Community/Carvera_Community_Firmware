@@ -1234,6 +1234,9 @@ void SimpleShell::model_command( string parameters, StreamOutput *stream )
 			stream->printf("model = %s, %d, %d, %d\n", "C1", THEKERNEL->factory_set->MachineModel, THEKERNEL->factory_set->FuncSetting, THEKERNEL->probe_addr);
 			break;
 	}
+    if(THEKERNEL->is_config_load_error()) {
+        stream->printf("ERROR: config file had errors during boot, see SD\n");
+    }
 }
 
 // test 4th for factory

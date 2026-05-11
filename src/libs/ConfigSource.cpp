@@ -2,6 +2,8 @@
 #include "ConfigSource.h"
 #include "ConfigValue.h"
 #include "ConfigCache.h"
+#include "libs/Kernel.h"
+#include "libs/StreamOutputPool.h"
 
 #include "stdio.h"
 
@@ -19,13 +21,15 @@ ConfigValue* ConfigSource::process_line(const string &buffer)
 
     size_t end_key = buffer.find_first_of(" \t", begin_key);
     if(end_key == string::npos) {
-        printf("ERROR: config file line %s is invalid, no key value pair found\r\n", buffer.c_str());
+        THEKERNEL->streams->printf("ERROR: config file line %s is invalid, no key value pair found\r\n", buffer.c_str());
+        THEKERNEL->set_config_load_error(true);
         return NULL;
     }
 
     size_t begin_value = buffer.find_first_not_of(" \t", end_key);
     if(begin_value == string::npos || buffer[begin_value] == '#') {
-        printf("ERROR: config file line %s has no value\r\n", buffer.c_str());
+        THEKERNEL->streams->printf("ERROR: config file line %s has no value\r\n", buffer.c_str());
+        THEKERNEL->set_config_load_error(true);
         return NULL;
     }
 
