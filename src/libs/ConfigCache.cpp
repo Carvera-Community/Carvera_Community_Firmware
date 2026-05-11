@@ -1,6 +1,8 @@
 #include "ConfigCache.h"
 
+#include "libs/Kernel.h"
 #include "libs/StreamOutput.h"
+#include "libs/StreamOutputPool.h"
 
 ConfigCache::ConfigCache()
 {
@@ -41,7 +43,10 @@ ConfigValue *ConfigCache::replace_or_push_back(const ConfigValue &new_value)
         return &store[count++];
     }
 
-    // Overflow — should not happen with correctly sized capacity
+    THEKERNEL->streams->printf("ERROR: config cache overflow (capacity=%u), dropping key %04X:%04X:%04X\n",
+        (unsigned)CONFIG_CACHE_CAPACITY,
+        new_value.check_sums[0], new_value.check_sums[1], new_value.check_sums[2]);
+    THEKERNEL->set_config_load_error(true);
     return NULL;
 }
 
