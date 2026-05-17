@@ -50,7 +50,7 @@ void SerialConsole::on_module_loaded() {
     halt_flag = false;
     diagnose_flag = false;
 
-    default_baud_rate = THEKERNEL->config->value(uart_checksum, baud_rate_setting_checksum)->by_default(current_baud_rate)->as_number();
+    default_baud_rate = THEKERNEL->config->value(uart_checksum, baud_rate_setting_checksum)->as_number(current_baud_rate);
     if (default_baud_rate != current_baud_rate) {
         this->serial->baud(default_baud_rate);
         this->current_baud_rate = default_baud_rate;

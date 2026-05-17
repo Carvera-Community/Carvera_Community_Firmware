@@ -65,49 +65,49 @@ MainButton::MainButton()
 
 void MainButton::on_module_loaded()
 {
-    bool main_button_enable = THEKERNEL->config->value( main_button_enable_checksum )->by_default(true)->as_bool(); // @deprecated
+    bool main_button_enable = THEKERNEL->config->value( main_button_enable_checksum )->as_bool(true); // @deprecated
     if (!main_button_enable) {
         delete this;
         return;
     }
 	
-    this->main_button_LED_R.from_string( THEKERNEL->config->value( main_button_LED_R_pin_checksum )->by_default("1.10")->as_string())->as_output();
-    this->main_button_LED_G.from_string( THEKERNEL->config->value( main_button_LED_G_pin_checksum )->by_default("1.15")->as_string())->as_output();
-    this->main_button_LED_B.from_string( THEKERNEL->config->value( main_button_LED_B_pin_checksum )->by_default("1.14")->as_string())->as_output();
+    this->main_button_LED_R.from_string( THEKERNEL->config->value( main_button_LED_R_pin_checksum )->as_string("1.10"))->as_output();
+    this->main_button_LED_G.from_string( THEKERNEL->config->value( main_button_LED_G_pin_checksum )->as_string("1.15"))->as_output();
+    this->main_button_LED_B.from_string( THEKERNEL->config->value( main_button_LED_B_pin_checksum )->as_string("1.14"))->as_output();
     
     if(CARVERA == THEKERNEL->factory_set->MachineModel)
     {
-	    this->main_button.from_string( THEKERNEL->config->value( main_button_pin_checksum )->by_default("1.16^")->as_string())->as_input();
+	    this->main_button.from_string( THEKERNEL->config->value( main_button_pin_checksum )->as_string("1.16^"))->as_input();
 	}
 	else if(CARVERA_AIR == THEKERNEL->factory_set->MachineModel)
     {
-    	this->main_button.from_string( THEKERNEL->config->value( main_button_pin_checksum )->by_default("2.13!^")->as_string())->as_input();
+    	this->main_button.from_string( THEKERNEL->config->value( main_button_pin_checksum )->as_string("2.13!^"))->as_input();
     }
-    this->poll_frequency = THEKERNEL->config->value( main_button_poll_frequency_checksum )->by_default(20)->as_number();
-    this->long_press_time_ms = THEKERNEL->config->value( main_long_press_time_ms_checksum )->by_default(3000)->as_number();
-    this->long_press_enable = THEKERNEL->config->value( main_button_long_press_checksum )->by_default(false)->as_string();
+    this->poll_frequency = THEKERNEL->config->value( main_button_poll_frequency_checksum )->as_number(20);
+    this->long_press_time_ms = THEKERNEL->config->value( main_long_press_time_ms_checksum )->as_number(3000);
+    this->long_press_enable = THEKERNEL->config->value( main_button_long_press_checksum )->as_string("");
 	if(CARVERA == THEKERNEL->factory_set->MachineModel)
     {
-    	this->e_stop.from_string( THEKERNEL->config->value( e_stop_pin_checksum )->by_default("0.26^")->as_string())->as_input();
+    	this->e_stop.from_string( THEKERNEL->config->value( e_stop_pin_checksum )->as_string("0.26^"))->as_input();
     }
 	else if(CARVERA_AIR == THEKERNEL->factory_set->MachineModel)
     {
-    	this->e_stop.from_string( THEKERNEL->config->value( e_stop_pin_checksum )->by_default("0.20^")->as_string())->as_input();
+    	this->e_stop.from_string( THEKERNEL->config->value( e_stop_pin_checksum )->as_string("0.20^"))->as_input();
     }
-    this->PS12.from_string( THEKERNEL->config->value( ps12_pin_checksum )->by_default("0.22")->as_string())->as_output();
-    this->PS24.from_string( THEKERNEL->config->value( ps24_pin_checksum )->by_default("0.10")->as_string())->as_output();
-    this->power_fan_delay_s = THEKERNEL->config->value( power_fan_delay_s_checksum )->by_default(30)->as_int();
+    this->PS12.from_string( THEKERNEL->config->value( ps12_pin_checksum )->as_string("0.22"))->as_output();
+    this->PS24.from_string( THEKERNEL->config->value( ps24_pin_checksum )->as_string("0.10"))->as_output();
+    this->power_fan_delay_s = THEKERNEL->config->value( power_fan_delay_s_checksum )->as_int(30);
 
-    this->auto_sleep = THEKERNEL->config->value(power_checksum, auto_sleep_checksum )->by_default(true)->as_bool();
-    this->auto_sleep_min = THEKERNEL->config->value(power_checksum, auto_sleep_min_checksum )->by_default(30)->as_number();
+    this->auto_sleep = THEKERNEL->config->value(power_checksum, auto_sleep_checksum )->as_bool(true);
+    this->auto_sleep_min = THEKERNEL->config->value(power_checksum, auto_sleep_min_checksum )->as_number(30);
 
 
-    this->enable_light = THEKERNEL->config->value(get_checksum("switch"), get_checksum("light"), get_checksum("startup_state"))->by_default(false)->as_bool();
-    this->turn_off_light_min = THEKERNEL->config->value(light_checksum, turn_off_min_checksum )->by_default(10)->as_number();
+    this->enable_light = THEKERNEL->config->value(get_checksum("switch"), get_checksum("light"), get_checksum("startup_state"))->as_bool(false);
+    this->turn_off_light_min = THEKERNEL->config->value(light_checksum, turn_off_min_checksum )->as_number(10);
 
-    this->stop_on_cover_open = THEKERNEL->config->value( stop_on_cover_open_checksum )->by_default(false)->as_bool(); // @deprecated
+    this->stop_on_cover_open = THEKERNEL->config->value( stop_on_cover_open_checksum )->as_bool(false); // @deprecated
 
-    this->sd_ok = THEKERNEL->config->value( sd_ok_checksum )->by_default(false)->as_bool(); // @deprecated
+    this->sd_ok = THEKERNEL->config->value( sd_ok_checksum )->as_bool(false); // @deprecated
 
     this->register_for_event(ON_IDLE);
     this->register_for_event(ON_SECOND_TICK);

@@ -20,20 +20,20 @@
 // NOTE this currently does not work, needs FK and settings
 ExperimentalDeltaSolution::ExperimentalDeltaSolution(Config* config)
 {
-    float alpha_angle  = PIOVER180 * config->value(alpha_angle_checksum)->by_default(30.0f)->as_number();
+    float alpha_angle  = PIOVER180 * config->value(alpha_angle_checksum)->as_number(30.0f);
     sin_alpha     = sinf(alpha_angle);
     cos_alpha     = cosf(alpha_angle);
-    float beta_angle   = PIOVER180 * config->value( beta_relative_angle_checksum)->by_default(120.0f)->as_number();
+    float beta_angle   = PIOVER180 * config->value( beta_relative_angle_checksum)->as_number(120.0f);
     sin_beta      = sinf(beta_angle);
     cos_beta      = cosf(beta_angle);
-    float gamma_angle  = PIOVER180 * config->value(gamma_relative_angle_checksum)->by_default(240.0f)->as_number();
+    float gamma_angle  = PIOVER180 * config->value(gamma_relative_angle_checksum)->as_number(240.0f);
     sin_gamma     = sinf(gamma_angle);
     cos_gamma     = cosf(gamma_angle);
 
     // arm_length is the length of the arm from hinge to hinge
-    arm_length         = config->value(arm_length_checksum)->by_default(250.0f)->as_number();
+    arm_length         = config->value(arm_length_checksum)->as_number(250.0f);
     // arm_radius is the horizontal distance from hinge to hinge when the effector is centered
-    arm_radius         = config->value(arm_radius_checksum)->by_default(124.0f)->as_number();
+    arm_radius         = config->value(arm_radius_checksum)->as_number(124.0f);
 
     arm_length_squared = powf(arm_length, 2);
 }

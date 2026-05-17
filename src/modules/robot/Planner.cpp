@@ -42,9 +42,9 @@ Planner::Planner()
 // Configure acceleration
 void Planner::config_load()
 {
-    this->junction_deviation = THEKERNEL->config->value(junction_deviation_checksum)->by_default(0.05F)->as_number();
-    this->z_junction_deviation = THEKERNEL->config->value(z_junction_deviation_checksum)->by_default(NAN)->as_number(); // disabled by default
-    this->minimum_planner_speed = THEKERNEL->config->value(minimum_planner_speed_checksum)->by_default(0.0f)->as_number();
+    this->junction_deviation = THEKERNEL->config->value(junction_deviation_checksum)->as_number(0.05F);
+    this->z_junction_deviation = THEKERNEL->config->value(z_junction_deviation_checksum)->as_number(NAN); // disabled by default
+    this->minimum_planner_speed = THEKERNEL->config->value(minimum_planner_speed_checksum)->as_number(0.0f);
 }
 
 

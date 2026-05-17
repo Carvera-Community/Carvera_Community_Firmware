@@ -81,7 +81,7 @@ constexpr double pi = 3.141592653589793;
 void ZProbe::on_module_loaded()
 {
     // if the module is disabled -> do nothing
-    if(!THEKERNEL->config->value( zprobe_checksum, enable_checksum )->by_default(true)->as_bool()) {
+    if(!THEKERNEL->config->value( zprobe_checksum, enable_checksum )->as_bool(true)) {
         // as this module is not needed free up the resource
         delete this;
         return;
@@ -112,10 +112,10 @@ void ZProbe::on_module_loaded()
 
 void ZProbe::config_load()
 {
-    this->pin.from_string( THEKERNEL->config->value(zprobe_checksum, probe_pin_checksum)->by_default("2.6v" )->as_string())->as_input();
-    this->calibrate_pin.from_string( THEKERNEL->config->value(zprobe_checksum, calibrate_pin_checksum)->by_default("0.5^" )->as_string())->as_input();
-    this->debounce_ms    = THEKERNEL->config->value(zprobe_checksum, debounce_ms_checksum)->by_default(0  )->as_number();
-    this->probe_calibration_safety_margin = THEKERNEL->config->value(zprobe_checksum, probe_calibration_safety_margin_checksum)->by_default(0.1F)->as_number();
+    this->pin.from_string( THEKERNEL->config->value(zprobe_checksum, probe_pin_checksum)->as_string("2.6v" ))->as_input();
+    this->calibrate_pin.from_string( THEKERNEL->config->value(zprobe_checksum, calibrate_pin_checksum)->as_string("0.5^" ))->as_input();
+    this->debounce_ms    = THEKERNEL->config->value(zprobe_checksum, debounce_ms_checksum)->as_number(0  );
+    this->probe_calibration_safety_margin = THEKERNEL->config->value(zprobe_checksum, probe_calibration_safety_margin_checksum)->as_number(0.1F);
     this->halt_pending = false;
     this->probe_triggered = false;
 
@@ -162,8 +162,8 @@ void ZProbe::config_load()
     }
 
     // need to know if we need to use delta kinematics for homing
-    this->is_delta = THEKERNEL->config->value(delta_homing_checksum)->by_default(false)->as_bool();
-    this->is_rdelta = THEKERNEL->config->value(rdelta_homing_checksum)->by_default(false)->as_bool();
+    this->is_delta = THEKERNEL->config->value(delta_homing_checksum)->as_bool(false);
+    this->is_rdelta = THEKERNEL->config->value(rdelta_homing_checksum)->as_bool(false);
 
     // default for backwards compatibility add DeltaCalibrationStrategy if a delta
     // may be deprecated
@@ -176,18 +176,18 @@ void ZProbe::config_load()
     }
 #endif
 
-    this->probe_height  = THEKERNEL->config->value(zprobe_checksum, probe_height_checksum)->by_default(5)->as_number();
-    this->slow_feedrate = THEKERNEL->config->value(zprobe_checksum, slow_feedrate_checksum)->by_default(5)->as_number(); // feedrate in mm/sec
-    this->fast_feedrate = THEKERNEL->config->value(zprobe_checksum, fast_feedrate_checksum)->by_default(100)->as_number(); // feedrate in mm/sec
-    this->return_feedrate = THEKERNEL->config->value(zprobe_checksum, return_feedrate_checksum)->by_default(5)->as_number(); // feedrate in mm/sec
-    this->reverse_z     = THEKERNEL->config->value(zprobe_checksum, reverse_z_direction_checksum)->by_default(false)->as_bool(); // Z probe moves in reverse direction
-    this->max_z         = THEKERNEL->config->value(zprobe_checksum, max_z_checksum)->by_default(NAN)->as_number(); // maximum zprobe distance
-    THEKERNEL->probe_tip_diameter = THEKERNEL->config->value(zprobe_checksum, probe_tip_diameter_checksum)->by_default(2)->as_number(); // probe tip diameter
-    this->tool_0_3axis  = THEKERNEL->config->value(zprobe_checksum, toolZeroIs3Axis_checksum)->by_default(false)->as_bool();
+    this->probe_height  = THEKERNEL->config->value(zprobe_checksum, probe_height_checksum)->as_number(5);
+    this->slow_feedrate = THEKERNEL->config->value(zprobe_checksum, slow_feedrate_checksum)->as_number(5); // feedrate in mm/sec
+    this->fast_feedrate = THEKERNEL->config->value(zprobe_checksum, fast_feedrate_checksum)->as_number(100); // feedrate in mm/sec
+    this->return_feedrate = THEKERNEL->config->value(zprobe_checksum, return_feedrate_checksum)->as_number(5); // feedrate in mm/sec
+    this->reverse_z     = THEKERNEL->config->value(zprobe_checksum, reverse_z_direction_checksum)->as_bool(false); // Z probe moves in reverse direction
+    this->max_z         = THEKERNEL->config->value(zprobe_checksum, max_z_checksum)->as_number(NAN); // maximum zprobe distance
+    THEKERNEL->probe_tip_diameter = THEKERNEL->config->value(zprobe_checksum, probe_tip_diameter_checksum)->as_number(2); // probe tip diameter
+    this->tool_0_3axis  = THEKERNEL->config->value(zprobe_checksum, toolZeroIs3Axis_checksum)->as_bool(false);
     if(isnan(this->max_z)){
-        this->max_z = THEKERNEL->config->value(gamma_max_checksum)->by_default(200)->as_number(); // maximum zprobe distance
+        this->max_z = THEKERNEL->config->value(gamma_max_checksum)->as_number(200); // maximum zprobe distance
     }
-    this->dwell_before_probing = THEKERNEL->config->value(zprobe_checksum, dwell_before_probing_checksum)->by_default(0)->as_number(); // dwell time in seconds before probing
+    this->dwell_before_probing = THEKERNEL->config->value(zprobe_checksum, dwell_before_probing_checksum)->as_number(0); // dwell time in seconds before probing
 
 }
 

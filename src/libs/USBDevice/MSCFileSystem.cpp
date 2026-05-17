@@ -136,13 +136,13 @@ int MSCFileSystem::disk_sectors() { return _numBlks; }
 void MSCFileSystem::on_module_loaded()
 {
     Pin *usb_en_pin = new Pin();
-    usb_en_pin->from_string(THEKERNEL->config->value( usb_en_pin_checksum )->by_default("1.19")->as_string());
+    usb_en_pin->from_string(THEKERNEL->config->value( usb_en_pin_checksum )->as_string("1.19"));
     usb_en_pin->as_output();
     usb_en_pin->set(0);
     delete usb_en_pin;
 
 //    Pin *usb_in_pin = new Pin();
-//    usb_in_pin->from_string(THEKERNEL->config->value( usb_in_pin_checksum )->by_default("1.22")->as_string());
+//    usb_in_pin->from_string(THEKERNEL->config->value( usb_in_pin_checksum )->as_string("1.22"));
 //    usb_in_pin->as_input();
 //    delete usb_in_pin;
 
