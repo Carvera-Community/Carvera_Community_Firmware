@@ -27,7 +27,7 @@ class PWMSpindleControl: public SpindleControl {
         void on_set_public_data(void *argument);
         void on_idle(void* argument);
 
-    private:
+    protected:
         
         void on_pin_rise();
         uint32_t on_update_speed(uint32_t dummy);
