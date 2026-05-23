@@ -1,3 +1,6 @@
+[unreleased]
+- Changed: Increased zprobe.calibration_safety_margin to 1mm from 0.1 to better support probes "out of the box"
+
 [2.1.0c]
 - Fixed: Unused Variables removed
 - Fixed: Removing unused code blocks in simpleshell
