@@ -96,6 +96,8 @@ private:
 
     static void baud_command(string parameters, StreamOutput *stream);
 
+    static void debugmode_command(string parameters, StreamOutput *stream);
+
     typedef void (*PFUNC)(string parameters, StreamOutput *stream);
     typedef struct {
         const char *command;
