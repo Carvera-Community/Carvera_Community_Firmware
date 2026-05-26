@@ -1102,18 +1102,24 @@ void Player::restore_spindle_on_resume()
         return;
     }
 
+    // Spindle already on (e.g. user sent M3/M4 while paused); keep their setting.
+    if (this->last_spindle_on) {
+        this->clear_saved_spindle();
+        return;
+    }
+
+    const bool ccw = this->saved_spindle_ccw;
     char buf[32];
     if (this->saved_spindle_rpm > 0.0f) {
-        snprintf(buf, sizeof(buf), "%s S%.0f", this->saved_spindle_ccw ? "M4" : "M3", this->saved_spindle_rpm);
+        snprintf(buf, sizeof(buf), "%s S%.0f", ccw ? "M4" : "M3", this->saved_spindle_rpm);
     } else {
-        snprintf(buf, sizeof(buf), "%s", this->saved_spindle_ccw ? "M4" : "M3");
+        snprintf(buf, sizeof(buf), "%s", ccw ? "M4" : "M3");
     }
     this->clear_saved_spindle();
     this->dispatch_gcode(buf);
 
-    // Keep the tracked state consistent so a second suspend works as expected
     this->last_spindle_on = true;
-    this->last_spindle_ccw = (strstr(buf, "M4") != nullptr);
+    this->last_spindle_ccw = ccw;
 }
 
 /**
