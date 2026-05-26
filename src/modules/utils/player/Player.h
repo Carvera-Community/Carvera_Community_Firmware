@@ -44,6 +44,10 @@ class Player : public Module {
         void abort_command( string parameters, StreamOutput* stream );
         void suspend_command( string parameters, StreamOutput* stream , bool pause_outside_play_mode = false);
         void resume_command( string parameters, StreamOutput* stream );
+        void save_and_stop_spindle_on_suspend();
+        void restore_spindle_on_resume();
+        void clear_saved_spindle();
+        void dispatch_gcode(const char *gcode_line);
         void goto_command( string parameters, StreamOutput* stream );
         void buffer_command( string parameters, StreamOutput* stream );
         void upload_command( string parameters, StreamOutput* stream );
@@ -98,7 +102,13 @@ class Player : public Module {
         unsigned long last_elapsed_secs;
         uint8_t current_motion_mode;
         float saved_position[3]; // only saves XYZ
+        float saved_spindle_rpm;
+        bool saved_spindle_ccw;
+        float last_spindle_rpm;
         float slope;
+        bool saved_spindle_on;
+        bool last_spindle_on;
+        bool last_spindle_ccw;
         std::map<uint16_t, float> saved_temperatures;
         struct {
             bool on_boot_gcode_enable:1;
@@ -109,5 +119,6 @@ class Player : public Module {
             bool override_leave_heaters_on:1;
             bool inner_playing:1;
             bool laser_clustering:1;
+            bool spindle_suspend_restore_enable:1;
         };
 };

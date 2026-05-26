@@ -326,6 +326,7 @@ e_stop_pin									0.26!^			# Emergency stop pin
 # Spindle configuration
 #spindle.enable								true			# set this to false to disable the spindle module
 #spindle.type								pwm				# sets the spindle module to PWM mode
+spindle_suspend_restore_enable              true            # On suspend: if spindle is running, stop it and remember RPM. On resume: restore only if it was running.
 spindle.pwm_pin								2.5				# Big Mosfet Q7. Pin must be hardware PWM capable.
 spindle.pwm_period							1000			# default 1000, sets the PWM frequency
 spindle.feedback_pin						2.7				# Pin must be interrupt capable. 

@@ -350,7 +350,7 @@ void MainButton::on_idle(void *argument)
     				break;
 				case SUSPEND:
     				// resume
-					THEKERNEL->set_suspending(false);    				
+					PublicData::set_value(player_checksum, resume_play_checksum, nullptr);
     				break;
     			case ALARM:
     				halt_reason = THEKERNEL->get_halt_reason();
