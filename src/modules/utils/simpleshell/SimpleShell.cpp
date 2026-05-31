@@ -73,7 +73,7 @@ extern unsigned char xbuff[8200];
 
 extern "C" uint32_t  __end__;
 extern "C" uint32_t  __malloc_free_list;
-extern "C" uint32_t  _sbrk(int size);
+extern "C" void*     _sbrk(int size);
 
 // support upload file type definition
 #define FILETYPE	"lz"		//compressed by quicklz
@@ -140,16 +140,16 @@ static uint32_t heapWalk(StreamOutput *stream, bool verbose)
 {
     uint32_t chunkNumber = 1;
     // The __end__ linker symbol points to the beginning of the heap.
-    uint32_t chunkCurr = (uint32_t)&__end__;
+    uintptr_t chunkCurr = reinterpret_cast<uintptr_t>(&__end__);
     // __malloc_free_list is the head pointer to newlib-nano's link list of free chunks.
-    uint32_t freeCurr = __malloc_free_list;
+    uintptr_t freeCurr = __malloc_free_list;
     // Calling _sbrk() with 0 reserves no more memory but it returns the current top of heap.
-    uint32_t heapEnd = _sbrk(0);
+    uintptr_t heapEnd = reinterpret_cast<uintptr_t>(_sbrk(0));
     // accumulate totals
     uint32_t freeSize = 0;
     uint32_t usedSize = 0;
 
-    stream->printf("Used Heap Size: %lu\n", heapEnd - chunkCurr);
+    stream->printf("Used Heap Size: %lu\n", static_cast<unsigned long>(heapEnd - chunkCurr));
 
     // Walk through the chunks until we hit the end of the heap.
     while (chunkCurr < heapEnd) {
@@ -157,9 +157,9 @@ static uint32_t heapWalk(StreamOutput *stream, bool verbose)
         int      isChunkFree = 0;
         // The first 32-bit word in a chunk is the size of the allocation.  newlib-nano over allocates by 8 bytes.
         // 4 bytes for this 32-bit chunk size and another 4 bytes to allow for 8 byte-alignment of returned pointer.
-        uint32_t chunkSize = *(uint32_t *)chunkCurr;
+        uint32_t chunkSize = *reinterpret_cast<uint32_t *>(chunkCurr);
         // The start of the next chunk is right after the end of this one.
-        uint32_t chunkNext = chunkCurr + chunkSize;
+        uintptr_t chunkNext = chunkCurr + chunkSize;
 
         // The free list is sorted by address.
         // Check to see if we have found the next free chunk in the heap.
@@ -167,7 +167,7 @@ static uint32_t heapWalk(StreamOutput *stream, bool verbose)
             // Chunk is free so flag it as such.
             isChunkFree = 1;
             // The second 32-bit word in a free chunk is a pointer to the next free chunk (again sorted by address).
-            freeCurr = *(uint32_t *)(freeCurr + 4);
+            freeCurr = *reinterpret_cast<uint32_t *>(freeCurr + 4);
         }
 
         // Skip past the 32-bit size field in the chunk header.
@@ -178,7 +178,9 @@ static uint32_t heapWalk(StreamOutput *stream, bool verbose)
         // byte-alignment of the returned pointer.
         chunkSize -= 8;
         if (verbose)
-            stream->printf("  Chunk: %lu  Address: 0x%08lX  Size: %lu  %s\n", chunkNumber, chunkCurr, chunkSize, isChunkFree ? "CHUNK FREE" : "");
+            stream->printf("  Chunk: %lu  Address: 0x%08lX  Size: %lu  %s\n",
+                           static_cast<unsigned long>(chunkNumber), static_cast<unsigned long>(chunkCurr),
+                           static_cast<unsigned long>(chunkSize), isChunkFree ? "CHUNK FREE" : "");
 
         if (isChunkFree) freeSize += chunkSize;
         else usedSize += chunkSize;
@@ -186,7 +188,8 @@ static uint32_t heapWalk(StreamOutput *stream, bool verbose)
         chunkCurr = chunkNext;
         chunkNumber++;
     }
-    stream->printf("Allocated: %lu, Free: %lu\r\n", usedSize, freeSize);
+    stream->printf("Allocated: %lu, Free: %lu\r\n", static_cast<unsigned long>(usedSize),
+                   static_cast<unsigned long>(freeSize));
     return freeSize;
 }
 

@@ -39,6 +39,7 @@
 
 #include "FileStream.h"
 #include <math.h>
+#include <vector>
 
 #define ATC_AXIS 4
 #define STEPPER THEROBOT->actuators
@@ -1921,12 +1922,12 @@ void ATCHandler::set_tool_offset(uint8_t repeat_count)
 
 void ATCHandler::set_tlo_by_offset(float z_axis_offset){
 	// new TLO = Current TLO - (current WCS - z_axis_offset)
-	float mpos[THEROBOT->get_number_registered_motors()] = {0};
+	std::vector<float> mpos(THEROBOT->get_number_registered_motors(), 0.0f);
 	Robot::wcs_t pos;
-	THEROBOT->get_current_machine_position(mpos);
+	THEROBOT->get_current_machine_position(mpos.data());
 	// current_position/mpos includes the compensation transform so we need to get the inverse to get actual position
-	if(THEROBOT->compensationTransform) THEROBOT->compensationTransform(mpos, true, false); // get inverse compensation transform
-	pos = THEROBOT->mcs2wcs(mpos);
+	if(THEROBOT->compensationTransform) THEROBOT->compensationTransform(mpos.data(), true, false); // get inverse compensation transform
+	pos = THEROBOT->mcs2wcs(mpos.data());
 	cur_tool_mz = cur_tool_mz + THEROBOT->from_millimeters(std::get<Z_AXIS>(pos)) - z_axis_offset;
 
 	if (ref_tool_mz < 1) {
@@ -3417,5 +3418,4 @@ void ATCHandler::beep_tool_change(int tool) {
 	this->beep_state = BP_TOOL;
 	this->beep_count = 0;
 }
-
 
