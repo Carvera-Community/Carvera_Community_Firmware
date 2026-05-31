@@ -41,6 +41,7 @@
 #include <algorithm>
 
 #include "mbed.h"
+#include "libs/compiler.h"
 
 #define home_on_boot_checksum             CHECKSUM("home_on_boot")
 #define on_boot_gcode_checksum            CHECKSUM("on_boot_gcode")
@@ -52,8 +53,8 @@
 
 extern SDFAT mounter;
 
-unsigned char xbuff[8200] __attribute__((section("AHBSRAM"))); /* 2 for data length, 8192 for XModem + 3 head chars + 2 crc + nul */
-static unsigned char fbuff[4096] __attribute__((section("AHBSRAM")));
+unsigned char xbuff[8200] LOCATED_IN_AHBSRAM; /* 2 for data length, 8192 for XModem + 3 head chars + 2 crc + nul */
+static unsigned char fbuff[4096] LOCATED_IN_AHBSRAM;
 // used for XMODEM
 #define SOH  0x01
 #define STX  0x02
@@ -133,7 +134,7 @@ void Player::select_file(string argument)
 
     this->filename = argument;
 
-    this->filename.erase(std::remove(argument.begin(), argument.end(), '"'), argument.end());
+    this->filename.erase((std::remove)(this->filename.begin(), this->filename.end(), '"'), this->filename.end());
 
     if ((this->filename.rfind("/", 0) == 0)){ //remove starting /
         this->filename.erase(0,1);
@@ -1790,4 +1791,3 @@ download_success:
 	stream->printf("Info: download success: %s.\r\n", filename.c_str());
 	return;
 }
-

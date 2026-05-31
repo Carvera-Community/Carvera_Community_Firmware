@@ -49,6 +49,7 @@
 #include "ToolManager.h"
 
 #include "libs/Watchdog.h"
+#include "libs/compiler.h"
 
 #include "version.h"
 #include "system_LPC17xx.h"
@@ -65,7 +66,7 @@
 
 // USB Stuff
 //SDCard sd  __attribute__ ((section ("AHBSRAM"))) (P0_18, P0_17, P0_15, P0_16);      // this selects SPI1 as the sdcard as it is on Smoothieboard
-SDFileSystem sd __attribute__ ((section ("AHBSRAM"))) (P0_18, P0_17, P0_15, P0_16, 12000000);
+SDFileSystem sd LOCATED_IN_AHBSRAM (P0_18, P0_17, P0_15, P0_16, 12000000);
 //SDCard sd(P0_18, P0_17, P0_15, P0_16);  // this selects SPI0 as the sdcard
 //SDCard sd(P0_18, P0_17, P0_15, P2_8);  // this selects SPI0 as the sdcard witrh a different sd select
 
@@ -80,7 +81,7 @@ USBMSD *msc= NULL;
 #endif
 */
 
-SDFAT mounter __attribute__ ((section ("AHBSRAM"))) ("sd", &sd);
+SDFAT mounter LOCATED_IN_AHBSRAM ("sd", &sd);
 
 GPIO leds[4] = {
     GPIO(P4_29),
