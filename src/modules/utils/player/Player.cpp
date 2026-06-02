@@ -48,6 +48,7 @@
 #define after_suspend_gcode_checksum      CHECKSUM("after_suspend_gcode")
 #define before_resume_gcode_checksum      CHECKSUM("before_resume_gcode")
 #define leave_heaters_on_suspend_checksum CHECKSUM("leave_heaters_on_suspend")
+#define spindle_suspend_restore_enable_checksum CHECKSUM("spindle_suspend_restore_enable")
 #define laser_module_clustering_checksum 	  CHECKSUM("laser_module_clustering")
 
 extern SDFAT mounter;
@@ -80,6 +81,13 @@ Player::Player()
     this->last_played_lines = 0;
     this->last_percent_complete = 0;
     this->last_elapsed_secs = 0;
+    this->saved_spindle_on = false;
+    this->saved_spindle_rpm = 0.0f;
+    this->spindle_suspend_restore_enable = true;
+    this->last_spindle_on = false;
+    this->last_spindle_rpm = 0.0f;
+    this->last_spindle_ccw = false;
+    this->saved_spindle_ccw = false;
 }
 
 void Player::on_module_loaded()
@@ -102,6 +110,7 @@ void Player::on_module_loaded()
     std::replace( this->after_suspend_gcode.begin(), this->after_suspend_gcode.end(), '_', ' '); // replace _ with space
     std::replace( this->before_resume_gcode.begin(), this->before_resume_gcode.end(), '_', ' '); // replace _ with space
     this->leave_heaters_on = THEKERNEL->config->value(leave_heaters_on_suspend_checksum)->as_bool(false);
+    this->spindle_suspend_restore_enable = THEKERNEL->config->value(spindle_suspend_restore_enable_checksum)->as_bool(true);
 
     this->laser_clustering = THEKERNEL->config->value(laser_module_clustering_checksum)->as_bool(false);
 }
@@ -119,6 +128,7 @@ void Player::on_halt(void* argument)
 		THEKERNEL->set_waiting(false);
 		THEKERNEL->set_suspending(false);
 		THEROBOT->pop_state();
+		this->clear_saved_spindle();
 		THEKERNEL->streams->printf("Suspend cleared\n");
 	}
 }
@@ -262,6 +272,23 @@ void Player::on_gcode_received(void *argument)
     Gcode *gcode = static_cast<Gcode *>(argument);
     string args = get_arguments(gcode->get_command());
     if (gcode->has_m) {
+        // Track spindle state from the job stream so suspend/resume can work
+        if (gcode->m == 3) {
+            this->last_spindle_on = true;
+            this->last_spindle_ccw = false;
+            if (gcode->has_letter('S')) {
+                this->last_spindle_rpm = gcode->get_value('S');
+            }
+        } else if (gcode->m == 4) {
+            this->last_spindle_on = true;
+            this->last_spindle_ccw = true;
+            if (gcode->has_letter('S')) {
+                this->last_spindle_rpm = gcode->get_value('S');
+            }
+        } else if (gcode->m == 5) {
+            this->last_spindle_on = false;
+        }
+
         if (gcode->m == 1) { //optiional stop
             if (THEKERNEL->get_optional_stop_mode()){
             this->suspend_command((gcode->subcode == 1)?"h":"", gcode->stream);
@@ -424,6 +451,7 @@ void Player::on_gcode_received(void *argument)
                 // clean up
             	THEKERNEL->set_suspending(false);
                 THEROBOT->pop_state();
+                this->clear_saved_spindle();
             }
         }
     }
@@ -455,9 +483,10 @@ void Player::on_console_line_received( void *argument )
     }else if (cmd == "abort") {
         this->abort_command( possible_command, new_message.stream );
     }else if (cmd == "suspend") {
-        this->suspend_command( possible_command, new_message.stream );
+        bool pause_outside_play_mode = (possible_command.find_first_of("5") != string::npos);
+        this->suspend_command(possible_command, new_message.stream, pause_outside_play_mode);
     }else if (cmd == "resume") {
-        this->resume_command( possible_command, new_message.stream );
+        this->resume_command(possible_command, new_message.stream);
     }else if (cmd == "goto") {
     	this->goto_command( possible_command, new_message.stream );
     }else if (cmd == "buffer") {
@@ -1023,7 +1052,82 @@ void Player::on_set_public_data(void *argument)
     		string quoted_filename = "\"" + this->last_filename + "\"";
         	this->play_command(quoted_filename, &(StreamOutput::NullStream));
     	}
+    } else if (pdr->second_element_is(suspend_play_checksum)) {
+        bool pause_outside_play_mode = false;
+        if (pdr->get_data_ptr() != nullptr) {
+            pause_outside_play_mode = *static_cast<bool *>(pdr->get_data_ptr());
+        }
+        this->suspend_command("", &(StreamOutput::NullStream), pause_outside_play_mode);
+        pdr->set_taken();
+    } else if (pdr->second_element_is(resume_play_checksum)) {
+        this->resume_command("", &(StreamOutput::NullStream));
+        pdr->set_taken();
     }
+}
+
+void Player::dispatch_gcode(const char *gcode_line)
+{
+    Gcode gcode(gcode_line, &(StreamOutput::NullStream));
+    THEKERNEL->call_event(ON_GCODE_RECEIVED, &gcode);
+}
+
+void Player::clear_saved_spindle()
+{
+    this->saved_spindle_on = false;
+    this->saved_spindle_rpm = 0.0f;
+    this->saved_spindle_ccw = false;
+}
+
+void Player::save_and_stop_spindle_on_suspend()
+{
+    this->clear_saved_spindle();
+
+    if (!this->spindle_suspend_restore_enable) {
+        return;
+    }
+
+    if (THEKERNEL->get_laser_mode()) {
+        return;
+    }
+
+    if (this->last_spindle_on) {
+        this->saved_spindle_on = true;
+        this->saved_spindle_rpm = this->last_spindle_rpm;
+        this->saved_spindle_ccw = this->last_spindle_ccw;
+        this->dispatch_gcode("M5");
+    }
+}
+
+void Player::restore_spindle_on_resume()
+{
+    if (!this->spindle_suspend_restore_enable) {
+        this->clear_saved_spindle();
+        return;
+    }
+
+    if (!this->saved_spindle_on || THEKERNEL->get_laser_mode()) {
+        this->clear_saved_spindle();
+        return;
+    }
+
+    // Spindle already on (e.g. user sent M3/M4 while paused); keep their setting.
+    if (this->last_spindle_on) {
+        this->clear_saved_spindle();
+        return;
+    }
+
+    const bool ccw = this->saved_spindle_ccw;
+    char buf[32];
+    if (this->saved_spindle_rpm > 0.0f) {
+        snprintf(buf, sizeof(buf), "%s S%.0f", ccw ? "M4" : "M3", this->saved_spindle_rpm);
+    } else {
+        snprintf(buf, sizeof(buf), "%s", ccw ? "M4" : "M3");
+    }
+    this->clear_saved_spindle();
+    this->dispatch_gcode(buf);
+
+    this->last_spindle_on = true;
+    this->last_spindle_ccw = ccw;
 }
 
 /**
@@ -1078,6 +1182,8 @@ void Player::suspend_command(string parameters, StreamOutput *stream, bool pause
     THEROBOT->push_state();
     current_motion_mode = THEROBOT->get_current_motion_mode();
 
+    this->save_and_stop_spindle_on_suspend();
+
     // execute optional gcode if defined
     if(!after_suspend_gcode.empty()) {
         struct SerialMessage message;
@@ -1109,6 +1215,7 @@ void Player::resume_command(string parameters, StreamOutput *stream )
     if(THEKERNEL->is_halted()) {
         THEKERNEL->streams->printf("Resume aborted by kill\n");
         THEROBOT->pop_state();
+        this->clear_saved_spindle();
         THEKERNEL->set_suspending(false);
         return;
     }
@@ -1122,6 +1229,8 @@ void Player::resume_command(string parameters, StreamOutput *stream )
         message.line = 0;
         THEKERNEL->call_event(ON_CONSOLE_LINE_RECEIVED, &message );
     }
+
+    this->restore_spindle_on_resume();
 
     if (this->goto_line == 0) {
         // Restore position
@@ -1149,6 +1258,7 @@ void Player::resume_command(string parameters, StreamOutput *stream )
 
     if(THEKERNEL->is_halted()) {
         THEKERNEL->streams->printf("Resume aborted by kill\n");
+        this->clear_saved_spindle();
         THEKERNEL->set_suspending(false);
         return;
     }

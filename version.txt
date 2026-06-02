@@ -1,4 +1,5 @@
 [unreleased]
+- Enhancement: Suspend/resume saves spindle state, stops the spindle on pause, and restores speed only if it was running. This functionality is enabled by default, but can be disabled via config key spindle_suspend_restore_enable.
 - Enhancement: `debugmode` shell command to turn on/off firmware diagnostic tools that are continiously running 
 - Enhancement: Added `debugmode slowticker` to output SlowTicker ISR duration stats once per second to console
 - Enhancement: Added `debugmode cpuload` to output the % of time spent not in on_idle once per second to console
