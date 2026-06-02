@@ -209,6 +209,9 @@ void Player::goto_line_number(unsigned long line_number)
         played_lines += 1;
         played_cnt += len;
     }
+
+    // Keep status report current line in sync with file position
+    this->playing_lines = this->played_lines;
 }
 
 void Player::end_of_file()
@@ -951,7 +954,8 @@ void Player::on_get_public_data(void *argument)
                 const Block *block = StepTicker::getInstance()->get_current_block();
                 // Note to avoid a race condition where the block is being cleared we check the is_ready flag which gets cleared first,
                 // as this is an interrupt if that flag is not clear then it cannot be cleared while this is running and the block will still be valid (albeit it may have finished)
-                if (block != nullptr && block->is_ready && block->is_g123) {
+                // Only advance played lines, never go backward
+                if (block != nullptr && block->is_ready && block->is_g123 && block->line > this->playing_lines) {
                 	this->playing_lines = block->line;
                 }
                 p.played_lines = this->playing_lines;
@@ -1006,6 +1010,10 @@ void Player::on_set_public_data(void *argument)
         pdr->set_taken();
     } else if (pdr->second_element_is(inner_playing_checksum)) {
     	bool b = *static_cast<bool *>(pdr->get_data_ptr());
+        // Resync when entering or leaving ATC so status report current line does not jump
+        if (b != this->inner_playing && this->playing_file) {
+            this->playing_lines = this->played_lines;
+        }
     	this->inner_playing = b;
     	if (this->playing_file) pdr->set_taken();
     } else if (pdr->second_element_is(restart_job_checksum)) {
