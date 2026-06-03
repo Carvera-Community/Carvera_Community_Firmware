@@ -640,17 +640,18 @@ void MainButton::on_set_public_data(void* argument)
     	if (pdr->second_element_is(switch_power_12_checksum)) {
 			char *state = static_cast<char *>(pdr->get_data_ptr());
     		this->switch_power_12(*state);
-    	}
-    	if (pdr->second_element_is(switch_power_24_checksum)) {
+			pdr->set_taken();
+		} else if (pdr->second_element_is(switch_power_24_checksum)) {
 			char *state = static_cast<char *>(pdr->get_data_ptr());
     		this->switch_power_24(*state);
-    	}
-		if (pdr->second_element_is(set_led_bar_checksum)) {
+			pdr->set_taken();
+		} else if (pdr->second_element_is(set_led_bar_checksum)) {
 			struct led_rgb *colors = static_cast<led_rgb *>(pdr->get_data_ptr());
 			THEKERNEL->streams->printf("R: %dG:%dB:%d", colors->r, colors->g, colors->b);
 			if (colors->r <= 255 && colors->g <= 255 && colors->b <= 255){
 				this->set_led_colors(colors->r, colors->g, colors->b);
 			}
+			pdr->set_taken();
     	}
     }
 }

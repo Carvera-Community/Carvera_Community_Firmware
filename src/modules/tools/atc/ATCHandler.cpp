@@ -3215,6 +3215,7 @@ void ATCHandler::on_get_public_data(void* argument)
     } else if (pdr->second_element_is(get_atc_clamped_status_checksum)) {
 		uint8_t* data = static_cast<uint8_t*>(pdr->get_data_ptr());
 		*data = static_cast<uint8_t>(this->atc_home_info.clamp_status); //0 unhomed, 1 clamped, 2 unclamped
+		pdr->set_taken();
 	} else if (pdr->second_element_is(get_machine_offsets_checksum)) {
 		struct machine_offsets *m = static_cast<machine_offsets*>(pdr->get_data_ptr());
 		m->anchor1_x = this->anchor1_x;
@@ -3418,4 +3419,3 @@ void ATCHandler::beep_tool_change(int tool) {
 	this->beep_state = BP_TOOL;
 	this->beep_count = 0;
 }
-
