@@ -6,6 +6,7 @@
 */
 
 #include "Player.h"
+#include "libs/FirmwareFileSystem.h"
 
 #include "libs/Kernel.h"
 #include "Robot.h"
@@ -154,9 +155,9 @@ void Player::select_file(string argument)
 
     if(this->current_file_handler != NULL) {
         this->playing_file = false;
-        fclose(this->current_file_handler);
+        fwfs::fclose(this->current_file_handler);
     }
-    this->current_file_handler = fopen( this->filename.c_str(), "r");
+    this->current_file_handler = fwfs::fopen( this->filename.c_str(), "r");
 
     if(this->current_file_handler == NULL) {
         THEKERNEL->streams->printf("file.open failed: %s\r\n", this->filename.c_str());
@@ -164,12 +165,12 @@ void Player::select_file(string argument)
 
     } else {
         // get size of file
-        int result = fseek(this->current_file_handler, 0, SEEK_END);
+        int result = fwfs::fseek(this->current_file_handler, 0, SEEK_END);
         if (0 != result) {
             this->file_size = 0;
         } else {
-            this->file_size = ftell(this->current_file_handler);
-            fseek(this->current_file_handler, 0, SEEK_SET);
+            this->file_size = fwfs::ftell(this->current_file_handler);
+            fwfs::fseek(this->current_file_handler, 0, SEEK_SET);
         }
         THEKERNEL->streams->printf("File opened:%s Size:%ld\r\n", this->filename.c_str(), this->file_size);
         THEKERNEL->streams->printf("File selected\r\n");
@@ -190,14 +191,14 @@ void Player::goto_line_number(unsigned long line_number)
     char buf[130]; // lines upto 128 characters are allowed, anything longer is discarded
 
     // goto file begin
-    fseek(this->current_file_handler, 0, SEEK_SET);
+    fwfs::fseek(this->current_file_handler, 0, SEEK_SET);
     played_lines = 0;
     played_cnt   = 0;
 
     // Read lines until we've positioned at the target line
     // We want to break BEFORE reading the target line, so the file pointer is at the target
     while (played_lines < this->goto_line - 1) {
-        if (fgets(buf, sizeof(buf), this->current_file_handler) == NULL) {
+        if (fwfs::fgets(buf, sizeof(buf), this->current_file_handler) == NULL) {
             break; // EOF reached
         }
         
@@ -291,7 +292,7 @@ void Player::on_gcode_received(void *argument)
 
                 if(!currentfn.empty()) {
                     // reload the last file opened
-                    this->current_file_handler = fopen(currentfn.c_str() , "r");
+                    this->current_file_handler = fwfs::fopen(currentfn.c_str() , "r");
 
                     if(this->current_file_handler == NULL) {
                         gcode->stream->printf("file.open failed: %s\r\n", currentfn.c_str());
@@ -507,7 +508,7 @@ void Player::play_command( string parameters, StreamOutput *stream )
     }
 
     if (this->current_file_handler != NULL) { // must have been a paused print
-        fclose(this->current_file_handler);
+        fwfs::fclose(this->current_file_handler);
     }
 
 //    this->temp_file_handler = fopen ("/sd/gcodes/temp.nc", "w");
@@ -519,7 +520,7 @@ void Player::play_command( string parameters, StreamOutput *stream )
     //empty macro queue
     this->clear_macro_file_queue();
 
-    this->current_file_handler = fopen( this->filename.c_str(), "r");
+    this->current_file_handler = fwfs::fopen( this->filename.c_str(), "r");
     if(this->current_file_handler == NULL) {
         stream->printf("File not found: %s\r\n", this->filename.c_str());
         return;
@@ -538,13 +539,13 @@ void Player::play_command( string parameters, StreamOutput *stream )
     }
 
     // get size of file
-    int result = fseek(this->current_file_handler, 0, SEEK_END);
+    int result = fwfs::fseek(this->current_file_handler, 0, SEEK_END);
     if (0 != result) {
         stream->printf("WARNING - Could not get file size\r\n");
         file_size = 0;
     } else {
-        file_size = ftell(this->current_file_handler);
-        fseek(this->current_file_handler, 0, SEEK_SET);
+        file_size = fwfs::ftell(this->current_file_handler);
+        fwfs::fseek(this->current_file_handler, 0, SEEK_SET);
         stream->printf("  File size %ld\r\n", file_size);
     }
     this->played_cnt = 0;
@@ -655,7 +656,7 @@ void Player::abort_command( string parameters, StreamOutput *stream )
     this->filename = "";
     this->current_stream = NULL;
 
-    fclose(current_file_handler);
+    fwfs::fclose(current_file_handler);
     current_file_handler = NULL;
 
     THEKERNEL->set_suspending(false);
@@ -759,11 +760,11 @@ void Player::on_main_loop(void *argument)
         float clustered_distance[8];
         */
 
-        while (fgets(buf, sizeof(buf), this->current_file_handler) != NULL) {
+        while (fwfs::fgets(buf, sizeof(buf), this->current_file_handler) != NULL) {
 
             int len = strlen(buf);
             if (len == 0) continue; // empty line? should not be possible
-            if (buf[len - 1] == '\n' || feof(this->current_file_handler)) {
+            if (buf[len - 1] == '\n' || fwfs::feof(this->current_file_handler)) {
                 if(discard) { // we are discarding a long line
                     discard = false;
                     continue;
@@ -888,7 +889,7 @@ void Player::on_main_loop(void *argument)
         goto_line = 0;
         file_size = 0;
 
-        fclose(this->current_file_handler);
+        fwfs::fclose(this->current_file_handler);
         current_file_handler = NULL;
 
         this->current_stream = NULL;
@@ -1268,8 +1269,8 @@ int Player::decompress(string sfilename, string dfilename, uint32_t sfilesize, S
 	uint8_t u8ReadBuffer_hdr[BLOCK_HEADER_SIZE] = { 0 };
 	uint32_t u32DcmprsSize = 0, u32BlockSize = 0, u32BlockNum = 0, u32TotalDcmprsSize = 0, i = 0,j = 0,k=0;
 	qlz_state_decompress s_stDecompressState;
-	f_in= fopen(sfilename.c_str(), "rb");
-	f_out= fopen(dfilename.c_str(), "w+");
+	f_in= fwfs::fopen(sfilename.c_str(), "rb");
+	f_out= fwfs::fopen(dfilename.c_str(), "w+");
 	if (f_in == NULL || f_out == NULL)
 	{
 		memset(fbuff, 0, sizeof(fbuff));
@@ -1279,13 +1280,13 @@ int Player::decompress(string sfilename, string dfilename, uint32_t sfilesize, S
 	for(i = 0; i < sfilesize-2; i+= BLOCK_HEADER_SIZE + u32BlockSize)
 	{
 
-		fread(u8ReadBuffer_hdr, sizeof(char), BLOCK_HEADER_SIZE, f_in);
+		fwfs::fread(u8ReadBuffer_hdr, sizeof(char), BLOCK_HEADER_SIZE, f_in);
 		u32BlockSize = u8ReadBuffer_hdr[0] * (1 << 24) + u8ReadBuffer_hdr[1] * (1 << 16) + u8ReadBuffer_hdr[2] * (1 << 8) + u8ReadBuffer_hdr[3];
 		if(!u32BlockSize)
 		{
 			goto _exit;
 		}
-		fread(xbuff, sizeof(char), u32BlockSize, f_in);
+		fwfs::fread(xbuff, sizeof(char), u32BlockSize, f_in);
 		u32DcmprsSize = qlz_decompress((const char *)xbuff, fbuff, &s_stDecompressState);
 		if(!u32DcmprsSize)
 		{
@@ -1297,7 +1298,7 @@ int Player::decompress(string sfilename, string dfilename, uint32_t sfilesize, S
 		}
 		// Set the file write system buffer 4096 Byte
 		setvbuf(f_out, (char*)&xbuff[4096], _IOFBF, 4096);
-		fwrite(fbuff, sizeof(char),u32DcmprsSize, f_out);
+		fwfs::fwrite(fbuff, sizeof(char),u32DcmprsSize, f_out);
 		u32TotalDcmprsSize += u32DcmprsSize;
 		u32BlockNum += 1;
 		if(++k>10)
@@ -1309,25 +1310,25 @@ int Player::decompress(string sfilename, string dfilename, uint32_t sfilesize, S
 			stream->printf((char*)fbuff);
 		}
 	}
-	fread(fbuff, sizeof(char), 2, f_in);
+	fwfs::fread(fbuff, sizeof(char), 2, f_in);
 	if(u16Sum != ((fbuff[0] <<8) + fbuff[1]))
 	{
 		goto _exit;
 	}
 
 	if (f_in != NULL)
-		fclose(f_in);
+		fwfs::fclose(f_in);
 	if (f_out!= NULL)
-		fclose(f_out);
+		fwfs::fclose(f_out);
 	memset(fbuff, 0, sizeof(fbuff));
 	sprintf((char*)fbuff, "#Info: decompart = %lu\r\n", u32BlockNum);
 	stream->printf((char*)fbuff);
 	return 1;
 _exit:
 	if (f_in != NULL)
-		fclose(f_in );
+		fwfs::fclose(f_in );
 	if (f_out != NULL)
-		fclose(f_out);
+		fwfs::fclose(f_out);
 	stream->printf((char*)fbuff);
 	return 0;
 }
@@ -1381,10 +1382,10 @@ void Player::upload_command( string parameters, StreamOutput *stream )
 	if (start_pos != string::npos) {
 		start_pos = lzfilename.rfind(".lz");
 		lzfilename=lzfilename.substr(0, start_pos);
-    	fd = fopen(lzfilename.c_str(), "wb");
+    	fd = fwfs::fopen(lzfilename.c_str(), "wb");
     }
     else {
-    	fd = fopen(filename.c_str(), "wb");
+    	fd = fwfs::fopen(filename.c_str(), "wb");
     }
 		
     FILE *fd_md5 = NULL;
@@ -1394,7 +1395,7 @@ void Player::upload_command( string parameters, StreamOutput *stream )
 		md5_filename=md5_filename.substr(0, start_pos);
 	}
     if (filename.find("firmware.bin") == string::npos) {
-    	fd_md5 = fopen(md5_filename.c_str(), "wb");
+    	fd_md5 = fwfs::fopen(md5_filename.c_str(), "wb");
     }
 
     if (fd == NULL || (filename.find("firmware.bin") == string::npos && fd_md5 == NULL)) {
@@ -1485,7 +1486,7 @@ void Player::upload_command( string parameters, StreamOutput *stream )
         		&& check_crc(crc, &xbuff[3], bufsz + 1 + is_stx) && len == 32) {
         	// received md5
         	if (NULL != fd_md5) {
-    			fwrite(&xbuff[4 + is_stx], sizeof(char), 32, fd_md5);
+    			fwfs::fwrite(&xbuff[4 + is_stx], sizeof(char), 32, fd_md5);
         	}
             THEKERNEL->call_event(ON_IDLE);
             stream->_putc(ACK);
@@ -1496,7 +1497,7 @@ void Player::upload_command( string parameters, StreamOutput *stream )
 
             // Set the file write system buffer 4096 Byte
         	setvbuf(fd, (char*)fbuff, _IOFBF, 4096);
-			fwrite(&xbuff[4 + is_stx], sizeof(char), len, fd);
+			fwfs::fwrite(&xbuff[4 + is_stx], sizeof(char), len, fd);
 			u32filesize += len;
 			++ packetno;
 			retrans = MAXRETRANS + 1;
@@ -1518,14 +1519,14 @@ upload_error:
 	NVIC_EnableIRQ(TIMER1_IRQn);     // Enable interrupt handler
 
 	if (fd != NULL) {
-		fclose(fd);
+		fwfs::fclose(fd);
 		fd = NULL;
-		remove(filename.c_str());
+		fwfs::remove(filename.c_str());
 	}
 	if (fd_md5 != NULL) {
-		fclose(fd_md5);
+		fwfs::fclose(fd_md5);
 		fd_md5 = NULL;
-		remove(md5_filename.c_str());
+		fwfs::remove(md5_filename.c_str());
 	}
 	flush_input(stream);
     if (stream->type() == 0) {
@@ -1540,11 +1541,11 @@ upload_error:
 upload_success:
 
 	if (fd != NULL) {
-		fclose(fd);
+		fwfs::fclose(fd);
 		fd = NULL;
 	}
 	if (fd_md5 != NULL) {
-		fclose(fd_md5);
+		fwfs::fclose(fd_md5);
 		fd_md5 = NULL;
 	}
 	flush_input(stream);
@@ -1572,17 +1573,17 @@ upload_success:
 
 void Player::test_command( string parameters, StreamOutput* stream ) {
     string filename = absolute_from_relative(shift_parameter(parameters));
-	FILE *fd = fopen(filename.c_str(), "rb");
+	FILE *fd = fwfs::fopen(filename.c_str(), "rb");
 	if (NULL != fd) {
         MD5 md5;
         uint8_t md5_buf[64];
         do {
-            size_t n = fread(md5_buf, 1, sizeof(md5_buf), fd);
+            size_t n = fwfs::fread(md5_buf, 1, sizeof(md5_buf), fd);
             if (n > 0) md5.update(md5_buf, n);
             THEKERNEL->call_event(ON_IDLE);
-        } while (!feof(fd));
+        } while (!fwfs::feof(fd));
         strcpy(md5_str, md5.finalize().hexdigest().c_str());
-        fclose(fd);
+        fwfs::fclose(fd);
         fd = NULL;
 	}
 }
@@ -1628,18 +1629,18 @@ void Player::download_command( string parameters, StreamOutput *stream )
     char md5[64];
     memset(md5, 0, sizeof(md5));
 
-    FILE *fd = fopen(md5_filename.c_str(), "rb");
+    FILE *fd = fwfs::fopen(md5_filename.c_str(), "rb");
     if (fd != NULL) {
-        fread(md5, sizeof(char), 64, fd);
-        fclose(fd);
+        fwfs::fread(md5, sizeof(char), 64, fd);
+        fwfs::fclose(fd);
         fd = NULL;
     } else {
     	strcpy(md5, this->md5_str);
     }
 	
-	fd = fopen(lz_filename.c_str(), "rb");		//first try to open /.lz/filename
+	fd = fwfs::fopen(lz_filename.c_str(), "rb");		//first try to open /.lz/filename
 	if (NULL == fd) {	
-	    fd = fopen(filename.c_str(), "rb");
+	    fd = fwfs::fopen(filename.c_str(), "rb");
 	    if (NULL == fd) {
 		    cancel_transfer(stream);
 			sprintf(error_msg, "Error: failed to open file [%s]!\r\n", filename.substr(0, 30).c_str());
@@ -1687,7 +1688,7 @@ void Player::download_command( string parameters, StreamOutput *stream )
 				memcpy(&xbuff[4 + is_stx], md5, c);
 				md5_sent = 1;
 			} else {
-				c = fread(&xbuff[4 + is_stx], sizeof(char), bufsz, fd);
+				c = fwfs::fread(&xbuff[4 + is_stx], sizeof(char), bufsz, fd);
 				if (c <= 0) {
 					for (retry = 0; retry < MAXRETRANS; ++retry) {
 						stream->_putc(EOT);
@@ -1765,7 +1766,7 @@ void Player::download_command( string parameters, StreamOutput *stream )
 	}
 download_error:
 	if (fd != NULL) {
-		fclose(fd);
+		fwfs::fclose(fd);
 		fd = NULL;
 	}
 	flush_input(stream);
@@ -1780,7 +1781,7 @@ download_error:
 	return;
 download_success:
 	if (fd != NULL) {
-		fclose(fd);
+		fwfs::fclose(fd);
 		fd = NULL;
 	}
 	flush_input(stream);
