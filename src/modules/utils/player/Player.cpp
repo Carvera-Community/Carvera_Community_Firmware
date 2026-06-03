@@ -182,6 +182,12 @@ void Player::select_file(string argument)
         }
         THEKERNEL->streams->printf("File opened:%s Size:%ld\r\n", this->filename.c_str(), this->file_size);
         THEKERNEL->streams->printf("File selected\r\n");
+
+        // Build the O-code subroutine table now, while the file is selected but
+        // not yet playing. Doing it here (before any motion) means a call never
+        // triggers a file scan mid-cut, which could starve the motion planner.
+        this->ocode_handler.reset();
+        this->ocode_handler.pre_scan(this->current_file_handler, THEKERNEL->streams);
     }
     this->played_cnt = 0;
     this->played_lines = 0;
@@ -197,6 +203,12 @@ void Player::goto_line_number(unsigned long line_number)
     THEKERNEL->streams->printf("Goto line %lu...\r\n", this->goto_line);
     // goto line
     char buf[130]; // lines upto 128 characters are allowed, anything longer is discarded
+
+    // Jumping to an arbitrary line discards any in-progress O-code block stack
+    // (it can't be reconstructed from a line number; stray closers afterwards
+    // warn rather than halt). The subroutine table is (re)built here, before
+    // playback resumes, so no file scan ever happens mid-cut.
+    this->ocode_handler.prepare_jump(this->current_file_handler, THEKERNEL->streams);
 
     // goto file begin
     fseek(this->current_file_handler, 0, SEEK_SET);
@@ -683,6 +695,8 @@ void Player::abort_command( string parameters, StreamOutput *stream )
     this->goto_line = 0;
     this->file_size = 0;
     this->clear_buffered_queue();
+    this->clear_macro_file_queue();
+    this->ocode_handler.reset();
     this->filename = "";
     this->current_stream = NULL;
 
@@ -874,13 +888,32 @@ void Player::on_main_loop(void *argument)
             	}
 */
 
-                if (this->current_stream != nullptr) {
-                    this->current_stream->printf("%s", buf);
-                }
-
+                // O-code flow control: intercept O-prefixed lines before dispatch
                 struct SerialMessage message;
                 message.message = buf;
                 message.stream = this->current_stream == nullptr ? &(StreamOutput::NullStream) : this->current_stream;
+
+                if (this->ocode_handler.process_line(buf, this->current_file_handler, message.stream)) {
+                    played_lines += 1;
+                    played_cnt   += len;
+                    if (this->ocode_handler.is_skipping()) {
+                        // Fast-forwarding through a skipped block stays in this
+                        // loop without returning, so feed the watchdog periodically.
+                        if ((played_lines % 100) == 0) THEKERNEL->call_event(ON_IDLE);
+                        continue;
+                    }
+                    return;
+                }
+                if (this->ocode_handler.is_skipping()) {
+                    played_lines += 1;
+                    played_cnt   += len;
+                    if ((played_lines % 100) == 0) THEKERNEL->call_event(ON_IDLE);
+                    continue;
+                }
+
+                if (this->current_stream != nullptr) {
+                    this->current_stream->printf("%s", buf);
+                }
                 message.line = played_lines + 1;
 
                 // waits for the queue to have enough room
@@ -911,6 +944,7 @@ void Player::on_main_loop(void *argument)
         this->last_filename = this->filename;
         this->has_last_progress = true;
 
+        this->ocode_handler.reset();
         this->playing_file = false;
         this->filename = "";
         played_cnt = 0;

@@ -1,0 +1,83 @@
+#pragma once
+
+#include <stdio.h>
+#include <string>
+#include <vector>
+#include <map>
+
+class StreamOutput;
+
+// Maximum O-code nesting depth
+#define OCODE_MAX_STACK_DEPTH 10
+
+// Handles LinuxCNC-compatible O-code flow control:
+//  - conditional: if / elseif / else / endif
+//  - loops: while / endwhile, do / while, repeat / endrepeat
+//  - control flow: break, continue
+//  - subroutines: sub / endsub / return / call
+//
+// Integration with Player:
+//   1. Call reset() + pre_scan() after opening the file (before playback starts)
+//      or call prepare_jump() before resuming/jumping to a line.
+//   2. For each fgets'd line, call process_line() before dispatching.
+//      Returns true -> line was an O-code, do not dispatch it.
+//      Returns false -> normal G-code line, call is_skipping() before dispatching
+//   3. While is_skipping() is true, discard normal lines (stay in inner fgets loop).
+//   4. Call reset() on abort.
+class OCodeHandler {
+    public:
+        OCodeHandler();
+
+        void reset();
+
+        // One linear pass to build the subroutine-offset table. Preserves the
+        // caller's file position. Run before playback (never mid-cut).
+        void pre_scan(FILE* fh, StreamOutput* stream);
+
+        // Discard the block stack and ensure the subroutine table is built,
+        // for use before a line jump / resume.
+        void prepare_jump(FILE* fh, StreamOutput* stream);
+
+        // Process one raw line from the G-code file.
+        // Returns true if the line was an O-code and was consumed (do not dispatch).
+        // Returns false if the line is a normal G-code line.
+        bool process_line(const char* line, FILE* fh, StreamOutput* stream);
+
+        // Returns true when inside a false branch or skipping a subroutine body.
+        bool is_skipping() const;
+
+    private:
+        enum class BlockType { IF, WHILE, DO, REPEAT, SUB };
+
+        struct Frame {
+            int       num;
+            BlockType type;
+            long      loop_offset;    // fseek byte offset for loop-back (while/do/repeat)
+            bool      executing;      // true -> this block is currently active
+            bool      branch_taken;   // for if/elseif chains: has any branch fired yet?
+            int       repeat_count;   // remaining iterations for repeat
+            float     saved_params[30]; // saved #1-#30 on subroutine call
+            long      return_offset;  // byte offset to return to after endsub/return
+        };
+
+        std::vector<Frame> stack_;
+        std::map<int, long> sub_table_;  // ocode_num -> byte offset of the line after "Onnn sub"
+        bool pre_scanned_ = false;       // sub_table_ built lazily on first call
+
+        // Parse an O-code line; fills num, keyword (lower-case), and rest.
+        // Returns false if the line does not begin with O/o followed by digits.
+        static bool parse_ocode(const char* line, int& num, std::string& keyword, std::string& rest);
+
+        float eval_expr(const char* expr, StreamOutput* stream) const;
+
+        // Scan forward in fh until a matching keyword is found at nesting depth 0.
+        // open_kw increments depth; close_kw decrements / matches. Leaves the file
+        // pointer just past the matched line. matched receives the keyword that hit.
+        bool skip_to(FILE* fh, const std::string& open_kw, const std::string& close_kw, std::string& matched) const;
+
+        void halt_error(StreamOutput* stream, const char* fmt, ...) const;
+        void warn(StreamOutput* stream, const char* fmt, ...) const;
+
+        bool any_frame_skipping() const;
+        int  innermost_loop_frame() const;
+};
