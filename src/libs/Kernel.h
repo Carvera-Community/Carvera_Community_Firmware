@@ -265,6 +265,7 @@ class Kernel {
         float local_vars[20];
         float probe_outputs[6];
         float probe_tip_diameter = 1.6;
+        float local_params[30]; // #1–#30: subroutine call parameters
         bool disable_endstops = false;
 
     private:

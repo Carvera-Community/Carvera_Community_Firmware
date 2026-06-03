@@ -9,6 +9,7 @@
 #pragma once
 
 #include "Module.h"
+#include "OCodeHandler.h"
 
 #include <stdio.h>
 #include <string>
@@ -86,6 +87,8 @@ class Player : public Module {
         using macro_file_queue_item= std::tuple<std::string, unsigned long>; // allows running macros. This forms a stact filepath, line number, to return to when the internal file is complete
         std::queue<macro_file_queue_item> macro_file_queue;
         void clear_macro_file_queue();
+
+        OCodeHandler ocode_handler;
 
         FILE* current_file_handler;
         // FILE* temp_file_handler;

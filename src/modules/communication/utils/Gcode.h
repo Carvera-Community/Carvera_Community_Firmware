@@ -35,6 +35,8 @@ class Gcode {
         float set_variable_value() const;
 
         float evaluate_expression(const char * expr, char ** endptr) const;
+        static float evaluate_standalone_expression(const char* expr, char** endptr, StreamOutput* stream);
+
         // int  index_of_letter( char letter, int start = 0) const;
         float get_value ( char letter, char **ptr= nullptr ) const;
         // 2024

@@ -446,3 +446,10 @@ void ltrim(std::string& s, const char* t)
     s.erase(0, s.find_first_not_of(t));
 }
 
+// Advance a C-string pointer past any leading whitespace, return the new position
+const char* ltrim_cstr(const char* s)
+{
+    while (*s && isspace((unsigned char)*s)) s++;
+    return s;
+}
+

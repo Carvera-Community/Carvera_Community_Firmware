@@ -98,6 +98,9 @@ Kernel::Kernel()
     flex_compensation_load_error = false;
     config_load_error = false;
 
+    // Initialise subroutine call parameters (#1–#30)
+    for(int i = 0; i < 30; ++i) local_params[i] = 0.0f;
+
     instance = this; // setup the Singleton instance of the kernel
 
     // init I2C
