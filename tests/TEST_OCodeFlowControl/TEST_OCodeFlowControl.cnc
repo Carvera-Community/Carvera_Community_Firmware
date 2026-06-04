@@ -51,7 +51,7 @@ O200 while [#101 le 3]
   #101 = [#101 + 1]
 O200 endwhile
 
-M118 while: condition false at start - should print nothing
+M118 while: condition false at start - should print nothing inside, 0 after
 #101 = 10
 O201 while [#101 lt 5]
   M118.1 P999
@@ -60,7 +60,7 @@ M118.1 P0
 
 ; --- do / while ---
 
-M118 do-while: always executes at least once - should print 1 then stop
+M118 do-while: always executes at least once - should print 10 once then stop
 #101 = 10
 O300 do
   M118.1 P#101
@@ -76,7 +76,7 @@ O400 repeat [3]
   #101 = [#101 + 1]
 O400 endrepeat
 
-M118 repeat: count is 0 - should print nothing
+M118 repeat: count is 0 - should print nothing inside, 0 after
 #101 = 1
 O401 repeat [0]
   M118.1 P999
@@ -85,7 +85,7 @@ M118.1 P0
 
 ; --- break ---
 
-M118 break: exit loop early at 3 - should print 1, 2, 3
+M118 break: exit before 4th iteration - should print 1, 2, 3
 #101 = 1
 O500 while [#101 le 10]
   O501 if [#101 gt 3]
