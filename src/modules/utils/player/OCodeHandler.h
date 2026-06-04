@@ -2,7 +2,6 @@
 
 #include <stdio.h>
 #include <string>
-#include <vector>
 #include <map>
 
 class StreamOutput;
@@ -60,7 +59,30 @@ class OCodeHandler {
             long      return_offset;  // byte offset to return to after endsub/return
         };
 
-        std::vector<Frame> stack_;
+        // Fixed-capacity, vector-like view over externally owned storage. The
+        // backing array (frame_storage_) lives in AHBSRAM so the (potentially
+        // large, 30-float-per-frame) block stack stays off the main SRAM heap.
+        // Exposes only the subset of the std::vector API used below; depth is
+        // bounded by OCODE_MAX_STACK_DEPTH (push sites guard against overflow).
+        struct FrameStack {
+            Frame* data  = nullptr;
+            int    count = 0;
+            int  size() const                 { return count; }
+            void clear()                       { count = 0; }
+            Frame&       operator[](int i)       { return data[i]; }
+            const Frame& operator[](int i) const { return data[i]; }
+            Frame* begin()                     { return data; }
+            void push_back(const Frame& f)     { data[count++] = f; }
+            void resize(int n)                 { count = n; } // only ever shrinks here
+            void erase(Frame* it) {
+                int i = (int)(it - data);
+                for(int k = i; k + 1 < count; ++k) data[k] = data[k + 1];
+                count--;
+            }
+        };
+
+        static Frame frame_storage_[OCODE_MAX_STACK_DEPTH]; // AHBSRAM-backed (see .cpp)
+        FrameStack stack_;
         std::map<int, long> sub_table_;  // ocode_num -> byte offset of the line after "Onnn sub"
         bool pre_scanned_ = false;       // sub_table_ built lazily on first call
 
