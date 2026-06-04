@@ -261,15 +261,15 @@ bool OCodeHandler::process_line(const char* line, FILE* fh, StreamOutput* stream
         for(int p = 0; p < 30; p++)
             frame.saved_params[p] = THEKERNEL->local_params[p];
 
-        // Parse bracketed arguments [a1] [a2] ...
+        // Parse bracketed arguments [a1] [a2] ... (pass full [expr] so the
+        // expression parser consumes the closing bracket, same as if/while).
         const char* rp = rest.c_str();
         for(int p = 0; p < 30; p++) {
             rp = ltrim_cstr(rp);
             if(*rp != '[') break;
-            char* endp;
-            float val = Gcode::evaluate_standalone_expression(rp + 1, &endp, stream);
+            char* endp = NULL;
+            float val = Gcode::evaluate_standalone_expression(rp, &endp, stream);
             THEKERNEL->local_params[p] = val;
-            if(endp && *endp == ']') endp++;
             rp = endp ? endp : rp + 1;
         }
 
