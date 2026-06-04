@@ -1,6 +1,7 @@
 #include "OCodeHandler.h"
 
 #include "libs/StreamOutput.h"
+#include "libs/StreamOutputPool.h"
 #include "libs/Kernel.h"
 #include "libs/utils.h"
 #include "modules/communication/utils/Gcode.h"
@@ -121,7 +122,9 @@ void OCodeHandler::halt_error(StreamOutput* stream, const char* fmt, ...) const
     va_start(ap, fmt);
     vsnprintf(buf, sizeof(buf), fmt, ap);
     va_end(ap);
-    stream->printf("O-code error: %s\n", buf);
+    // Always emit to the kernel streams so the message appears in the MDI
+    // regardless of whether the player's current_stream is NullStream.
+    THEKERNEL->streams->printf("ERROR: O-code error: %s\n", buf);
     THEKERNEL->set_halt_reason(MANUAL);
     THEKERNEL->call_event(ON_HALT, NULL);
 }

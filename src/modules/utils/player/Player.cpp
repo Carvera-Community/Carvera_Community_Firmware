@@ -568,6 +568,13 @@ void Player::play_command( string parameters, StreamOutput *stream )
         return;
     }
 
+    // Build the O-code subroutine table before playback starts so that a
+    // subroutine call never triggers a file scan mid-cut. This mirrors what
+    // select_file() does; play_command() may be invoked without a prior
+    // select_file() call, so the scan must happen here too.
+    this->ocode_handler.reset();
+    this->ocode_handler.pre_scan(this->current_file_handler, stream);
+
     stream->printf("Playing %s\r\n", this->filename.c_str());
 
     this->playing_file = true;
