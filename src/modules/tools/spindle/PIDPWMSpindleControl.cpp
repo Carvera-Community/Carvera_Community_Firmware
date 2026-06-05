@@ -42,8 +42,8 @@ void PIDPWMSpindleControl::on_module_loaded()
 {
     PWMSpindleControl::on_module_loaded();
     
-    ff_slope = THEKERNEL->config->value(spindle_checksum, spindle_ff_slope_checksum)->by_default(0.0000485f)->as_number();
-    ff_offset = THEKERNEL->config->value(spindle_checksum, spindle_ff_offset_checksum)->by_default(0.02f)->as_number();
+    ff_slope = THEKERNEL->config->value(spindle_checksum, spindle_ff_slope_checksum)->as_number(0.0000485f);
+    ff_offset = THEKERNEL->config->value(spindle_checksum, spindle_ff_offset_checksum)->as_number(0.02f);
     
     pulse_times = std::vector<uint32_t>(static_cast<uint32_t>(std::ceil(pulses_per_rev)), 0xFFFFFF);
     total_pulse_time = std::accumulate(pulse_times.begin(), pulse_times.end(), 0);
