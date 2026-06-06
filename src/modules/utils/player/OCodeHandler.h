@@ -33,6 +33,9 @@ class OCodeHandler {
         // caller's file position. Run before playback (never mid-cut).
         void pre_scan(FILE* fh, StreamOutput* stream);
 
+        // True when pre_scan() found duplicate subroutine definitions.
+        bool pre_scan_failed() const { return pre_scan_failed_; }
+
         // Discard the block stack and ensure the subroutine table is built,
         // for use before a line jump / resume.
         void prepare_jump(FILE* fh, StreamOutput* stream);
@@ -91,6 +94,8 @@ class OCodeHandler {
         FrameStack stack_;
         std::map<int, SubEntry> sub_table_; // ocode_num -> sub body entry point
         bool pre_scanned_ = false;          // sub_table_ built lazily on first call
+        bool pre_scan_failed_ = false;      // duplicate sub definitions in pre_scan
+        bool tolerant_after_jump_ = false;   // warn instead of halt on label mismatch
 
         // Parse an O-code line; fills num, keyword (lower-case), and rest.
         // Returns false if the line does not begin with O/o followed by digits.
@@ -101,11 +106,13 @@ class OCodeHandler {
         // Scan forward in fh until a matching keyword is found at nesting depth 0.
         // open_kw increments depth; close_kw decrements / matches. Leaves the file
         // pointer just past the matched line. matched receives the keyword that hit.
-        bool skip_to(FILE* fh, const std::string& open_kw, const std::string& close_kw, std::string& matched, int& lines_read) const;
+        // When target_num >= 0, only the close_kw at depth 0 with that O-number matches.
+        bool skip_to(FILE* fh, const std::string& open_kw, const std::string& close_kw, std::string& matched, int& lines_read, int target_num = -1) const;
 
         void halt_error(StreamOutput* stream, const char* fmt, ...) const;
         void warn(StreamOutput* stream, const char* fmt, ...) const;
+        void label_error(StreamOutput* stream, const char* fmt, ...) const;
 
         bool any_frame_skipping() const;
-        int  innermost_loop_frame() const;
+        int  find_loop_frame(int num) const;
 };
