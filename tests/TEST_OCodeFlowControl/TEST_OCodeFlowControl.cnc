@@ -143,4 +143,140 @@ O800 while [#101 le 5]
   #101 = [#101 + 1]
 O800 endwhile
 
+; --- complex expressions in conditions ---
+
+M118 if: arithmetic + comparison - should print 1
+#101 = 10
+#102 = 6
+O900 if [[#101 + #102] gt sqrt[144]]
+  M118.1 P1
+O900 endif
+
+M118 if: and of two comparisons - should print 1
+#101 = 5
+#102 = 8
+O901 if [[#101 gt 0] and [#102 lt 10]]
+  M118.1 P1
+O901 endif
+
+M118 if: and false - should print 0 after
+#101 = 0
+#102 = 99
+O902 if [[#101 gt 0] and [#102 lt 10]]
+  M118.1 P999
+O902 endif
+M118.1 P0
+
+M118 if: or saves false-and - should print 1
+#101 = 0
+#102 = 3
+O903 if [[#101 gt 0] or [#102 lt 10]]
+  M118.1 P1
+O903 endif
+
+M118 elseif: product comparison - should print 2
+#101 = 3
+#102 = 15
+O904 if [#101 lt 0]
+  M118.1 P1
+O904 elseif [[#101 * #102] le 50]
+  M118.1 P2
+O904 else
+  M118.1 P3
+O904 endif
+
+M118 elseif: nested pemdas - should print 2
+#101 = 1
+O905 if [[1 + 2 * [#101 + 1] + 2^2] eq 11]
+  M118.1 P1
+O905 elseif [[1 + 2 * [#101 + 1] + 2^2] eq 9]
+  M118.1 P2
+O905 else
+  M118.1 P3
+O905 endif
+
+M118 if: variable subtraction vs power - should print 1
+#101 = 10
+#102 = 4
+O906 if [[#101 - #102] ge sqrt[#102 * #102]]
+  M118.1 P1
+O906 endif
+
+M118 while: and with trig - should print 1, 2, 3, 4, 5, 6
+#101 = 1
+O910 while [[#101 le 6] and [sin[30] gt 0.4]]
+  M118.1 P#101
+  #101 = [#101 + 1]
+O910 endwhile
+
+M118 while: mod and upper bound - should print 3, 6, 9
+#101 = 1
+O911 while [#101 le 10]
+  O911 if [[#101 mod 3] eq 0]
+    M118.1 P#101
+  O911 endif
+  #101 = [#101 + 1]
+O911 endwhile
+
+M118 repeat: expression count - should print 1, 2, 3, 4
+#101 = 1
+#102 = 2
+#103 = 5
+O912 repeat [[#103 - #102 + 1]]
+  M118.1 P#101
+  #101 = [#101 + 1]
+O912 endrepeat
+
+M118 do-while: power limit - should print 1, 2, 3, 4
+#101 = 1
+O913 do
+  M118.1 P#101
+  #101 = [#101 + 1]
+O913 while [#101 le 2^2]
+
+M118 while: abs/mod compound - should print 3, 4, 5, 10
+#101 = 1
+O914 while [#101 le 10]
+  O915 if [[abs[#101 - 4] lt 2] or [[#101 mod 5] eq 0]]
+    M118.1 P#101
+  O915 endif
+  #101 = [#101 + 1]
+O914 endwhile
+
+M118 continue: xor filter - should print 2, 3, 5, 7
+#101 = 1
+O920 while [#101 le 8]
+  O921 if [[[#101 mod 2] eq 0] xor [fix[#101 / 3] gt 0]]
+    M118.1 P#101
+  O921 else
+    #101 = [#101 + 1]
+    O920 continue
+  O921 endif
+  #101 = [#101 + 1]
+O920 endwhile
+
+M118 nested if: perfect squares - should print 4, 9
+#101 = 1
+O930 while [#101 le 10]
+  O931 if [[[round[sqrt[#101]]^2] eq #101] and [#101 gt 3]]
+    M118.1 P#101
+  O931 endif
+  #101 = [#101 + 1]
+O930 endwhile
+
+O940 sub
+  M118 sub expr args:
+  M118.1 P#1
+  M118.1 P#2
+O940 endsub
+
+M118 call sub with expressions - should print 5, 6
+#101 = 7
+#102 = 3
+O940 call [#101 - 2] [#102 * 2]
+
+M118 call sub with nested expr - should print 8, 2
+#101 = 4
+O940 call [#101 * 2] [sqrt[#101]]
+
 M2
