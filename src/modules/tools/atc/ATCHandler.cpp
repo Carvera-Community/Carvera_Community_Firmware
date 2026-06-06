@@ -482,7 +482,7 @@ void ATCHandler::calibrate_set_value(Gcode *gcode)
 				break;
 			case 5:
 				//caibrate 4th axis height
-				//M469.6 A#120 B#119 C#118 Z%.3f P5
+				//M469.7 A#120 B#119 C#118 Z%.3f P5
 				if (!gcode->has_letter('A') && !gcode->has_letter('B') && !gcode->has_letter('C') && !gcode->has_letter('D') && !gcode->has_letter('E') && !gcode->has_letter('Z') && !gcode->has_letter('R')){
 					THEKERNEL->streams->printf("Not enough variables given to M469\n Abort\n");
 					return;
@@ -494,6 +494,27 @@ void ATCHandler::calibrate_set_value(Gcode *gcode)
 				THEKERNEL->streams->printf("New 4th Height: %.3f\n", final_y);
 				//this->rotation_offset_z = final_y;
 				THEKERNEL->streams->printf("These values have been temporarily set. \nTo make them permanent run:\nconfig-set sd coordinate.rotation_offset_z %.3f\n", final_y);
+				break;
+			case 6:
+				// calibrate 4th axis center of rotation (Y and Z combined)
+				if (!gcode->has_letter('Y') || !gcode->has_letter('Z')){
+					THEKERNEL->streams->printf("Not enough variables given to M469\n Abort\n");
+					return;
+				}
+				{
+					float new_y_cor = gcode->get_value('Y');
+					float new_z_cor = gcode->get_value('Z');
+					float new_rot_y = new_y_cor - this->anchor1_y;
+					THEKERNEL->streams->printf("Previous 4th Center of Rotation Y: %.3f (rotation_offset_y: %.3f)\n",
+						this->anchor1_y + this->rotation_offset_y, this->rotation_offset_y);
+					THEKERNEL->streams->printf("New 4th Center of Rotation Y: %.3f (rotation_offset_y: %.3f)\n", new_y_cor, new_rot_y);
+					THEKERNEL->streams->printf("Previous 4th Center of Rotation Z: %.3f\n", this->rotation_offset_z);
+					THEKERNEL->streams->printf("New 4th Center of Rotation Z: %.3f\n", new_z_cor);
+					this->rotation_offset_y = new_rot_y;
+					this->rotation_offset_z = new_z_cor;
+					THEKERNEL->streams->printf("These values have been temporarily set.\nTo make them permanent run:\nconfig-set sd coordinate.rotation_offset_y %.3f\nconfig-set sd coordinate.rotation_offset_z %.3f\n",
+						new_rot_y, new_z_cor);
+				}
 				break;
 			default:
 				return;
@@ -550,7 +571,7 @@ void ATCHandler::calibrate_anchor1(Gcode *gcode) //M469.1
 	snprintf(buff, sizeof(buff), "M463 X-20 Y-20 H6 C1 I%i", invert_probe ? 1:0);
 	this->script_queue.push(buff);
 
-	snprintf(buff, sizeof(buff), "M469.6 X%.3f Y%.3f P1", this->anchor1_x , this->anchor1_y);
+	snprintf(buff, sizeof(buff), "M469.7 X%.3f Y%.3f P1", this->anchor1_x , this->anchor1_y);
 	this->script_queue.push(buff);
 }
 
@@ -601,7 +622,7 @@ void ATCHandler::calibrate_anchor2(Gcode *gcode)//M469.2
 	snprintf(buff, sizeof(buff), "M463 X-20 Y-20 H6 C1 I%i", invert_probe ? 1:0);
 	this->script_queue.push(buff);
 
-	snprintf(buff, sizeof(buff), "M469.6 X%.3f Y%.3f P2", this->anchor2_offset_x , this->anchor2_offset_y);
+	snprintf(buff, sizeof(buff), "M469.7 X%.3f Y%.3f P2", this->anchor2_offset_x , this->anchor2_offset_y);
 	this->script_queue.push(buff);
 }
 
@@ -644,7 +665,7 @@ void ATCHandler::calibrate_a_axis_headstock(Gcode *gcode)//M469.4
 	snprintf(buff, sizeof(buff), "M462 Y%.3f E%.3f I%i", headstock_width , probe_height, invert_probe ? 1:0);
 	this->script_queue.push(buff);
 
-	snprintf(buff, sizeof(buff), "M469.6 Y%.3f P4" , this->rotation_offset_y);
+	snprintf(buff, sizeof(buff), "M469.7 Y%.3f P4" , this->rotation_offset_y);
 	this->script_queue.push(buff);
 	
 }
@@ -776,8 +797,178 @@ void ATCHandler::calibrate_a_axis_height(Gcode *gcode) //M469.5
 
 	
 	//execute calibration with specific values
-	snprintf(buff, sizeof(buff), "M469.6 A#120 B#119 C#118 D#117 E#116 R%.3f Z%.3f P5" , pin_diameter, this->rotation_offset_z);
+	snprintf(buff, sizeof(buff), "M469.7 A#120 B#119 C#118 D#117 E#116 R%.3f Z%.3f P5" , pin_diameter, this->rotation_offset_z);
 	this->script_queue.push(buff);
+}
+
+void ATCHandler::calibrate_a_axis_cor(Gcode *gcode) //M469.6
+{
+	float artifact_dia = this->rotation_width > 0 ? this->rotation_width : 50.0f;
+	float probe_tip_dia = (THEKERNEL->probe_tip_diameter > 0) ? THEKERNEL->probe_tip_diameter : 2.0f;
+	float clearance = 2.0f;
+	float pos_feed = 400.0f;
+
+	THEKERNEL->streams->printf("Calibrating A Axis Center of Rotation\n");
+	char buff[100];
+
+	if (!THEROBOT->is_homed_all_axes()) {
+		return;
+	}
+
+	bool invert_probe = false;
+	if (gcode->has_letter('I') && gcode->get_value('I')) {
+		invert_probe = true;
+	}
+	if (gcode->has_letter('D')) {
+		artifact_dia = gcode->get_value('D');
+	}
+	if (gcode->has_letter('R')) {
+		probe_tip_dia = gcode->get_value('R');
+	}
+	if (gcode->has_letter('C')) {
+		clearance = gcode->get_value('C');
+	}
+	if (gcode->has_letter('F')) {
+		pos_feed = gcode->get_value('F');
+	}
+
+	const char* probe_cmd = invert_probe ? "G38.5" : "G38.2";
+	// Y clearance offset: half artifact diameter + half probe tip + clearance gap
+	float y_clr = (artifact_dia + probe_tip_dia) / 2.0f + clearance;
+	// Z clearance above CoR: artifact radius + clearance gap
+	float z_clr = artifact_dia / 2.0f + clearance;
+	// Centerline Z correction for probe ball geometry (0.131 = empirical correction factor)
+	float z_ctr = (probe_tip_dia - 0.131f) / -2.0f;
+	float z_corr = this->three_axis_probe_tlo_correction;
+
+	this->script_queue.push(";Position probe tip above the artifact center within clearance distance of its surface");
+
+	// Ensure absolute mode and metric units
+	this->script_queue.push("G90 G21");
+
+	// ---- PROBE FOR INITIAL Z ----
+	snprintf(buff, sizeof(buff), "G91 %s Z%.3f F%.3f", probe_cmd, -clearance * 2.0f, this->probe_slow_rate);
+	this->script_queue.push(buff);
+	// #118 = estimated Z CoR in MCS = Z contact point - artifact radius
+	snprintf(buff, sizeof(buff), "#118=[#5023-%.3f]", artifact_dia / 2.0f);
+	this->script_queue.push(buff);
+	this->script_queue.push("G91 G0 Z1");
+
+	// ---- CAPTURE STARTING POSITION ----
+	this->script_queue.push("#108=#5022");  // current Y MCS
+	this->script_queue.push("#109=#5024");  // current A MCS
+
+	// ---- CALCULATE CLEARANCE POSITIONS (fixed relative to starting Y) ----
+	snprintf(buff, sizeof(buff), "#102=[#108-%.3f]", y_clr);  // Y front clearance
+	this->script_queue.push(buff);
+	snprintf(buff, sizeof(buff), "#106=[#108+%.3f]", y_clr);  // Y back clearance
+	this->script_queue.push(buff);
+	snprintf(buff, sizeof(buff), "#119=[#118+%.3f]", z_ctr);  // Centerline Z probing position
+	this->script_queue.push(buff);
+
+	// ---- RUN 1: STEP 1 - PROBE Y FRONT @ A+90 ----
+	snprintf(buff, sizeof(buff), "G53 G0 G90 Y#102 A[#109+90] F%.3f", pos_feed);
+	this->script_queue.push(buff);
+	snprintf(buff, sizeof(buff), "G53 G0 Z#119 F%.3f", pos_feed);
+	this->script_queue.push(buff);
+	snprintf(buff, sizeof(buff), "G91 %s Y%.3f F%.3f", probe_cmd, clearance * 2.0f, this->probe_slow_rate);
+	this->script_queue.push(buff);
+	// Y1 = contact position + probe radius
+	snprintf(buff, sizeof(buff), "#110=[#5022+%.3f]", probe_tip_dia / 2.0f);
+	this->script_queue.push(buff);
+	snprintf(buff, sizeof(buff), "G91 G0 Y%.3f", -clearance);
+	this->script_queue.push(buff);
+
+	// ---- RUN 1: STEP 2 - PROBE Y BACK @ A-90 ----
+	snprintf(buff, sizeof(buff), "G53 G90 G0 Z[#118+%.3f] F3000", z_clr);
+	this->script_queue.push(buff);
+	snprintf(buff, sizeof(buff), "G53 G0 Y#106 A[#109-90] F%.3f", pos_feed);
+	this->script_queue.push(buff);
+	snprintf(buff, sizeof(buff), "G53 G0 Z#119 F%.3f", pos_feed);
+	this->script_queue.push(buff);
+	snprintf(buff, sizeof(buff), "G91 %s Y%.3f F%.3f", probe_cmd, -clearance * 2.0f, this->probe_slow_rate);
+	this->script_queue.push(buff);
+	// Y2 = contact position - probe radius
+	snprintf(buff, sizeof(buff), "#111=[#5022-%.3f]", probe_tip_dia / 2.0f);
+	this->script_queue.push(buff);
+	snprintf(buff, sizeof(buff), "G91 G0 Y%.3f", clearance);
+	this->script_queue.push(buff);
+
+	// ---- RUN 1: STEP 3 - CALC Y CENTER ----
+	this->script_queue.push("#113=[[#110+#111]/2]");
+
+	// ---- RUN 1: STEP 4 - PROBE Z TOP @ A0 ----
+	snprintf(buff, sizeof(buff), "G53 G90 G0 Z[#118+%.3f] F3000", z_clr);
+	this->script_queue.push(buff);
+	snprintf(buff, sizeof(buff), "G53 G0 Y#113 A#109 F%.3f", pos_feed);
+	this->script_queue.push(buff);
+	snprintf(buff, sizeof(buff), "G91 %s Z%.3f F%.3f", probe_cmd, -clearance * 2.0f, this->probe_slow_rate);
+	this->script_queue.push(buff);
+	// Z1 = contact position + probe Z correction
+	snprintf(buff, sizeof(buff), "#112=[#5023+%.3f]", z_corr);
+	this->script_queue.push(buff);
+	snprintf(buff, sizeof(buff), "G53 G90 G0 Z[#118+%.3f] F3000", z_clr);
+	this->script_queue.push(buff);
+
+	// ---- RUN 1: STEP 5 - CALC Z CENTER ----
+	// Z CoR = Z top surface - apparent radius (half the measured Y span)
+	this->script_queue.push("#114=[#112-[[#111-#110]/2]]");
+	// Z offset = Z CoR - probe TLO
+	this->script_queue.push("#116=[#114-#2000]");
+
+	// ======= SECOND RUN FOR CONVERGENCE =======
+	// Use converged #116 to refine the centerline Z probing position
+	snprintf(buff, sizeof(buff), "#119=[#116+%.3f+#2000]", z_ctr);
+	this->script_queue.push(buff);
+
+	// ---- RUN 2: STEP 1 - PROBE Y FRONT @ A+90 ----
+	snprintf(buff, sizeof(buff), "G53 G0 G90 Y#102 A[#109+90] F%.3f", pos_feed);
+	this->script_queue.push(buff);
+	snprintf(buff, sizeof(buff), "G53 G0 Z#119 F%.3f", pos_feed);
+	this->script_queue.push(buff);
+	snprintf(buff, sizeof(buff), "G91 %s Y%.3f F%.3f", probe_cmd, clearance * 2.0f, this->probe_slow_rate);
+	this->script_queue.push(buff);
+	snprintf(buff, sizeof(buff), "#110=[#5022+%.3f]", probe_tip_dia / 2.0f);
+	this->script_queue.push(buff);
+	snprintf(buff, sizeof(buff), "G91 G0 Y%.3f", -clearance);
+	this->script_queue.push(buff);
+
+	// ---- RUN 2: STEP 2 - PROBE Y BACK @ A-90 ----
+	snprintf(buff, sizeof(buff), "G53 G90 G0 Z[#118+%.3f] F3000", z_clr);
+	this->script_queue.push(buff);
+	snprintf(buff, sizeof(buff), "G53 G0 Y#106 A[#109-90] F%.3f", pos_feed);
+	this->script_queue.push(buff);
+	snprintf(buff, sizeof(buff), "G53 G0 Z#119 F%.3f", pos_feed);
+	this->script_queue.push(buff);
+	snprintf(buff, sizeof(buff), "G91 %s Y%.3f F%.3f", probe_cmd, -clearance * 2.0f, this->probe_slow_rate);
+	this->script_queue.push(buff);
+	snprintf(buff, sizeof(buff), "#111=[#5022-%.3f]", probe_tip_dia / 2.0f);
+	this->script_queue.push(buff);
+	snprintf(buff, sizeof(buff), "G91 G0 Y%.3f", clearance);
+	this->script_queue.push(buff);
+
+	// ---- RUN 2: STEP 3 - CALC Y CENTER ----
+	this->script_queue.push("#113=[[#110+#111]/2]");
+
+	// ---- RUN 2: STEP 4 - PROBE Z TOP @ A0 ----
+	snprintf(buff, sizeof(buff), "G53 G90 G0 Z[#118+%.3f] F3000", z_clr);
+	this->script_queue.push(buff);
+	snprintf(buff, sizeof(buff), "G53 G0 Y#113 A#109 F%.3f", pos_feed);
+	this->script_queue.push(buff);
+	snprintf(buff, sizeof(buff), "G91 %s Z%.3f F%.3f", probe_cmd, -clearance * 2.0f, this->probe_slow_rate);
+	this->script_queue.push(buff);
+	snprintf(buff, sizeof(buff), "#112=[#5023+%.3f]", z_corr);
+	this->script_queue.push(buff);
+	snprintf(buff, sizeof(buff), "G53 G90 G0 Z[#118+%.3f] F3000", z_clr);
+	this->script_queue.push(buff);
+
+	// ---- RUN 2: STEP 5 - CALC Z CENTER (converged) ----
+	// Second pass includes -#2000 in the Z CoR formula for full convergence
+	this->script_queue.push("#114=[#112-[[#111-#110]/2]-#2000]");
+	this->script_queue.push("#116=[#114]");
+
+	// ---- APPLY CALIBRATION VALUES ----
+	this->script_queue.push("M469.7 Y#113 Z#116 P6");
 }
 
 void ATCHandler::home_machine_with_pin(Gcode *gcode)//M469
@@ -2187,17 +2378,22 @@ void ATCHandler::on_gcode_received(void *argument)
 				atc_status = AUTOMATION;
 				this->clear_script_queue();
 				calibrate_a_axis_headstock(gcode);
-			} else if(gcode->subcode ==5){
-				set_inner_playing(true);
-				atc_status = AUTOMATION;
-				this->clear_script_queue();
-				calibrate_a_axis_height(gcode);
-			} else if(gcode->subcode == 6){
-				set_inner_playing(true);
-				atc_status = AUTOMATION;
-				this->clear_script_queue();
-				calibrate_set_value(gcode);
-			} else {
+		} else if(gcode->subcode ==5){
+			set_inner_playing(true);
+			atc_status = AUTOMATION;
+			this->clear_script_queue();
+			calibrate_a_axis_height(gcode);
+		} else if(gcode->subcode == 6){
+			set_inner_playing(true);
+			atc_status = AUTOMATION;
+			this->clear_script_queue();
+			calibrate_a_axis_cor(gcode);
+		} else if(gcode->subcode == 7){
+			set_inner_playing(true);
+			atc_status = AUTOMATION;
+			this->clear_script_queue();
+			calibrate_set_value(gcode);
+		} else {
 				set_inner_playing(true);
 				atc_status = AUTOMATION;
 				this->clear_script_queue();
