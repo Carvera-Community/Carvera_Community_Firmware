@@ -40,7 +40,7 @@ class OCodeHandler {
         // Process one raw line from the G-code file.
         // Returns true if the line was an O-code and was consumed (do not dispatch).
         // Returns false if the line is a normal G-code line.
-        bool process_line(const char* line, FILE* fh, StreamOutput* stream);
+        bool process_line(const char* line, FILE* fh, StreamOutput* stream, unsigned long& file_line);
 
         // Returns true when inside a false branch or skipping a subroutine body.
         bool is_skipping() const;
@@ -57,6 +57,7 @@ class OCodeHandler {
             int       repeat_count;   // remaining iterations for repeat
             float     saved_params[30]; // saved #1-#30 on subroutine call
             long      return_offset;  // byte offset to return to after endsub/return
+            int       jump_line;      // line to restore on loop-back or sub return (type-specific)
         };
 
         // Fixed-capacity, vector-like view over externally owned storage. The
@@ -81,10 +82,15 @@ class OCodeHandler {
             }
         };
 
+        struct SubEntry {
+            long offset; // byte offset of the line after "Onnn sub"
+            int  line;   // 1-based line of first sub body line
+        };
+
         static Frame frame_storage_[OCODE_MAX_STACK_DEPTH]; // AHBSRAM-backed (see .cpp)
         FrameStack stack_;
-        std::map<int, long> sub_table_;  // ocode_num -> byte offset of the line after "Onnn sub"
-        bool pre_scanned_ = false;       // sub_table_ built lazily on first call
+        std::map<int, SubEntry> sub_table_; // ocode_num -> sub body entry point
+        bool pre_scanned_ = false;          // sub_table_ built lazily on first call
 
         // Parse an O-code line; fills num, keyword (lower-case), and rest.
         // Returns false if the line does not begin with O/o followed by digits.
@@ -95,7 +101,7 @@ class OCodeHandler {
         // Scan forward in fh until a matching keyword is found at nesting depth 0.
         // open_kw increments depth; close_kw decrements / matches. Leaves the file
         // pointer just past the matched line. matched receives the keyword that hit.
-        bool skip_to(FILE* fh, const std::string& open_kw, const std::string& close_kw, std::string& matched) const;
+        bool skip_to(FILE* fh, const std::string& open_kw, const std::string& close_kw, std::string& matched, int& lines_read) const;
 
         void halt_error(StreamOutput* stream, const char* fmt, ...) const;
         void warn(StreamOutput* stream, const char* fmt, ...) const;
