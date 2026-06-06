@@ -279,4 +279,53 @@ M118 call sub with nested expr - should print 8, 2
 #101 = 4
 O940 call [#101 * 2] [sqrt[#101]]
 
+; --- break / continue: O-number targeting ---
+
+M118 break outer loop: should print 1, 2
+#101 = 1
+O950 while [#101 le 5]
+  #102 = 1
+  O951 while [#102 le 5]
+    O950 if [#101 gt 2]
+      O950 break
+    O950 endif
+    O951 if [#102 eq 1]
+      M118.1 P#101
+    O951 endif
+    #102 = [#102 + 1]
+  O951 endwhile
+  #101 = [#101 + 1]
+O950 endwhile
+
+M118 continue outer loop: should print 1, 3, 5
+#101 = 1
+O960 while [#101 le 5]
+  #102 = 1
+  O961 while [#102 le 5]
+    O960 if [[#101 mod 2] eq 0]
+      #101 = [#101 + 1]
+      O960 continue
+    O960 endif
+    O961 if [#102 eq 1]
+      M118.1 P#101
+    O961 endif
+    #102 = [#102 + 1]
+  O961 endwhile
+  #101 = [#101 + 1]
+O960 endwhile
+
+M118 break inner loop: should print 1, 1, 1, 2, 2, 2, 3, 3, 3
+#101 = 1
+O970 while [#101 le 3]
+  #102 = 1
+  O971 while [#102 le 5]
+    O971 if [#102 gt 3]
+      O971 break
+    O971 endif
+    M118.1 P#101
+    #102 = [#102 + 1]
+  O971 endwhile
+  #101 = [#101 + 1]
+O970 endwhile
+
 M2
