@@ -88,6 +88,18 @@ Player::Player()
     this->last_spindle_rpm = 0.0f;
     this->last_spindle_ccw = false;
     this->saved_spindle_ccw = false;
+    this->file_line = 0;
+}
+
+void Player::sync_progress_max()
+{
+    if(this->current_file_handler == nullptr) return;
+
+    long pos = ftell(this->current_file_handler);
+    if(pos > 0 && (unsigned long)pos > this->played_cnt)
+        this->played_cnt = (unsigned long)pos;
+    if(this->file_line > this->played_lines)
+        this->played_lines = this->file_line;
 }
 
 void Player::on_module_loaded()
@@ -191,6 +203,7 @@ void Player::select_file(string argument)
     }
     this->played_cnt = 0;
     this->played_lines = 0;
+    this->file_line = 0;
     this->elapsed_secs = 0;
     this->playing_lines = 0;
     this->goto_line = 0;
@@ -214,22 +227,23 @@ void Player::goto_line_number(unsigned long line_number)
     fseek(this->current_file_handler, 0, SEEK_SET);
     played_lines = 0;
     played_cnt   = 0;
+    file_line    = 0;
 
     // Read lines until we've positioned at the target line
     // We want to break BEFORE reading the target line, so the file pointer is at the target
-    while (played_lines < this->goto_line - 1) {
+    while (file_line < this->goto_line - 1) {
         if (fgets(buf, sizeof(buf), this->current_file_handler) == NULL) {
             break; // EOF reached
         }
-        
-        if (played_lines % 100 == 0) {
+
+        if (file_line % 100 == 0) {
             THEKERNEL->call_event(ON_IDLE);
         }
         int len = strlen(buf);
         if (len == 0) continue; // empty line? should not be possible
 
-        played_lines += 1;
-        played_cnt += len;
+        file_line++;
+        this->sync_progress_max();
     }
 
     // Keep status report current line in sync with file position
@@ -431,7 +445,8 @@ void Player::on_gcode_received(void *argument)
             }
 
             //TODO: test new_filepath length to make sure it is valid
-            std::tuple<std::string, unsigned long> queueItem (this->filename,(played_lines + 2));
+            // Resume on the line after M98: file_line is already the M98 line
+            std::tuple<std::string, unsigned long> queueItem (this->filename, this->file_line + 1);
             //set up return queue
             this->macro_file_queue.push(queueItem);
 
@@ -599,6 +614,7 @@ void Player::play_command( string parameters, StreamOutput *stream )
     }
     this->played_cnt = 0;
     this->played_lines = 0;
+    this->file_line = 0;
     this->elapsed_secs = 0;
     this->playing_lines = 0;
     this->goto_line = 0;
@@ -698,6 +714,7 @@ void Player::abort_command( string parameters, StreamOutput *stream )
     this->playing_file = false;
     this->played_cnt = 0;
     this->played_lines = 0;
+    this->file_line = 0;
     this->playing_lines = 0;
     this->goto_line = 0;
     this->file_size = 0;
@@ -821,7 +838,13 @@ void Player::on_main_loop(void *argument)
                     continue;
                 }
 
-                if (len == 1) continue; // empty line
+                if (len == 1) {
+                    this->file_line++;
+                    this->sync_progress_max();
+                    continue; // empty line
+                }
+
+                this->file_line++;
 
                 /*
             	// Add laser cluster support when in laser mode
@@ -900,36 +923,33 @@ void Player::on_main_loop(void *argument)
                 message.message = buf;
                 message.stream = this->current_stream == nullptr ? &(StreamOutput::NullStream) : this->current_stream;
 
-                if (this->ocode_handler.process_line(buf, this->current_file_handler, message.stream)) {
-                    played_lines += 1;
-                    played_cnt   += len;
+                if (this->ocode_handler.process_line(buf, this->current_file_handler, message.stream, this->file_line)) {
+                    this->sync_progress_max();
                     if (this->ocode_handler.is_skipping()) {
                         // Fast-forwarding through a skipped block stays in this
                         // loop without returning, so feed the watchdog periodically.
-                        if ((played_lines % 100) == 0) THEKERNEL->call_event(ON_IDLE);
+                        if ((this->file_line % 100) == 0) THEKERNEL->call_event(ON_IDLE);
                         continue;
                     }
                     return;
                 }
                 if (this->ocode_handler.is_skipping()) {
-                    played_lines += 1;
-                    played_cnt   += len;
-                    if ((played_lines % 100) == 0) THEKERNEL->call_event(ON_IDLE);
+                    this->sync_progress_max();
+                    if ((this->file_line % 100) == 0) THEKERNEL->call_event(ON_IDLE);
                     continue;
                 }
 
                 if (this->current_stream != nullptr) {
                     this->current_stream->printf("%s", buf);
                 }
-                message.line = played_lines + 1;
+                message.line = this->file_line;
 
                 // waits for the queue to have enough room
                 // this->current_stream->printf("Run: %s", buf);
                 THEKERNEL->call_event(ON_CONSOLE_LINE_RECEIVED, &message);
                 // fputs(buf, this->temp_file_handler);
                 // THEKERNEL->streams->printf("0-[Line: %d] %s\n", message.line, buf);
-                played_lines += 1;
-                played_cnt += len;
+                this->sync_progress_max();
                 //M335 disables line by line, M336 Enables. Pauses after every valid gcode line
                 if (THEKERNEL->get_line_by_line_exec_mode() && len > 2 && buf[0] != ';' && buf[0] != '('){
                     this->suspend_command("", THEKERNEL->streams);
@@ -956,6 +976,7 @@ void Player::on_main_loop(void *argument)
         this->filename = "";
         played_cnt = 0;
         played_lines = 0;
+        file_line = 0;
         playing_lines = 0;
         goto_line = 0;
         file_size = 0;

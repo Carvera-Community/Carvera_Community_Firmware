@@ -55,6 +55,8 @@ class Player : public Module {
         void download_command( string parameters, StreamOutput* stream );
         
         void test_command(string parameters, StreamOutput* stream );
+
+        void sync_progress_max();
         
         string extract_options(string& args);
 
@@ -96,6 +98,7 @@ class Player : public Module {
         unsigned long played_cnt;
         unsigned long elapsed_secs;
         unsigned long played_lines;
+        unsigned long file_line;
         unsigned long goto_line;
         unsigned int playing_lines;
         // last progress when playback finished or was interrupted (for status ? to keep showing |P:...)
