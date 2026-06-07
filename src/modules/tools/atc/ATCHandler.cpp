@@ -846,7 +846,7 @@ void ATCHandler::calibrate_a_axis_cor(Gcode *gcode) //M469.6
 		pos_feed = gcode->get_value('F');
 	}
 
-	const char* probe_cmd = invert_probe ? "G38.5" : "G38.2";
+	const char* probe_cmd = invert_probe ? "G38.4" : "G38.2";
 	// Y clearance offset: half artifact diameter + half probe tip + clearance gap
 	float y_clr = (artifact_dia + probe_tip_dia) / 2.0f + clearance;
 	// Z clearance above CoR: artifact radius + clearance gap
