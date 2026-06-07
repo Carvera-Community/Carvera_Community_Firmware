@@ -108,7 +108,7 @@ void AnalogSpindleControl::on_module_loaded()
         delete smoothie_pin;
     }
 
-    std::string switch_on_pin = THEKERNEL->config->value(spindle_checksum, spindle_switch_on_pin_checksum)->by_default("nc")->as_string();
+    std::string switch_on_pin = THEKERNEL->config->value(spindle_checksum, spindle_switch_on_pin_checksum)->as_string("nc");
     switch_on = NULL;
     if(switch_on_pin.compare("nc") != 0) {
         switch_on = new Pin();
