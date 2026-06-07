@@ -803,7 +803,7 @@ void ATCHandler::calibrate_a_axis_height(Gcode *gcode) //M469.5
 
 void ATCHandler::calibrate_a_axis_cor(Gcode *gcode) //M469.6
 {
-	float artifact_dia = this->rotation_width > 0 ? this->rotation_width : 50.0f;
+	float artifact_dia = 50.0f; // 50mm is used as a magic value here representing the Sanou K02-50 chuck body that is standard on all the Makera machines 
 	float probe_tip_dia = (THEKERNEL->probe_tip_diameter > 0) ? THEKERNEL->probe_tip_diameter : 2.0f;
 	float clearance = 2.0f;
 	float pos_feed = 400.0f;
