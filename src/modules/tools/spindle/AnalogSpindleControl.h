@@ -17,6 +17,7 @@ namespace mbed {
     class InterruptIn;
 }
 
+// This module implements control of the spindle speed by seting a PWM from 0-100%
 class AnalogSpindleControl: public SpindleControl {
     public:
         AnalogSpindleControl() : feedback_pin(nullptr) {};

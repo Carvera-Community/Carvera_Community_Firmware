@@ -61,6 +61,7 @@ void AnalogSpindleControl::on_module_loaded()
     else
         smoothing_decay = 1.0f / (UPDATE_FREQ * smoothing_time);
 
+    // Get the pin for hardware pwm
     {
         Pin *smoothie_pin = new Pin();
         smoothie_pin->from_string(THEKERNEL->config->value(spindle_checksum, spindle_pwm_pin_checksum)->as_string("nc"));
@@ -68,6 +69,7 @@ void AnalogSpindleControl::on_module_loaded()
         output_inverted = smoothie_pin->is_inverting();
         delete smoothie_pin;
     }
+    // If we got no hardware PWM pin, delete this module
     if (pwm_pin == NULL)
     {
         THEKERNEL->streams->printf("Error: Spindle PWM pin must be P2.0-2.5 or other PWM pin\n");
@@ -75,11 +77,16 @@ void AnalogSpindleControl::on_module_loaded()
         return;
     }
 
+    // set pwm frequency
     int period = THEKERNEL->config->value(spindle_checksum, spindle_pwm_period_checksum)->as_int(1000);
     THEKERNEL->Spindle_period_us = period;
     pwm_pin->period_us(period);
+
+    // invert pwm signal if necessary
     pwm_pin->write(output_inverted ? 1 : 0);
 
+
+    // Get digital out pin for switching the spindle on and off
     {
         Pin *smoothie_pin = new Pin();
         smoothie_pin->from_string(THEKERNEL->config->value(spindle_checksum, spindle_feedback_pin_checksum)->as_string("nc"));
@@ -201,7 +208,7 @@ void AnalogSpindleControl::turn_off()
         switch_on->set(false);
     spindle_on = false;
     THEKERNEL->spindleon = false;
-    update_pwm(0);
+    update_pwm(0); // set the PWM value to 0 to make sure it stops
 }
 
 void AnalogSpindleControl::set_speed(int rpm)
@@ -226,6 +233,7 @@ void AnalogSpindleControl::report_speed()
 
 void AnalogSpindleControl::update_pwm(float value)
 {
+    // set the requested PWM value, invert it if necessary
     current_pwm_value = value;
     if(output_inverted)
         pwm_pin->write(1.0f - value);
