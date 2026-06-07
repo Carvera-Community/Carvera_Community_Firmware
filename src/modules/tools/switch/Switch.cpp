@@ -103,20 +103,20 @@ void Switch::on_module_loaded()
 // Get config
 void Switch::on_config_reload(void *argument)
 {
-    this->subcode = THEKERNEL->config->value(switch_checksum, this->name_checksum, command_subcode_checksum )->by_default(0)->as_number();
-    std::string input_on_command = THEKERNEL->config->value(switch_checksum, this->name_checksum, input_on_command_checksum )->by_default("")->as_string();
-    std::string input_off_command = THEKERNEL->config->value(switch_checksum, this->name_checksum, input_off_command_checksum )->by_default("")->as_string();
-    this->output_on_command = THEKERNEL->config->value(switch_checksum, this->name_checksum, output_on_command_checksum )->by_default("")->as_string();
-    this->output_off_command = THEKERNEL->config->value(switch_checksum, this->name_checksum, output_off_command_checksum )->by_default("")->as_string();
-    this->switch_state = THEKERNEL->config->value(switch_checksum, this->name_checksum, startup_state_checksum )->by_default(false)->as_bool();
+    this->subcode = THEKERNEL->config->value(switch_checksum, this->name_checksum, command_subcode_checksum )->as_number(0);
+    std::string input_on_command = THEKERNEL->config->value(switch_checksum, this->name_checksum, input_on_command_checksum )->as_string("");
+    std::string input_off_command = THEKERNEL->config->value(switch_checksum, this->name_checksum, input_off_command_checksum )->as_string("");
+    this->output_on_command = THEKERNEL->config->value(switch_checksum, this->name_checksum, output_on_command_checksum )->as_string("");
+    this->output_off_command = THEKERNEL->config->value(switch_checksum, this->name_checksum, output_off_command_checksum )->as_string("");
+    this->switch_state = THEKERNEL->config->value(switch_checksum, this->name_checksum, startup_state_checksum )->as_bool(false);
 
     this->input_pin = new Pin();
-    this->input_pin->from_string( THEKERNEL->config->value(switch_checksum, this->name_checksum, input_pin_checksum )->by_default("nc")->as_string())->as_input();
+    this->input_pin->from_string( THEKERNEL->config->value(switch_checksum, this->name_checksum, input_pin_checksum )->as_string("nc"))->as_input();
 
     bool is_input;
 
     if(this->input_pin->connected()) {
-        std::string ipb = THEKERNEL->config->value(switch_checksum, this->name_checksum, input_pin_behavior_checksum )->by_default("momentary")->as_string();
+        std::string ipb = THEKERNEL->config->value(switch_checksum, this->name_checksum, input_pin_behavior_checksum )->as_string("momentary");
         this->input_pin_behavior = (ipb == "momentary") ? momentary_checksum : toggle_checksum;
         is_input= true;
         this->ignore_on_halt= true;
@@ -129,14 +129,14 @@ void Switch::on_config_reload(void *argument)
 
 
     if(!is_input) {
-        string type = THEKERNEL->config->value(switch_checksum, this->name_checksum, output_type_checksum )->by_default("digital")->as_string();
-        this->failsafe= THEKERNEL->config->value(switch_checksum, this->name_checksum, failsafe_checksum )->by_default(0)->as_number();
-        this->ignore_on_halt= THEKERNEL->config->value(switch_checksum, this->name_checksum, ignore_on_halt_checksum )->by_default(false)->as_bool();
+        string type = THEKERNEL->config->value(switch_checksum, this->name_checksum, output_type_checksum )->as_string("digital");
+        this->failsafe= THEKERNEL->config->value(switch_checksum, this->name_checksum, failsafe_checksum )->as_number(0);
+        this->ignore_on_halt= THEKERNEL->config->value(switch_checksum, this->name_checksum, ignore_on_halt_checksum )->as_bool(false);
 
         if(type == "pwm"){
             this->output_type= SIGMADELTA;
             this->sigmadelta_pin= new Pwm();
-            this->sigmadelta_pin->from_string(THEKERNEL->config->value(switch_checksum, this->name_checksum, output_pin_checksum )->by_default("nc")->as_string())->as_output();
+            this->sigmadelta_pin->from_string(THEKERNEL->config->value(switch_checksum, this->name_checksum, output_pin_checksum )->as_string("nc"))->as_output();
             if(this->sigmadelta_pin->connected()) {
                 if(failsafe == 1) {
                     set_high_on_debug(sigmadelta_pin->port_number, sigmadelta_pin->pin);
@@ -152,7 +152,7 @@ void Switch::on_config_reload(void *argument)
         }else if(type == "digital"){
             this->output_type= DIGITAL;
             this->digital_pin= new Pin();
-            this->digital_pin->from_string(THEKERNEL->config->value(switch_checksum, this->name_checksum, output_pin_checksum )->by_default("nc")->as_string())->as_output();
+            this->digital_pin->from_string(THEKERNEL->config->value(switch_checksum, this->name_checksum, output_pin_checksum )->as_string("nc"))->as_output();
             if(this->digital_pin->connected()) {
                 if(failsafe == 1) {
                     set_high_on_debug(digital_pin->port_number, digital_pin->pin);
@@ -168,7 +168,7 @@ void Switch::on_config_reload(void *argument)
         }else if(type == "hwpwm"){
             this->output_type= HWPWM;
             Pin *pin= new Pin();
-            pin->from_string(THEKERNEL->config->value(switch_checksum, this->name_checksum, output_pin_checksum )->by_default("nc")->as_string())->as_output();
+            pin->from_string(THEKERNEL->config->value(switch_checksum, this->name_checksum, output_pin_checksum )->as_string("nc"))->as_output();
             this->pwm_pin= pin->hardware_pwm();
             if(failsafe == 1) {
                 set_high_on_debug(pin->port_number, pin->pin);
@@ -184,7 +184,7 @@ void Switch::on_config_reload(void *argument)
         }else if(type == "swpwm"){
             this->output_type= SWPWM;
             Pin *pin= new Pin();
-            pin->from_string(THEKERNEL->config->value(switch_checksum, this->name_checksum, output_pin_checksum )->by_default("nc")->as_string())->as_output();
+            pin->from_string(THEKERNEL->config->value(switch_checksum, this->name_checksum, output_pin_checksum )->as_string("nc"))->as_output();
             if(pin->connected()) {
                 this->swpwm_pin= new SoftPWM(pin, !pin->is_inverting());
                 if(failsafe == 1) {
@@ -199,9 +199,9 @@ void Switch::on_config_reload(void *argument)
         } else if (type == "digitalpwm") {
             this->output_type= DIGITALPWM;
             this->digital_pin= new Pin();
-            this->digital_pin->from_string(THEKERNEL->config->value(switch_checksum, this->name_checksum, output_pin_checksum )->by_default("nc")->as_string())->as_output();
+            this->digital_pin->from_string(THEKERNEL->config->value(switch_checksum, this->name_checksum, output_pin_checksum )->as_string("nc"))->as_output();
             Pin *pin= new Pin();
-            pin->from_string(THEKERNEL->config->value(switch_checksum, this->name_checksum, pwm_pin_checksum )->by_default("nc")->as_string())->as_output();
+            pin->from_string(THEKERNEL->config->value(switch_checksum, this->name_checksum, pwm_pin_checksum )->as_string("nc"))->as_output();
             this->pwm_pin = pin->hardware_pwm();
             if (this->digital_pin->connected() && this->pwm_pin != nullptr)
 			{
@@ -239,8 +239,8 @@ void Switch::on_config_reload(void *argument)
 
     if(!is_input) {
         if(this->output_type == SIGMADELTA) {
-            this->sigmadelta_pin->max_pwm(THEKERNEL->config->value(switch_checksum, this->name_checksum, max_pwm_checksum )->by_default(255)->as_number());
-            this->switch_value = THEKERNEL->config->value(switch_checksum, this->name_checksum, startup_value_checksum )->by_default(this->sigmadelta_pin->max_pwm())->as_number();
+            this->sigmadelta_pin->max_pwm(THEKERNEL->config->value(switch_checksum, this->name_checksum, max_pwm_checksum )->as_number(255));
+            this->switch_value = THEKERNEL->config->value(switch_checksum, this->name_checksum, startup_value_checksum )->as_number(this->sigmadelta_pin->max_pwm());
             if(this->switch_state) {
                 this->sigmadelta_pin->pwm(this->switch_value); // will be truncated to max_pwm
             } else {
@@ -249,12 +249,12 @@ void Switch::on_config_reload(void *argument)
 
         } else if(this->output_type == HWPWM) {
             // default is 20Hz
-            float p= THEKERNEL->config->value(switch_checksum, this->name_checksum, pwm_period_ms_checksum )->by_default(20)->as_number() * 1000.0F; // ms but fractions are allowed
+            float p= THEKERNEL->config->value(switch_checksum, this->name_checksum, pwm_period_ms_checksum )->as_number(20) * 1000.0F; // ms but fractions are allowed
             this->pwm_pin->period_us(p);
 
             // default is 0% duty cycle
-            this->switch_value = THEKERNEL->config->value(switch_checksum, this->name_checksum, startup_value_checksum )->by_default(0)->as_number();
-            this->default_on_value = THEKERNEL->config->value(switch_checksum, this->name_checksum, default_on_value_checksum )->by_default(50)->as_number();
+            this->switch_value = THEKERNEL->config->value(switch_checksum, this->name_checksum, startup_value_checksum )->as_number(0);
+            this->default_on_value = THEKERNEL->config->value(switch_checksum, this->name_checksum, default_on_value_checksum )->as_number(50);
             if(this->switch_state) {
                 this->pwm_pin->write(this->default_on_value / 100.0F);
                 this->switch_value = this->default_on_value;
@@ -264,12 +264,12 @@ void Switch::on_config_reload(void *argument)
 
         } else if(this->output_type == SWPWM) {
             // default is 50Hz
-            float p= THEKERNEL->config->value(switch_checksum, this->name_checksum, pwm_period_ms_checksum )->by_default(20)->as_number(); // ms fractions are not allowed
+            float p= THEKERNEL->config->value(switch_checksum, this->name_checksum, pwm_period_ms_checksum )->as_number(20); // ms fractions are not allowed
             this->swpwm_pin->period_ms(p);
 
             // default is 0% duty cycle
-            this->switch_value = THEKERNEL->config->value(switch_checksum, this->name_checksum, startup_value_checksum )->by_default(0)->as_number();
-            this->default_on_value = THEKERNEL->config->value(switch_checksum, this->name_checksum, default_on_value_checksum )->by_default(50)->as_number();
+            this->switch_value = THEKERNEL->config->value(switch_checksum, this->name_checksum, startup_value_checksum )->as_number(0);
+            this->default_on_value = THEKERNEL->config->value(switch_checksum, this->name_checksum, default_on_value_checksum )->as_number(50);
             if(this->switch_state) {
                 this->swpwm_pin->write(this->default_on_value / 100.0F);
                 this->switch_value = this->default_on_value;
@@ -281,15 +281,15 @@ void Switch::on_config_reload(void *argument)
             this->digital_pin->set(this->switch_state);
 
         } else if (this->output_type == DIGITALPWM) {
-            this->min_pwm = THEKERNEL->config->value(switch_checksum, this->name_checksum, min_pwm_checksum )->by_default(0)->as_number();
-            this->max_pwm = THEKERNEL->config->value(switch_checksum, this->name_checksum, max_pwm_checksum )->by_default(100)->as_number();
+            this->min_pwm = THEKERNEL->config->value(switch_checksum, this->name_checksum, min_pwm_checksum )->as_number(0);
+            this->max_pwm = THEKERNEL->config->value(switch_checksum, this->name_checksum, max_pwm_checksum )->as_number(100);
         	this->digital_pin->set(this->switch_state);
             // default is 50Hz
-            float p = THEKERNEL->config->value(switch_checksum, this->name_checksum, pwm_period_ms_checksum )->by_default(20)->as_number() * 1000.0F; // ms but fractions are allowed
+            float p = THEKERNEL->config->value(switch_checksum, this->name_checksum, pwm_period_ms_checksum )->as_number(20) * 1000.0F; // ms but fractions are allowed
             this->pwm_pin->period_us(p);
             // default is 0% duty cycle
-            this->switch_value = THEKERNEL->config->value(switch_checksum, this->name_checksum, startup_value_checksum )->by_default(0)->as_number();
-            this->default_on_value = THEKERNEL->config->value(switch_checksum, this->name_checksum, default_on_value_checksum )->by_default(100)->as_number();
+            this->switch_value = THEKERNEL->config->value(switch_checksum, this->name_checksum, startup_value_checksum )->as_number(0);
+            this->default_on_value = THEKERNEL->config->value(switch_checksum, this->name_checksum, default_on_value_checksum )->as_number(100);
             if(this->switch_state) {
                 this->pwm_pin->write(confine(this->default_on_value, this->min_pwm, this->max_pwm) / 100.0F);
                 this->switch_value = this->default_on_value;

@@ -53,7 +53,7 @@ Laser::Laser()
 
 void Laser::on_module_loaded()
 {
-    if( !THEKERNEL->config->value( laser_module_enable_checksum )->by_default(true)->as_bool() ) {
+    if( !THEKERNEL->config->value( laser_module_enable_checksum )->as_bool(true) ) {
         // as not needed free up resource
         delete this;
         return;
@@ -61,7 +61,7 @@ void Laser::on_module_loaded()
 
     // Get smoothie-style pin from config
     this->laser_pin = new Pin();
-    this->laser_pin->from_string(THEKERNEL->config->value(laser_module_pin_checksum)->by_default("2.12")->as_string())->as_output();
+    this->laser_pin->from_string(THEKERNEL->config->value(laser_module_pin_checksum)->as_string("2.12"))->as_output();
     if (!this->laser_pin->connected()) {
         delete this->laser_pin;
         this->laser_pin= nullptr;
@@ -70,7 +70,7 @@ void Laser::on_module_loaded()
 	}
 
 	Pin *dummy_pin = new Pin();
-	dummy_pin->from_string(THEKERNEL->config->value(laser_module_pwm_pin_checksum)->by_default("2.4")->as_string())->as_output();
+	dummy_pin->from_string(THEKERNEL->config->value(laser_module_pwm_pin_checksum)->as_string("2.4"))->as_output();
     pwm_pin = dummy_pin->hardware_pwm();
     if (pwm_pin == NULL) {
         THEKERNEL->streams->printf("Error: Laser cannot use P%d.%d (P2.0 - P2.5, P1.18, P1.20, P1.21, P1.23, P1.24, P1.26, P3.25, P3.26 only). Laser module disabled.\n", dummy_pin->port_number, dummy_pin->pin);
@@ -87,7 +87,7 @@ void Laser::on_module_loaded()
 
     // TTL settings
     this->ttl_pin = new Pin();
-    ttl_pin->from_string( THEKERNEL->config->value(laser_module_ttl_pin_checksum)->by_default("nc" )->as_string())->as_output();
+    ttl_pin->from_string( THEKERNEL->config->value(laser_module_ttl_pin_checksum)->as_string("nc" ))->as_output();
     this->ttl_used = ttl_pin->connected();
     this->ttl_inverting = ttl_pin->is_inverting();
     if (ttl_used) {
@@ -98,16 +98,16 @@ void Laser::on_module_loaded()
     }
 
 
-    uint32_t period = THEKERNEL->config->value(laser_module_pwm_period_checksum)->by_default(1000)->as_number();
+    uint32_t period = THEKERNEL->config->value(laser_module_pwm_period_checksum)->as_number(1000);
     THEKERNEL->Laser_period_us = period;
     this->pwm_pin->period_us(period);
     this->pwm_pin->write(this->pwm_inverting ? 1 : 0);
-    this->laser_test_power = THEKERNEL->config->value(laser_module_test_power_checksum)->by_default(0.1f)->as_number() ;
-    this->laser_maximum_power = THEKERNEL->config->value(laser_module_maximum_power_checksum)->by_default(1.0f)->as_number() ;
-    this->laser_minimum_power = THEKERNEL->config->value(laser_module_minimum_power_checksum)->by_default(0)->as_number() ;
+    this->laser_test_power = THEKERNEL->config->value(laser_module_test_power_checksum)->as_number(0.1f) ;
+    this->laser_maximum_power = THEKERNEL->config->value(laser_module_maximum_power_checksum)->as_number(1.0f) ;
+    this->laser_minimum_power = THEKERNEL->config->value(laser_module_minimum_power_checksum)->as_number(0) ;
 
     // S value that represents maximum (default 1)
-    this->laser_maximum_s_value = THEKERNEL->config->value(laser_module_maximum_s_value_checksum)->by_default(1.0f)->as_number() ;
+    this->laser_maximum_s_value = THEKERNEL->config->value(laser_module_maximum_s_value_checksum)->as_number(1.0f) ;
 
     set_laser_power(0);
 

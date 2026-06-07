@@ -48,23 +48,19 @@ WRITE_BUFFER_DISABLE ?= 0
 STACK_SIZE ?= 0
 
 
-# Configure MRI variables based on BUILD_TYPE build type variable.
+# Configure MRI variables based on BUILD_TYPE variable.
+#   Release - Production firmware. Optimized for size (-Os), no MRI debug monitor.
+#   Debug   - Development firmware. Optimized for debugging (-Og), MRI debug monitor
+#             linked. Allows GDB attach via serial and __debugbreak() calls.
+#             Uses -Og (not -O0) because unoptimized code overflows flash on LPC1768.
 ifeq "$(BUILD_TYPE)" "Release"
-OPTIMIZATION ?= 2
+OPTIMIZATION ?= s
 MRI_ENABLE = 0
 MRI_SEMIHOST_STDIO ?= 0
 endif
 
-
 ifeq "$(BUILD_TYPE)" "Debug"
-OPTIMIZATION = 0
-MRI_ENABLE ?= 1
-MRI_SEMIHOST_STDIO ?= 1
-endif
-
-
-ifeq "$(BUILD_TYPE)" "Checked"
-OPTIMIZATION ?= s
+OPTIMIZATION ?= g
 MRI_ENABLE = 1
 MRI_SEMIHOST_STDIO ?= 1
 endif
@@ -122,6 +118,52 @@ uc = $(subst a,A,$(subst b,B,$(subst c,C,$(subst d,D,$(subst e,E,$(subst f,F,$(s
 EXL = $(patsubst %,$(SRC)/modules/%/%,$(EXCLUDED_MODULES))
 CPPSRCS3 = $(filter-out $(EXL),$(CPPSRCS21))
 DEFINES += $(call uc, $(subst /,_,$(patsubst %,-DNO_%,$(EXCLUDED_MODULES))))
+
+# CARTESIAN_ONLY: exclude all non-Cartesian arm solutions
+ifdef CARTESIAN_ONLY
+CPPSRCS3 := $(filter-out \
+  $(SRC)/modules/robot/arm_solutions/HBotSolution.cpp \
+  $(SRC)/modules/robot/arm_solutions/CoreXZSolution.cpp \
+  $(SRC)/modules/robot/arm_solutions/LinearDeltaSolution.cpp \
+  $(SRC)/modules/robot/arm_solutions/ExperimentalDeltaSolution.cpp \
+  $(SRC)/modules/robot/arm_solutions/RotaryDeltaSolution.cpp \
+  $(SRC)/modules/robot/arm_solutions/MorganSCARASolution.cpp \
+  $(SRC)/modules/robot/arm_solutions/RotatableCartesianSolution.cpp \
+  ,$(CPPSRCS3))
+DEFINES += -DCARTESIAN_ONLY
+endif
+
+# CARTGRID_ONLY: exclude delta/three-point leveling strategies
+ifdef CARTGRID_ONLY
+CPPSRCS3 := $(filter-out \
+  $(SRC)/modules/tools/zprobe/DeltaGridStrategy.cpp \
+  $(SRC)/modules/tools/zprobe/DeltaCalibrationStrategy.cpp \
+  $(SRC)/modules/tools/zprobe/ThreePointStrategy.cpp \
+  ,$(CPPSRCS3))
+DEFINES += -DCARTGRID_ONLY
+endif
+
+# NO_MODBUS_SPINDLE: exclude modbus/huanyang spindle types and SoftSerial library
+ifdef NO_MODBUS_SPINDLE
+CPPSRCS3 := $(filter-out \
+  $(SRC)/modules/tools/spindle/HuanyangSpindleControl.cpp \
+  $(SRC)/modules/tools/spindle/ModbusSpindleControl.cpp \
+  $(SRC)/modules/tools/spindle/Modbus/Modbus.cpp \
+  $(SRC)/modules/tools/spindle/SoftSerial/BufferedSoftSerial.cpp \
+  $(SRC)/modules/tools/spindle/SoftSerial/SoftSerial.cpp \
+  $(SRC)/modules/tools/spindle/SoftSerial/SoftSerial_rx.cpp \
+  $(SRC)/modules/tools/spindle/SoftSerial/SoftSerial_tx.cpp \
+  ,$(CPPSRCS3))
+DEFINES += -DNO_MODBUS_SPINDLE
+endif
+
+# NO_PID_AUTOTUNE: exclude PID autotuner (not needed when no heaters are connected)
+ifdef NO_PID_AUTOTUNE
+CPPSRCS3 := $(filter-out \
+  $(SRC)/modules/tools/temperaturecontrol/PID_Autotuner.cpp \
+  ,$(CPPSRCS3))
+DEFINES += -DNO_PID_AUTOTUNE
+endif
 
 # do not compile the src/testframework as that can only be done with rake
 CPPSRCS = $(filter-out $(SRC)/testframework/%,$(CPPSRCS3))
@@ -193,6 +235,7 @@ endif
 # Compiler Options
 GCFLAGS += -O$(OPTIMIZATION) -g3 $(DEVICE_CFLAGS)
 GCFLAGS += -ffunction-sections -fdata-sections  -fno-exceptions -fno-delete-null-pointer-checks
+GCFLAGS += -flto -flto-partition=max
 GCFLAGS += $(patsubst %,-I%,$(INCDIRS))
 GCFLAGS += $(DEFINES)
 GCFLAGS += $(DEPFLAGS)
@@ -201,8 +244,7 @@ GCFLAGS += -Wall -Wextra -Wno-unused-parameter -fomit-frame-pointer \
 
 ifeq ($(IS_GCC_10_3_OR_LATER),1)
 GCFLAGS += -fanalyzer -floop-unroll-and-jam \
-	-floop-interchange -fstack-clash-protection -mfix-cortex-m3-ldrd \
- 	-ftree-vectorize
+	-floop-interchange -mfix-cortex-m3-ldrd
 endif
 
 
@@ -215,7 +257,13 @@ AS_FLAGS += -g3 $(DEVICE_FLAGS)
 
 # Linker Options.
 LDFLAGS = $(DEVICE_FLAGS) -specs=$(BUILD_DIR)/startfile.spec
-LDFLAGS += -Wl,-Map=$(OUTDIR)/$(PROJECT).map,--cref,--gc-sections,--wrap=_isatty,--wrap=malloc,--wrap=realloc,--wrap=free$(MRI_WRAPS)
+ifeq "$(OS)" "Windows_NT"
+LDFLAGS += -flto
+else
+LDFLAGS += -flto=auto
+endif
+LDFLAGS += -flto-partition=max -Wl,-Map=$(OUTDIR)/$(PROJECT).map,--cref,--gc-sections,--wrap=_isatty,--wrap=malloc,--wrap=realloc,--wrap=free$(MRI_WRAPS)
+
 LDFLAGS += -T$(LSCRIPT)  -L $(EXTERNAL_DIR)/gcc/LPC1768
 #LDFLAGS += -L $(BUILD_DIR) -lM8266WIFI
 ifneq "$(NO_FLOAT_SCANF)" "1"
@@ -335,10 +383,25 @@ $(OUTDIR)/%.o : %.s makefile
 	$(Q) $(MKDIR) $(call convert-slash,$(dir $@)) $(QUIET)
 	$(Q) $(AS) $(AS_FLAGS) -o $@ $<
 
-$(OUTDIR)/configdefault.o : config.default
-	$(Q) $(OBJCOPY) -I binary -O elf32-littlearm -B arm --readonly-text --rename-section .data=.rodata.configdefault $< $@
+# Minify config files before embedding to save flash space.
+# The minifier strips comments, blank lines, and excess whitespace.
+# We write the minified file with the same basename so objcopy generates
+# the expected symbols (_binary_config_default_start/end, etc.).
+# Select the appropriate minify script for the current OS.
+ifeq "$(OS)" "Windows_NT"
+MINIFY = powershell -ExecutionPolicy Bypass -File $(BUILD_DIR)/minify-config.ps1
+else
+MINIFY = $(BUILD_DIR)/minify-config.sh
+endif
 
-$(OUTDIR)/config2default.o : config2.default
-	$(Q) $(OBJCOPY) -I binary -O elf32-littlearm -B arm --readonly-text --rename-section .data=.rodata.config2default $< $@
+$(OUTDIR)/configdefault.o : config.default $(BUILD_DIR)/minify-config.sh $(BUILD_DIR)/minify-config.ps1
+	$(Q) $(MKDIR) $(call convert-slash,$(OUTDIR)/_minified) $(QUIET)
+	$(Q) $(MINIFY) $< $(OUTDIR)/_minified/config.default
+	$(Q) cd $(OUTDIR)/_minified && $(OBJCOPY) -I binary -O elf32-littlearm -B arm --readonly-text --rename-section .data=.rodata.configdefault config.default ../configdefault.o
+
+$(OUTDIR)/config2default.o : config2.default $(BUILD_DIR)/minify-config.sh $(BUILD_DIR)/minify-config.ps1
+	$(Q) $(MKDIR) $(call convert-slash,$(OUTDIR)/_minified) $(QUIET)
+	$(Q) $(MINIFY) $< $(OUTDIR)/_minified/config2.default
+	$(Q) cd $(OUTDIR)/_minified && $(OBJCOPY) -I binary -O elf32-littlearm -B arm --readonly-text --rename-section .data=.rodata.config2default config2.default ../config2default.o
 
 #########################################################################

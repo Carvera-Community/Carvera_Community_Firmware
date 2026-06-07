@@ -48,8 +48,8 @@ void AnalogSpindleControl::on_module_loaded()
     rev_time = 0;
     time_since_update = 0;
 
-    min_rpm = THEKERNEL->config->value(spindle_checksum, spindle_min_rpm_checksum)->by_default(100)->as_int();
-    max_rpm = THEKERNEL->config->value(spindle_checksum, spindle_max_rpm_checksum)->by_default(5000)->as_int();
+    min_rpm = THEKERNEL->config->value(spindle_checksum, spindle_min_rpm_checksum)->as_int(100);
+    max_rpm = THEKERNEL->config->value(spindle_checksum, spindle_max_rpm_checksum)->as_int(5000);
 
     pulses_per_rev = THEKERNEL->config->value(spindle_checksum, spindle_pulses_per_rev_checksum)->as_number(1.0f);
     acc_ratio = THEKERNEL->config->value(spindle_checksum, spindle_acc_ratio_checksum)->as_number(1.0f);
@@ -63,7 +63,7 @@ void AnalogSpindleControl::on_module_loaded()
 
     {
         Pin *smoothie_pin = new Pin();
-        smoothie_pin->from_string(THEKERNEL->config->value(spindle_checksum, spindle_pwm_pin_checksum)->by_default("nc")->as_string());
+        smoothie_pin->from_string(THEKERNEL->config->value(spindle_checksum, spindle_pwm_pin_checksum)->as_string("nc"));
         pwm_pin = smoothie_pin->as_output()->hardware_pwm();
         output_inverted = smoothie_pin->is_inverting();
         delete smoothie_pin;
@@ -75,14 +75,14 @@ void AnalogSpindleControl::on_module_loaded()
         return;
     }
 
-    int period = THEKERNEL->config->value(spindle_checksum, spindle_pwm_period_checksum)->by_default(1000)->as_int();
+    int period = THEKERNEL->config->value(spindle_checksum, spindle_pwm_period_checksum)->as_int(1000);
     THEKERNEL->Spindle_period_us = period;
     pwm_pin->period_us(period);
     pwm_pin->write(output_inverted ? 1 : 0);
 
     {
         Pin *smoothie_pin = new Pin();
-        smoothie_pin->from_string(THEKERNEL->config->value(spindle_checksum, spindle_feedback_pin_checksum)->by_default("nc")->as_string());
+        smoothie_pin->from_string(THEKERNEL->config->value(spindle_checksum, spindle_feedback_pin_checksum)->as_string("nc"));
         feedback_pin = NULL;
         if (smoothie_pin->connected()) {
             smoothie_pin->as_input();

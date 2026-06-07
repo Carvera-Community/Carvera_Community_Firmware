@@ -195,6 +195,8 @@ class Kernel {
         bool is_flex_compensation_active() const { return flex_compensation_active; }
         void set_flex_compensation_load_error(bool f) { flex_compensation_load_error = f; }
         bool is_flex_compensation_load_error() const { return flex_compensation_load_error; }
+        void set_config_load_error(bool f) { config_load_error = f; }
+        bool is_config_load_error() const { return config_load_error; }
 
         void set_probeLaser(bool f) { probeLaserOn = f; }
         bool is_probeLaserOn() const { return probeLaserOn; }
@@ -255,6 +257,11 @@ class Kernel {
         uint16_t probe_addr;
         bool checkled;
         bool spindleon;
+
+        struct {
+            bool slowticker_profiling:1;
+            bool cpu_load:1;
+        } debug_flags;
         float local_vars[20];
         float probe_outputs[6];
         float probe_tip_diameter = 1.6;
@@ -293,6 +300,7 @@ class Kernel {
             bool halt_on_error_debug:1;
             bool flex_compensation_active:1;
             bool flex_compensation_load_error:1;
+            bool config_load_error:1;
         };
         int iic_page_write(unsigned char u8PageNum, unsigned char u8len, unsigned char *pu8Array);
 

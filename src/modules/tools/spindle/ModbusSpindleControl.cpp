@@ -31,15 +31,15 @@ void ModbusSpindleControl::on_module_loaded()
     // preparing PinName objects from the config string
     {
         Pin *smoothie_pin = new Pin();
-        smoothie_pin->from_string(THEKERNEL->config->value(spindle_checksum, spindle_rx_pin_checksum)->by_default("nc")->as_string());
+        smoothie_pin->from_string(THEKERNEL->config->value(spindle_checksum, spindle_rx_pin_checksum)->as_string("nc"));
         smoothie_pin->as_input();
         rx_pin = port_pin((PortName)smoothie_pin->port_number, smoothie_pin->pin);
         
-        smoothie_pin->from_string(THEKERNEL->config->value(spindle_checksum, spindle_tx_pin_checksum)->by_default("nc")->as_string());
+        smoothie_pin->from_string(THEKERNEL->config->value(spindle_checksum, spindle_tx_pin_checksum)->as_string("nc"));
         smoothie_pin->as_input();
         tx_pin = port_pin((PortName)smoothie_pin->port_number, smoothie_pin->pin);
         
-        smoothie_pin->from_string(THEKERNEL->config->value(spindle_checksum, spindle_dir_pin_checksum)->by_default("nc")->as_string());
+        smoothie_pin->from_string(THEKERNEL->config->value(spindle_checksum, spindle_dir_pin_checksum)->as_string("nc"));
         smoothie_pin->as_input();
         dir_pin = port_pin((PortName)smoothie_pin->port_number, smoothie_pin->pin);
 

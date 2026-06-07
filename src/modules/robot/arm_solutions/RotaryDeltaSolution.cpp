@@ -32,29 +32,29 @@ const static float tan30  = 0.57735026918962576450914878050196; //1/sqrt3
 RotaryDeltaSolution::RotaryDeltaSolution(Config *config)
 {
     // End effector length
-    delta_e = config->value(delta_e_checksum)->by_default(131.636F)->as_number();
+    delta_e = config->value(delta_e_checksum)->as_number(131.636F);
 
     // Base length
-    delta_f = config->value(delta_f_checksum)->by_default(190.526F)->as_number();
+    delta_f = config->value(delta_f_checksum)->as_number(190.526F);
 
     // Carbon rod length
-    delta_re = config->value(delta_re_checksum)->by_default(270.000F)->as_number();
+    delta_re = config->value(delta_re_checksum)->as_number(270.000F);
 
     // Servo horn length
-    delta_rf = config->value(delta_rf_checksum)->by_default(90.000F)->as_number();
+    delta_rf = config->value(delta_rf_checksum)->as_number(90.000F);
 
     // Distance from delta 8mm rod/pulley to table/bed,
     // NOTE: For OpenPnP, set the zero to be about 25mm above the bed..
-    delta_z_offset = config->value(delta_z_offset_checksum)->by_default(290.700F)->as_number();
+    delta_z_offset = config->value(delta_z_offset_checksum)->as_number(290.700F);
 
     // Ball joint plane to bottom of end effector surface
-    delta_ee_offs = config->value(delta_ee_offs_checksum)->by_default(15.000F)->as_number();
+    delta_ee_offs = config->value(delta_ee_offs_checksum)->as_number(15.000F);
 
     // Distance between end effector ball joint plane and tip of tool (PnP)
-    tool_offset = config->value(tool_offset_checksum)->by_default(30.500F)->as_number();
+    tool_offset = config->value(tool_offset_checksum)->as_number(30.500F);
 
     // mirror the XY axis
-    mirror_xy= config->value(delta_mirror_xy_checksum)->by_default(true)->as_bool();
+    mirror_xy= config->value(delta_mirror_xy_checksum)->as_bool(true);
 
     debug_flag= false;
     init();

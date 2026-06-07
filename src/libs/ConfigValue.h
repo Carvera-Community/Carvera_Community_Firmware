@@ -10,26 +10,35 @@
 
 #include <string>
 #include <cstdint>
+#include <cstring>
 using std::string;
+
+#define CONFIGVALUE_MAX_LEN 20
 
 class ConfigValue{
     public:
         ConfigValue();
         ConfigValue(uint16_t *check_sums);
-        ConfigValue(const ConfigValue& to_copy);
-        ConfigValue& operator= (const ConfigValue& to_copy);
         void clear();
         ConfigValue* required();
         float as_number();
+        float as_number(float dflt);
         int as_int();
+        int as_int(int dflt);
         bool as_bool();
+        bool as_bool(bool dflt);
         string as_string();
+        string as_string(const string &dflt);
 
-        ConfigValue* by_default(float val);
-        ConfigValue* by_default(string val);
-        ConfigValue* by_default(int val);
         bool is_inverted();
 
+        bool found() const { return this != &dummy; }
+
+        static ConfigValue dummy; // returned by Config::value() when key is not in config
+
+        // Set value from a string, truncating to fit
+        void set_value(const char *s, size_t len);
+        void set_value(const string &s) { set_value(s.c_str(), s.size()); }
 
         friend class ConfigCache;
         friend class Config;
@@ -39,12 +48,8 @@ class ConfigValue{
 
     private:
         bool has_characters( const char* mask );
-        string value;
-        int default_int;
-        float default_double;
+        char value[CONFIGVALUE_MAX_LEN]; // config values are short; avoids per-entry heap alloc
         uint16_t check_sums[3];
-        bool found;
-        bool default_set;
 };
 
 

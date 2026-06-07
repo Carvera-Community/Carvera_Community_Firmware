@@ -18,6 +18,8 @@ using namespace std;
 #include "libs/utils.h"
 #include "libs/SerialMessage.h"
 #include "libs/ConfigSources/FileConfigSource.h"
+
+extern "C" caddr_t _sbrk(int);
 #include "libs/ConfigSources/FirmConfigSource.h"
 #include "StreamOutputPool.h"
 
@@ -75,6 +77,21 @@ void Config::config_cache_load(bool parse)
     this->config_cache_clear();
 
     this->config_cache= new ConfigCache;
+
+    // Verify the malloc heap hasn't already grown into the config cache region.
+    // _sbrk(0) returns the current top of the newlib heap, which is what every
+    // allocation on this platform routes through.
+    const auto heap_top = reinterpret_cast<uintptr_t>(_sbrk(0));
+    const auto cache_start = this->config_cache->start_address();
+    if(heap_top > cache_start) {
+        THEKERNEL->streams->printf("ERROR: not enough memory to load config cache "
+            "(heap=0x%x, cache=0x%x)\n", heap_top, cache_start);
+        THEKERNEL->set_config_load_error(true);
+        delete this->config_cache;
+        this->config_cache = NULL;
+        return;
+    }
+
     if(parse) {
         // For each ConfigSource in our stack
         for( ConfigSource *source : this->config_sources ) {
@@ -86,8 +103,20 @@ void Config::config_cache_load(bool parse)
 // Command to clear the config cache after init
 void Config::config_cache_clear()
 {
-    delete this->config_cache;
-    this->config_cache= NULL;
+    if(this->config_cache != NULL) {
+        // Verify the heap didn't grow into the config cache region
+        const auto heap_top = reinterpret_cast<uintptr_t>(_sbrk(0));
+        const auto cache_start = this->config_cache->start_address();
+        if(heap_top > cache_start) {
+            THEKERNEL->streams->printf("FATAL: heap collided with config cache "
+                "(heap=0x%x, cache=0x%x)\n", heap_top, cache_start);
+            system_reset(false);
+        }
+
+        this->config_cache->clear();
+        delete this->config_cache;  // frees the small ConfigCache object itself
+        this->config_cache = NULL;
+    }
 }
 
 // Three ways to read a value from the config, depending on adress length
@@ -100,27 +129,27 @@ ConfigValue *Config::value(uint16_t check_sum_a, uint16_t check_sum_b, uint16_t 
     return this->value(check_sums);
 }
 
-static ConfigValue dummyValue;
-
 // Get a value from the configuration as a string
 // Because we don't like to waste space in Flash with lengthy config parameter names, we take a checksum instead so that the name does not have to be stored
 // See get_checksum
 ConfigValue *Config::value(uint16_t check_sums[])
 {
     if( !is_config_cache_loaded() ) {
-        THEKERNEL->streams->printf("ERROR: calling value after config cache has been cleared\n");
-        // note this will cause whatever called it to blow up!
-        return NULL;
+        // Cache is unavailable (either failed to load due to heap collision,
+        // or value() was called after config_cache_clear()). Surface the
+        // condition and return the dummy so callers fall back to defaults
+        // instead of dereferencing NULL.
+        THEKERNEL->streams->printf("ERROR: config cache is not loaded\n");
+        THEKERNEL->set_config_load_error(true);
+        ConfigValue::dummy.clear();
+        return &ConfigValue::dummy;
     }
 
     ConfigValue *result = this->config_cache->lookup(check_sums);
 
     if(result == NULL) {
-        // create a dummy value for this to play with, each call requires it's own value not a shared one
-        // result= new ConfigValue(check_sums);
-        // config_cache->add(result);
-        dummyValue.clear();
-        result = &dummyValue;
+        ConfigValue::dummy.clear();
+        result = &ConfigValue::dummy;
     }
 
     return result;

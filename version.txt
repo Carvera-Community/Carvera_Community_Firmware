@@ -1,5 +1,11 @@
 [unreleased]
 - Enhancement: AnalogSpindleControl now supports optional RPM feedback and Alarm pin functionality, same as PWMSpindleControl. Same configuration keys (spindle.feedback_pin, spindle.pulses_per_rev, spindle.acc_ratio, and spindle.control_smoothing, spindle.alarm_pin)
+- Enhancement: Suspend/resume saves spindle state, stops the spindle on pause, and restores speed only if it was running. This functionality is enabled by default, but can be disabled via config key spindle_suspend_restore_enable.
+- Enhancement: `debugmode` shell command to turn on/off firmware diagnostic tools that are continiously running 
+- Enhancement: Added `debugmode slowticker` to output SlowTicker ISR duration stats once per second to console
+- Enhancement: Added `debugmode cpuload` to output the % of time spent not in on_idle once per second to console
+- Enhancement: Added improved PID Spindle control that increases performance of carvera C1 spindles. Setup requires following the guide on the documentation page
+- Fixed: Prevent incorrect current line reporting after a tool change
 
 [2.1.0c]
 - Fixed: Unused Variables removed

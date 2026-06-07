@@ -68,12 +68,12 @@ void TemperatureSwitch::on_module_loaded()
 TemperatureSwitch* TemperatureSwitch::load_config(uint16_t modcs)
 {
     // see if enabled
-    if (!THEKERNEL->config->value(temperatureswitch_checksum, modcs, enable_checksum)->by_default(false)->as_bool()) {
+    if (!THEKERNEL->config->value(temperatureswitch_checksum, modcs, enable_checksum)->as_bool(false)) {
         return nullptr;
     }
 
     // load settings from config file
-    string switchname = THEKERNEL->config->value(temperatureswitch_checksum, modcs, temperatureswitch_switch_checksum)->by_default("")->as_string();
+    string switchname = THEKERNEL->config->value(temperatureswitch_checksum, modcs, temperatureswitch_switch_checksum)->as_string("");
     if(switchname.empty()) {
 		// no switch specified so invalid entry
 		THEKERNEL->streams->printf("WARNING TEMPERATURESWITCH: no switch specified\n");
@@ -85,11 +85,11 @@ TemperatureSwitch* TemperatureSwitch::load_config(uint16_t modcs)
 
     ts->temperatureswitch_switch_cs= get_checksum(switchname); // checksum of the switch to use
 
-    ts->temperatureswitch_threshold_temp = THEKERNEL->config->value(temperatureswitch_checksum, modcs, temperatureswitch_threshold_temp_checksum)->by_default(35.0f)->as_number();
-    ts->temperatureswitch_cooldown_power_init = THEKERNEL->config->value(temperatureswitch_checksum, modcs, temperatureswitch_cooldown_power_init_checksum)->by_default(50.0f)->as_number();
-    ts->temperatureswitch_cooldown_power_step = THEKERNEL->config->value(temperatureswitch_checksum, modcs, temperatureswitch_cooldown_power_step_checksum)->by_default(10.0f)->as_number();
-    ts->temperatureswitch_cooldown_power_laser = THEKERNEL->config->value(temperatureswitch_checksum, modcs, temperatureswitch_cooldown_power_laser_checksum)->by_default(80.0f)->as_number();
-    ts->temperatureswitch_cooldown_delay = THEKERNEL->config->value(temperatureswitch_checksum, modcs, temperatureswitch_cooldown_delay_checksum)->by_default(180)->as_number();
+    ts->temperatureswitch_threshold_temp = THEKERNEL->config->value(temperatureswitch_checksum, modcs, temperatureswitch_threshold_temp_checksum)->as_number(35.0f);
+    ts->temperatureswitch_cooldown_power_init = THEKERNEL->config->value(temperatureswitch_checksum, modcs, temperatureswitch_cooldown_power_init_checksum)->as_number(50.0f);
+    ts->temperatureswitch_cooldown_power_step = THEKERNEL->config->value(temperatureswitch_checksum, modcs, temperatureswitch_cooldown_power_step_checksum)->as_number(10.0f);
+    ts->temperatureswitch_cooldown_power_laser = THEKERNEL->config->value(temperatureswitch_checksum, modcs, temperatureswitch_cooldown_power_laser_checksum)->as_number(80.0f);
+    ts->temperatureswitch_cooldown_delay = THEKERNEL->config->value(temperatureswitch_checksum, modcs, temperatureswitch_cooldown_delay_checksum)->as_number(180);
 
     // set initial state
     ts->cooldown_delay_counter = -1;
