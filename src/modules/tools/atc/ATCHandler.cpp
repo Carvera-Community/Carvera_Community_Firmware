@@ -815,6 +815,20 @@ void ATCHandler::calibrate_a_axis_cor(Gcode *gcode) //M469.6
 		return;
 	}
 
+	if (!((this->active_tool == 0) || (this->active_tool >= 999990))) {
+		THEKERNEL->streams->printf("ALARM: Attempted to probe with an improper tool. A 3-axis probe must be installed (tool 0 or tool >= 999990).\n");
+		THEKERNEL->call_event(ON_HALT, nullptr);
+		THEKERNEL->set_halt_reason(PROBE_FAIL);
+		return;
+	}
+
+	if (THEROBOT->get_tool_not_calibrated()) {
+		THEKERNEL->streams->printf("ALARM: Probe not calibrated. Please calibrate the probe TLO before running M469.6.\n");
+		THEKERNEL->call_event(ON_HALT, nullptr);
+		THEKERNEL->set_halt_reason(PROBE_FAIL);
+		return;
+	}
+
 	bool invert_probe = false;
 	if (gcode->has_letter('I') && gcode->get_value('I')) {
 		invert_probe = true;
