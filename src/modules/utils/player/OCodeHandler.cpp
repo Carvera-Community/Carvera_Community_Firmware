@@ -1,5 +1,6 @@
 #include "OCodeHandler.h"
 
+#include "libs/FirmwareFileSystem.h"
 #include "libs/StreamOutput.h"
 #include "libs/StreamOutputPool.h"
 #include "libs/Kernel.h"
@@ -8,7 +9,6 @@
 
 #include <string.h>
 #include <ctype.h>
-#include <stdio.h>
 #include <stdarg.h>
 #include <math.h>
 
@@ -41,13 +41,13 @@ void OCodeHandler::pre_scan(FILE* fh, StreamOutput* stream)
     pre_scanned_ = true;
     if(!fh) return;
 
-    long saved = ftell(fh);
-    fseek(fh, 0, SEEK_SET);
+    long saved = fwfs::ftell(fh);
+    fwfs::fseek(fh, 0, SEEK_SET);
     sub_table_.clear();
 
     char buf[130];
     int line_num = 0;
-    while(fgets(buf, sizeof(buf), fh) != NULL) {
+    while(fwfs::fgets(buf, sizeof(buf), fh) != NULL) {
         // Keep the system responsive (and the watchdog fed) while scanning a
         // large file. This runs before playback motion starts, so yielding here
         // is safe; it must never happen mid-cut.
@@ -65,7 +65,7 @@ void OCodeHandler::pre_scan(FILE* fh, StreamOutput* stream)
                     // jump straight into the body instead of re-reading the sub line
                     // (which the definition path would otherwise skip).
                     SubEntry entry;
-                    entry.offset = ftell(fh);
+                    entry.offset = fwfs::ftell(fh);
                     entry.line   = line_num + 1;
                     sub_table_[n] = entry;
                 }
@@ -73,7 +73,7 @@ void OCodeHandler::pre_scan(FILE* fh, StreamOutput* stream)
         }
     }
 
-    fseek(fh, saved, SEEK_SET);
+    fwfs::fseek(fh, saved, SEEK_SET);
 
     if(!sub_table_.empty()) {
         stream->printf("O-code: pre-scan found %d subroutine(s)\n", (int)sub_table_.size());
@@ -207,7 +207,7 @@ bool OCodeHandler::skip_to(FILE* fh,
     int do_nums[OCODE_MAX_STACK_DEPTH];
     int do_count = 0;
     char buf[130];
-    while(fgets(buf, sizeof(buf), fh) != NULL) {
+    while(fwfs::fgets(buf, sizeof(buf), fh) != NULL) {
         // Skipping a large block happens synchronously within a single main-loop
         // tick, so feed the watchdog (and let other ON_IDLE work run) periodically.
         lines_read++;
@@ -288,7 +288,7 @@ bool OCodeHandler::process_line(const char* line, FILE* fh, StreamOutput* stream
                 file_line = (unsigned long)stack_[i].jump_line - 1;
                 long ret = stack_[i].return_offset;
                 stack_.resize(i);
-                fseek(fh, ret, SEEK_SET);
+                fwfs::fseek(fh, ret, SEEK_SET);
                 return true;
             }
         }
@@ -317,7 +317,7 @@ bool OCodeHandler::process_line(const char* line, FILE* fh, StreamOutput* stream
         frame.executing     = true;
         frame.branch_taken  = false;
         frame.repeat_count  = 0;
-        frame.return_offset = ftell(fh);
+        frame.return_offset = fwfs::ftell(fh);
         frame.jump_line     = (int)file_line + 1;
 
         for(int p = 0; p < 30; p++)
@@ -338,7 +338,7 @@ bool OCodeHandler::process_line(const char* line, FILE* fh, StreamOutput* stream
         tolerant_after_jump_ = false;
         stack_.push_back(frame);
         file_line = (unsigned long)it->second.line - 1;
-        fseek(fh, it->second.offset, SEEK_SET);
+        fwfs::fseek(fh, it->second.offset, SEEK_SET);
         return true;
     }
 
@@ -424,7 +424,7 @@ bool OCodeHandler::process_line(const char* line, FILE* fh, StreamOutput* stream
                     bool cond = (val != 0.0f && !isnan(val));
                     if(cond) {
                         file_line = (unsigned long)stack_[i].jump_line - 1;
-                        fseek(fh, stack_[i].loop_offset, SEEK_SET);
+                        fwfs::fseek(fh, stack_[i].loop_offset, SEEK_SET);
                     } else
                         stack_.erase(stack_.begin() + i);
                 } else {
@@ -441,7 +441,7 @@ bool OCodeHandler::process_line(const char* line, FILE* fh, StreamOutput* stream
         }
 
         // Store the byte offset of this "while" line so we can re-evaluate on endwhile.
-        long while_offset = ftell(fh) - (long)strlen(line);
+        long while_offset = fwfs::ftell(fh) - (long)strlen(line);
 
         Frame frame;
         frame.num           = num;
@@ -480,7 +480,7 @@ bool OCodeHandler::process_line(const char* line, FILE* fh, StreamOutput* stream
                     // Seek back to the while line so it is re-evaluated next tick.
                     // Pop the frame; the while handler will re-push it when re-entered.
                     file_line = (unsigned long)stack_[i].jump_line - 1;
-                    fseek(fh, stack_[i].loop_offset, SEEK_SET);
+                    fwfs::fseek(fh, stack_[i].loop_offset, SEEK_SET);
                 }
                 stack_.erase(stack_.begin() + i);
                 return true;
@@ -500,7 +500,7 @@ bool OCodeHandler::process_line(const char* line, FILE* fh, StreamOutput* stream
         Frame frame;
         frame.num           = num;
         frame.type          = BlockType::DO;
-        frame.loop_offset   = ftell(fh); // first line of body
+        frame.loop_offset   = fwfs::ftell(fh); // first line of body
         frame.executing     = !any_frame_skipping();
         frame.branch_taken  = false;
         frame.repeat_count  = 0;
@@ -527,7 +527,7 @@ bool OCodeHandler::process_line(const char* line, FILE* fh, StreamOutput* stream
         Frame frame;
         frame.num           = num;
         frame.type          = BlockType::REPEAT;
-        frame.loop_offset   = ftell(fh); // first line of body
+        frame.loop_offset   = fwfs::ftell(fh); // first line of body
         frame.repeat_count  = count;
         frame.return_offset = 0;
         frame.branch_taken  = false;
@@ -556,7 +556,7 @@ bool OCodeHandler::process_line(const char* line, FILE* fh, StreamOutput* stream
                     stack_[i].repeat_count--;
                     if(stack_[i].repeat_count > 0) {
                         file_line = (unsigned long)stack_[i].jump_line - 1;
-                        fseek(fh, stack_[i].loop_offset, SEEK_SET);
+                        fwfs::fseek(fh, stack_[i].loop_offset, SEEK_SET);
                     } else {
                         stack_.erase(stack_.begin() + i);
                     }
@@ -617,7 +617,7 @@ bool OCodeHandler::process_line(const char* line, FILE* fh, StreamOutput* stream
         if(loop_type == BlockType::WHILE) {
             stack_.resize(idx); // also drop the while frame; it re-pushes on re-entry
             file_line = (unsigned long)jump_line - 1;
-            fseek(fh, loop_offset, SEEK_SET);
+            fwfs::fseek(fh, loop_offset, SEEK_SET);
         } else if(loop_type == BlockType::DO) {
             stack_.resize(idx + 1); // keep the do frame, drop inner frames
             string matched;
@@ -630,7 +630,7 @@ bool OCodeHandler::process_line(const char* line, FILE* fh, StreamOutput* stream
             bool cond = (val != 0.0f && !isnan(val));
             if(cond) {
                 file_line = (unsigned long)jump_line - 1;
-                fseek(fh, loop_offset, SEEK_SET);
+                fwfs::fseek(fh, loop_offset, SEEK_SET);
             } else {
                 stack_.erase(stack_.begin() + idx);
             }
@@ -639,7 +639,7 @@ bool OCodeHandler::process_line(const char* line, FILE* fh, StreamOutput* stream
             stack_[idx].repeat_count--;
             if(stack_[idx].repeat_count > 0) {
                 file_line = (unsigned long)jump_line - 1;
-                fseek(fh, loop_offset, SEEK_SET);
+                fwfs::fseek(fh, loop_offset, SEEK_SET);
             } else {
                 string matched;
                 int lines_read = 0;
