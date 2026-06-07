@@ -198,10 +198,14 @@ bool OCodeHandler::skip_to(FILE* fh,
                             const string& close_kw,
                             string& matched,
                             int& lines_read,
-                            int target_num) const
+                            int target_num,
+                            string* matched_rest) const
 {
     int depth = 0;
     lines_read = 0;
+    const bool track_do = (open_kw == "while");
+    int do_nums[OCODE_MAX_STACK_DEPTH];
+    int do_count = 0;
     char buf[130];
     while(fgets(buf, sizeof(buf), fh) != NULL) {
         // Skipping a large block happens synchronously within a single main-loop
@@ -213,12 +217,33 @@ bool OCodeHandler::skip_to(FILE* fh,
         string kw, rest;
         if(!parse_ocode(buf, n, kw, rest)) continue;
 
-        if(kw == open_kw) { depth++; continue; }
+        if(track_do && kw == "do") {
+            if(do_count < OCODE_MAX_STACK_DEPTH)
+                do_nums[do_count++] = n;
+            continue;
+        }
+
+        if(kw == open_kw) {
+            bool is_do_close = false;
+            if(track_do) {
+                for(int i = do_count - 1; i >= 0; i--) {
+                    if(do_nums[i] == n) {
+                        do_nums[i] = do_nums[--do_count];
+                        is_do_close = true;
+                        break;
+                    }
+                }
+            }
+            if(!is_do_close)
+                depth++;
+            continue;
+        }
 
         if(kw == close_kw) {
             if(depth == 0) {
                 if(target_num < 0 || n == target_num) {
                     matched = kw;
+                    if(matched_rest) *matched_rest = rest;
                     return true;
                 }
                 continue;
@@ -595,8 +620,20 @@ bool OCodeHandler::process_line(const char* line, FILE* fh, StreamOutput* stream
             fseek(fh, loop_offset, SEEK_SET);
         } else if(loop_type == BlockType::DO) {
             stack_.resize(idx + 1); // keep the do frame, drop inner frames
-            file_line = (unsigned long)jump_line - 1;
-            fseek(fh, loop_offset, SEEK_SET);
+            string matched;
+            string condition;
+            int lines_read = 0;
+            if(!skip_to(fh, "do", "while", matched, lines_read, num, &condition))
+                halt_error(stream, "O%d continue: could not find end of do-while", num);
+            file_line += lines_read;
+            float val = eval_expr(condition.c_str(), stream);
+            bool cond = (val != 0.0f && !isnan(val));
+            if(cond) {
+                file_line = (unsigned long)jump_line - 1;
+                fseek(fh, loop_offset, SEEK_SET);
+            } else {
+                stack_.erase(stack_.begin() + idx);
+            }
         } else { // REPEAT
             stack_.resize(idx + 1); // keep the repeat frame, drop inner frames
             stack_[idx].repeat_count--;

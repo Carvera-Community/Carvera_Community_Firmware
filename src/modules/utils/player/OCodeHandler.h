@@ -107,7 +107,8 @@ class OCodeHandler {
         // open_kw increments depth; close_kw decrements / matches. Leaves the file
         // pointer just past the matched line. matched receives the keyword that hit.
         // When target_num >= 0, only the close_kw at depth 0 with that O-number matches.
-        bool skip_to(FILE* fh, const std::string& open_kw, const std::string& close_kw, std::string& matched, int& lines_read, int target_num = -1) const;
+        // When matched_rest is non-null, it receives the expression text after the keyword.
+        bool skip_to(FILE* fh, const std::string& open_kw, const std::string& close_kw, std::string& matched, int& lines_read, int target_num = -1, std::string* matched_rest = NULL) const;
 
         void halt_error(StreamOutput* stream, const char* fmt, ...) const;
         void warn(StreamOutput* stream, const char* fmt, ...) const;

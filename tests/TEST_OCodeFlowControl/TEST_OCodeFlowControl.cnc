@@ -328,4 +328,54 @@ O970 while [#101 le 3]
   #101 = [#101 + 1]
 O970 endwhile
 
+; --- false while with inner do-while (skip_to depth) ---
+
+M118 while false with inner do-while: should print 0 after
+#101 = 10
+O1000 while [#101 lt 5]
+  O1001 do
+    M118.1 P999
+    #101 = [#101 + 1]
+  O1001 while [#101 lt 3]
+O1000 endwhile
+M118.1 P0
+
+M118 while false with do-while and nested while: should print 0 after
+#101 = 10
+O1010 while [#101 lt 5]
+  O1011 do
+    O1012 while [1]
+      M118.1 P999
+    O1012 endwhile
+  O1011 while [1]
+O1010 endwhile
+M118.1 P0
+
+; --- continue in do-while re-evaluates condition ---
+
+M118 continue in do-while checks condition: should print 2, 4
+#101 = 0
+O1020 do
+  #101 = [#101 + 1]
+  O1021 if [[#101 mod 2] eq 1]
+    O1020 continue
+  O1021 endif
+  M118.1 P#101
+O1020 while [#101 lt 5]
+
+; --- break from while containing do-while ---
+
+M118 break from while with inner do-while: should print 1, 2
+#101 = 1
+O1030 while [#101 le 5]
+  O1031 do
+    #102 = 1
+  O1031 while [0]
+  O1032 if [#101 ge 3]
+    O1030 break
+  O1032 endif
+  M118.1 P#101
+  #101 = [#101 + 1]
+O1030 endwhile
+
 M2
