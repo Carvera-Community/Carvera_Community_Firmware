@@ -150,6 +150,19 @@ void Player::on_second_tick(void *)
     if(this->playing_file) this->elapsed_secs++;
 }
 
+bool Player::prepare_ocode_prescan(StreamOutput* stream, const char* fail_msg)
+{
+    this->ocode_handler.reset();
+    this->ocode_handler.pre_scan(this->current_file_handler, stream);
+    if(this->ocode_handler.pre_scan_failed()) {
+        stream->printf("%s\r\n", fail_msg);
+        fclose(this->current_file_handler);
+        this->current_file_handler = NULL;
+        return false;
+    }
+    return true;
+}
+
 void Player::select_file(string argument)
 {
 
@@ -194,15 +207,7 @@ void Player::select_file(string argument)
         }
         THEKERNEL->streams->printf("File opened:%s Size:%ld\r\n", this->filename.c_str(), this->file_size);
 
-        // Build the O-code subroutine table now, while the file is selected but
-        // not yet playing. Doing it here (before any motion) means a call never
-        // triggers a file scan mid-cut, which could starve the motion planner.
-        this->ocode_handler.reset();
-        this->ocode_handler.pre_scan(this->current_file_handler, THEKERNEL->streams);
-        if(this->ocode_handler.pre_scan_failed()) {
-            THEKERNEL->streams->printf("File rejected: O-code pre-scan failed\r\n");
-            fclose(this->current_file_handler);
-            this->current_file_handler = NULL;
+        if(!this->prepare_ocode_prescan(THEKERNEL->streams, "File rejected: O-code pre-scan failed")) {
             return;
         }
         THEKERNEL->streams->printf("File selected\r\n");
@@ -357,9 +362,11 @@ void Player::on_gcode_received(void *argument)
                     if(this->current_file_handler == NULL) {
                         gcode->stream->printf("file.open failed: %s\r\n", currentfn.c_str());
                     } else {
-                        this->filename = currentfn;
-                        this->file_size = old_size;
                         this->current_stream = nullptr;
+                        if(this->prepare_ocode_prescan(gcode->stream, "Reset failed: O-code pre-scan failed")) {
+                            this->filename = currentfn;
+                            this->file_size = old_size;
+                        }
                     }
                 }
             } else {
@@ -589,16 +596,7 @@ void Player::play_command( string parameters, StreamOutput *stream )
         return;
     }
 
-    // Build the O-code subroutine table before playback starts so that a
-    // subroutine call never triggers a file scan mid-cut. This mirrors what
-    // select_file() does; play_command() may be invoked without a prior
-    // select_file() call, so the scan must happen here too.
-    this->ocode_handler.reset();
-    this->ocode_handler.pre_scan(this->current_file_handler, stream);
-    if(this->ocode_handler.pre_scan_failed()) {
-        stream->printf("Playback aborted: O-code pre-scan failed\r\n");
-        fclose(this->current_file_handler);
-        this->current_file_handler = NULL;
+    if(!this->prepare_ocode_prescan(stream, "Playback aborted: O-code pre-scan failed")) {
         return;
     }
 
