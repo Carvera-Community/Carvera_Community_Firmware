@@ -5,8 +5,8 @@
       You should have received a copy of the GNU General Public License along with Smoothie. If not, see <http://www.gnu.org/licenses/>.
 */
 
-#ifndef SERIALCONSOLE_H
-#define SERIALCONSOLE_H
+#ifndef SERIALCONSOLE2_H
+#define SERIALCONSOLE2_H
 
 #include "libs/Module.h"
 #include "Serial.h" // mbed.h lib

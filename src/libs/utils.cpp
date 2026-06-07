@@ -6,6 +6,7 @@
 */
 
 #include "libs/Kernel.h"
+#include "libs/FirmwareFileSystem.h"
 #include "libs/utils.h"
 #include "system_LPC17xx.h"
 #include "LPC17xx.h"
@@ -225,11 +226,11 @@ string get_arguments( const string& possible_command )
 bool file_exists( const string file_name )
 {
     bool exists = false;
-    FILE *lp = fopen(file_name.c_str(), "r");
+    FILE *lp = fwfs::fopen(file_name.c_str(), "r");
     if(lp) {
         exists = true;
     }
-    fclose(lp);
+    fwfs::fclose(lp);
     return exists;
 }
 
@@ -286,20 +287,20 @@ std::string change_to_md5_path( std::string origin )
 	unsigned found = origin.find("gcodes/");
 	string filename = origin.substr(found + 7);
 	string path = "/sd/gcodes";
-	DIR * d = opendir(path.c_str());
+	DIR * d = fwfs::opendir(path.c_str());
 	if(NULL == d )
 	{
-		mkdir(path.c_str(), 0);
+		fwfs::mkdir(path.c_str(), 0);
 	}
 	else
 	{
 		closedir(d);	
 	}
 	path = "/sd/gcodes/.md5";
-	d = opendir(path.c_str());
+	d = fwfs::opendir(path.c_str());
 	if(NULL == d )
 	{
-		mkdir(path.c_str(), 0);
+		fwfs::mkdir(path.c_str(), 0);
 	}
 	else
 	{
@@ -315,10 +316,10 @@ std::string change_to_lz_path( std::string origin )
 	unsigned found = origin.find("gcodes/");
 	string filename = origin.substr(found + 7);	
 	string path = "/sd/gcodes/.lz";
-	DIR * d = opendir(path.c_str());
+	DIR * d = fwfs::opendir(path.c_str());
 	if(NULL == d )
 	{
-		mkdir(path.c_str(), 0);
+		fwfs::mkdir(path.c_str(), 0);
 	}
 	else
 	{
@@ -341,7 +342,7 @@ void check_and_make_path( std::string origin )
     while ((pos = origin.find_first_of('/', pos)) != std::string::npos) {
         dir = origin.substr(0, pos++);
         if (dir.empty()) continue;  // Skip leading '/'
-        mkdir(dir.c_str(),0);
+        fwfs::mkdir(dir.c_str(),0);
     }
 }
 
