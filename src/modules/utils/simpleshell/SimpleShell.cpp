@@ -7,6 +7,7 @@
 
 
 #include "SimpleShell.h"
+#include "libs/FirmwareFileSystem.h"
 
 #include "rtc_time.h"
 #include "../mainbutton/MainButtonPublicAccess.h"
@@ -73,7 +74,7 @@ extern unsigned char xbuff[8200];
 
 extern "C" uint32_t  __end__;
 extern "C" uint32_t  __malloc_free_list;
-extern "C" uint32_t  _sbrk(int size);
+extern "C" void*     _sbrk(int size);
 
 // support upload file type definition
 #define FILETYPE	"lz"		//compressed by quicklz
@@ -140,16 +141,16 @@ static uint32_t heapWalk(StreamOutput *stream, bool verbose)
 {
     uint32_t chunkNumber = 1;
     // The __end__ linker symbol points to the beginning of the heap.
-    uint32_t chunkCurr = (uint32_t)&__end__;
+    uintptr_t chunkCurr = reinterpret_cast<uintptr_t>(&__end__);
     // __malloc_free_list is the head pointer to newlib-nano's link list of free chunks.
-    uint32_t freeCurr = __malloc_free_list;
+    uintptr_t freeCurr = __malloc_free_list;
     // Calling _sbrk() with 0 reserves no more memory but it returns the current top of heap.
-    uint32_t heapEnd = _sbrk(0);
+    uintptr_t heapEnd = reinterpret_cast<uintptr_t>(_sbrk(0));
     // accumulate totals
     uint32_t freeSize = 0;
     uint32_t usedSize = 0;
 
-    stream->printf("Used Heap Size: %lu\n", heapEnd - chunkCurr);
+    stream->printf("Used Heap Size: %lu\n", static_cast<unsigned long>(heapEnd - chunkCurr));
 
     // Walk through the chunks until we hit the end of the heap.
     while (chunkCurr < heapEnd) {
@@ -157,9 +158,9 @@ static uint32_t heapWalk(StreamOutput *stream, bool verbose)
         int      isChunkFree = 0;
         // The first 32-bit word in a chunk is the size of the allocation.  newlib-nano over allocates by 8 bytes.
         // 4 bytes for this 32-bit chunk size and another 4 bytes to allow for 8 byte-alignment of returned pointer.
-        uint32_t chunkSize = *(uint32_t *)chunkCurr;
+        uint32_t chunkSize = *reinterpret_cast<uint32_t *>(chunkCurr);
         // The start of the next chunk is right after the end of this one.
-        uint32_t chunkNext = chunkCurr + chunkSize;
+        uintptr_t chunkNext = chunkCurr + chunkSize;
 
         // The free list is sorted by address.
         // Check to see if we have found the next free chunk in the heap.
@@ -167,7 +168,7 @@ static uint32_t heapWalk(StreamOutput *stream, bool verbose)
             // Chunk is free so flag it as such.
             isChunkFree = 1;
             // The second 32-bit word in a free chunk is a pointer to the next free chunk (again sorted by address).
-            freeCurr = *(uint32_t *)(freeCurr + 4);
+            freeCurr = *reinterpret_cast<uint32_t *>(freeCurr + 4);
         }
 
         // Skip past the 32-bit size field in the chunk header.
@@ -178,7 +179,9 @@ static uint32_t heapWalk(StreamOutput *stream, bool verbose)
         // byte-alignment of the returned pointer.
         chunkSize -= 8;
         if (verbose)
-            stream->printf("  Chunk: %lu  Address: 0x%08lX  Size: %lu  %s\n", chunkNumber, chunkCurr, chunkSize, isChunkFree ? "CHUNK FREE" : "");
+            stream->printf("  Chunk: %lu  Address: 0x%08lX  Size: %lu  %s\n",
+                           static_cast<unsigned long>(chunkNumber), static_cast<unsigned long>(chunkCurr),
+                           static_cast<unsigned long>(chunkSize), isChunkFree ? "CHUNK FREE" : "");
 
         if (isChunkFree) freeSize += chunkSize;
         else usedSize += chunkSize;
@@ -186,7 +189,8 @@ static uint32_t heapWalk(StreamOutput *stream, bool verbose)
         chunkCurr = chunkNext;
         chunkNumber++;
     }
-    stream->printf("Allocated: %lu, Free: %lu\r\n", usedSize, freeSize);
+    stream->printf("Allocated: %lu, Free: %lu\r\n", static_cast<unsigned long>(usedSize),
+                   static_cast<unsigned long>(freeSize));
     return freeSize;
 }
 
@@ -447,7 +451,7 @@ void SimpleShell::ls_command( string parameters, StreamOutput *stream )
     struct tm timeinfo;
     char dirTmp[256]; 
     unsigned int npos=0;
-    d = opendir(path.c_str());
+    d = fwfs::opendir(path.c_str());
     if (d != NULL) {
         while ((p = readdir(d)) != NULL) {
         	if (p->d_name[0] == '.') {
@@ -514,7 +518,7 @@ void SimpleShell::rm_command( string parameters, StreamOutput *stream )
     }
 
     string toRemove = absolute_from_relative(path);
-    int s = remove(toRemove.c_str());
+    int s = fwfs::remove(toRemove.c_str());
     if (s != 0) {
         if(send_eof) {
             stream->_putc(CAN);
@@ -522,7 +526,7 @@ void SimpleShell::rm_command( string parameters, StreamOutput *stream )
     	stream->printf("Could not delete %s \r\n", toRemove.c_str());
     } else {
     	string str_md5 = absolute_from_relative(md5_path);
-    	s = remove(str_md5.c_str());
+    	s = fwfs::remove(str_md5.c_str());
 /*
 		if (s != 0) {
 			if(send_eof) {
@@ -532,7 +536,7 @@ void SimpleShell::rm_command( string parameters, StreamOutput *stream )
 		} 
 		else {
 			string str_lz = absolute_from_relative(lz_path);
-			s = remove(str_lz.c_str());
+			s = fwfs::remove(str_lz.c_str());
 			if (s != 0){
 				if(send_eof) {
 					stream->_putc(CAN);
@@ -547,7 +551,7 @@ void SimpleShell::rm_command( string parameters, StreamOutput *stream )
 			}
     	}*/
     	string str_lz = absolute_from_relative(lz_path);
-		s = remove(str_lz.c_str());
+		s = fwfs::remove(str_lz.c_str());
 		if(send_eof) {
             stream->_putc(EOT);
     	}
@@ -567,14 +571,14 @@ void SimpleShell::mv_command( string parameters, StreamOutput *stream )
     if(!parameters.empty() && shift_parameter(parameters) == "-e") {
     	send_eof = true;
     }
-    int s = rename(from.c_str(), to.c_str());
+    int s = fwfs::rename(from.c_str(), to.c_str());
     if (s != 0)  {
     	if (send_eof) {
     		stream->_putc(CAN);
     	}
     	stream->printf("Could not rename %s to %s\r\n", from.c_str(), to.c_str());
     } else  {
-    	s = rename(md5_from.c_str(), md5_to.c_str());
+    	s = fwfs::rename(md5_from.c_str(), md5_to.c_str());
 /*        if (s != 0)  {
         	if (send_eof) {
         		stream->_putc(CAN);
@@ -582,7 +586,7 @@ void SimpleShell::mv_command( string parameters, StreamOutput *stream )
         	stream->printf("Could not rename %s to %s\r\n", md5_from.c_str(), md5_to.c_str());
         }
         else {
-        	s = rename(lz_from.c_str(), lz_to.c_str());
+        	s = fwfs::rename(lz_from.c_str(), lz_to.c_str());
         	if (s != 0)  {
 	        	if (send_eof) {
 	        		stream->_putc(CAN);
@@ -596,7 +600,7 @@ void SimpleShell::mv_command( string parameters, StreamOutput *stream )
 				stream->printf("renamed %s to %s\r\n", from.c_str(), to.c_str());
         	}
         }*/
-        s = rename(lz_from.c_str(), lz_to.c_str());
+        s = fwfs::rename(lz_from.c_str(), lz_to.c_str());
         if (send_eof) {
 			stream->_putc(EOT);
 		}
@@ -614,21 +618,21 @@ void SimpleShell::mkdir_command( string parameters, StreamOutput *stream )
     if(!parameters.empty() && shift_parameter(parameters) == "-e") {
     	send_eof = true;
     }
-    int result = mkdir(path.c_str(), 0);
+    int result = fwfs::mkdir(path.c_str(), 0);
     if (result != 0) {
     	if (send_eof) {
     		stream->_putc(CAN); // ^Z terminates error
     	}
     	stream->printf("could not create directory %s\r\n", path.c_str());
     } else {
-    	result = mkdir(md5_path.c_str(), 0);
+    	result = fwfs::mkdir(md5_path.c_str(), 0);
 /*        if (result != 0) {
         	if (send_eof) {
         		stream->_putc(CAN); // ^Z terminates error
         	}
         	stream->printf("could not create md5 directory %s\r\n", md5_path.c_str());
         } 
-        else if (mkdir(lz_path.c_str(), 0) != 0) {
+        else if (fwfs::mkdir(lz_path.c_str(), 0) != 0) {
         	if (send_eof) {
         		stream->_putc(CAN); // ^Z terminates error
         	}
@@ -641,7 +645,7 @@ void SimpleShell::mkdir_command( string parameters, StreamOutput *stream )
         	stream->printf("created directory %s\r\n", path.c_str());
         }
 */
-		mkdir(lz_path.c_str(), 0);
+		fwfs::mkdir(lz_path.c_str(), 0);
 		if (send_eof) {
             	stream->_putc(EOT); // ^D terminates the upload
         	}
@@ -656,7 +660,7 @@ void SimpleShell::cd_command( string parameters, StreamOutput *stream )
     string folder = absolute_from_relative( parameters );
 
     DIR *d;
-    d = opendir(folder.c_str());
+    d = fwfs::opendir(folder.c_str());
     if (d == NULL) {
         stream->printf("Could not open directory %s \r\n", folder.c_str() );
     } else {
@@ -704,7 +708,7 @@ void SimpleShell::cat_command( string parameters, StreamOutput *stream )
     }
 
     // Open file
-    FILE *lp = fopen(filename.c_str(), "r");
+    FILE *lp = fwfs::fopen(filename.c_str(), "r");
     if (lp == NULL) {
         stream->printf("File not found: %s\r\n", filename.c_str());
         return;
@@ -717,7 +721,7 @@ void SimpleShell::cat_command( string parameters, StreamOutput *stream )
     int charcnt = 0;
     int sentcnt = 0;
 
-    while ((c = fgetc (lp)) != EOF) {
+    while ((c = fwfs::fgetc(lp)) != EOF) {
     	buffer[charcnt] = c;
         if (c == '\n') newlines ++;
         // buffer.append((char *)&c, 1);
@@ -726,7 +730,7 @@ void SimpleShell::cat_command( string parameters, StreamOutput *stream )
             sentcnt = stream->puts(buffer);
             // if (sentcnt < strlen()(int)buffer.size()) {
             if (sentcnt < (int)strlen(buffer)) {
-            	fclose(lp);
+            	fwfs::fclose(lp);
             	stream->printf("Caching error, line: %d, size: %d, sent: %d", newlines, strlen(buffer), sentcnt);
             	return;
             }
@@ -740,7 +744,7 @@ void SimpleShell::cat_command( string parameters, StreamOutput *stream )
             break;
         }
     };
-    fclose(lp);
+    fwfs::fclose(lp);
     lp = NULL;
 
     // send last line
@@ -773,11 +777,11 @@ void SimpleShell::load_command( string parameters, StreamOutput *stream )
         filename = THEKERNEL->config_override_filename();
     }
 
-    FILE *fp = fopen(filename.c_str(), "r");
+    FILE *fp = fwfs::fopen(filename.c_str(), "r");
     if(fp != NULL) {
         char buf[132];
         stream->printf("Loading config override file: %s...\n", filename.c_str());
-        while(fgets(buf, sizeof buf, fp) != NULL) {
+        while(fwfs::fgets(buf, sizeof buf, fp) != NULL) {
             stream->printf("  %s", buf);
             if(buf[0] == ';') continue; // skip the comments
             // NOTE only Gcodes and Mcodes can be in the config-override
@@ -787,7 +791,7 @@ void SimpleShell::load_command( string parameters, StreamOutput *stream )
             THEKERNEL->call_event(ON_IDLE);
         }
         stream->printf("config override file executed\n");
-        fclose(fp);
+        fwfs::fclose(fp);
 
     } else {
         stream->printf("File not found: %s\n", filename.c_str());
@@ -1936,7 +1940,7 @@ void SimpleShell::md5sum_command( string parameters, StreamOutput *stream )
 	string filename = absolute_from_relative(parameters);
 
 	// Open file
-	FILE *lp = fopen(filename.c_str(), "r");
+	FILE *lp = fwfs::fopen(filename.c_str(), "r");
 	if (lp == NULL) {
 		stream->printf("File not found: %s\r\n", filename.c_str());
 		return;
@@ -1944,13 +1948,13 @@ void SimpleShell::md5sum_command( string parameters, StreamOutput *stream )
 	MD5 md5;
 	uint8_t buf[64];
 	do {
-		size_t n= fread(buf, 1, sizeof buf, lp);
+		size_t n= fwfs::fread(buf, 1, sizeof buf, lp);
 		if(n > 0) md5.update(buf, n);
 		THEKERNEL->call_event(ON_IDLE);
-	} while(!feof(lp));
+	} while(!fwfs::feof(lp));
 
 	stream->printf("%s %s\n", md5.finalize().hexdigest().c_str(), filename.c_str());
-	fclose(lp);
+	fwfs::fclose(lp);
 
 }
 
@@ -2622,12 +2626,12 @@ void SimpleShell::config_get_all_command( string parameters, StreamOutput *strea
     int c;
 	size_t begin_key, end_key, end_value, vsize;
     // Open the config file ( find it if we haven't already found it )
-	FILE *lp = fopen(filename.c_str(), "r");
+	FILE *lp = fwfs::fopen(filename.c_str(), "r");
     if (lp == NULL) {
         stream->printf("Config file not found: %s\r\n", filename.c_str());
         return;
     }
-	while ((c = fgetc (lp)) != EOF) {
+	while ((c = fwfs::fgetc(lp)) != EOF) {
 		buffer.append((char *)&c, 1);
 		if (c == '\n') {
 			// process and send key=value data
@@ -2665,7 +2669,7 @@ void SimpleShell::config_get_all_command( string parameters, StreamOutput *strea
 		}
 	}
 
-    fclose(lp);
+    fwfs::fclose(lp);
 
     if(send_eof) {
         stream->_putc(EOT);
@@ -2679,12 +2683,12 @@ void SimpleShell::config_restore_command( string parameters, StreamOutput *strea
 	string current_filename = "/sd/config.txt";
     string default_filename = "/sd/config.default";
     // Open file
-    FILE *default_lp = fopen(default_filename.c_str(), "r");
+    FILE *default_lp = fwfs::fopen(default_filename.c_str(), "r");
     if (default_lp == NULL) {
         stream->printf("Default file not found: %s\r\n", default_filename.c_str());
         return;
     }
-    FILE *current_lp = fopen(current_filename.c_str(), "w");
+    FILE *current_lp = fwfs::fopen(current_filename.c_str(), "w");
     if (current_lp == NULL) {
         stream->printf("Config file not found or created fail: %s\r\n", current_filename.c_str());
         return;
@@ -2692,11 +2696,11 @@ void SimpleShell::config_restore_command( string parameters, StreamOutput *strea
 
     int c;
     // Print each line of the file
-    while ((c = fgetc (default_lp)) != EOF) {
-    	fputc(c, current_lp);
+    while ((c = fwfs::fgetc(default_lp)) != EOF) {
+    	fwfs::fputc(c, current_lp);
     };
-    fclose(current_lp);
-    fclose(default_lp);
+    fwfs::fclose(current_lp);
+    fwfs::fclose(default_lp);
 
     stream->printf("Settings restored complete.\n");
 }
@@ -2708,12 +2712,12 @@ void SimpleShell::config_default_command( string parameters, StreamOutput *strea
 	string current_filename = "/sd/config.txt";
     string default_filename = "/sd/config.default";
     // Open file
-    FILE *default_lp = fopen(default_filename.c_str(), "w");
+    FILE *default_lp = fwfs::fopen(default_filename.c_str(), "w");
     if (default_lp == NULL) {
         stream->printf("Default file not found or created fail: %s\r\n", default_filename.c_str());
         return;
     }
-    FILE *current_lp = fopen(current_filename.c_str(), "r");
+    FILE *current_lp = fwfs::fopen(current_filename.c_str(), "r");
     if (current_lp == NULL) {
         stream->printf("Config file not found: %s\r\n", current_filename.c_str());
         return;
@@ -2721,11 +2725,11 @@ void SimpleShell::config_default_command( string parameters, StreamOutput *strea
 
     int c;
     // Print each line of the file
-    while ((c = fgetc (current_lp)) != EOF) {
-    	fputc(c, default_lp);
+    while ((c = fwfs::fgetc(current_lp)) != EOF) {
+    	fwfs::fputc(c, default_lp);
     };
-    fclose(current_lp);
-    fclose(default_lp);
+    fwfs::fclose(current_lp);
+    fwfs::fclose(default_lp);
 
     stream->printf("Settings save as default complete.\n");
 }

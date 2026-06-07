@@ -85,6 +85,7 @@
 */
 
 #include "CartGridStrategy.h"
+#include "libs/FirmwareFileSystem.h"
 
 #include "Kernel.h"
 #include "Config.h"
@@ -277,62 +278,62 @@ void CartGridStrategy::save_grid(StreamOutput *stream)
 
     // we use a different file format depending on whether it is square or not
     const char *filename= (this->new_file_format) ? GRIDFILE_NM : GRIDFILE;
-    FILE *fp = fopen(filename, "w");
+    FILE *fp = fwfs::fopen(filename, "w");
     if(fp == NULL) {
         stream->printf("error:Failed to open grid file %s\n", filename);
         return;
     }
     uint8_t tmp_configured_grid_size = current_grid_x_size;
-    if(fwrite(&tmp_configured_grid_size, sizeof(uint8_t), 1, fp) != 1) {
+    if(fwfs::fwrite(&tmp_configured_grid_size, sizeof(uint8_t), 1, fp) != 1) {
         stream->printf("error:Failed to write grid x size\n");
-        fclose(fp);
+        fwfs::fclose(fp);
         return;
     }
 
     if(this->new_file_format){
         tmp_configured_grid_size = current_grid_y_size;
-        if(fwrite(&tmp_configured_grid_size, sizeof(uint8_t), 1, fp) != 1) {
+        if(fwfs::fwrite(&tmp_configured_grid_size, sizeof(uint8_t), 1, fp) != 1) {
             stream->printf("error:Failed to write grid y size\n");
-            fclose(fp);
+            fwfs::fclose(fp);
             return;
         }
     }
 
-    if(fwrite(&x_start, sizeof(float), 1, fp) != 1)  {
+    if(fwfs::fwrite(&x_start, sizeof(float), 1, fp) != 1)  {
         stream->printf("error:Failed to write x_start\n");
-        fclose(fp);
+        fwfs::fclose(fp);
         return;
     }
     
-    if(fwrite(&y_start, sizeof(float), 1, fp) != 1)  {
+    if(fwfs::fwrite(&y_start, sizeof(float), 1, fp) != 1)  {
         stream->printf("error:Failed to write y_start\n");
-        fclose(fp);
+        fwfs::fclose(fp);
         return;
     }
 
-    if(fwrite(&x_size, sizeof(float), 1, fp) != 1)  {
+    if(fwfs::fwrite(&x_size, sizeof(float), 1, fp) != 1)  {
         stream->printf("error:Failed to write x_size\n");
-        fclose(fp);
+        fwfs::fclose(fp);
         return;
     }
 
-    if(fwrite(&y_size, sizeof(float), 1, fp) != 1)  {
+    if(fwfs::fwrite(&y_size, sizeof(float), 1, fp) != 1)  {
         stream->printf("error:Failed to write y_size\n");
-        fclose(fp);
+        fwfs::fclose(fp);
         return;
     }
 
     for (int y = 0; y < current_grid_y_size; y++) {
         for (int x = 0; x < current_grid_x_size; x++) {
-            if(fwrite(&grid[x + (current_grid_x_size * y)], sizeof(float), 1, fp) != 1) {
+            if(fwfs::fwrite(&grid[x + (current_grid_x_size * y)], sizeof(float), 1, fp) != 1) {
                 stream->printf("error:Failed to write grid\n");
-                fclose(fp);
+                fwfs::fclose(fp);
                 return;
             }
         }
     }
     stream->printf("grid saved to %s\n", filename);
-    fclose(fp);
+    fwfs::fclose(fp);
 }
 
 bool CartGridStrategy::load_grid(StreamOutput *stream)
@@ -340,7 +341,7 @@ bool CartGridStrategy::load_grid(StreamOutput *stream)
     // we use a different file format depending on whether it is square or not
     const char *filename= (this->new_file_format) ? GRIDFILE_NM : GRIDFILE;
 
-    FILE *fp = fopen(filename, "r");
+    FILE *fp = fwfs::fopen(filename, "r");
     if(fp == NULL) {
         stream->printf("error:Failed to open grid %s\n", filename);
         return false;
@@ -349,30 +350,30 @@ bool CartGridStrategy::load_grid(StreamOutput *stream)
     uint8_t load_grid_x_size, load_grid_y_size;
     float x, y, temp_x_start, temp_y_start;
 
-    if(fread(&load_grid_x_size, sizeof(uint8_t), 1, fp) != 1) {
+    if(fwfs::fread(&load_grid_x_size, sizeof(uint8_t), 1, fp) != 1) {
         stream->printf("error:Failed to read grid size\n");
-        fclose(fp);
+        fwfs::fclose(fp);
         return false;
     }
 
     if(load_grid_x_size > configured_grid_x_size) {
         stream->printf("error:grid size x is greater than config - read %d - config %d\n", load_grid_x_size, configured_grid_x_size);
-        fclose(fp);
+        fwfs::fclose(fp);
         return false;
     }
 
     load_grid_y_size = load_grid_x_size;
 
     if(this->new_file_format){
-        if(fread(&load_grid_y_size, sizeof(uint8_t), 1, fp) != 1) {
+        if(fwfs::fread(&load_grid_y_size, sizeof(uint8_t), 1, fp) != 1) {
             stream->printf("error:Failed to read grid size\n");
-            fclose(fp);
+            fwfs::fclose(fp);
             return false;
         }
 
         if(load_grid_y_size > configured_grid_y_size) {
             stream->printf("error:grid size y is greater than config - read %d - config %d\n", load_grid_y_size, configured_grid_y_size);
-            fclose(fp);
+            fwfs::fclose(fp);
             return false;
         }
     }
@@ -380,30 +381,30 @@ bool CartGridStrategy::load_grid(StreamOutput *stream)
     current_grid_x_size = load_grid_x_size;
     current_grid_y_size = load_grid_y_size;
 
-    if(fread(&temp_x_start, sizeof(float), 1, fp) != 1) {
+    if(fwfs::fread(&temp_x_start, sizeof(float), 1, fp) != 1) {
         stream->printf("error:Failed to read x_start\n");
-        fclose(fp);
+        fwfs::fclose(fp);
         return false;
     }
 
-    if(fread(&temp_y_start, sizeof(float), 1, fp) != 1) {
+    if(fwfs::fread(&temp_y_start, sizeof(float), 1, fp) != 1) {
         stream->printf("error:Failed to read y_start\n");
-        fclose(fp);
+        fwfs::fclose(fp);
         return false;
     }
 
     x_start = temp_x_start;
     y_start = temp_y_start;
 
-    if(fread(&x, sizeof(float), 1, fp) != 1) {
+    if(fwfs::fread(&x, sizeof(float), 1, fp) != 1) {
         stream->printf("error:Failed to read grid x size\n");
-        fclose(fp);
+        fwfs::fclose(fp);
         return false;
     }
 
-    if(fread(&y, sizeof(float), 1, fp) != 1) {
+    if(fwfs::fread(&y, sizeof(float), 1, fp) != 1) {
         stream->printf("error:Failed to read grid y size\n");
-        fclose(fp);
+        fwfs::fclose(fp);
         return false;
     }
 
@@ -415,9 +416,9 @@ bool CartGridStrategy::load_grid(StreamOutput *stream)
 
     for (int y = 0; y < current_grid_y_size; y++) {
         for (int x = 0; x < current_grid_x_size; x++) {
-            if(fread(&grid[x + (current_grid_x_size * y)], sizeof(float), 1, fp) != 1) {
+            if(fwfs::fread(&grid[x + (current_grid_x_size * y)], sizeof(float), 1, fp) != 1) {
                 stream->printf("error:Failed to read grid\n");
-                fclose(fp);
+                fwfs::fclose(fp);
                 return false;
             }
             if((grid[x + (current_grid_x_size * y)]) > max_z) max_z = grid[x + (current_grid_x_size * y)];
@@ -427,7 +428,7 @@ bool CartGridStrategy::load_grid(StreamOutput *stream)
     max_delta = fabs(max_z - min_z);
     THEROBOT->set_max_delta(max_delta);
     stream->printf("grid loaded, grid: (%f, %f), size: %d x %d\n", x_size, y_size, load_grid_x_size, load_grid_y_size);
-    fclose(fp);
+    fwfs::fclose(fp);
     return true;
 }
 
@@ -532,7 +533,7 @@ bool CartGridStrategy::handleGcode(Gcode *gcode)
             if(gcode->subcode == 1) {
                 // we use a different file format depending on whether it is square or not
                 const char *filename= (this->new_file_format) ? GRIDFILE_NM : GRIDFILE;
-                remove(filename);
+                fwfs::remove(filename);
                 gcode->stream->printf("%s deleted\n", filename);
             } else {
                 __disable_irq();
@@ -573,7 +574,7 @@ bool CartGridStrategy::handleGcode(Gcode *gcode)
                 }
             } else if(gcode->subcode == 4) {
                 // Delete flex compensation data
-                remove(FLEX_COMPENSATION_FILE);
+                fwfs::remove(FLEX_COMPENSATION_FILE);
                 gcode->stream->printf("Flex compensation data deleted\n");
             }else if(gcode->subcode == 5) {
                 // Enable Debugging
@@ -1314,7 +1315,7 @@ void CartGridStrategy::save_flex_compensation_data(StreamOutput *stream)
         return;
     }
 
-    FILE *fp = fopen(FLEX_COMPENSATION_FILE, "w");
+    FILE *fp = fwfs::fopen(FLEX_COMPENSATION_FILE, "w");
     if(fp == NULL) {
         stream->printf("error: Failed to open flex compensation file %s\n", FLEX_COMPENSATION_FILE);
         return;
@@ -1323,38 +1324,38 @@ void CartGridStrategy::save_flex_compensation_data(StreamOutput *stream)
     float version = (float)(FLEX_COMPENSATION_VERSION);
 
     // Write version (float)
-    if(fwrite(&version, sizeof(float), 1, fp) != 1) {
+    if(fwfs::fwrite(&version, sizeof(float), 1, fp) != 1) {
         stream->printf("error: Failed to write version\n");
-        fclose(fp);
+        fwfs::fclose(fp);
         return;
     }
 
     // Write flex_x_start (float)
-    if(fwrite(&flex_x_start, sizeof(float), 1, fp) != 1) {
+    if(fwfs::fwrite(&flex_x_start, sizeof(float), 1, fp) != 1) {
         stream->printf("error: Failed to write flex_x_start\n");
-        fclose(fp);
+        fwfs::fclose(fp);
         return;
     }
 
     // Write flex_current_grid_x_size (uint8_t)
-    if(fwrite(&flex_current_x_points, sizeof(uint8_t), 1, fp) != 1) {
+    if(fwfs::fwrite(&flex_current_x_points, sizeof(uint8_t), 1, fp) != 1) {
         stream->printf("error: Failed to write flex_current_grid_x_size\n");
-        fclose(fp);
+        fwfs::fclose(fp);
         return;
     }
 
     // Write flex_x_size (float)
-    if(fwrite(&flex_x_size, sizeof(float), 1, fp) != 1) {
+    if(fwfs::fwrite(&flex_x_size, sizeof(float), 1, fp) != 1) {
         stream->printf("error: Failed to write flex_x_size\n");
-        fclose(fp);
+        fwfs::fclose(fp);
         return;
     }
 
     // Write compensation data for the actual grid size used
     for(int i = 0; i < flex_current_x_points; i++) {
-        if(fwrite(&flex_compensation_data[i], sizeof(float), 1, fp) != 1) {
+        if(fwfs::fwrite(&flex_compensation_data[i], sizeof(float), 1, fp) != 1) {
             stream->printf("error: Failed to write flex compensation data at index %d\n", i);
-            fclose(fp);
+            fwfs::fclose(fp);
             return;
         }
     }
@@ -1362,12 +1363,12 @@ void CartGridStrategy::save_flex_compensation_data(StreamOutput *stream)
     stream->printf("Flex compensation data saved to %s\n", FLEX_COMPENSATION_FILE);
     stream->printf("Saved: flex_x_start=%.3f, flex_grid_size=%d, flex_x_size=%.3f\n", 
                    flex_x_start, flex_current_x_points, flex_x_size);
-    fclose(fp);
+    fwfs::fclose(fp);
 }
 
 bool CartGridStrategy::load_flex_compensation_data(StreamOutput *stream)
 {
-    FILE *fp = fopen(FLEX_COMPENSATION_FILE, "r");
+    FILE *fp = fwfs::fopen(FLEX_COMPENSATION_FILE, "r");
     if(fp == NULL) {
         stream->printf("error: Failed to open flex compensation file %s\n", FLEX_COMPENSATION_FILE);
         return false;
@@ -1380,9 +1381,9 @@ bool CartGridStrategy::load_flex_compensation_data(StreamOutput *stream)
     float version;
 
     // Read version (float)
-    if(fread(&version, sizeof(float), 1, fp) != 1) {
+    if(fwfs::fread(&version, sizeof(float), 1, fp) != 1) {
         stream->printf("error: Failed to read version\n");
-        fclose(fp);
+        fwfs::fclose(fp);
         return false;
     }
 
@@ -1393,21 +1394,21 @@ bool CartGridStrategy::load_flex_compensation_data(StreamOutput *stream)
             stream->printf("error: Invalid flex compensation version\n");
         }
         stream->printf("error: Please delete the flex compensation file (M380.4) and run the flex compensation measurement again\n");
-        fclose(fp);
+        fwfs::fclose(fp);
         return false;
     }
 
     // Read flex_x_start (float)
-    if(fread(&load_flex_x_start, sizeof(float), 1, fp) != 1) {
+    if(fwfs::fread(&load_flex_x_start, sizeof(float), 1, fp) != 1) {
         stream->printf("error: Failed to read flex_x_start\n");
-        fclose(fp);
+        fwfs::fclose(fp);
         return false;
     }
 
     // Read flex_current_grid_x_size (uint8_t)
-    if(fread(&load_flex_current_x_points, sizeof(uint8_t), 1, fp) != 1) {
+    if(fwfs::fread(&load_flex_current_x_points, sizeof(uint8_t), 1, fp) != 1) {
         stream->printf("error: Failed to read flex_current_grid_x_size\n");
-        fclose(fp);
+        fwfs::fclose(fp);
         return false;
     }
 
@@ -1415,14 +1416,14 @@ bool CartGridStrategy::load_flex_compensation_data(StreamOutput *stream)
     if(load_flex_current_x_points > flex_x_points) {
         stream->printf("error: Loaded flex grid size %d exceeds maximum configured size %d\n", 
                       load_flex_current_x_points, flex_x_points);
-        fclose(fp);
+        fwfs::fclose(fp);
         return false;
     }
 
     // Read flex_x_size (float)
-    if(fread(&load_flex_x_size, sizeof(float), 1, fp) != 1) {
+    if(fwfs::fread(&load_flex_x_size, sizeof(float), 1, fp) != 1) {
         stream->printf("error: Failed to read flex_x_size\n");
-        fclose(fp);
+        fwfs::fclose(fp);
         return false;
     }
 
@@ -1431,9 +1432,9 @@ bool CartGridStrategy::load_flex_compensation_data(StreamOutput *stream)
 
     // Load compensation data for the actual grid size used
     for(int i = 0; i < load_flex_current_x_points; i++) {
-        if(fread(&flex_compensation_data[i], sizeof(float), 1, fp) != 1) {
+        if(fwfs::fread(&flex_compensation_data[i], sizeof(float), 1, fp) != 1) {
             stream->printf("error: Failed to read flex compensation data at index %d\n", i);
-            fclose(fp);
+            fwfs::fclose(fp);
             return false;
         }
     }
@@ -1448,7 +1449,7 @@ bool CartGridStrategy::load_flex_compensation_data(StreamOutput *stream)
     stream->printf("Flex compensation data loaded from %s\n", FLEX_COMPENSATION_FILE);
     stream->printf("Loaded: flex_x_start=%.3f, flex_grid_size=%d, flex_x_size=%.3f\n", 
                    flex_x_start, flex_current_x_points, flex_x_size);
-    fclose(fp);
+    fwfs::fclose(fp);
     return true;
 }
 

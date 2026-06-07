@@ -63,6 +63,7 @@
 */
 
 #include "DeltaGridStrategy.h"
+#include "libs/FirmwareFileSystem.h"
 
 #include "Kernel.h"
 #include "Config.h"
@@ -148,40 +149,40 @@ void DeltaGridStrategy::save_grid(StreamOutput *stream)
         return;
     }
 
-    FILE *fp = fopen(GRIDFILE, "w");
+    FILE *fp = fwfs::fopen(GRIDFILE, "w");
     if(fp == NULL) {
         stream->printf("error:Failed to open grid file %s\n", GRIDFILE);
         return;
     }
 
-    if(fwrite(&grid_size, sizeof(uint8_t), 1, fp) != 1) {
+    if(fwfs::fwrite(&grid_size, sizeof(uint8_t), 1, fp) != 1) {
         stream->printf("error:Failed to write grid size\n");
-        fclose(fp);
+        fwfs::fclose(fp);
         return;
     }
 
-    if(fwrite(&grid_radius, sizeof(float), 1, fp) != 1) {
+    if(fwfs::fwrite(&grid_radius, sizeof(float), 1, fp) != 1) {
         stream->printf("error:Failed to write grid radius\n");
-        fclose(fp);
+        fwfs::fclose(fp);
         return;
     }
 
     for (int y = 0; y < grid_size; y++) {
         for (int x = 0; x < grid_size; x++) {
-            if(fwrite(&grid[x + (grid_size * y)], sizeof(float), 1, fp) != 1) {
+            if(fwfs::fwrite(&grid[x + (grid_size * y)], sizeof(float), 1, fp) != 1) {
                 stream->printf("error:Failed to write grid\n");
-                fclose(fp);
+                fwfs::fclose(fp);
                 return;
             }
         }
     }
     stream->printf("grid saved to %s\n", GRIDFILE);
-    fclose(fp);
+    fwfs::fclose(fp);
 }
 
 bool DeltaGridStrategy::load_grid(StreamOutput *stream)
 {
-    FILE *fp = fopen(GRIDFILE, "r");
+    FILE *fp = fwfs::fopen(GRIDFILE, "r");
     if(fp == NULL) {
         stream->printf("error:Failed to open grid %s\n", GRIDFILE);
         return false;
@@ -190,21 +191,21 @@ bool DeltaGridStrategy::load_grid(StreamOutput *stream)
     uint8_t size;
     float radius;
 
-    if(fread(&size, sizeof(uint8_t), 1, fp) != 1) {
+    if(fwfs::fread(&size, sizeof(uint8_t), 1, fp) != 1) {
         stream->printf("error:Failed to read grid size\n");
-        fclose(fp);
+        fwfs::fclose(fp);
         return false;
     }
 
     if(size != grid_size) {
         stream->printf("error:grid size is different read %d - config %d\n", size, grid_size);
-        fclose(fp);
+        fwfs::fclose(fp);
         return false;
     }
 
-    if(fread(&radius, sizeof(float), 1, fp) != 1) {
+    if(fwfs::fread(&radius, sizeof(float), 1, fp) != 1) {
         stream->printf("error:Failed to read grid radius\n");
-        fclose(fp);
+        fwfs::fclose(fp);
         return false;
     }
 
@@ -215,15 +216,15 @@ bool DeltaGridStrategy::load_grid(StreamOutput *stream)
 
     for (int y = 0; y < grid_size; y++) {
         for (int x = 0; x < grid_size; x++) {
-            if(fread(&grid[x + (grid_size * y)], sizeof(float), 1, fp) != 1) {
+            if(fwfs::fread(&grid[x + (grid_size * y)], sizeof(float), 1, fp) != 1) {
                 stream->printf("error:Failed to read grid\n");
-                fclose(fp);
+                fwfs::fclose(fp);
                 return false;
             }
         }
     }
     stream->printf("grid loaded, radius: %f, size: %d\n", grid_radius, grid_size);
-    fclose(fp);
+    fwfs::fclose(fp);
     return true;
 }
 
@@ -341,7 +342,7 @@ bool DeltaGridStrategy::handleGcode(Gcode *gcode)
 
         } else if(gcode->m == 374) { // M374: Save grid, M374.1: delete saved grid
             if(gcode->subcode == 1) {
-                remove(GRIDFILE);
+                fwfs::remove(GRIDFILE);
                 gcode->stream->printf("%s deleted\n", GRIDFILE);
             } else {
                 __disable_irq();

@@ -13,6 +13,7 @@ using namespace std;
 #include <stdint.h>
 
 #include "ConfigValue.h"
+#include "libs/compiler.h"
 
 class StreamOutput;
 
@@ -24,8 +25,6 @@ class StreamOutput;
 // hasn't grown that low). After config_cache_clear(), it returns to being
 // ordinary free gap between heap and stack.
 #define CONFIG_CACHE_CAPACITY 350
-
-extern unsigned int __StackLimit;
 
 class ConfigCache {
     public:

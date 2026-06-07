@@ -7,8 +7,7 @@
 ConfigCache::ConfigCache()
 {
     // Place the store in the gap between heap and stack — no heap allocation.
-    store = (ConfigValue *)((uintptr_t)&__StackLimit
-                            - CONFIG_CACHE_CAPACITY * sizeof(ConfigValue));
+    store = CONFIG_CACHE_STORAGE(ConfigValue, CONFIG_CACHE_CAPACITY);
     count = 0;
 }
 
