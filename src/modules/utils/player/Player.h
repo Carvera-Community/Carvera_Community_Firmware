@@ -40,6 +40,7 @@ class Player : public Module {
         void on_halt(void *argument);
 
     private:
+        bool prepare_ocode_prescan(StreamOutput* stream, const char* fail_msg);
         void play_command( string parameters, StreamOutput* stream );
         void progress_command( string parameters, StreamOutput* stream );
         void abort_command( string parameters, StreamOutput* stream );
