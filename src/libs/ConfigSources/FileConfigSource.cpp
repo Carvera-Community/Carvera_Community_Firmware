@@ -6,6 +6,7 @@
 */
 
 #include "libs/Kernel.h"
+#include "libs/FirmwareFileSystem.h"
 #include "libs/StreamOutputPool.h"
 #include "ConfigValue.h"
 #include "FileConfigSource.h"
@@ -30,7 +31,7 @@ FileConfigSource::FileConfigSource(string config_file, const char *name)
 bool FileConfigSource::readLine(string& line, int lineno, FILE *fp)
 {
     char buf[132];
-    char *l= fgets(buf, sizeof(buf)-1, fp);
+    char *l= fwfs::fgets(buf, sizeof(buf)-1, fp);
     if(l != NULL) {
         if(buf[strlen(l)-1] != '\n') {
             // truncate long lines
@@ -43,7 +44,7 @@ bool FileConfigSource::readLine(string& line, int lineno, FILE *fp)
             }
             // read until the next \n or eof
             int c;
-            while((c=fgetc(fp)) != '\n' && c != EOF) /* discard */;
+            while((c=fwfs::fgetc(fp)) != '\n' && c != EOF) /* discard */;
         }
         line.assign(buf);
         return true;
@@ -68,11 +69,11 @@ void FileConfigSource::transfer_values_to_cache( ConfigCache *cache, const char 
     }
 
     // Open the config file ( find it if we haven't already found it )
-    FILE *lp = fopen(file_name, "r");
+    FILE *lp = fwfs::fopen(file_name, "r");
 
     int ln= 1;
     // For each line
-    while(!feof(lp)) {
+    while(!fwfs::feof(lp)) {
         string line;
         if(readLine(line, ln++, lp)) {
             // process the config line and store the value in cache
@@ -102,15 +103,15 @@ void FileConfigSource::transfer_values_to_cache( ConfigCache *cache, const char 
 
                     // save position in current config file
                     fpos_t pos;
-                    fgetpos(lp, &pos);
+                    fwfs::fgetpos(lp, &pos);
 
                     // open and read the included file
-                    freopen(inc_file_name.c_str(), "r", lp);
+                    fwfs::freopen(inc_file_name.c_str(), "r", lp);
                     this->transfer_values_to_cache(cache, inc_file_name.c_str());
 
                     // reopen the current config file and restore position
-                    freopen(file_name, "r", lp);
-                    fsetpos(lp, &pos);
+                    fwfs::freopen(file_name, "r", lp);
+                    fwfs::fsetpos(lp, &pos);
                 }else{
                     THEKERNEL->streams->printf("Unable to find included config file: %s\n", inc_file_name.c_str());
                     THEKERNEL->set_config_load_error(true);
@@ -121,7 +122,7 @@ void FileConfigSource::transfer_values_to_cache( ConfigCache *cache, const char 
             break;
         }
     }
-    fclose(lp);
+    fwfs::fclose(lp);
 }
 
 // Return true if the check_sums match
@@ -141,46 +142,46 @@ bool FileConfigSource::write( string setting, string value )
     get_checksums(setting_checksums, setting );
 
     // Open the config file ( find it if we haven't already found it )
-    FILE *lp = fopen(this->get_config_file().c_str(), "r+");
+    FILE *lp = fwfs::fopen(this->get_config_file().c_str(), "r+");
 
     // search each line for a match
-    while(!feof(lp)) {
+    while(!fwfs::feof(lp)) {
         string line;
         fpos_t bol, eol;
-        fgetpos( lp, &bol ); // get start of line
+        fwfs::fgetpos( lp, &bol ); // get start of line
         if(readLine(line, 0, lp)) {
-            fgetpos( lp, &eol ); // get end of line
+            fwfs::fgetpos( lp, &eol ); // get end of line
             if(!process_line_from_ascii_config(line, setting_checksums).empty()) {
                 // found it
                 unsigned int free_space = eol - bol - 4; // length of line
                 // check we have enough space for this insertion
                 if( (setting.length() + value.length() + 3) > free_space ) {
                     //THEKERNEL->streams->printf("ERROR: Not enough room for value\r\n");
-                    fclose(lp);
+                    fwfs::fclose(lp);
                     return false;
                 }
 
                 // Update line, leaves whatever was at end of line there just overwrites the key and value
-                fseek(lp, bol, SEEK_SET);
-                fputs(setting.c_str(), lp);
-                fputs(" ", lp);
-                fputs(value.c_str(), lp);
-                fputs(" #", lp);
-                fclose(lp);
+                fwfs::fseek(lp, bol, SEEK_SET);
+                fwfs::fputs(setting.c_str(), lp);
+                fwfs::fputs(" ", lp);
+                fwfs::fputs(value.c_str(), lp);
+                fwfs::fputs(" #", lp);
+                fwfs::fclose(lp);
                 return true;
             }
         }else break;
     }
 
     // not found so append the new value
-    fclose(lp);
-    lp = fopen(this->get_config_file().c_str(), "a");
-    fputs("\n", lp);
-    fputs(setting.c_str(), lp);
-    fputs("         ", lp);
-    fputs(value.c_str(), lp);
-    fputs("         # added\n", lp);
-    fclose(lp);
+    fwfs::fclose(lp);
+    lp = fwfs::fopen(this->get_config_file().c_str(), "a");
+    fwfs::fputs("\n", lp);
+    fwfs::fputs(setting.c_str(), lp);
+    fwfs::fputs("         ", lp);
+    fwfs::fputs(value.c_str(), lp);
+    fwfs::fputs("         # added\n", lp);
+    fwfs::fclose(lp);
 
     return true;
 }
@@ -198,45 +199,45 @@ bool FileConfigSource::remove( string setting )
     string config_path = this->get_config_file();
     string tmp_path = config_path + ".tmp";
 
-    FILE *fp = fopen(config_path.c_str(), "r");
+    FILE *fp = fwfs::fopen(config_path.c_str(), "r");
     if( fp == nullptr ) {
         return false;
     }
 
-    FILE *tp = fopen(tmp_path.c_str(), "w");
+    FILE *tp = fwfs::fopen(tmp_path.c_str(), "w");
     if( tp == nullptr ) {
-        fclose(fp);
+        fwfs::fclose(fp);
         return false;
     }
 
     bool found = false;
     int ln = 0;
-    while(!feof(fp)) {
+    while(!fwfs::feof(fp)) {
         string line;
         if(readLine(line, ln++, fp)) {
             if(!process_line_from_ascii_config(line, setting_checksums).empty()) {
                 found = true;
                 continue;  // skip this line (delete it)
             }
-            fputs(line.c_str(), tp);
+            fwfs::fputs(line.c_str(), tp);
         } else {
             break;
         }
     }
 
-    fclose(fp);
-    fclose(tp);
+    fwfs::fclose(fp);
+    fwfs::fclose(tp);
 
     if(!found) {
-        ::remove(tmp_path.c_str());
+        fwfs::remove(tmp_path.c_str());
         return false;
     }
 
-    if(::remove(config_path.c_str()) != 0) {
-        ::remove(tmp_path.c_str());
+    if(fwfs::remove(config_path.c_str()) != 0) {
+        fwfs::remove(tmp_path.c_str());
         return false;
     }
-    if(rename(tmp_path.c_str(), config_path.c_str()) != 0) {
+    if(fwfs::rename(tmp_path.c_str(), config_path.c_str()) != 0) {
         return false;
     }
     return true;
@@ -252,16 +253,16 @@ string FileConfigSource::read( uint16_t check_sums[3] )
     }
 
     // Open the config file ( find it if we haven't already found it )
-    FILE *lp = fopen(this->get_config_file().c_str(), "r");
+    FILE *lp = fwfs::fopen(this->get_config_file().c_str(), "r");
     // For each line
-    while(!feof(lp)) {
+    while(!fwfs::feof(lp)) {
         string line;
          if(readLine(line, 0, lp)) {
             value = process_line_from_ascii_config(line, check_sums);
             if(!value.empty()) break; // found it
         }else break;
     }
-    fclose(lp);
+    fwfs::fclose(lp);
 
     return value;
 }
@@ -303,7 +304,6 @@ string FileConfigSource::get_config_file()
         return "";
     }
 }
-
 
 
 

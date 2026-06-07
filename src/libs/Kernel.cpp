@@ -6,6 +6,7 @@
 */
 
 #include "libs/Kernel.h"
+#include "libs/FirmwareFileSystem.h"
 #include "libs/Module.h"
 #include "libs/Config.h"
 #include "libs/nuts_bolts.h"
@@ -991,12 +992,12 @@ void Kernel::erase_Factory_data()
 void Kernel::read_Factroy_SD()
 {
 	string file_name = "/sd/factory.ini";
-	FILE *lp = fopen(file_name.c_str(), "r");
+	FILE *lp = fwfs::fopen(file_name.c_str(), "r");
 	bool bneedwrite = false;
     int ln= 1;
     if(lp) {
         // For each line
-    	while(!feof(lp)) {
+    	while(!fwfs::feof(lp)) {
         	string line;
         	if(Factroy_readLine(line, ln++, lp)) 
         	{ 
@@ -1064,15 +1065,15 @@ void Kernel::read_Factroy_SD()
     		write_Factory_data();	
     	}
     	
-    	fclose(lp);
-    	remove("/sd/factory.ini");
+    	fwfs::fclose(lp);
+    	fwfs::remove("/sd/factory.ini");
     	system_reset(false);
     }
 }
 bool Kernel::Factroy_readLine(string& line, int lineno, FILE *fp)
 {
     char buf[132];
-    char *l= fgets(buf, sizeof(buf)-1, fp);
+    char *l= fwfs::fgets(buf, sizeof(buf)-1, fp);
     if(l != NULL) {
         if(buf[strlen(l)-1] != '\n') {
             // truncate long lines
@@ -1083,7 +1084,7 @@ bool Kernel::Factroy_readLine(string& line, int lineno, FILE *fp)
             }
             // read until the next \n or eof
             int c;
-            while((c=fgetc(fp)) != '\n' && c != EOF) /* discard */;
+            while((c=fwfs::fgetc(fp)) != '\n' && c != EOF) /* discard */;
         }
         line.assign(buf);
         return true;

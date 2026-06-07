@@ -6,7 +6,7 @@
  *                         */
 
 #ifndef SPINDLEMAKER_H
-#define SPINDLERMAKER_H
+#define SPINDLEMAKER_H
 
 class SpindleControl;
 

@@ -6,6 +6,7 @@
 */
 
 #include "GcodeDispatch.h"
+#include "libs/FirmwareFileSystem.h"
 
 #include "libs/Kernel.h"
 #include "Robot.h"
@@ -241,7 +242,7 @@ try_again:
 
 							this->upload_filename = "/sd/" + single_command.substr(4); // rest of line is filename
 							// open file
-							upload_fd = fopen(this->upload_filename.c_str(), "w");
+							upload_fd = fwfs::fopen(this->upload_filename.c_str(), "w");
 							if(upload_fd != NULL) {
 								this->uploading = true;
 								new_message.stream->printf("Writing to file: %s\r\nok\r\n", this->upload_filename.c_str());
@@ -391,15 +392,15 @@ try_again:
 							return;
 
 						case 502: // M502 deletes config-override so everything defaults to what is in config
-							remove(THEKERNEL->config_override_filename());
+							fwfs::remove(THEKERNEL->config_override_filename());
 							delete gcode;
 							new_message.stream->printf("config override file deleted %s, reboot needed\r\nok\r\n", THEKERNEL->config_override_filename());
 							continue;
 
 						case 503: { // M503 display live settings and indicates if there is an override file
-							FILE *fd = fopen(THEKERNEL->config_override_filename(), "r");
+							FILE *fd = fwfs::fopen(THEKERNEL->config_override_filename(), "r");
 							if(fd != NULL) {
-								fclose(fd);
+								fwfs::fclose(fd);
 								new_message.stream->printf("; config override present: %s\n",  THEKERNEL->config_override_filename());
 
 							} else {
@@ -463,7 +464,7 @@ try_again:
 				// we are uploading and it is the upload stream so so save it
 				if(single_command.substr(0, 3) == "M29") {
 					// done uploading, close file
-					fclose(upload_fd);
+					fwfs::fclose(upload_fd);
 					upload_fd = NULL;
 					uploading = false;
 					upload_filename.clear();
@@ -479,10 +480,10 @@ try_again:
 				}
 
 				single_command.append("\n");
-				if(fwrite(single_command.c_str(), 1, single_command.size(), upload_fd) != single_command.size()) {
+				if(fwfs::fwrite(single_command.c_str(), 1, single_command.size(), upload_fd) != single_command.size()) {
 					// error writing to file
 					new_message.stream->printf("Error:error writing to file.\r\n");
-					fclose(upload_fd);
+					fwfs::fclose(upload_fd);
 					upload_fd = NULL;
 					continue;
 
@@ -515,4 +516,3 @@ try_again:
         new_message.stream->printf("ok - ignore: [%s]\n", possible_command.c_str());
     }
 }
-

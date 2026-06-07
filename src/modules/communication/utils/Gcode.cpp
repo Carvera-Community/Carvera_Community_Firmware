@@ -226,15 +226,14 @@ float Gcode::get_variable_value(const char* expr, char** endptr) const{
                 case 3026: //tool in spindle
                     return THEKERNEL->eeprom_data->TOOL;
                     break;
-                case 3027: //current spindle RPM
+                case 3027: { //current spindle RPM
                     struct spindle_status ss;
                     ok = PublicData::get_value(pwm_spindle_control_checksum, get_spindle_status_checksum, &ss);
                     if (ok) {
                         return ss.current_rpm;
-                        break;
                     }
                     return 0;
-                    break;
+                }
                 case 3033: //Op Stop Enabled
                     return THEKERNEL->get_optional_stop_mode();
                     break;
