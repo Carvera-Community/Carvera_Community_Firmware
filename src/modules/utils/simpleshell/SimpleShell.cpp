@@ -1272,6 +1272,7 @@ void SimpleShell::test_4th_command( string parameters, StreamOutput *stream )
 		if( (false == btriggered) || (false == Nontriggered))
 		{
             THEKERNEL->set_halt_reason(HOME_FAIL);
+            THEKERNEL->streams->printf("ALARM: Failed to Home 4th axis\n");
             THEKERNEL->call_event(ON_HALT, nullptr);
             THEROBOT->disable_segmentation= false;
         }
@@ -1365,6 +1366,7 @@ void SimpleShell::test_5th_command( string parameters, StreamOutput *stream )
 		if( (false == btriggered) || (true == bAlwaystrigger))
 		{
             THEKERNEL->set_halt_reason(HOME_FAIL);
+            THEKERNEL->streams->printf("ALARM: Failed To Home 5th axis\n");
             THEKERNEL->call_event(ON_HALT, nullptr);
             THEROBOT->disable_segmentation= false;
         }

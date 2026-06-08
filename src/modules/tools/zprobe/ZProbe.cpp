@@ -826,7 +826,7 @@ bool ZProbe::probe_XYZ(Gcode *gcode)
     THEKERNEL->conveyor->wait_for_idle();
 
     if(this->pin.get() != invert_probe) {
-        gcode->stream->printf("Error:ZProbe triggered before move, aborting command.\n");
+        gcode->stream->printf("ALARM: ZProbe triggered before move, aborting command.\n");
         THEKERNEL->set_halt_reason(PROBE_FAIL);
         THEKERNEL->call_event(ON_HALT, nullptr);
         THEKERNEL->set_halt_reason(PROBE_FAIL);
@@ -845,7 +845,7 @@ bool ZProbe::probe_XYZ(Gcode *gcode)
     float delta[3]= {x, y, z};
     THEKERNEL->set_zprobing(true);
     if(!THEROBOT->delta_move(delta, rate, 3)) {
-    	gcode->stream->printf("ERROR: Move too small,  %1.3f, %1.3f, %1.3f\n", x, y, z);
+    	gcode->stream->printf("ALARM: Probing move too small,  %1.3f, %1.3f, %1.3f\n", x, y, z);
         THEKERNEL->set_halt_reason(PROBE_FAIL);
         THEKERNEL->call_event(ON_HALT, nullptr);
         probing = false;
@@ -877,10 +877,9 @@ bool ZProbe::probe_XYZ(Gcode *gcode)
 
     if(probeok == 0 && (gcode->subcode == 2 || gcode->subcode == 4)) {
         // issue error if probe was not triggered and subcode is 2 or 4
-        gcode->stream->printf("ALARM: Probe fail\n");
+        gcode->stream->printf("ALARM: Probe failed to trigger\n");
         THEKERNEL->set_halt_reason(PROBE_FAIL);
         THEKERNEL->call_event(ON_HALT, nullptr);
-        THEKERNEL->set_halt_reason(PROBE_FAIL);
         return false; //probe was not activated but failed due to subcodes
     }
     if(probeok == 0){
@@ -964,7 +963,7 @@ void ZProbe::calibrate_Z(Gcode *gcode)
     float delta[3]= {0, 0, z};
     THEKERNEL->set_zprobing(true);
     if(!THEROBOT->delta_move(delta, rate, 3)) {
-        gcode->stream->printf("ERROR: Move too small,  %1.3f\n", z);
+        gcode->stream->printf("ALARM: Probing move too small,  %1.3f\n", z);
         THEKERNEL->set_halt_reason(PROBE_FAIL);
         THEKERNEL->call_event(ON_HALT, nullptr);
         calibrating = false;
@@ -992,9 +991,6 @@ void ZProbe::calibrate_Z(Gcode *gcode)
     if (safety_margin_exceeded) {
         safety_margin_exceeded = false;
         THEKERNEL->set_halt_reason(PROBE_FAIL);
-        THEKERNEL->call_event(ON_HALT, nullptr);
-        gcode->stream->printf("ALARM: Probe failed to trigger within safety margin (%.2fmm)\n", 
-                             this->probe_calibration_safety_margin);
         gcode->stream->printf("Distance moved: %.3f\n", distance_moved);
         gcode->stream->printf("Probe pin triggered: %d, position: %.3f\n", probe_detected, probe_pin_position);
         gcode->stream->printf("Calibrate pin triggered: %d, position: %.3f\n", calibrate_detected, calibrate_pin_position);
@@ -1002,6 +998,8 @@ void ZProbe::calibrate_Z(Gcode *gcode)
         gcode->stream->printf("Error detected at position: %.3f\n", calibrate_current_z);
         gcode->stream->printf("Safety Margin Value: %.3f\n",  probe_calibration_safety_margin);
         gcode->stream->printf("debounce: %d, cali_debounce: %d, debounce_ms: %d\n", debounce, cali_debounce, debounce_ms);
+        gcode->stream->printf("ALARM: Probe failed to trigger within safety margin (%.2fmm). See MDI\n", this->probe_calibration_safety_margin);
+        THEKERNEL->call_event(ON_HALT, nullptr);
         return;
     }
 

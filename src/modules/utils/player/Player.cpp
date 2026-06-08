@@ -357,7 +357,7 @@ void Player::on_gcode_received(void *argument)
                 return;
             }else{
                     //error: no filepath found
-                    THEKERNEL->streams->printf("M97 Command missing P parameter for line to goto, aborting \n");
+                    THEKERNEL->streams->printf("ALARM: M97 Command missing P parameter for line to goto, aborting \n");
                     THEKERNEL->call_event(ON_HALT, nullptr);
                     THEKERNEL->set_halt_reason(MANUAL);
                     return;
@@ -383,7 +383,7 @@ void Player::on_gcode_received(void *argument)
                     new_filepath = "/sd/gcodes/macros/" + new_filepath + ".cnc";
                 }else{
                     //error:
-                    THEKERNEL->streams->printf("invalid number in M98 command \n");
+                    THEKERNEL->streams->printf("ALARM: invalid number in M98 command \n");
                     THEKERNEL->call_event(ON_HALT, nullptr);
                     THEKERNEL->set_halt_reason(MANUAL);
                     return;
@@ -393,7 +393,7 @@ void Player::on_gcode_received(void *argument)
                 num_repeats = floor(gcode->get_value('L'));
                 if (num_repeats <1){
                     //error:
-                    THEKERNEL->streams->printf("M98 command has an invalid value, which will lead to errors \n");
+                    THEKERNEL->streams->printf("ALARM: M98 command has an invalid value, which will lead to errors \n");
                     THEKERNEL->call_event(ON_HALT, nullptr);
                     THEKERNEL->set_halt_reason(MANUAL);
                     return;
@@ -413,7 +413,7 @@ void Player::on_gcode_received(void *argument)
                     }
                 }else{
                     //error: no filepath found
-                    THEKERNEL->streams->printf("no filepath found in M98.1 command \n");
+                    THEKERNEL->streams->printf("ALARM: no filepath found in M98.1 command \n");
                     THEKERNEL->call_event(ON_HALT, nullptr);
                     THEKERNEL->set_halt_reason(MANUAL);
                     return;
@@ -524,7 +524,7 @@ void Player::play_command( string parameters, StreamOutput *stream )
 //	if (!tool_ok) {
 //		THEKERNEL->set_halt_reason(MANUAL);
 //		THEKERNEL->call_event(ON_HALT, nullptr);
-//		THEKERNEL->streams->printf("ERROR: No tool or probe tool!\n");
+//		THEKERNEL->streams->printf("ALARM: No tool or probe tool!\n");
 //		return;
 //	}
 

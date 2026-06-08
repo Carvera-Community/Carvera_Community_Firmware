@@ -342,12 +342,9 @@ void WifiProvider::on_idle(void *argument)
     if (halt_flag) {
         halt_flag = false;
         THEKERNEL->set_halt_reason(MANUAL);
+		puts("ALARM: Controller Abort during cycle\r\n");
         THEKERNEL->call_event(ON_HALT, nullptr);
-        if(THEKERNEL->is_grbl_mode()) {
-            puts("ALARM: Abort during cycle\r\n");
-        } else {
-            puts("HALTED, M999 or $X to exit HALT state\r\n");
-        }
+		
     }
 }
 

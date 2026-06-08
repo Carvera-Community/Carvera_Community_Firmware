@@ -184,12 +184,13 @@ void SerialConsole::on_idle(void * argument)
     if (halt_flag) {
         halt_flag= false;
         THEKERNEL->set_halt_reason(MANUAL);
-        THEKERNEL->call_event(ON_HALT, nullptr);
+        
         if(THEKERNEL->is_grbl_mode()) {
             puts("ALARM: Abort during cycle\r\n", 0);
         } else {
-            puts("HALTED, M999 or $X to exit HALT state\r\n", 0);
+            puts("ALARM: Abort during cycle\r\nM999 or $X to exit HALT state\r\n", 0);
         }
+        THEKERNEL->call_event(ON_HALT, nullptr);
     }
 }
 

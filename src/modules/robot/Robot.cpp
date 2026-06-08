@@ -1433,7 +1433,7 @@ void Robot::process_move(Gcode *gcode, enum MOTION_MODE_T motion_mode)
         if (f_value <= 0.0F) {
             gcode->is_error = true;
             gcode->txt_after_ok = (f_value == 0 ? "Undefined feed rate\n" : "feed rate < 0\n");
-            THEKERNEL->streams->printf(f_value == 0 ? "Alarm:Undefined feed rate\n" : "Alarm:feed rate < 0\n");
+            THEKERNEL->streams->printf(f_value == 0 ? "ALARM: Undefined feed rate\n" : "ALARM: feed rate < 0\n");
             return;
         }
         if( motion_mode == SEEK )
@@ -1442,8 +1442,8 @@ void Robot::process_move(Gcode *gcode, enum MOTION_MODE_T motion_mode)
             this->feed_rate = f_value;
     } else if (motion_mode != SEEK && this->inverse_time_mode) {
         THEKERNEL->set_halt_reason(MANUAL);
+        THEKERNEL->streams->printf("ALARM: Inverse-time feed mode requires F parameter on every G01/G02/G03 line.\n");
         THEKERNEL->call_event(ON_HALT, nullptr);
-        THEKERNEL->streams->printf("Inverse-time feed mode requires F parameter on every G01/G02/G03 line.\n");
         return;
     }
 
@@ -1708,13 +1708,7 @@ bool Robot::append_milestone(const float target[], float feed_rate, unsigned int
                 ( (!isnan(soft_endstop_max[i]) && transformed_target[i] > soft_endstop_max[i]) && deltas[i] > 0 )
             ) {
                 if(soft_endstop_halt && !THECONVEYOR->is_continuous_mode()) {
-                    if(THEKERNEL->is_grbl_mode()) {
-                        THEKERNEL->streams->printf("error:");
-                    }else{
-                        THEKERNEL->streams->printf("Error: ");
-                    }
-
-                    THEKERNEL->streams->printf("Soft Endstop %c was exceeded - reset or $X or M999 required\n", i+'X');
+                    THEKERNEL->streams->printf("ALARM: Soft Endstop %c was exceeded - reset or $X or M999 required\n", i+'X');
                     THEKERNEL->set_halt_reason(SOFT_LIMIT);
                     THEKERNEL->call_event(ON_HALT, nullptr);
                     return false;
@@ -1725,11 +1719,6 @@ bool Robot::append_milestone(const float target[], float feed_rate, unsigned int
 
                 } else if (!THECONVEYOR->is_continuous_mode()) {
                     // ignore it
-                    if(THEKERNEL->is_grbl_mode()) {
-                        THEKERNEL->streams->printf("error:");
-                    }else{
-                        THEKERNEL->streams->printf("Error: ");
-                    }
                     THEKERNEL->streams->printf("Soft Endstop %c was exceeded - entire move ignored\n", i+'X');
                     return false;
                 }
@@ -1981,7 +1970,7 @@ bool Robot::append_line(Gcode *gcode, const float target[], float feed_rate, flo
     if(feed_rate <= 0.0F) {
         gcode->is_error= true;
         gcode->txt_after_ok= (feed_rate == 0 ? "Undefined feed rate\n" : "feed rate < 0\n");
-        THEKERNEL->streams->printf(feed_rate == 0 ? "Alarm:Undefined feed rate\n" : "Alarm:feed rate < 0\n");
+        THEKERNEL->streams->printf(feed_rate == 0 ? "ALARM: Undefined feed rate\n" : "ALARM: feed rate < 0\n");
         return false;
     }
 
@@ -2084,7 +2073,7 @@ bool Robot::append_arc(Gcode * gcode, const float target[], const float rotated_
     if(this->feed_rate <= 0.0F) {
         gcode->is_error= true;
         gcode->txt_after_ok= (this->feed_rate == 0 ? "Undefined feed rate" : "feed rate < 0");
-        THEKERNEL->streams->printf(this->feed_rate == 0 ? "Alarm:Undefined feed rate\n" : "Alarm:feed rate < 0\n");
+        THEKERNEL->streams->printf(this->feed_rate == 0 ? "ALARM: Undefined feed rate\n" : "ALARM: feed rate < 0\n");
         return false;
     }
     float offset_rotated[3]{0, 0, 0};
@@ -2361,7 +2350,7 @@ bool Robot::is_homed_all_axes()
     }
     for (int i = X_AXIS; i <= Z_AXIS; ++i) {
         if (!this->is_homed(i)){
-            THEKERNEL->streams->printf("Machine has not been homed\nUse M888 To disable homed check temporarily\n");
+            THEKERNEL->streams->printf("ALARM: Machine has not been homed. Use M888 to disable homed check\n");
             THEKERNEL->set_halt_reason(HOME_FAIL);
             THEKERNEL->call_event(ON_HALT, nullptr);
             return false;
