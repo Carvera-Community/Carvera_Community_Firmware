@@ -595,7 +595,7 @@ float Gcode::evaluate_expression(const char* expr, char** endptr) const {
 }
 
 // Evaluate an expression without a full Gcode context.
-float Gcode::evaluate_standalone_expression(const char* expr, char** endptr, StreamOutput* stream)
+float Gcode::evaluate_standalone_expression(char* expr, char** endptr, StreamOutput* stream)
 {
     Gcode tmp("", stream, false, 0);
     return tmp.evaluate_expression(expr, endptr);
