@@ -6,6 +6,7 @@
 - Enhancement: Added `debugmode cpuload` to output the % of time spent not in on_idle once per second to console
 - Enhancement: Added a new 4th axis self-calibration routine M469.6. This routine calibrates the 4th axis centreline in both Y and Z axis by probing a round object (such as chuck body) from multiple directions. This routine find the true zero point without being affected by runout or surface imperfections.
 - Enhancement: Added improved PID Spindle control that increases performance of carvera C1 spindles. Setup requires following the guide on the documentation page
+- Enhancement: Add option to auto-disable on-board AP once STA is connected
 - Fixed: Prevent incorrect current line reporting after a tool change
 
 [2.1.0c]
