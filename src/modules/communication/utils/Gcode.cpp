@@ -185,7 +185,7 @@ float Gcode::get_variable_value(const char* expr, char** endptr) const{
                 return THEKERNEL->local_vars[var_num -101];
             }
             THEKERNEL->set_halt_reason(MANUAL);
-            THEKERNEL->streams->printf("ALARM: Variable %d not set \n", var_num);
+            THEKERNEL->streams->printf("ERROR: Variable %d not set \n", var_num);
             THEKERNEL->call_event(ON_HALT, nullptr);
             
             return NAN;
@@ -200,7 +200,7 @@ float Gcode::get_variable_value(const char* expr, char** endptr) const{
                 return THEKERNEL->probe_outputs[var_num - 151];
             }
             THEKERNEL->set_halt_reason(MANUAL);
-            THEKERNEL->streams->printf("ALARM: Variable %d not set \n", var_num);
+            THEKERNEL->streams->printf("ERROR: Variable %d not set \n", var_num);
             THEKERNEL->call_event(ON_HALT, nullptr);
             return NAN;
 
@@ -212,7 +212,7 @@ float Gcode::get_variable_value(const char* expr, char** endptr) const{
             }
             
             THEKERNEL->set_halt_reason(MANUAL);
-            THEKERNEL->streams->printf("ALARM: Variable %d not set \n", var_num);
+            THEKERNEL->streams->printf("ERROR: Variable %d not set \n", var_num);
             THEKERNEL->call_event(ON_HALT, nullptr);
             return NAN;
         }else //system variables
@@ -300,7 +300,7 @@ float Gcode::get_variable_value(const char* expr, char** endptr) const{
 
                 default:
                     THEKERNEL->set_halt_reason(MANUAL);
-                    THEKERNEL->streams->printf("ALARM: Variable %d not found \n", var_num);
+                    THEKERNEL->streams->printf("ERROR: Variable %d not found \n", var_num);
                     THEKERNEL->call_event(ON_HALT, nullptr);
                     
                     return NAN;
@@ -314,7 +314,7 @@ float Gcode::get_variable_value(const char* expr, char** endptr) const{
 float Gcode::parse_expression(const char*& expr) const {
     if (*expr == ']') {
         THEKERNEL->set_halt_reason(MANUAL);
-        THEKERNEL->streams->printf("ALARM: Mismatched closing bracket ']' without opening '['\n");
+        THEKERNEL->streams->printf("ERROR: Mismatched closing bracket ']' without opening '['\n");
         THEKERNEL->call_event(ON_HALT, nullptr);
         return NAN;
     }
@@ -417,7 +417,7 @@ float Gcode::parse_term(const char*& expr) const {
                     result /= next_factor;
                 } else {
                     THEKERNEL->set_halt_reason(MANUAL);
-                    THEKERNEL->streams->printf("ALARM: Division by zero\n");
+                    THEKERNEL->streams->printf("ERROR: Division by zero\n");
                     THEKERNEL->call_event(ON_HALT, nullptr);
                     
                     return NAN;
@@ -431,7 +431,7 @@ float Gcode::parse_term(const char*& expr) const {
                 result = fmod(result, next_factor);
             } else {
                 THEKERNEL->set_halt_reason(MANUAL);
-                THEKERNEL->streams->printf("ALARM: Modulo by zero\n");
+                THEKERNEL->streams->printf("ERROR: Modulo by zero\n");
                 THEKERNEL->call_event(ON_HALT, nullptr);
                 
                 return NAN;
@@ -508,13 +508,13 @@ float Gcode::parse_factor(const char*& expr) const {
                 }
             } else {
                 THEKERNEL->set_halt_reason(MANUAL);
-                THEKERNEL->streams->printf("ALARM: Mismatched brackets in function argument\n");
+                THEKERNEL->streams->printf("ERROR: Mismatched brackets in function argument\n");
                 THEKERNEL->call_event(ON_HALT, nullptr);
                 return NAN;
             }
         } else {
             THEKERNEL->set_halt_reason(MANUAL);
-            THEKERNEL->streams->printf("ALARM: Expected '[' after function name\n");
+            THEKERNEL->streams->printf("ERROR: Expected '[' after function name\n");
             THEKERNEL->call_event(ON_HALT, nullptr);
             return NAN;
         }
@@ -525,7 +525,7 @@ float Gcode::parse_factor(const char*& expr) const {
             expr++; // Skip ']'
         } else {
             THEKERNEL->set_halt_reason(MANUAL);
-            THEKERNEL->streams->printf("ALARM: Mismatched brackets in expression\n");
+            THEKERNEL->streams->printf("ERROR: Mismatched brackets in expression\n");
             THEKERNEL->call_event(ON_HALT, nullptr);
             return NAN;
         }
@@ -548,7 +548,7 @@ float Gcode::parse_factor(const char*& expr) const {
 
         if (end == original_expr) {
             THEKERNEL->set_halt_reason(MANUAL);
-            THEKERNEL->streams->printf("ALARM: Invalid number in expression, %c\n", *expr);
+            THEKERNEL->streams->printf("ERROR: Invalid number in expression, %c\n", *expr);
             THEKERNEL->call_event(ON_HALT, nullptr);
             return NAN;
         }
@@ -571,9 +571,8 @@ float Gcode::evaluate_expression(const char* expr, char** endptr) const {
     // Check for unexpected closing bracket at the beginning
     if (*expr == ']') {
         THEKERNEL->set_halt_reason(MANUAL);
-        THEKERNEL->streams->printf("ALARM: Mismatched closing bracket ']' without opening '['\n");
+        THEKERNEL->streams->printf("ERROR: Mismatched closing bracket ']' without opening '['\n");
         THEKERNEL->call_event(ON_HALT, nullptr);
-        
         return NAN;
     }
 
@@ -582,8 +581,8 @@ float Gcode::evaluate_expression(const char* expr, char** endptr) const {
     // Ensure any remaining unmatched brackets are caught
     if (*expr == ']') {
         THEKERNEL->set_halt_reason(MANUAL);
+        THEKERNEL->streams->printf("ERROR: Mismatched closing bracket at end of expression\n");
         THEKERNEL->call_event(ON_HALT, nullptr);
-        THEKERNEL->streams->printf("Mismatched closing bracket at end of expression\n");
         return NAN;
     }
 

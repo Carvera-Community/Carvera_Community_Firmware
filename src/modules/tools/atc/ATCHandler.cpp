@@ -818,14 +818,14 @@ void ATCHandler::calibrate_a_axis_cor(Gcode *gcode) //M469.6
 	}
 
 	if (!((this->active_tool == 0) || (this->active_tool >= 999990))) {
-		THEKERNEL->streams->printf("ALARM: Attempted to probe with an improper tool. A 3-axis probe must be installed (tool 0 or tool >= 999990).\n");
+		THEKERNEL->streams->printf("ERROR: Attempted to probe with an improper tool. A 3-axis probe must be installed (tool 0 or tool >= 999990).\n");
 		THEKERNEL->call_event(ON_HALT, nullptr);
 		THEKERNEL->set_halt_reason(PROBE_FAIL);
 		return;
 	}
 
 	if (THEROBOT->get_tool_not_calibrated()) {
-		THEKERNEL->streams->printf("ALARM: Probe not calibrated. Please calibrate the probe TLO before running M469.6.\n");
+		THEKERNEL->streams->printf("ERROR: Probe not calibrated. Please calibrate the probe TLO before running M469.6.\n");
 		THEKERNEL->call_event(ON_HALT, nullptr);
 		THEKERNEL->set_halt_reason(PROBE_FAIL);
 		return;
@@ -2000,7 +2000,7 @@ void ATCHandler::home_clamp()
 
     if (!atc_home_info.triggered) {
         THEKERNEL->set_halt_reason(ATC_HOME_FAIL);
-		THEKERNEL->streams->printf("ALARM: Homing atc failed - check the atc max travel settings\n");
+		THEKERNEL->streams->printf("ERROR: Homing atc failed - check the atc max travel settings\n");
         THEKERNEL->call_event(ON_HALT, nullptr);
         return;
     } else {
@@ -2118,7 +2118,7 @@ void ATCHandler::set_tool_offset(uint8_t repeat_count)
 			const float offset[3] = {0.0, 0.0, tool_offset};
 			THEROBOT->saveToolOffset(offset, cur_tool_mz);
 			THEKERNEL->set_halt_reason(MANUAL);
-			THEKERNEL->streams->printf("ALARM: warning, unexpected reference tool length found, reset machine then recalibrate tool\n");
+			THEKERNEL->streams->printf("ERROR: warning, unexpected reference tool length found, reset machine then recalibrate tool\n");
 			THEKERNEL->call_event(ON_HALT, nullptr);
 			return;
 		}
@@ -2148,7 +2148,7 @@ void ATCHandler::set_tlo_by_offset(float z_axis_offset){
 		const float offset[3] = {0.0, 0.0, tool_offset};
 		THEROBOT->saveToolOffset(offset, cur_tool_mz);
 		THEKERNEL->set_halt_reason(MANUAL);
-		THEKERNEL->streams->printf("ALARM: warning, unexpected reference tool length found, reset machine then recalibrate tool\n");
+		THEKERNEL->streams->printf("ERROR: warning, unexpected reference tool length found, reset machine then recalibrate tool\n");
 		THEKERNEL->call_event(ON_HALT, nullptr);
 		return;
 	}
@@ -2184,12 +2184,12 @@ void ATCHandler::on_gcode_received(void *argument)
     	    		
 					if(THEKERNEL->factory_set->FuncSetting & (1<<2))	//ATC 
 					{
-	    	    		THEKERNEL->streams->printf("ALARM: can not do ATC while spindle is running.\n");
+	    	    		THEKERNEL->streams->printf("ERROR: can not do ATC while spindle is running.\n");
 				        THEKERNEL->set_halt_reason(ATC_HOME_FAIL);
 				    }
 				    else	//Manual Tool Change
 				    {
-				    	THEKERNEL->streams->printf("ALARM: can not change tool while spindle is running.\n");
+				    	THEKERNEL->streams->printf("ERROR: can not change tool while spindle is running.\n");
 			        	THEKERNEL->set_halt_reason(CALIBRATE_FAIL);
 				    }
 			        THEKERNEL->call_event(ON_HALT, nullptr);
@@ -2237,15 +2237,15 @@ void ATCHandler::on_gcode_received(void *argument)
 			{
 	            if (new_tool > this->max_manual_tool_number){
 					THEKERNEL->set_halt_reason(ATC_TOOL_INVALID);
-					gcode->stream->printf("ALARM: Invalid tool: T%d\r\n", new_tool);
+					gcode->stream->printf("ERROR: Invalid tool: T%d\r\n", new_tool);
 					THEKERNEL->call_event(ON_HALT, nullptr);
 				} else if (new_tool >= 0 && !this->is_custom_tool_defined(new_tool) && new_tool <= this->tool_number && CARVERA == THEKERNEL->factory_set->MachineModel) {
 					THEKERNEL->set_halt_reason(ATC_TOOL_INVALID);
-					gcode->stream->printf("ALARM: Tool T%d not defined in tool slots\r\n", new_tool);
+					gcode->stream->printf("ERROR: Tool T%d not defined in tool slots\r\n", new_tool);
 					THEKERNEL->call_event(ON_HALT, nullptr);
 				} else if (new_tool != active_tool) {
 					if (new_tool > -1 && THEKERNEL->get_laser_mode() && CARVERA == THEKERNEL->factory_set->MachineModel) {
-						THEKERNEL->streams->printf("ALARM: Can not do ATC in laser mode!\n");
+						THEKERNEL->streams->printf("ERROR: Can not do ATC in laser mode!\n");
 						return;
 					}
 					
@@ -2514,7 +2514,7 @@ void ATCHandler::on_gcode_received(void *argument)
 				if (gcode->has_letter('H')) {
 					tolerance = gcode->get_value('H');
 					if (tolerance < 0.02) {
-						THEKERNEL->streams->printf("ALARM: Tool Break Check - tolerance set too small\n");
+						THEKERNEL->streams->printf("ERROR: Tool Break Check - tolerance set too small\n");
 						THEKERNEL->set_halt_reason(CALIBRATE_FAIL);
 						THEKERNEL->call_event(ON_HALT, nullptr);
 						return;
@@ -2558,7 +2558,7 @@ void ATCHandler::on_gcode_received(void *argument)
 				if (gcode->has_letter('H')) {
 		    		tolerance = gcode->get_value('H');
 					if (tolerance < 0.02) {
-						THEKERNEL->streams->printf("ALARM: Tool Break Check - tolerance set too small\n");
+						THEKERNEL->streams->printf("ERROR: Tool Break Check - tolerance set too small\n");
 						THEKERNEL->set_halt_reason(CALIBRATE_FAIL);
 						THEKERNEL->call_event(ON_HALT, nullptr);
 						return;
@@ -2577,7 +2577,7 @@ void ATCHandler::on_gcode_received(void *argument)
 				THEKERNEL->streams->printf("Old: %.3f , new: %.3f\n",tlo,new_tlo);
 				//test for breakage
 				if (fabs(tlo - new_tlo) > tolerance) {
-					THEKERNEL->streams->printf("ALARM: Tool Break Check - check tool for breakage\n");
+					THEKERNEL->streams->printf("ERROR: Tool Break Check - check tool for breakage\n");
 					THEKERNEL->set_halt_reason(CALIBRATE_FAIL);
 					THEKERNEL->call_event(ON_HALT, nullptr);
 					return;
@@ -2631,21 +2631,21 @@ void ATCHandler::on_gcode_received(void *argument)
 					// check true
 					if (!laser_detect()) {
 				        THEKERNEL->set_halt_reason(ATC_NO_TOOL);
-				        THEKERNEL->streams->printf("ALARM: Unexpected tool absence detected, please check tool rack!\n");
+				        THEKERNEL->streams->printf("ERROR: Unexpected tool absence detected, please check tool rack!\n");
 						THEKERNEL->call_event(ON_HALT, nullptr);
 					}
 				} else if ((gcode->subcode == 2) && !this->disable_toolsensor) {
 					// check false
 					if (laser_detect()) {
 				        THEKERNEL->set_halt_reason(ATC_HAS_TOOL);
-				        THEKERNEL->streams->printf("ALARM: Unexpected tool presence detected, please check tool rack!\n");
+				        THEKERNEL->streams->printf("ERROR: Unexpected tool presence detected, please check tool rack!\n");
 						THEKERNEL->call_event(ON_HALT, nullptr);
 					}
 				} else if (gcode->subcode == 3) {
 					// check if the probe was triggered
 					if (!probe_detect()) {
 				        THEKERNEL->set_halt_reason(PROBE_INVALID);
-				        THEKERNEL->streams->printf("ALARM: Wireless probe dead or not set, please charge or set first!\n");
+				        THEKERNEL->streams->printf("ERROR: Wireless probe dead or not set, please charge or set first!\n");
 						THEKERNEL->call_event(ON_HALT, nullptr);
 					}
 				}
@@ -2657,7 +2657,7 @@ void ATCHandler::on_gcode_received(void *argument)
 					// check if the probe was triggered
 					if (!probe_detect()) {
 				        THEKERNEL->set_halt_reason(PROBE_INVALID);
-						THEKERNEL->streams->printf("ALARM: Probe dead or not set, please charge or set first!\n");
+						THEKERNEL->streams->printf("ERROR: Probe dead or not set, please charge or set first!\n");
 				        THEKERNEL->call_event(ON_HALT, nullptr);
 				}
 			}
@@ -2685,7 +2685,7 @@ void ATCHandler::on_gcode_received(void *argument)
 
 				} else {
 					THEKERNEL->set_halt_reason(ATC_NO_TOOL);
-					THEKERNEL->streams->printf("ALARM: No tool was set!\n");
+					THEKERNEL->streams->printf("ERROR: No tool was set!\n");
 					THEKERNEL->call_event(ON_HALT, nullptr);
 
 				}
@@ -2706,7 +2706,7 @@ void ATCHandler::on_gcode_received(void *argument)
 						const float offset[3] = {0.0, 0.0, tool_offset};
 						THEROBOT->saveToolOffset(offset, cur_tool_mz);
 						THEKERNEL->set_halt_reason(MANUAL);
-						THEKERNEL->streams->printf("ALARM: warning, unexpected reference tool length found, reset machine then recalibrate tool\n");
+						THEKERNEL->streams->printf("ERROR: warning, unexpected reference tool length found, reset machine then recalibrate tool\n");
 						THEKERNEL->call_event(ON_HALT, nullptr);
 						return;
 					}
@@ -2801,11 +2801,11 @@ void ATCHandler::on_gcode_received(void *argument)
 				// Do Margin, ZProbe, Auto Leveling based on parameters, change probe tool if needed
 				if (gcode->has_letter('X') && gcode->has_letter('Y')) {
 	        		if (THEKERNEL->get_laser_mode()) {
-	        			THEKERNEL->streams->printf("ALARM: Can not do Automatic work in laser mode!\n");
+	        			THEKERNEL->streams->printf("ERROR: Can not do Automatic work in laser mode!\n");
 	        			return;
 	        		}
 					if ((this->active_tool == 0 || this->active_tool >= 999990) && THEROBOT->get_tool_not_calibrated()){
-						THEKERNEL->streams->printf("ALARM: Probe not calibrated. Please calibrate probe before probing.\n");
+						THEKERNEL->streams->printf("ERROR: Probe not calibrated. Please calibrate probe before probing.\n");
 						THEKERNEL->call_event(ON_HALT, nullptr);
 						THEKERNEL->set_halt_reason(CALIBRATE_FAIL);
 						return;
@@ -2948,7 +2948,7 @@ void ATCHandler::on_gcode_received(void *argument)
 		    			}
 		    		}
 				} else {
-					gcode->stream->printf("ALARM: Miss Automation Parameter: X/Y\r\n");
+					gcode->stream->printf("ERROR: Miss Automation Parameter: X/Y\r\n");
 				}
 			}
 		} else if (gcode->m == 496) {

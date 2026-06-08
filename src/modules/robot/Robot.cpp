@@ -654,7 +654,7 @@ void Robot::on_gcode_received(void *argument)
                         // notify atc module to change ref tool mcs if Z wcs offset is chaned
                         if (gcode->has_letter('Z') && gcode->get_int('L') == 20) {
                             if (tool_not_calibrated && (THEKERNEL->eeprom_data->TOOL == 0 || THEKERNEL->eeprom_data->TOOL >= 999990)){
-                                THEKERNEL->streams->printf("ALARM: Probe not calibrated. Please calibrate probe before probing.\n");
+                                THEKERNEL->streams->printf("ERROR: Probe not calibrated. Please calibrate probe before probing.\n");
                                 THEKERNEL->call_event(ON_HALT, nullptr);
                                 THEKERNEL->set_halt_reason(CALIBRATE_FAIL);
                                 return;
@@ -742,7 +742,7 @@ void Robot::on_gcode_received(void *argument)
             // Inch mode is broken see https://github.com/Carvera-Community/Carvera_Community_Firmware/issues/209
             // case 20: this->inch_mode = true;   break;
             case 20: {
-                THEKERNEL->streams->printf("ALARM: Imperial Units are unsupported\n");
+                THEKERNEL->streams->printf("ERROR: Imperial Units are unsupported\n");
                 THEKERNEL->call_event(ON_HALT, nullptr);
                 THEKERNEL->set_halt_reason(MANUAL);
                 return;
@@ -1433,7 +1433,7 @@ void Robot::process_move(Gcode *gcode, enum MOTION_MODE_T motion_mode)
         if (f_value <= 0.0F) {
             gcode->is_error = true;
             gcode->txt_after_ok = (f_value == 0 ? "Undefined feed rate\n" : "feed rate < 0\n");
-            THEKERNEL->streams->printf(f_value == 0 ? "ALARM: Undefined feed rate\n" : "ALARM: feed rate < 0\n");
+            THEKERNEL->streams->printf(f_value == 0 ? "ERROR: Undefined feed rate\n" : "ERROR: feed rate < 0\n");
             return;
         }
         if( motion_mode == SEEK )
@@ -1442,7 +1442,7 @@ void Robot::process_move(Gcode *gcode, enum MOTION_MODE_T motion_mode)
             this->feed_rate = f_value;
     } else if (motion_mode != SEEK && this->inverse_time_mode) {
         THEKERNEL->set_halt_reason(MANUAL);
-        THEKERNEL->streams->printf("ALARM: Inverse-time feed mode requires F parameter on every G01/G02/G03 line.\n");
+        THEKERNEL->streams->printf("ERROR: Inverse-time feed mode requires F parameter on every G01/G02/G03 line.\n");
         THEKERNEL->call_event(ON_HALT, nullptr);
         return;
     }
@@ -1708,7 +1708,7 @@ bool Robot::append_milestone(const float target[], float feed_rate, unsigned int
                 ( (!isnan(soft_endstop_max[i]) && transformed_target[i] > soft_endstop_max[i]) && deltas[i] > 0 )
             ) {
                 if(soft_endstop_halt && !THECONVEYOR->is_continuous_mode()) {
-                    THEKERNEL->streams->printf("ALARM: Soft Endstop %c was exceeded - reset or $X or M999 required\n", i+'X');
+                    THEKERNEL->streams->printf("ERROR: Soft Endstop %c was exceeded - reset or $X or M999 required\n", i+'X');
                     THEKERNEL->set_halt_reason(SOFT_LIMIT);
                     THEKERNEL->call_event(ON_HALT, nullptr);
                     return false;
@@ -1970,7 +1970,7 @@ bool Robot::append_line(Gcode *gcode, const float target[], float feed_rate, flo
     if(feed_rate <= 0.0F) {
         gcode->is_error= true;
         gcode->txt_after_ok= (feed_rate == 0 ? "Undefined feed rate\n" : "feed rate < 0\n");
-        THEKERNEL->streams->printf(feed_rate == 0 ? "ALARM: Undefined feed rate\n" : "ALARM: feed rate < 0\n");
+        THEKERNEL->streams->printf(feed_rate == 0 ? "ERROR: Undefined feed rate\n" : "ERROR: feed rate < 0\n");
         return false;
     }
 
@@ -2073,7 +2073,7 @@ bool Robot::append_arc(Gcode * gcode, const float target[], const float rotated_
     if(this->feed_rate <= 0.0F) {
         gcode->is_error= true;
         gcode->txt_after_ok= (this->feed_rate == 0 ? "Undefined feed rate" : "feed rate < 0");
-        THEKERNEL->streams->printf(this->feed_rate == 0 ? "ALARM: Undefined feed rate\n" : "ALARM: feed rate < 0\n");
+        THEKERNEL->streams->printf(this->feed_rate == 0 ? "ERROR: Undefined feed rate\n" : "ERROR: feed rate < 0\n");
         return false;
     }
     float offset_rotated[3]{0, 0, 0};
@@ -2350,7 +2350,7 @@ bool Robot::is_homed_all_axes()
     }
     for (int i = X_AXIS; i <= Z_AXIS; ++i) {
         if (!this->is_homed(i)){
-            THEKERNEL->streams->printf("ALARM: Machine has not been homed. Use M888 to disable homed check\n");
+            THEKERNEL->streams->printf("ERROR: Machine has not been homed. Use M888 to disable homed check\n");
             THEKERNEL->set_halt_reason(HOME_FAIL);
             THEKERNEL->call_event(ON_HALT, nullptr);
             return false;

@@ -761,7 +761,7 @@ void Kernel::write_eeprom_data()
 		}
 	}
 	if (result != 0) {
-		this->streams->printf("ALARM: EEPROM data write error:%d\n",pagenum);
+		this->streams->printf("ERROR: EEPROM data write error:%d\n",pagenum);
 	} else {
 //		this->streams->printf("EEPROM data write finished.\n");
 	}
@@ -799,7 +799,7 @@ void Kernel::erase_eeprom_data()
 		}
 	}
 	if (result != 0) {
-		this->streams->printf("ALARM: EEPROM data erase error.\n");
+		this->streams->printf("ERROR: EEPROM data erase error.\n");
 	} else {
 		this->streams->printf("EEPROM data erase finished.\n");
 	}
@@ -943,7 +943,7 @@ void Kernel::write_Factory_data()
 		}
 	}
 	if (result != 0) {
-		this->streams->printf("ALARM: FACTORY setting data write error:%d\n",pagenum);
+		this->streams->printf("ERROR: FACTORY setting data write error:%d\n",pagenum);
 	} 
 }
 
@@ -979,7 +979,7 @@ void Kernel::erase_Factory_data()
 		}
 	}
 	if (result != 0) {
-		this->streams->printf("ALARM: FACTORY setting data erase error.\n");
+		this->streams->printf("ERROR: FACTORY setting data erase error.\n");
 	}
 }
 
