@@ -124,6 +124,7 @@ private:
     void calibrate_anchor2(Gcode *gcode);
     void calibrate_a_axis_headstock(Gcode *gcode);
     void calibrate_a_axis_height(Gcode *gcode);
+    void calibrate_a_axis_cor(Gcode *gcode);
     void home_machine_with_pin(Gcode *gcode);
     void calibrate_set_value(Gcode *gcode);
 
