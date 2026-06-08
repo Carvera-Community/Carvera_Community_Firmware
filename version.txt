@@ -7,6 +7,7 @@
 - Enhancement: Added a new 4th axis self-calibration routine M469.6. This routine calibrates the 4th axis centreline in both Y and Z axis by probing a round object (such as chuck body) from multiple directions. This routine find the true zero point without being affected by runout or surface imperfections.
 - Enhancement: Added improved PID Spindle control that increases performance of carvera C1 spindles. Setup requires following the guide on the documentation page
 - Fixed: Prevent incorrect current line reporting after a tool change
+- Lint: conformed all error messages to the format ALARM: <message> for easier hooks in the controller
 
 [2.1.0c]
 - Fixed: Unused Variables removed
