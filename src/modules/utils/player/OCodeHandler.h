@@ -98,7 +98,7 @@ class OCodeHandler {
         bool tolerant_after_jump_ = false;   // warn instead of halt on label mismatch
 
         // Parse an O-code line; fills num, keyword (lower-case), and rest.
-        // Returns false if the line does not begin with O/o followed by digits.
+        // Returns false if the line does not begin with O followed by digits.
         static bool parse_ocode(const char* line, int& num, std::string& keyword, std::string& rest);
 
         float eval_expr(std::string& expr, StreamOutput* stream) const;

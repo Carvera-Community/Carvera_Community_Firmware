@@ -92,11 +92,11 @@ void OCodeHandler::prepare_jump(FILE* fh, StreamOutput* stream)
 }
 
 // Extract O-code number, lower-cased keyword, and remaining text from a raw line.
-// Returns false when the line does not start with O/o followed by digits.
+// Returns false when the line does not start with O followed by digits.
 bool OCodeHandler::parse_ocode(const char* line, int& num, string& keyword, string& rest)
 {
     const char* p = ltrim_cstr(line);
-    if(*p != 'O' && *p != 'o') return false;
+    if(*p != 'O') return false;
     p++;
 
     char* end;
