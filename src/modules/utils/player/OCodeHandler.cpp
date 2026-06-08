@@ -120,10 +120,11 @@ bool OCodeHandler::parse_ocode(const char* line, int& num, string& keyword, stri
     return !keyword.empty();
 }
 
-float OCodeHandler::eval_expr(const char* expr, StreamOutput* stream) const
+float OCodeHandler::eval_expr(string& expr, StreamOutput* stream) const
 {
+    char* buf = expr.empty() ? const_cast<char*>("") : &expr[0];
     char* endptr = NULL;
-    return Gcode::evaluate_standalone_expression(expr, &endptr, stream);
+    return Gcode::evaluate_standalone_expression(buf, &endptr, stream);
 }
 
 void OCodeHandler::halt_error(StreamOutput* stream, const char* fmt, ...) const
@@ -325,9 +326,9 @@ bool OCodeHandler::process_line(const char* line, FILE* fh, StreamOutput* stream
 
         // Parse bracketed arguments [a1] [a2] ... (pass full [expr] so the
         // expression parser consumes the closing bracket, same as if/while).
-        const char* rp = rest.c_str();
+        char* rp = rest.empty() ? const_cast<char*>("") : &rest[0];
         for(int p = 0; p < 30; p++) {
-            rp = ltrim_cstr(rp);
+            rp = const_cast<char*>(ltrim_cstr(rp));
             if(*rp != '[') break;
             char* endp = NULL;
             float val = Gcode::evaluate_standalone_expression(rp, &endp, stream);
@@ -358,7 +359,7 @@ bool OCodeHandler::process_line(const char* line, FILE* fh, StreamOutput* stream
         frame.jump_line     = 0;
 
         if(!any_frame_skipping()) {
-            float val = eval_expr(rest.c_str(), stream);
+            float val = eval_expr(rest, stream);
             frame.executing    = (val != 0.0f && !isnan(val));
             frame.branch_taken = frame.executing;
         } else {
@@ -377,7 +378,7 @@ bool OCodeHandler::process_line(const char* line, FILE* fh, StreamOutput* stream
                 if(stack_[i].branch_taken) {
                     stack_[i].executing = false;
                 } else {
-                    float val = eval_expr(rest.c_str(), stream);
+                    float val = eval_expr(rest, stream);
                     bool cond = (val != 0.0f && !isnan(val));
                     stack_[i].executing    = cond;
                     stack_[i].branch_taken = cond;
@@ -420,7 +421,7 @@ bool OCodeHandler::process_line(const char* line, FILE* fh, StreamOutput* stream
         for(int i = (int)stack_.size() - 1; i >= 0; i--) {
             if(stack_[i].type == BlockType::DO && stack_[i].num == num) {
                 if(!any_frame_skipping()) {
-                    float val = eval_expr(rest.c_str(), stream);
+                    float val = eval_expr(rest, stream);
                     bool cond = (val != 0.0f && !isnan(val));
                     if(cond) {
                         file_line = (unsigned long)stack_[i].jump_line - 1;
@@ -453,7 +454,7 @@ bool OCodeHandler::process_line(const char* line, FILE* fh, StreamOutput* stream
         frame.jump_line     = (int)file_line;
 
         if(!any_frame_skipping()) {
-            float val = eval_expr(rest.c_str(), stream);
+            float val = eval_expr(rest, stream);
             bool cond = (val != 0.0f && !isnan(val));
             frame.executing = cond;
             if(!cond) {
@@ -520,7 +521,7 @@ bool OCodeHandler::process_line(const char* line, FILE* fh, StreamOutput* stream
 
         int count = 0;
         if(!any_frame_skipping()) {
-            float val = eval_expr(rest.c_str(), stream);
+            float val = eval_expr(rest, stream);
             count = (int)val;
         }
 
@@ -626,7 +627,7 @@ bool OCodeHandler::process_line(const char* line, FILE* fh, StreamOutput* stream
             if(!skip_to(fh, "do", "while", matched, lines_read, num, &condition))
                 halt_error(stream, "O%d continue: could not find end of do-while", num);
             file_line += lines_read;
-            float val = eval_expr(condition.c_str(), stream);
+            float val = eval_expr(condition, stream);
             bool cond = (val != 0.0f && !isnan(val));
             if(cond) {
                 file_line = (unsigned long)jump_line - 1;

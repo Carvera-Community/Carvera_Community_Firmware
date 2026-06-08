@@ -101,7 +101,7 @@ class OCodeHandler {
         // Returns false if the line does not begin with O/o followed by digits.
         static bool parse_ocode(const char* line, int& num, std::string& keyword, std::string& rest);
 
-        float eval_expr(const char* expr, StreamOutput* stream) const;
+        float eval_expr(std::string& expr, StreamOutput* stream) const;
 
         // Scan forward in fh until a matching keyword is found at nesting depth 0.
         // open_kw increments depth; close_kw decrements / matches. Leaves the file
