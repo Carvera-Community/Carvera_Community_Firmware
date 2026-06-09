@@ -927,8 +927,8 @@ void SimpleShell::ap_command( string parameters, StreamOutput *stream)
     		}
     	} else if (s == "ssid") {
     		if (!parameters.empty()) {
-    	    	if (parameters.length() > 27) {
-    	    		stream->printf("WiFi AP SSID length should between 1 to 27\n");
+    	    	if (parameters.length() > 32) {
+    	    		stream->printf("WiFi AP SSID length should between 1 to 32\n");
     	    	} else {
     	    		strcpy(buff, parameters.c_str());
     	            PublicData::set_value( wlan_checksum, ap_set_ssid_checksum, buff );
