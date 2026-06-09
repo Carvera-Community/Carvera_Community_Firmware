@@ -230,56 +230,49 @@ void SimpleShell::on_gcode_received(void *argument)
             if(!args.empty() && !THEKERNEL->is_grbl_mode())
                 rm_command("/sd/" + args, gcode->stream);
         } else if (gcode->m == 331) { // change to vacuum mode
-        	THEKERNEL->set_vacuum_mode(true);
-		    // get spindle state
-		    struct spindle_status ss;
-		    bool ok = PublicData::get_value(pwm_spindle_control_checksum, get_spindle_status_checksum, &ss);
-		    if (ok) {
-		    	if (ss.state) {
-	        		// open vacuum
-	        		bool b = true;
-	        		if(CARVERA == THEKERNEL->factory_set->MachineModel)
-	        		{
-	                	PublicData::set_value( switch_checksum, vacuum_checksum, state_checksum, &b );
-	                }
-	                else
-	                {
-	                	PublicData::set_value( switch_checksum, extendout_checksum, state_checksum, &b );
-	                }
-		    	}
-        	}
-        	if(CARVERA == THEKERNEL->factory_set->MachineModel)
-            {
-                PacketMessage(PTYPE_NORMAL_INFO, "turning vacuum mode on\r\n", 0, gcode->stream);
+        	if (gcode->subcode == 0) {
+				THEKERNEL->set_vacuum_mode(true);
+			    // get spindle state
+			    struct spindle_status ss;
+			    bool ok = PublicData::get_value(pwm_spindle_control_checksum, get_spindle_status_checksum, &ss);
+			    if (ok) {
+			    	if (ss.state) {
+		        		// open vacuum
+		        		bool b = true;
+		        		PublicData::set_value( switch_checksum, vacuum_checksum, state_checksum, &b );
+			    	}
+	        	}
+	        	PacketMessage(PTYPE_NORMAL_INFO, "turning vacuum mode on\r\n", 0, gcode->stream);
 			}
-			else
-			{
-				// turn on extend out mode
-				PacketMessage(PTYPE_NORMAL_INFO, "turning extend out mode on\r\n", 0, gcode->stream);
+			else if (gcode->subcode == 3) {
+				THEKERNEL->set_extout_mode(true);
+			    // get spindle state
+			    struct spindle_status ss;
+			    bool ok = PublicData::get_value(pwm_spindle_control_checksum, get_spindle_status_checksum, &ss);
+			    if (ok) {
+			    	if (ss.state) {
+		        		// open vacuum
+		        		bool b = true;
+		        		PublicData::set_value( switch_checksum, extendout_checksum, state_checksum, &b );
+			    	}
+	        	}
+	        	PacketMessage(PTYPE_NORMAL_INFO, "turning extend out mode on\r\n", 0, gcode->stream);
             }
-		} else if (gcode->m == 332) { // change to CNC mode
-			
-        	THEKERNEL->set_vacuum_mode(false);
-		    // get spindle state
-		    struct spindle_status ss;
-		    bool ok = PublicData::get_value(pwm_spindle_control_checksum, get_spindle_status_checksum, &ss);
-		    if (ok) {
-		    	if (ss.state) {
-	        		// close vacuum
-	        		bool b = false;
-	        		if(CARVERA == THEKERNEL->factory_set->MachineModel)
-	        		{
-	                	PublicData::set_value( switch_checksum, vacuum_checksum, state_checksum, &b );
-	                }
-	                else
-	                {
-	                	PublicData::set_value( switch_checksum, extendout_checksum, state_checksum, &b );
-	                }
-		    	}
-        	}
-			if(CARVERA == THEKERNEL->factory_set->MachineModel)
-	        {
-			    // turn off vacuum mode
+        } else if (gcode->m == 332) { // change to CNC mode			
+			if (gcode->subcode == 0) {
+				THEKERNEL->set_vacuum_mode(false);
+			    // get spindle state
+			    struct spindle_status ss;
+			    bool ok = PublicData::get_value(pwm_spindle_control_checksum, get_spindle_status_checksum, &ss);
+			    if (ok) {
+			    	if (ss.state) {
+		        		// close vacuum
+		        		bool b = false;
+		        		PublicData::set_value( switch_checksum, vacuum_checksum, state_checksum, &b );
+			    	}
+	        	}
+				// turn off vacuum mode
+		
 				PacketMessage(PTYPE_NORMAL_INFO, "turning vacuum mode off\r\n", 0, gcode->stream);
 			}
 			else
