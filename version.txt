@@ -8,6 +8,7 @@
 - Enhancement: Added improved PID Spindle control that increases performance of carvera C1 spindles. Setup requires following the guide on the documentation page
 - Fixed: Prevent incorrect current line reporting after a tool change
 - Lint: conformed all error messages to the format ERROR: <message> for easier hooks in the controller
+- Fixed: Carvera air would halt if the lid was opened during a manual tool change and stop on lid open was enabled. Change from Makera
 
 [2.1.0c]
 - Fixed: Unused Variables removed
