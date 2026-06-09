@@ -174,7 +174,7 @@ try_again:
 							THEKERNEL->call_event(ON_HALT, (void *)1); // clears on_halt
 							new_message.stream->printf("WARNING: After HALT you should HOME as position is currently unknown\n");
 						}
-						new_message.stream->printf("ok\n");
+						new_message.stream->printf("ok\r\n");
 						delete gcode;
 						return;
 
@@ -225,7 +225,7 @@ try_again:
 						// optimize G1 to send ok immediately (one per line) before it is planned
 						if(!sent_ok) {
 							sent_ok= true;
-							new_message.stream->printf("ok\n");
+							new_message.stream->printf("ok\r\n");
 						}
 					}
 
@@ -299,9 +299,9 @@ try_again:
 							#endif
 
 							if(THEKERNEL->is_bad_mcu()) {
-								new_message.stream->printf(", X-WARNING:deprecated_MCU");
+								new_message.stream->printf(", X-WARNING:deprecated_MCU\n");
 							}
-							new_message.stream->printf("\nok\n");
+							new_message.stream->printf("ok\r\n");
 							return;
 						}
 
