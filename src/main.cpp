@@ -103,6 +103,15 @@ void init() {
     GPIO beep = GPIO(P1_14);
     beep.output();
     beep = 0;
+    GPIO extout = GPIO(P0_29);
+    extout.output();
+    extout = 0;
+    extout = GPIO(P0_30);
+    extout.output();
+    extout = 0;
+    extout = GPIO(P1_19);
+    extout.output();
+    extout = 0;
 
     // open 12V
     // GPIO v12 = GPIO(P0_11);
@@ -159,7 +168,7 @@ void init() {
     kernel->add_module( new ATCHandler() );
 
     // MSC File System Handler
-    kernel->add_module( new MSCFileSystem("ud") );
+    //kernel->add_module( new MSCFileSystem("ud") );
 
     // Serial Console handles IO with the wireless probe
     kernel->add_module( new(AHB) SerialConsole2() ); // must stay in AHB: UART RxIrq writes RingBuffer
