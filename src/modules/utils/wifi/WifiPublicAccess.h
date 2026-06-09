@@ -8,6 +8,7 @@
 #define ap_set_ssid_checksum   CHECKSUM("ap_set_ssid")
 #define ap_set_password_checksum   CHECKSUM("ap_set_password")
 #define ap_enable_checksum   CHECKSUM("ap_enable")
+#define get_rssi_checksum	CHECKSUM("get_rssi")
 
 struct ap_conn_info {
     char ssid[32];

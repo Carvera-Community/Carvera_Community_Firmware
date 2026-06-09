@@ -1173,7 +1173,14 @@ void SimpleShell::diagnose_command( string parameters, StreamOutput *stream)
         if(n > sizeof(buf)) n = sizeof(buf);
         str.append(buf, n);
     }
-
+    // get wifi rssi
+    signed char rssidata;
+    ok = PublicData::get_value(wlan_checksum, get_rssi_checksum, 0, &rssidata);
+    if (ok) {
+        n = snprintf(buf, sizeof(buf), "|RSSI:%d", rssidata);
+        if(n > sizeof(buf)) n = sizeof(buf);
+        str.append(buf, n);
+    }
     str.append("}\n");
     stream->printf("%s", str.c_str());
 
