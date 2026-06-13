@@ -264,7 +264,7 @@ void Switch::on_config_reload(void *argument)
 
         } else if(this->output_type == SWPWM) {
             // default is 50Hz
-            float p= THEKERNEL->config->value(switch_checksum, this->name_checksum, pwm_period_ms_checksum )->as_number(20); // ms fractions are not allowed
+            float p= THEKERNEL->config->value(switch_checksum, this->name_checksum, pwm_period_ms_checksum )->as_number(10); // ms fractions are not allowed
             this->swpwm_pin->period_ms(p);
 
             // default is 0% duty cycle
