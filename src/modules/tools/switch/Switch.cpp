@@ -470,6 +470,7 @@ void Switch::on_get_public_data(void *argument)
     pad->name = this->name_checksum;
     pad->state = this->switch_state;
     pad->value = this->switch_value;
+    pad->defaultvalue = this->default_on_value;
     pdr->set_taken();
 }
 
