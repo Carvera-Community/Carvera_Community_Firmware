@@ -242,7 +242,8 @@ void SimpleShell::on_gcode_received(void *argument)
 		        		PublicData::set_value( switch_checksum, vacuum_checksum, state_checksum, &b );
 			    	}
 	        	}
-	        	PacketMessage(PTYPE_NORMAL_INFO, "turning vacuum mode on\r\n", 0, gcode->stream);
+	        	//PacketMessage(PTYPE_NORMAL_INFO, "turning vacuum mode on\r\n", 0, gcode->stream);
+                gcode->stream->printf("turning vacuum mode on\r\n");
 			}
 			else if (gcode->subcode == 3) {
 				THEKERNEL->set_extout_mode(true);
@@ -256,7 +257,8 @@ void SimpleShell::on_gcode_received(void *argument)
 		        		PublicData::set_value( switch_checksum, extendout_checksum, state_checksum, &b );
 			    	}
 	        	}
-	        	PacketMessage(PTYPE_NORMAL_INFO, "turning extend out mode on\r\n", 0, gcode->stream);
+	        	//PacketMessage(PTYPE_NORMAL_INFO, "turning extend out mode on\r\n", 0, gcode->stream);
+                gcode->stream->printf("turning extend out mode on\r\n");
             }
         } else if (gcode->m == 332) { // change to CNC mode			
 			if (gcode->subcode == 0) {
@@ -273,12 +275,14 @@ void SimpleShell::on_gcode_received(void *argument)
 	        	}
 				// turn off vacuum mode
 		
-				PacketMessage(PTYPE_NORMAL_INFO, "turning vacuum mode off\r\n", 0, gcode->stream);
+				//PacketMessage(PTYPE_NORMAL_INFO, "turning vacuum mode off\r\n", 0, gcode->stream);
+                gcode->stream->printf("turning vacuum mode off\r\n");
 			}
 			else
 			{
 				// turn on extend out mode
-				PacketMessage(PTYPE_NORMAL_INFO, "turning extend out mode off\r\n", 0, gcode->stream);
+				//PacketMessage(PTYPE_NORMAL_INFO, "turning extend out mode off\r\n", 0, gcode->stream);
+                gcode->stream->printf("turning extend out mode off\r\n");
 			}
 
 		} else if (gcode->m == 333) { // turn off optional stop mode
