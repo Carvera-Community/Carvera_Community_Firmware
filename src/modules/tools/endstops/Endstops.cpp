@@ -567,7 +567,7 @@ void Endstops::on_idle(void *argument)
 			if(!THEKERNEL->is_grbl_mode()) {
 				THEKERNEL->streams->printf("%c motor alarm triggered - reset required\n", i->axis);
 			}else{
-				THEKERNEL->streams->printf("ALARM: %c motor alarm triggered -  reset required\n", i->axis);
+				THEKERNEL->streams->printf("ERROR: %c motor alarm triggered -  reset required\n", i->axis);
 			}
 			i->debounce= 0;
 			// disables heaters and motors, ignores incoming Gcode and flushes block queue
@@ -595,7 +595,7 @@ void Endstops::on_idle(void *argument)
 	                if(!THEKERNEL->is_grbl_mode()) {
 	                    THEKERNEL->streams->printf("Limit switch %c%c was hit - reset or M999 required\n", STEPPER[i->axis_index]->which_direction() ? '-' : '+', i->axis);
 	                }else{
-	                    THEKERNEL->streams->printf("ALARM: Hard limit %c%c\n", STEPPER[i->axis_index]->which_direction() ? '-' : '+', i->axis);
+	                    THEKERNEL->streams->printf("ERROR: Hard limit %c%c\n", STEPPER[i->axis_index]->which_direction() ? '-' : '+', i->axis);
 	                }
 	                this->status = LIMIT_TRIGGERED;
 	                i->debounce = 0;
@@ -615,7 +615,7 @@ void Endstops::on_idle(void *argument)
 	                if(!THEKERNEL->is_grbl_mode()) {
 	                    THEKERNEL->streams->printf("Limit switch %c%c was hit - reset or M999 required\n", STEPPER[i->axis_index]->which_direction() ? '-' : '+', i->axis);
 	                }else{
-	                    THEKERNEL->streams->printf("ALARM: Hard limit %c%c\n", STEPPER[i->axis_index]->which_direction() ? '-' : '+', i->axis);
+	                    THEKERNEL->streams->printf("ERROR: Hard limit %c%c\n", STEPPER[i->axis_index]->which_direction() ? '-' : '+', i->axis);
 	                }
 	                this->status = LIMIT_TRIGGERED;
 	                i->debounce = 0;
@@ -1151,7 +1151,7 @@ void Endstops::process_home_command(Gcode* gcode)
         if(!THEKERNEL->is_grbl_mode()) {
             THEKERNEL->streams->printf("ERROR: Homing cycle failed - check the max_travel settings\n");
         }else{
-            THEKERNEL->streams->printf("ALARM: Homing fail\n");
+            THEKERNEL->streams->printf("ERROR: Homing fail\n");
         }
         // clear all the homed flags
         for (auto &p : homing_axis) p.homed= false;
