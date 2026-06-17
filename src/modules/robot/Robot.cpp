@@ -791,7 +791,7 @@ void Robot::on_gcode_received(void *argument)
 							mpos[B_AXIS] = 0;
 							mpos[A_AXIS] = THEROBOT->actuators[A_AXIS]->get_current_position();
 							Robot::wcs_t pos = THEROBOT->mcs2wcs(mpos);
-							float wa = THEROBOT->from_millimeters(std::get<A_AXIS>(pos));
+							float wa = std::get<A_AXIS>(pos);
 							float ma = THEROBOT->actuators[A_AXIS]->get_current_position();
 							if(fabs(wa) > 360)
 							{
