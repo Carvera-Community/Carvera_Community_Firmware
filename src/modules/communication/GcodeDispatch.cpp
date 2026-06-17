@@ -496,7 +496,7 @@ try_again:
 		}
     } else if ( first_char == ';' || first_char == '(' || first_char == '\n' || first_char == '\r' ) {
         // Ignore comments and blank lines
-        new_message.stream->printf("ok\n");
+        new_message.stream->printf("ok\r\n");
 
     } else if( (n=possible_command.find_first_of("XYZAF")) == 0 || (first_char == ' ' && n != string::npos) ) {
         // handle pycam syntax, use last modal group 1 command and resubmit if an X Y Z or F is found on its own line
@@ -514,6 +514,6 @@ try_again:
 
     } else {
         // an uppercase non command word on its own (except XYZAF) just returns ok, we could add an error but no hosts expect that.
-        new_message.stream->printf("ok - ignore: [%s]\n", possible_command.c_str());
+        new_message.stream->printf("ok - ignore: [%s]\r\n", possible_command.c_str());
     }
 }
