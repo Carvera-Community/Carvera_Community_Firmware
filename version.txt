@@ -8,9 +8,7 @@
 - Enhancement: Added improved PID Spindle control that increases performance of carvera C1 spindles. Setup requires following the guide on the documentation page
 - Fixed: Prevent incorrect current line reporting after a tool change
 - Lint: conformed all error messages to the format ERROR: <message> for easier hooks in the controller
-- Fixed: Corrected issue with line numbered gcode files where a modal command without the letter G would be discarded. Change from Makera
-- Fixed: Optimized the path movement to the work origin before machining to prevent collisions with the workpiece or fixture. Change from Makera
-- Fixed: improved support for external vacuum on Air. Change from Makera
+- Enhancement: Support for turning On an external connected vacuum via M851/M852. Backported from Makera firmware
 
 [2.1.0c]
 - Fixed: Unused Variables removed
