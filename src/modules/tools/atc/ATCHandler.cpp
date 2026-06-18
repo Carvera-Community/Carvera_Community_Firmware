@@ -2416,6 +2416,68 @@ void ATCHandler::on_gcode_received(void *argument)
 				this->clear_script_queue();
 				home_machine_with_pin(gcode);
 			}
+		} else if (gcode->m == 680) {
+			float d_val = 2;
+			float x_val = 20;
+			float y_val = 20;
+			float e_val = 4;
+			char buff[100];
+
+			if (gcode->has_letter('D')) {
+				d_val = gcode->get_value('D');
+			}
+			if (gcode->has_letter('Z')) {
+				e_val = gcode->get_value('Z');
+			}
+			if (gcode->has_letter('X')) {
+				x_val = gcode->get_value('X');
+			}
+
+			if (gcode->has_letter('Y')) {
+				y_val = gcode->get_value('Y');
+			}
+
+
+			if (gcode->subcode == 1){
+				snprintf(buff, sizeof(buff), "M464 X%.3f Y%.3f H20 E%.3f D%.3f S2", x_val, -y_val, e_val, d_val);
+				this->script_queue.push(buff);
+			}
+			else if (gcode->subcode == 2){
+				snprintf(buff, sizeof(buff), "M464 X%.3f Y%.3f H20 E%.3f D%.3f S2", -x_val, -y_val, e_val, d_val);
+				this->script_queue.push(buff);
+			}
+			else if (gcode->subcode == 3){
+				snprintf(buff, sizeof(buff), "M464 X%.3f Y%.3f H20 E%.3f D%.3f S2", -x_val, y_val, e_val, d_val);
+				this->script_queue.push(buff);
+			}
+			else if (gcode->subcode == 4){
+				snprintf(buff, sizeof(buff), "M464 X%.3f Y%.3f H20 E%.3f D%.3f S2", x_val, y_val, e_val, d_val);
+				this->script_queue.push(buff);
+			}
+			else if (gcode->subcode == 5){
+				snprintf(buff, sizeof(buff), "M463 X%.3f Y%.3f D%.3f S1", x_val, y_val, d_val);
+				this->script_queue.push(buff);
+			}
+			else if (gcode->subcode == 6){
+				snprintf(buff, sizeof(buff), "M463 X%.3f Y%.3f D%.3f S1", -x_val, y_val, d_val);
+				this->script_queue.push(buff);
+			}
+			else if (gcode->subcode == 7){
+				snprintf(buff, sizeof(buff), "M463 X%.3f Y%.3f D%.3f S1", x_val, -y_val, d_val);
+				this->script_queue.push(buff);
+			}
+			else if (gcode->subcode == 8){
+				snprintf(buff, sizeof(buff), "M463 X%.3f Y%.3f D%.3f S1", -x_val, -y_val, d_val);
+				this->script_queue.push(buff);
+			}
+			else if (gcode->subcode == 9){
+				snprintf(buff, sizeof(buff), "M461 X%.3f Y%.3f D%.3f S1", -x_val, -y_val, d_val);
+				this->script_queue.push(buff);
+			}
+			else if (gcode->subcode == 10){
+				snprintf(buff, sizeof(buff), "M462 X%.3f Y%.3f H20 E%.3f D%.3f S2", x_val, y_val, e_val, d_val);
+				this->script_queue.push(buff);
+			}
 		} else if (gcode->m == 490)  {
 			if(THEKERNEL->factory_set->FuncSetting & (1<<2))	//ATC 
 			{	            
