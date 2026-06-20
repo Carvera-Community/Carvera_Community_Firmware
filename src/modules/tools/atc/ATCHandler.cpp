@@ -525,6 +525,16 @@ void ATCHandler::calibrate_set_value(Gcode *gcode)
 	}
 }
 
+void ATCHandler::stock_firmware_inner_corner_probe(float x_val, float y_val, float z_val, float d_val){
+	snprintf(buff, sizeof(buff), "M466 Z-20 S2");
+	this->script_queue.push(buff);
+	snprintf(buff, sizeof(buff), "G91 G54 G0 X%.3f Y%.3f", -x_val, -y_val);
+	this->script_queue.push(buff);
+	snprintf(buff, sizeof(buff), "G91 G54 G0 Z%.3f S1", -z_val);
+	this->script_queue.push(buff);
+	snprintf(buff, sizeof(buff), "M463 X%.3f Y%.3f D%.3f S1", x_val, y_val, d_val);
+}
+
 void ATCHandler::calibrate_anchor1(Gcode *gcode) //M469.1
 {
 	THEKERNEL->streams->printf("Calibrating Anchor 1\n");
@@ -2455,20 +2465,16 @@ void ATCHandler::on_gcode_received(void *argument)
 				this->script_queue.push(buff);
 			}
 			else if (gcode->subcode == 5){
-				snprintf(buff, sizeof(buff), "M463 X%.3f Y%.3f D%.3f S1", x_val, y_val, d_val);
-				this->script_queue.push(buff);
+				this->stock_firmware_inner_corner_probe( x_val, y_val, e_val, d_val);
 			}
 			else if (gcode->subcode == 6){
-				snprintf(buff, sizeof(buff), "M463 X%.3f Y%.3f D%.3f S1", -x_val, y_val, d_val);
-				this->script_queue.push(buff);
+				this->stock_firmware_inner_corner_probe( -x_val, y_val, e_val, d_val);
 			}
 			else if (gcode->subcode == 7){
-				snprintf(buff, sizeof(buff), "M463 X%.3f Y%.3f D%.3f S1", x_val, -y_val, d_val);
-				this->script_queue.push(buff);
+				this->stock_firmware_inner_corner_probe( x_val,  -y_val,  e_val, d_val);
 			}
 			else if (gcode->subcode == 8){
-				snprintf(buff, sizeof(buff), "M463 X%.3f Y%.3f D%.3f S1", -x_val, -y_val, d_val);
-				this->script_queue.push(buff);
+				this->stock_firmware_inner_corner_probe(-x_val, -y_val, e_val, d_val);
 			}
 			else if (gcode->subcode == 9){
 				snprintf(buff, sizeof(buff), "M461 X%.3f Y%.3f D%.3f S1", -x_val, -y_val, d_val);
