@@ -168,7 +168,7 @@ void init() {
     kernel->add_module( new ATCHandler() );
 
     // MSC File System Handler
-    //kernel->add_module( new MSCFileSystem("ud") );
+    kernel->add_module( new MSCFileSystem("ud") );
 
     // Serial Console handles IO with the wireless probe
     kernel->add_module( new(AHB) SerialConsole2() ); // must stay in AHB: UART RxIrq writes RingBuffer
