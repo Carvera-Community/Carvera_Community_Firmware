@@ -526,6 +526,7 @@ void ATCHandler::calibrate_set_value(Gcode *gcode)
 }
 
 void ATCHandler::stock_firmware_inner_corner_probe(float x_val, float y_val, float z_val, float d_val){
+	char buff[100];
 	snprintf(buff, sizeof(buff), "M466 Z-20 S2");
 	this->script_queue.push(buff);
 	snprintf(buff, sizeof(buff), "G91 G54 G0 X%.3f Y%.3f", -x_val, -y_val);
