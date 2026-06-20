@@ -553,7 +553,7 @@ std::string Kernel::get_diagnose_string()
    	ok3 = PublicData::get_value(switch_checksum, get_checksum("extendout"), 0, &pad3);
     if(!ok) pad.state = false;
     if(!ok2) pad2.state = false;
-    if(ok3) pad3.state = false; pad3.value = 0;
+    if(!ok3) { pad3.state = false; pad3.value = 0; }
     n = snprintf(buf, sizeof(buf), ",%d,%d,%d,%d", (int)pad.state, (int)pad2.state, (int)pad3.state, (int)pad3.value);
     if(n > sizeof(buf)) n = sizeof(buf);
     str.append(buf, n);
