@@ -938,7 +938,7 @@ void WifiProvider::on_get_public_data(void* argument) {
 						str.append("0\n");
 					}
 				}
-				char *temp_buf = (char *)malloc(str.length() + 1);
+				char *temp_buf = (char *)AHB.alloc(str.length() + 1);
 				memcpy(temp_buf, str.c_str(), str.length());
 				temp_buf[str.length()]= '\0';
 				pdr->set_data_ptr(temp_buf);
