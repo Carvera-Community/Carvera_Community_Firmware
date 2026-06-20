@@ -7,7 +7,7 @@
 - Enhancement: Added a new 4th axis self-calibration routine M469.6. This routine calibrates the 4th axis centreline in both Y and Z axis by probing a round object (such as chuck body) from multiple directions. This routine find the true zero point without being affected by runout or surface imperfections.
 - Enhancement: Added improved PID Spindle control that increases performance of carvera C1 spindles. Setup requires following the guide on the documentation page
 - Fixed: Prevent incorrect current line reporting after a tool change
-- Fixed: Corrected issue with line numbered gcode files where a modal command without the letter G would be discarded. Change from Makera
+Fixed: Line-numbered gcode (e.g. N123 X10) are no longer dropped. After the line number is stripped, the rest of the line is now reprocessed normally, so modal moves without an explicit G word (e.g. N123 X10 Y10) run instead of being discarded. Backported and simplified from Makera firmware
 - Changed: conformed all error messages to the format ERROR: <message> for easier hooks in the controller
 
 [2.1.0c]
