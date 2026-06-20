@@ -10,7 +10,7 @@ class FileStream : public StreamOutput {
     public:
         FileStream(const char *filename) { fd= fwfs::fopen(filename, "w"); }
         virtual ~FileStream(){ close(); }
-        int puts(const char *str, int size = 0) { return (fd == NULL) ? 0 : fwfs::fwrite(str, 1, strlen(str), fd); }
+        int puts(const char *str, int size = 0) { return (fd == NULL) ? 0 : fwfs::fwrite(str, 1, size > 0 ? size : strlen(str), fd); }
         void close() { if(fd != NULL) fwfs::fclose(fd); fd= NULL; }
         bool is_open() { return fd != NULL; }
 

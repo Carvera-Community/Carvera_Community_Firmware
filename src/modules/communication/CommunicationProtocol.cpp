@@ -11,10 +11,20 @@
 
 #include "mbed.h"
 
+#ifndef NO_MAKERA_PROTOCOL
+#include "MakeraProtocol.h"
+#endif
+
+#ifndef NO_SMOOTHIE_PROTOCOL
 #include "SmoothieProtocol.h"
+#endif
 
 #include <cstdio>
 #include <string>
+
+#if defined(NO_SMOOTHIE_PROTOCOL) && defined(NO_MAKERA_PROTOCOL)
+#error "At least one communication protocol must be compiled"
+#endif
 
 namespace comms {
 
@@ -28,7 +38,18 @@ const ProtocolHandler *handler_for(Protocol protocol)
 {
     switch (protocol) {
         case Protocol::Smoothie:
+#ifndef NO_SMOOTHIE_PROTOCOL
             return &smoothie_protocol();
+#else
+            return nullptr;
+#endif
+
+        case Protocol::Makera:
+#ifndef NO_MAKERA_PROTOCOL
+            return &makera_protocol();
+#else
+            return nullptr;
+#endif
     }
 
     return nullptr;
@@ -56,7 +77,11 @@ void warn_unavailable_protocol(Protocol configured, const ProtocolHandler& fallb
 
 const ProtocolHandler& fallback_protocol()
 {
+#ifndef NO_SMOOTHIE_PROTOCOL
     return smoothie_protocol();
+#else
+    return makera_protocol();
+#endif
 }
 
 }
@@ -76,6 +101,9 @@ const char *protocol_name(Protocol protocol)
     switch (protocol) {
         case Protocol::Smoothie:
             return "smoothie";
+
+        case Protocol::Makera:
+            return "makera";
     }
 
     return "unknown";
@@ -85,6 +113,11 @@ bool protocol_from_name(const std::string& name, Protocol& protocol)
 {
     if (name == "smoothie") {
         protocol = Protocol::Smoothie;
+        return true;
+    }
+
+    if (name == "makera") {
+        protocol = Protocol::Makera;
         return true;
     }
 

@@ -14,7 +14,8 @@ constexpr size_t MaxPacketSize = 8208;
 constexpr size_t ControlPacketSize = 544;
 
 enum class Protocol {
-    Smoothie
+    Smoothie,
+    Makera
 };
 
 enum class MessageType : uint8_t {

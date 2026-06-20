@@ -50,6 +50,7 @@
 #define machine_name_checksum             CHECKSUM("machine_name")
 #define smoothie_port_checksum            CHECKSUM("smoothie_port")
 #define tcp_port_checksum                 CHECKSUM("tcp_port")
+#define makera_port_checksum              CHECKSUM("makera_port")
 #define discovery_protocol_checksum       CHECKSUM("discovery_protocol")
 #define udp_send_port_checksum		      CHECKSUM("udp_send_port")
 #define udp_recv_port_checksum		      CHECKSUM("udp_recv_port")
@@ -72,6 +73,7 @@ bool receive_status_is_error(u16 status)
 
 WifiProvider::WifiProvider()
     : smoothie_endpoint(*this, 0),
+      makera_endpoint(*this, 2),
       discovery_endpoint(nullptr)
 {
 	udp_link_no = 1;
@@ -294,6 +296,9 @@ void WifiProvider::configure_tcp_endpoints()
 {
     smoothie_endpoint.configure(configured_smoothie_port(), comms::protocol_handler(comms::Protocol::Smoothie));
 
+    const int makera_port = THEKERNEL->config->value(wifi_checksum, makera_port_checksum)->as_int(0);
+    makera_endpoint.configure(makera_port, comms::protocol_handler(comms::Protocol::Makera));
+
     const comms::ProtocolHandler& discovery_protocol =
             comms::configured_protocol(wifi_checksum, discovery_protocol_checksum, comms::Protocol::Smoothie);
     discovery_endpoint = endpoint_for_protocol(discovery_protocol.kind());
@@ -325,6 +330,7 @@ WifiTcpEndpoint *WifiProvider::tcp_endpoint(size_t index)
 {
     switch (index) {
         case 0: return &smoothie_endpoint;
+        case 1: return &makera_endpoint;
         default: return nullptr;
     }
 }

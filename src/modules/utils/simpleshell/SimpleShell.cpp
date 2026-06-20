@@ -759,11 +759,11 @@ void SimpleShell::cat_command( string parameters, StreamOutput *stream )
         // buffer.append((char *)&c, 1);
         charcnt ++;
         if (charcnt > 190) {
-            sentcnt = stream->puts(buffer);
+            sentcnt = send_console_output(stream, buffer, charcnt);
             // if (sentcnt < strlen()(int)buffer.size()) {
-            if (sentcnt < (int)strlen(buffer)) {
+            if (sentcnt < charcnt) {
             	fwfs::fclose(lp);
-            	stream->printf("Caching error, line: %d, size: %d, sent: %d", newlines, strlen(buffer), sentcnt);
+                stream->printf("Caching error, line: %d, size: %d, sent: %d", newlines, charcnt, sentcnt);
             	return;
             }
             // buffer.clear();
@@ -781,9 +781,9 @@ void SimpleShell::cat_command( string parameters, StreamOutput *stream )
 
     // send last line
     // if (buffer.size() > 0) {
-    if (strlen(buffer) > 0) {
+    if (charcnt > 0) {
     	// stream->puts(buffer.c_str());
-    	stream->puts(buffer);
+        send_console_output(stream, buffer, charcnt);
     }
 }
 
@@ -1059,9 +1059,9 @@ void SimpleShell::wlan_command( string parameters, StreamOutput *stream)
                 char info_msg[64];
                 memset(info_msg, 0, sizeof(info_msg));
         		if (t.disconnect) {
-                    sprintf(info_msg, "Wifi Disconnected!\n");
+                    snprintf(info_msg, sizeof(info_msg), "Wifi Disconnected!\n");
         		} else {
-                    sprintf(info_msg, "Wifi connected, ip: %s\n", t.ip_address);
+                    snprintf(info_msg, sizeof(info_msg), "Wifi connected, ip: %s\n", t.ip_address);
         		}
                 send_data(stream, send_eof, info_msg);
             	if (send_eof) {

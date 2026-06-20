@@ -157,6 +157,21 @@ CPPSRCS3 := $(filter-out \
 DEFINES += -DNO_MODBUS_SPINDLE
 endif
 
+# These make flags leave protocol implementations out of the build.
+ifdef NO_SMOOTHIE_PROTOCOL
+CPPSRCS3 := $(filter-out \
+  $(SRC)/modules/communication/SmoothieProtocol.cpp \
+  ,$(CPPSRCS3))
+DEFINES += -DNO_SMOOTHIE_PROTOCOL
+endif
+
+ifdef NO_MAKERA_PROTOCOL
+CPPSRCS3 := $(filter-out \
+  $(SRC)/modules/communication/MakeraProtocol.cpp \
+  ,$(CPPSRCS3))
+DEFINES += -DNO_MAKERA_PROTOCOL
+endif
+
 # NO_PID_AUTOTUNE: exclude PID autotuner (not needed when no heaters are connected)
 ifdef NO_PID_AUTOTUNE
 CPPSRCS3 := $(filter-out \

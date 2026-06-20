@@ -36,7 +36,7 @@ public:
 private:
     friend class WifiTcpEndpoint;
 
-    static constexpr size_t TcpEndpointCount = 1;
+    static constexpr size_t TcpEndpointCount = 2;
 
     struct ReceivedData {
         u16 copied;
@@ -84,6 +84,7 @@ private:
     string test_buffer;
 
     WifiTcpEndpoint smoothie_endpoint;
+    WifiTcpEndpoint makera_endpoint;
     WifiTcpEndpoint *discovery_endpoint;
     u8 WifiData[WifiDataMaxSize];
     u8 WifiTxData[WifiDataMaxSize];
