@@ -17,6 +17,7 @@ using std::string;
 #include "libs/SerialMessage.h"
 #include "libs/StreamOutput.h"
 #include "libs/StreamOutputPool.h"
+#include "CommunicationProtocol.h"
 #include "ATCHandlerPublicAccess.h"
 #include "PublicDataRequest.h"
 #include "PublicData.h"
@@ -25,11 +26,14 @@ using std::string;
 #include "ConfigValue.h"
 
 #define uart_checksum CHECKSUM("uart")
+#define protocol_checksum CHECKSUM("protocol")
 
 // Serial reading module
 // Treats every received line as a command and passes it ( via event call ) to the command dispatcher.
 // The command dispatcher will then ask other modules if they can do something with it
-SerialConsole::SerialConsole( PinName tx_pin, PinName rx_pin, int baud_rate ){
+SerialConsole::SerialConsole( PinName tx_pin, PinName rx_pin, int baud_rate )
+    : protocol_handler(&comms::default_protocol())
+{
     this->serial = new mbed::Serial( tx_pin, rx_pin );
     this->serial->baud(baud_rate);
     this->previous_char = 0;
@@ -50,21 +54,26 @@ void SerialConsole::on_module_loaded() {
     halt_flag = false;
     diagnose_flag = false;
 
+    // Add to the pack of streams kernel can call to, for example for broadcasting
+    THEKERNEL->streams->append_stream(this);
+
+    protocol_handler = &comms::configured_protocol(uart_checksum, protocol_checksum, comms::Protocol::Smoothie);
+    framed_input.set_protocol(*protocol_handler, framed_command_buffer, sizeof(framed_command_buffer),
+            comms::TransferBuffer::data(), comms::TransferBuffer::capacity());
+
     default_baud_rate = THEKERNEL->config->value(uart_checksum, baud_rate_setting_checksum)->as_number(current_baud_rate);
     if (default_baud_rate != current_baud_rate) {
         this->serial->baud(default_baud_rate);
         this->current_baud_rate = default_baud_rate;
     }
 
-    this->attach_irq(true);
+    this->attach_irq(!protocol().uses_framing());
 
     // We only call the command dispatcher in the main loop, nowhere else
     this->register_for_event(ON_MAIN_LOOP);
     this->register_for_event(ON_IDLE);
     this->register_for_event(ON_SET_PUBLIC_DATA);
 
-    // Add to the pack of streams kernel can call to, for example for broadcasting
-    THEKERNEL->streams->append_stream(this);
 }
 
 void SerialConsole::set_baud_temporary(int new_baud) {
@@ -75,6 +84,7 @@ void SerialConsole::set_baud_temporary(int new_baud) {
 }
 
 void SerialConsole::attach_irq(bool enable_irq) {
+    if (protocol().uses_framing()) enable_irq = false;
 	if (enable_irq) {
 	    this->serial->attach(this, &SerialConsole::on_serial_char_received, mbed::Serial::RxIrq);
 	} else {
@@ -97,70 +107,75 @@ void SerialConsole::on_set_public_data(void *argument) {
 
 // Called on Serial::RxIrq interrupt, meaning we have received a char
 void SerialConsole::on_serial_char_received() {
-	while (this->serial->readable()) {
-		char received = this->serial->getc();
-		last_activity_ms = us_ticker_read() / 1000;
+    if (protocol().uses_framing()) {
+        receive_framed_data();
+        return;
+    }
 
-		if(THEKERNEL->is_cachewait()) {
-			continue;
-		}
-		
-		if (received == '?') {
-			query_flag = true;
-			continue;
-		} else if (this->previous_char == '?' && received == '1') {
-			// Found ?1 pattern
-			query_flag = true;
-			THEKERNEL->set_keep_alive_request(true);
-			continue;
-		}
-		
-		//if (received == '*') {
-		//	diagnose_flag = true;
-		//	continue;
-		//}
-		if (received == 'X'-'A'+1) { // ^X
-			halt_flag = true;
-			continue;
-		}
-        if(received == 'Y' - 'A' + 1) { // ^Y
-            if(THEKERNEL->get_internal_stop_request()) {
-                THEKERNEL->set_internal_stop_request(false);
-            } else {
-                THEKERNEL->set_stop_request(true); // generic stop what you are doing request
-                THEKERNEL->set_stop_request_time(us_ticker_read() / 1000);
-            }
+    while (this->serial->readable()) {
+        char received = this->_getc();
+
+        if(THEKERNEL->is_cachewait()) {
             continue;
         }
-        if(received == 'Z' - 'A' + 1) { // ^Z
-            THEKERNEL->set_keep_alive_request(true);
+
+        if (received == '?') {
+            const auto result = THEKERNEL->handle_realtime_control(received, false, false);
+            if (result.query) query_flag = true;
+            continue;
+        } else if (this->previous_char == '?' && received == '1') {
+            const auto result = THEKERNEL->handle_realtime_control('?', true, false);
+            if (result.query) query_flag = true;
             continue;
         }
-        if(THEKERNEL->is_feed_hold_enabled()) {
-            bool at_line_start = (this->buffer.head == this->buffer.tail) || (this->previous_char == '\n') || (this->previous_char == '\r');
-            if(at_line_start) {
-                if(received == '!') { // safe pause
-                    THEKERNEL->set_feed_hold(true);
-                    continue;
-                }
-                if(received == '~') { // safe resume
-                    THEKERNEL->set_feed_hold(false);
-                    continue;
-                }
-            }
+
+        //if (received == '*') {
+        //	diagnose_flag = true;
+        //	continue;
+        //}
+        const bool at_line_start = (this->buffer.head == this->buffer.tail) || (this->previous_char == '\n') || (this->previous_char == '\r');
+        const auto result = THEKERNEL->handle_realtime_control(received, false, at_line_start);
+        if (result.handled) {
+            if (result.query) query_flag = true;
+            if (result.halt) halt_flag = true;
+            continue;
         }
-		// convert CR to NL (for host OSs that don't send NL)
-		if ( received == '\r' ) { received = '\n'; }
-		this->buffer.push_back(received);
+        // convert CR to NL (for host OSs that don't send NL)
+        if ( received == '\r' ) { received = '\n'; }
+        this->buffer.push_back(received);
 
         // Reset previous_char for any other character
-		this->previous_char = received;
+        this->previous_char = received;
     }
+}
+
+void SerialConsole::receive_framed_data()
+{
+    comms::InputMessage message;
+    while (this->serial->readable()) {
+        const uint8_t received = this->_getc();
+        if (framed_input.feed_command_byte(received, message)) {
+            apply_framed_result(framed_input.dispatch(this, message));
+        }
+    }
+}
+
+void SerialConsole::apply_framed_result(const comms::FramedInputResult& result)
+{
+    if (result.query) query_flag = true;
+    if (result.halt) halt_flag = true;
 }
 
 void SerialConsole::on_idle(void * argument)
 {
-	if (THEKERNEL->is_uploading()) return;
+    if (THEKERNEL->is_uploading()) {
+        service_realtime_flags();
+        return;
+    }
+
+    if (protocol().uses_framing()) {
+        receive_framed_data();
+    }
 
     if (temp_baud_rate != 0) {
         uint32_t now_ms = us_ticker_read() / 1000;
@@ -171,14 +186,19 @@ void SerialConsole::on_idle(void * argument)
         }
     }
 
+    service_realtime_flags();
+}
+
+void SerialConsole::service_realtime_flags()
+{
     if (query_flag ) {
         query_flag = false;
-        puts(THEKERNEL->get_query_string().c_str(), 0);
+        protocol().send_message(this, comms::MessageType::Status, THEKERNEL->get_query_string().c_str(), 0);
     }
 
     if (diagnose_flag) {
-    	diagnose_flag = false;
-    	puts(THEKERNEL->get_diagnose_string().c_str(), 0);
+        diagnose_flag = false;
+        protocol().send_message(this, comms::MessageType::Diagnostics, THEKERNEL->get_diagnose_string().c_str(), 0);
     }
 
     if (halt_flag) {
@@ -186,9 +206,9 @@ void SerialConsole::on_idle(void * argument)
         THEKERNEL->set_halt_reason(MANUAL);
         
         if(THEKERNEL->is_grbl_mode()) {
-            puts("ERROR: Abort during cycle\r\n", 0);
+            protocol().send_message(this, comms::MessageType::Text, "ERROR: Abort during cycle\r\n", 0);
         } else {
-            puts("ERROR: Abort during cycle\r\nM999 or $X to exit HALT state\r\n", 0);
+            protocol().send_message(this, comms::MessageType::Text, "ERROR: Abort during cycle\r\nM999 or $X to exit HALT state\r\n", 0);
         }
         THEKERNEL->call_event(ON_HALT, nullptr);
     }
@@ -196,6 +216,10 @@ void SerialConsole::on_idle(void * argument)
 
 // Actual event calling must happen in the main loop because if it happens in the interrupt we will loose data
 void SerialConsole::on_main_loop(void * argument){
+    if (protocol().uses_framing()) {
+        return;
+    }
+
     if ( this->has_char('\n') ){
         string received;
         received.reserve(20);
@@ -228,9 +252,24 @@ int SerialConsole::puts(const char* s, int size)
 
 int SerialConsole::gets(char** buf, int size)
 {
+    if (protocol().uses_framing()) {
+        while (this->serial->readable()) {
+            const uint8_t received = this->_getc();
+            const auto result = framed_input.feed_file_byte(this, received, buf);
+            apply_framed_result(result);
+            if (result.file_type > 0) return result.file_type;
+        }
+        return 0;
+    }
+
 	getc_result = this->_getc();
 	*buf = &getc_result;
 	return 1;
+}
+
+void SerialConsole::reset_file_input()
+{
+    framed_input.reset_file_parser();
 }
 
 int SerialConsole::_putc(int c)
@@ -240,12 +279,32 @@ int SerialConsole::_putc(int c)
 
 int SerialConsole::_getc()
 {
+    mark_activity();
     return this->serial->getc();
 }
 
 bool SerialConsole::ready()
 {
     return this->serial->readable();
+}
+
+const comms::ProtocolHandler& SerialConsole::protocol() const
+{
+    return *protocol_handler;
+}
+
+void SerialConsole::mark_activity()
+{
+    last_activity_ms = us_ticker_read() / 1000;
+}
+
+int SerialConsole::printf(const char *format, ...)
+{
+    va_list args;
+    va_start(args, format);
+    const int sent = protocol().vprintf_message(this, comms::MessageType::Text, format, args);
+    va_end(args);
+    return sent;
 }
 
 // Does the queue have a given char ?

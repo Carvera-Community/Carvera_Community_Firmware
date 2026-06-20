@@ -56,15 +56,45 @@
 #include "MSCFileSystemPublicAccess.h"
 #include "WifiPublicAccess.h"
 #include "SerialConsole.h"
+#include "CommunicationProtocol.h"
 
 #include "mbed.h" // for wait_ms()
 #include <strings.h> // For strncasecmp
 
 extern unsigned int g_maximumHeapAddress;
-extern unsigned char xbuff[8200];
 
-#define EOT  0x04
-#define CAN  0x16 //0x18
+namespace {
+
+int send_console_output(StreamOutput *stream, const char *data, int size = 0)
+{
+    if (stream == nullptr || data == nullptr) return 0;
+    return stream->protocol().send_output(stream, data, size);
+}
+
+int send_transfer_data(StreamOutput *stream, const char *data, int size = 0)
+{
+    if (stream == nullptr || data == nullptr) return 0;
+    return stream->protocol().send_load_data(stream, data, size);
+}
+
+int send_data(StreamOutput *stream, bool transfer, const char *data, int size = 0)
+{
+    return transfer ? send_transfer_data(stream, data, size) : send_console_output(stream, data, size);
+}
+
+void send_transfer_finish(StreamOutput *stream, const char *data = "ok\r\n")
+{
+    if (stream != nullptr) stream->protocol().send_load_finish(stream, data);
+}
+
+void send_transfer_terminator(StreamOutput *stream, bool success, const char *error = "ok\r\n")
+{
+    if (stream == nullptr) return;
+    if (success) stream->protocol().send_load_finish(stream);
+    else stream->protocol().send_load_error(stream, error);
+}
+
+}
 
 #include <malloc.h>
 #include <mri.h>
@@ -451,6 +481,8 @@ void SimpleShell::ls_command( string parameters, StreamOutput *stream )
     struct tm timeinfo;
     char dirTmp[256]; 
     unsigned int npos=0;
+    uint8_t *transfer_buffer = comms::TransferBuffer::data();
+    const bool send_eof = opts.find("-e", 0, 2) != string::npos;
     d = fwfs::opendir(path.c_str());
     if (d != NULL) {
         while ((p = readdir(d)) != NULL) {
@@ -472,27 +504,27 @@ void SimpleShell::ls_command( string parameters, StreamOutput *stream )
                 memset(dirTmp, 0, sizeof(dirTmp));
                 sprintf(dirTmp, "%s%s\r\n", string(p->d_name).c_str(), p->d_isdir ? "/" : "");
         	}
-        	memcpy(&xbuff[npos], dirTmp, strlen(dirTmp));
+                memcpy(&transfer_buffer[npos], dirTmp, strlen(dirTmp));
         	npos += strlen(dirTmp);
         	if(npos >= 7900)
         	{
-        		stream->puts((char *)xbuff, npos);
+                send_data(stream, send_eof, reinterpret_cast<char *>(transfer_buffer), npos);
         		npos = 0;
         	}
         	
         }
         if( npos != 0)
         {
-        	stream->puts((char *)xbuff, npos);
+            send_data(stream, send_eof, reinterpret_cast<char *>(transfer_buffer), npos);
         }
         closedir(d);
-        if(opts.find("-e", 0, 2) != string::npos) {
-        	char eot = EOT;
-            stream->puts(&eot, 1);
+        if(send_eof) {
+            send_transfer_finish(stream, "Load directory finished.\r\n");
         }
     } else {
-        if(opts.find("-e", 0, 2) != string::npos) {
-            stream->_putc(CAN);
+        if(send_eof) {
+            send_transfer_terminator(stream, false, "Could not open directory!\r\n");
+            return;
         }
         stream->printf("Could not open directory %s\r\n", path.c_str());
     }
@@ -521,7 +553,7 @@ void SimpleShell::rm_command( string parameters, StreamOutput *stream )
     int s = fwfs::remove(toRemove.c_str());
     if (s != 0) {
         if(send_eof) {
-            stream->_putc(CAN);
+            send_transfer_terminator(stream, false);
         }
     	stream->printf("Could not delete %s \r\n", toRemove.c_str());
     } else {
@@ -553,7 +585,7 @@ void SimpleShell::rm_command( string parameters, StreamOutput *stream )
     	string str_lz = absolute_from_relative(lz_path);
 		s = fwfs::remove(str_lz.c_str());
 		if(send_eof) {
-            stream->_putc(EOT);
+            send_transfer_terminator(stream, true);
     	}
     }
 }
@@ -574,7 +606,7 @@ void SimpleShell::mv_command( string parameters, StreamOutput *stream )
     int s = fwfs::rename(from.c_str(), to.c_str());
     if (s != 0)  {
     	if (send_eof) {
-    		stream->_putc(CAN);
+            send_transfer_terminator(stream, false);
     	}
     	stream->printf("Could not rename %s to %s\r\n", from.c_str(), to.c_str());
     } else  {
@@ -602,7 +634,7 @@ void SimpleShell::mv_command( string parameters, StreamOutput *stream )
         }*/
         s = fwfs::rename(lz_from.c_str(), lz_to.c_str());
         if (send_eof) {
-			stream->_putc(EOT);
+			send_transfer_terminator(stream, true);
 		}
 		stream->printf("renamed %s to %s\r\n", from.c_str(), to.c_str());
     }
@@ -621,7 +653,7 @@ void SimpleShell::mkdir_command( string parameters, StreamOutput *stream )
     int result = fwfs::mkdir(path.c_str(), 0);
     if (result != 0) {
     	if (send_eof) {
-    		stream->_putc(CAN); // ^Z terminates error
+            send_transfer_terminator(stream, false);
     	}
     	stream->printf("could not create directory %s\r\n", path.c_str());
     } else {
@@ -647,7 +679,7 @@ void SimpleShell::mkdir_command( string parameters, StreamOutput *stream )
 */
 		fwfs::mkdir(lz_path.c_str(), 0);
 		if (send_eof) {
-            	stream->_putc(EOT); // ^D terminates the upload
+            send_transfer_terminator(stream, true);
         	}
         stream->printf("created directory %s\r\n", path.c_str());
 		
@@ -986,15 +1018,15 @@ void SimpleShell::wlan_command( string parameters, StreamOutput *stream)
         bool ok = PublicData::get_value( wlan_checksum, get_wlan_checksum, &returned_data );
         if (ok) {
             char *str = (char *)returned_data;
-            stream->printf("%s", str);
+            send_data(stream, send_eof, str);
             AHB.dealloc(str);
         	if (send_eof) {
-            	stream->_putc(EOT);
+                send_transfer_terminator(stream, true);
         	}
 
         } else {
         	if (send_eof) {
-        		stream->_putc(CAN);
+                send_transfer_terminator(stream, false, "No wlan detected\r\n");
         	} else {
                 stream->printf("No wlan detected\n");
         	}
@@ -1016,24 +1048,30 @@ void SimpleShell::wlan_command( string parameters, StreamOutput *stream)
         bool ok = PublicData::set_value( wlan_checksum, set_wlan_checksum, &t );
         if (ok) {
         	if (t.has_error) {
-                stream->printf("Error: %s\n", t.error_info);
+                char error_msg[64];
+                memset(error_msg, 0, sizeof(error_msg));
+                snprintf(error_msg, sizeof(error_msg), "Error: %s\n", t.error_info);
+                send_data(stream, send_eof, error_msg);
             	if (send_eof) {
-            		stream->_putc(CAN);
+                    send_transfer_terminator(stream, false, "Connect or Disconnect error.\r\n");
             	}
         	} else {
+                char info_msg[64];
+                memset(info_msg, 0, sizeof(info_msg));
         		if (t.disconnect) {
-            		stream->printf("Wifi Disconnected!\n");
+                    sprintf(info_msg, "Wifi Disconnected!\n");
         		} else {
-            		stream->printf("Wifi connected, ip: %s\n", t.ip_address);
+                    sprintf(info_msg, "Wifi connected, ip: %s\n", t.ip_address);
         		}
+                send_data(stream, send_eof, info_msg);
             	if (send_eof) {
-                	stream->_putc(EOT);
+                    send_transfer_terminator(stream, true);
             	}
         	}
         } else {
-            stream->printf("%s\n", "Parameter error when setting wlan!");
+            send_data(stream, send_eof, "Parameter error when setting wlan!\n");
         	if (send_eof) {
-        		stream->_putc(CAN);
+                send_transfer_terminator(stream, false, "Parameter error when setting wlan!\r\n");
         	}
         }
     }
@@ -1175,7 +1213,7 @@ void SimpleShell::diagnose_command( string parameters, StreamOutput *stream)
     }
 
     str.append("}\n");
-    stream->printf("%s", str.c_str());
+    stream->protocol().send_message(stream, comms::MessageType::Diagnostics, str.c_str(), 0);
 
 }
 
@@ -2663,7 +2701,8 @@ void SimpleShell::config_get_all_command( string parameters, StreamOutput *strea
 		    vsize = (end_value == string::npos) ? end_value : end_value - begin_value;
 		    value = buffer.substr(begin_value, vsize);
 
-		    stream->printf("%s=%s\n", key.c_str(), value.c_str());
+		    const std::string line = key + "=" + value + "\n";
+		    send_data(stream, send_eof, line.c_str(), line.size());
 
 			buffer.clear();
 			// we need to kick things or they die
@@ -2674,7 +2713,7 @@ void SimpleShell::config_get_all_command( string parameters, StreamOutput *strea
     fwfs::fclose(lp);
 
     if(send_eof) {
-        stream->_putc(EOT);
+        send_transfer_terminator(stream, true);
     }
 }
 

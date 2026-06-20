@@ -159,6 +159,14 @@ class Kernel {
         bool get_internal_stop_request() const { return internal_stop_request; }
         void set_internal_stop_request(bool f) { internal_stop_request = f; }
 
+        struct RealtimeControlResult {
+            bool handled = false;
+            bool query = false;
+            bool halt = false;
+        };
+
+        RealtimeControlResult handle_realtime_control(char received, bool keep_alive, bool allow_feed_hold);
+
         void set_uploading(bool f) { uploading = f; }
         bool is_uploading() const { return uploading; }
 

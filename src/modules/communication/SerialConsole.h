@@ -16,6 +16,7 @@
 using std::string;
 #include "libs/RingBuffer.h"
 #include "libs/StreamOutput.h"
+#include "CommunicationProtocol.h"
 
 
 #define baud_rate_setting_checksum CHECKSUM("baud_rate")
@@ -35,13 +36,21 @@ class SerialConsole : public Module, public StreamOutput {
 
         int _putc(int c);
         int _getc(void);
+        int printf(const char*, ...) __attribute__ ((format(printf, 2, 3)));
         int puts(const char*, int size = 0);
         int gets(char** buf, int size = 0);
+        void reset_file_input();
         bool ready();
+        const comms::ProtocolHandler& protocol() const;
         char getc_result;
 
         int get_baud() const { return current_baud_rate; }
         void set_baud_temporary(int new_baud);
+
+        void receive_framed_data();
+        void apply_framed_result(const comms::FramedInputResult& result);
+        void service_realtime_flags();
+        void mark_activity();
 
         //string receive_buffer;                 // Received chars are stored here until a newline character is received
         //vector<std::string> received_lines;    // Received lines are stored here until they are requested
@@ -52,11 +61,14 @@ class SerialConsole : public Module, public StreamOutput {
         int default_baud_rate;
         int temp_baud_rate;                       // non-zero = temporary baud active
         uint32_t last_activity_ms;                // for 15s timeout revert
+        const comms::ProtocolHandler *protocol_handler;
         struct {
           bool query_flag:1;
           bool halt_flag:1;
           bool diagnose_flag:1;
         };
+        uint8_t framed_command_buffer[comms::ControlPacketSize];
+        comms::FramedInput framed_input;
 };
 
 #endif

@@ -15,6 +15,7 @@ using namespace std;
 #include <cstdarg>
 
 #include "libs/StreamOutput.h"
+#include "CommunicationProtocol.h"
 
 class StreamOutputPool : public StreamOutput {
 
@@ -22,12 +23,38 @@ public:
     StreamOutputPool(){
     }
 
+    int printf(const char *format, ...) __attribute__ ((format(printf, 2, 3)))
+    {
+        va_list args;
+        va_start(args, format);
+        comms::FormattedMessage message(format, args);
+        va_end(args);
+        if (!message.valid()) return message.size();
+
+        for(set<StreamOutput*>::iterator i = this->streams.begin(); i != this->streams.end(); i++) {
+            (*i)->protocol().send_message(*i, comms::MessageType::Text, message.data(), message.size());
+        }
+        return message.size();
+    }
+
+    int _putc(int c)
+    {
+        int r = 0;
+        for(set<StreamOutput*>::iterator i = this->streams.begin(); i != this->streams.end(); i++)
+        {
+            int k = (*i)->_putc(c);
+            if (k > r)
+                r = k;
+        }
+        return r;
+    }
+
     int puts(const char* s, int size)
     {
         int r = 0;
         for(set<StreamOutput*>::iterator i = this->streams.begin(); i != this->streams.end(); i++)
         {
-            int k = (*i)->puts(s);
+            int k = (*i)->puts(s, size);
             if (k > r)
                 r = k;
         }

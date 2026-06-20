@@ -32,6 +32,7 @@
 
 #include "libs/SerialMessage.h"
 #include "libs/StreamOutput.h"
+#include "CommunicationProtocol.h"
 
 #include "platform_memory.h" // Needed for AHB allocator
 
@@ -41,24 +42,43 @@
 #include "gpio.h"
 
 #include <math.h>
+#include <stdarg.h>
 
 #define wifi_checksum                     CHECKSUM("wifi")
 #define wifi_enable                       CHECKSUM("enable")
 #define wifi_interrupt_pin_checksum       CHECKSUM("interrupt_pin")
 #define machine_name_checksum             CHECKSUM("machine_name")
-#define tcp_port_checksum		          CHECKSUM("tcp_port")
+#define smoothie_port_checksum            CHECKSUM("smoothie_port")
+#define tcp_port_checksum                 CHECKSUM("tcp_port")
+#define discovery_protocol_checksum       CHECKSUM("discovery_protocol")
 #define udp_send_port_checksum		      CHECKSUM("udp_send_port")
 #define udp_recv_port_checksum		      CHECKSUM("udp_recv_port")
 #define tcp_timeout_s_checksum			  CHECKSUM("tcp_timeout_s")
 
+namespace {
+constexpr int WifiReceiveStatusNoData = 0x20;
+constexpr int WifiReceiveStatusNoSocketData = 0x22;
+constexpr int WifiReceiveStatusPacketTooLarge = 0x24;
+constexpr int WifiReceiveStatusBusy = 0x2f;
+
+bool receive_status_is_error(u16 status)
+{
+    const int code = int(status & 0xff);
+    return code == WifiReceiveStatusNoData
+            || code == WifiReceiveStatusNoSocketData
+            || code == WifiReceiveStatusBusy;
+}
+}
 
 WifiProvider::WifiProvider()
+    : smoothie_endpoint(*this, 0),
+      discovery_endpoint(nullptr)
 {
-	tcp_link_no = 0;
 	udp_link_no = 1;
 	wifi_init_ok = false;
 	has_data_flag = false;
-	connection_fail_count = 0;
+    streams_appended = false;
+    connection_fail_count = 0;
 }
 
 void WifiProvider::on_module_loaded()
@@ -69,13 +89,13 @@ void WifiProvider::on_module_loaded()
         return;
     }
 
-	this->tcp_port = THEKERNEL->config->value(wifi_checksum, tcp_port_checksum)->as_int(2222);
 	this->udp_send_port = THEKERNEL->config->value(wifi_checksum, udp_send_port_checksum)->as_int(3333);
 	this->udp_recv_port = THEKERNEL->config->value(wifi_checksum, udp_recv_port_checksum)->as_int(4444);
 	this->tcp_timeout_s = THEKERNEL->config->value(wifi_checksum, tcp_timeout_s_checksum)->as_int(10);
     std::string config_name = THEKERNEL->config->value(wifi_checksum, machine_name_checksum)->as_string("CARVERA");
     strncpy(this->machine_name, config_name.c_str(), sizeof(this->machine_name) - 1);
     this->machine_name[sizeof(this->machine_name) - 1] = '\0'; // Ensure null termination
+    configure_tcp_endpoints();
 
     // Init Wifi Module
     this->init_wifi_module(false);
@@ -96,12 +116,7 @@ void WifiProvider::on_module_loaded()
     }
     delete smoothie_pin;
 
-    // Add to the pack of streams kernel can call to, for example for broadcasting
-    THEKERNEL->streams->append_stream(this);
-
-    query_flag = false;
-    diagnose_flag = false;
-    halt_flag = false;
+    append_tcp_streams();
 
 	this->register_for_event(ON_IDLE);
     this->register_for_event(ON_GCODE_RECEIVED);
@@ -117,85 +132,40 @@ void WifiProvider::on_pin_rise()
 	has_data_flag = true;
 }
 
+WifiProvider::ReceivedData WifiProvider::receive_from_module(u8 *buffer, u16 capacity)
+{
+    ReceivedData result = {0, 0, 0, false};
+    if (capacity == 0) return result;
+
+    u16 status = 0;
+    u8 link_no = 0;
+    const u16 packet_size = M8266WIFI_SPI_RecvData(buffer, capacity, WifiDataTimeoutMs, &link_no, &status);
+    if (packet_size == 0) {
+        result.link_no = link_no;
+        result.status = status;
+        return result;
+    }
+
+    result.link_no = link_no;
+    result.status = status;
+    result.partial = int(status & 0xff) == WifiReceiveStatusPacketTooLarge || packet_size > capacity;
+    result.copied = result.partial ? capacity : packet_size;
+    return result;
+}
+
 void WifiProvider::receive_wifi_data() {
-	u8 link_no;
-	u16 received = 0;
-	u16 status;
+    while (true) {
+        const ReceivedData received = receive_from_module(WifiData, WifiDataMaxSize);
+        if (received.copied == 0 || received.link_no == udp_link_no) return;
 
-	while (true)
-	{
-		received = M8266WIFI_SPI_RecvData(WifiData, WIFI_DATA_MAX_SIZE, WIFI_DATA_TIMEOUT_MS, &link_no, &status);
-		if (link_no == udp_link_no) {
-			return;
-		}
-		for (int i = 0; i < received; i ++) {
-			if(THEKERNEL->is_cachewait()) {
-				continue;
-			}
-	        // Check for "?1" pattern
-			if (i < received - 1 && WifiData[i] == '?' && WifiData[i + 1] == '1') {
-				query_flag = true;
-				THEKERNEL->set_keep_alive_request(true);
-				i++; // Skip both characters
-				continue;
-			}
+        WifiTcpEndpoint *endpoint = endpoint_for_link(received.link_no);
+        if (endpoint != nullptr) endpoint->receive_data(WifiData, received.copied);
 
-			// Check for single "?" pattern
-			if(WifiData[i] == '?') {
-				query_flag = true;
-				continue;
-			}
-			//if (WifiData[i] == '*') {
-			//	diagnose_flag = true;
-			//	continue;
-			//}
-	        if(WifiData[i] == 'X' - 'A' + 1) { // ^X
-	            halt_flag = true;
-	            continue;
-	        }
-			if(WifiData[i] == 'Y' - 'A' + 1) { // ^Y
-	            THEKERNEL->set_stop_request(true); // generic stop what you are doing request
-	            continue;
-	        }
-			if(WifiData[i] == 'Z' - 'A' + 1) { // ^Z
-				THEKERNEL->set_keep_alive_request(true);
-				continue;
-			}
-			bool at_line_start;
-			at_line_start = (this->buffer.head == this->buffer.tail);
-			if (!at_line_start) {
-				int last_idx = this->buffer.prev_block_index(this->buffer.head);
-				at_line_start = (this->buffer.buffer[last_idx] == '\n' || this->buffer.buffer[last_idx] == '\r');
-			}
-
-	        if(THEKERNEL->is_feed_hold_enabled() && at_line_start) {
-	            if(WifiData[i] == '!') { // safe pause
-	                THEKERNEL->set_feed_hold(true);
-	                continue;
-	            }
-	            if(WifiData[i] == '~') { // safe resume
-	                THEKERNEL->set_feed_hold(false);
-	                continue;
-	            }
-	        }
-	        // convert CR to NL (for host OSs that don't send NL)
-	        if( WifiData[i] == '\r' ) {
-//	        	received = '\n';
-				WifiData[i] = '\n';
-	        }
-	        this->buffer.push_back(char(WifiData[i]));
-		}
-		if (received < WIFI_DATA_MAX_SIZE) {
-			return;
-		}
-	}
+        if (!received.partial && received.copied < WifiDataMaxSize) return;
+    }
 }
 
-bool WifiProvider::ready() {
-	return M8266WIFI_SPI_Has_DataReceived();
-}
-
-void WifiProvider::get_broadcast_from_ip_and_netmask(char *broadcast_addr, size_t broadcast_buffer_size, char *ip_addr, char *netmask)
+void WifiProvider::get_broadcast_from_ip_and_netmask(char *broadcast_addr, size_t broadcast_buffer_size, const char *ip_addr, const char *netmask)
 {
 	uint32_t i_ip = ip_to_int(ip_addr);
 	uint32_t i_mask = ip_to_int(netmask);
@@ -223,16 +193,12 @@ uint32_t WifiProvider::ip_to_int(const char* ip_addr) {
 void WifiProvider::on_second_tick(void *)
 {
 	u16 status = 0;
-	char address[20];
-	char udp_buff[100];
 	u8 param_len = 0;
 	u8 connection_status = 0;
-	u8 client_num = 0;
-	ClientInfo RemoteClients[15];
 
 	if (!wifi_init_ok || THEKERNEL->is_uploading()) return;
 
-	M8266WIFI_SPI_List_Clients_On_A_TCP_Server(tcp_link_no, &client_num, RemoteClients, &status);
+    const bool client_connected = discovery_endpoint != nullptr && discovery_endpoint->has_clients();
 
 	M8266WIFI_SPI_Get_STA_Connection_Status(&connection_status, &status);
 	// THEKERNEL->streams->printf("M8266WIFI_SPI_Get_STA_Connection_Status: [%d]!\n", connection_status);
@@ -250,27 +216,7 @@ void WifiProvider::on_second_tick(void *)
 		}
 		this->sta_netmask[sizeof(this->sta_netmask) - 1] = '\0'; // Ensure null termination regardless
 
-		// send data to sta broadcast address
-		{
-			// Inlined get_broadcast_from_ip_and_netmask
-			uint32_t i_ip = ip_to_int(this->sta_address);
-			uint32_t i_mask = ip_to_int(this->sta_netmask);
-			uint32_t i_broadcast = i_ip | (i_mask ^ 0xffffffff);
-			// Inlined int_to_ip
-			unsigned char bytes[4];
-			bytes[0] = i_broadcast & 0xFF;
-			bytes[1] = (i_broadcast >> 8) & 0xFF;
-			bytes[2] = (i_broadcast >> 16) & 0xFF;
-			bytes[3] = (i_broadcast >> 24) & 0xFF;
-			snprintf(address, sizeof(address), "%d.%d.%d.%d", bytes[3], bytes[2], bytes[1], bytes[0]);
-		}
-
-		snprintf(udp_buff, sizeof(udp_buff), "%s,%s,%d,%d", this->machine_name, this->sta_address, this->tcp_port, client_num > 0 ? 1 : 0);
-		if (M8266WIFI_SPI_Send_Udp_Data((u8 *)udp_buff, strlen(udp_buff), udp_link_no, address, this->udp_send_port, &status) < strlen(udp_buff)) {
-			// THEKERNEL->streams->printf("Send UDP through STA ERROR, status: %d, high: %d, low: %d!\n", status, int(status >> 8), int(status & 0xff));
-		} else {
-			// THEKERNEL->streams->printf("Send UDP through STA Success!\n");
-		}
+        send_discovery_packet(this->sta_address, this->sta_netmask, client_connected);
 		connection_fail_count = 0;
 	} else if (connection_status == 2 || connection_status == 3 || connection_status == 4) {
 		// wrong password or can not find STA or fail to connect
@@ -286,26 +232,7 @@ void WifiProvider::on_second_tick(void *)
 		connection_fail_count = 0;
 	}
 
-	// send ap info through UDP
-	memset(udp_buff, 0, sizeof(udp_buff));
-	{
-		// Inlined get_broadcast_from_ip_and_netmask
-		uint32_t i_ip = ip_to_int(this->ap_address);
-		uint32_t i_mask = ip_to_int(this->ap_netmask);
-		uint32_t i_broadcast = i_ip | (i_mask ^ 0xffffffff);
-		// Inlined int_to_ip
-		unsigned char bytes[4];
-		bytes[0] = i_broadcast & 0xFF;
-		bytes[1] = (i_broadcast >> 8) & 0xFF;
-		bytes[2] = (i_broadcast >> 16) & 0xFF;
-		bytes[3] = (i_broadcast >> 24) & 0xFF;
-		snprintf(address, sizeof(address), "%d.%d.%d.%d", bytes[3], bytes[2], bytes[1], bytes[0]);
-	}
-
-	snprintf(udp_buff, sizeof(udp_buff), "%s,%s,%d,%d", this->machine_name, this->ap_address, this->tcp_port, client_num > 0 ? 1 : 0);
-	if (M8266WIFI_SPI_Send_Udp_Data((u8 *)udp_buff, strlen(udp_buff), udp_link_no, address, this->udp_send_port, &status) < strlen(udp_buff)) {
-		// THEKERNEL->streams->printf("Send UDP through AP ERROR, status: %d, high: %d, low: %d!\n", status, int(status >> 8), int(status & 0xff));
-	}
+    send_discovery_packet(this->ap_address, this->ap_netmask, client_connected);
 
 	// check AP and disconnect every 5 seconds
 	/*
@@ -320,56 +247,123 @@ void WifiProvider::on_second_tick(void *)
 
 }
 
+void WifiProvider::send_discovery_packet(const char *local_address, const char *netmask, bool client_connected)
+{
+    if (discovery_endpoint == nullptr || !discovery_endpoint->enabled()) return;
+
+    u16 status = 0;
+    char address[20];
+    char udp_buff[100];
+    get_broadcast_from_ip_and_netmask(address, sizeof(address), local_address, netmask);
+
+    snprintf(udp_buff, sizeof(udp_buff), "%s,%s,%d,%d", machine_name, local_address,
+            discovery_endpoint->port(), client_connected ? 1 : 0);
+    M8266WIFI_SPI_Send_Udp_Data((u8 *)udp_buff, strlen(udp_buff), udp_link_no, address, udp_send_port, &status);
+}
+
 void WifiProvider::on_idle(void *argument)
  {
-	if (THEKERNEL->is_uploading()) return;
+    if (THEKERNEL->is_uploading()) {
+        service_realtime_flags();
+        return;
+    }
 
 	if (has_data_flag || M8266WIFI_SPI_Has_DataReceived()) {
 		has_data_flag = false;
 		receive_wifi_data();
 	}
 
-    if (query_flag) {
-        query_flag = false;
-        puts(THEKERNEL->get_query_string().c_str());
-    }
+    service_realtime_flags();
+}
 
-    if (diagnose_flag) {
-    	diagnose_flag = false;
-    	puts(THEKERNEL->get_diagnose_string().c_str(), 0);
-    }
-
-    if (halt_flag) {
-        halt_flag = false;
-        THEKERNEL->set_halt_reason(MANUAL);
-		puts("ERROR: Controller Abort during cycle\r\n");
-        THEKERNEL->call_event(ON_HALT, nullptr);
-		
+void WifiProvider::service_realtime_flags()
+{
+    for (size_t i = 0; i < TcpEndpointCount; ++i) {
+        tcp_endpoint(i)->service_realtime_flags();
     }
 }
 
 void WifiProvider::on_main_loop(void *argument)
 {
-    if( this->has_char('\n') ){
-        string received;
-        received.reserve(20);
-        while(1){
-           char c;
-           this->buffer.pop_front(c);
-           if( c == '\n' ){
-                struct SerialMessage message;
-                message.message = received;
-                message.stream = this;
-                THEKERNEL->call_event(ON_CONSOLE_LINE_RECEIVED, &message );
-                return;
-            }else{
-                received += c;
-            }
-        }
+    for (size_t i = 0; i < TcpEndpointCount; ++i) {
+        tcp_endpoint(i)->dispatch_line();
     }
 }
 
-int WifiProvider::puts(const char* s, int size)
+void WifiProvider::configure_tcp_endpoints()
+{
+    smoothie_endpoint.configure(configured_smoothie_port(), comms::protocol_handler(comms::Protocol::Smoothie));
+
+    const comms::ProtocolHandler& discovery_protocol =
+            comms::configured_protocol(wifi_checksum, discovery_protocol_checksum, comms::Protocol::Smoothie);
+    discovery_endpoint = endpoint_for_protocol(discovery_protocol.kind());
+
+    if (discovery_endpoint == nullptr || !discovery_endpoint->enabled()) {
+        discovery_endpoint = first_enabled_endpoint();
+    }
+}
+
+void WifiProvider::append_tcp_streams()
+{
+    if (streams_appended) return;
+    for (size_t i = 0; i < TcpEndpointCount; ++i) {
+        WifiTcpEndpoint *endpoint = tcp_endpoint(i);
+        if (endpoint->enabled()) THEKERNEL->streams->append_stream(endpoint);
+    }
+    streams_appended = true;
+}
+
+void WifiProvider::remove_tcp_streams()
+{
+    for (size_t i = 0; i < TcpEndpointCount; ++i) {
+        THEKERNEL->streams->remove_stream(tcp_endpoint(i));
+    }
+    streams_appended = false;
+}
+
+WifiTcpEndpoint *WifiProvider::tcp_endpoint(size_t index)
+{
+    switch (index) {
+        case 0: return &smoothie_endpoint;
+        default: return nullptr;
+    }
+}
+
+WifiTcpEndpoint *WifiProvider::endpoint_for_link(u8 link_no)
+{
+    for (size_t i = 0; i < TcpEndpointCount; ++i) {
+        WifiTcpEndpoint *endpoint = tcp_endpoint(i);
+        if (endpoint->enabled() && endpoint->link_no() == link_no) return endpoint;
+    }
+    return nullptr;
+}
+
+WifiTcpEndpoint *WifiProvider::endpoint_for_protocol(comms::Protocol protocol)
+{
+    for (size_t i = 0; i < TcpEndpointCount; ++i) {
+        WifiTcpEndpoint *endpoint = tcp_endpoint(i);
+        if (endpoint->uses_protocol(protocol)) return endpoint;
+    }
+    return nullptr;
+}
+
+WifiTcpEndpoint *WifiProvider::first_enabled_endpoint()
+{
+    for (size_t i = 0; i < TcpEndpointCount; ++i) {
+        WifiTcpEndpoint *endpoint = tcp_endpoint(i);
+        if (endpoint->enabled()) return endpoint;
+    }
+    return nullptr;
+}
+
+int WifiProvider::configured_smoothie_port() const
+{
+    ConfigValue *port = THEKERNEL->config->value(wifi_checksum, smoothie_port_checksum);
+    if (port->found()) return port->as_int(2222);
+    return THEKERNEL->config->value(wifi_checksum, tcp_port_checksum)->as_int(2222);
+}
+
+int WifiProvider::send_on_link(u8 link_no, const char *s, int size)
 {
 	size_t total_length = size == 0 ? strlen(s) : size;
     size_t sent_index = 0;
@@ -377,8 +371,8 @@ int WifiProvider::puts(const char* s, int size)
 	u32 sent = 0;
 	u32 to_send = 0;
     while (sent_index < total_length) {
-    	to_send = total_length - sent_index > WIFI_DATA_MAX_SIZE ? WIFI_DATA_MAX_SIZE : total_length - sent_index;
-    	memcpy(WifiData, s + sent_index, to_send);
+        to_send = total_length - sent_index > WifiDataMaxSize ? WifiDataMaxSize : total_length - sent_index;
+        memcpy(WifiTxData, s + sent_index, to_send);
 		// errcode:
 		// 	0x13: Wrong link_no used
 		// 	0x14: connection by link_no not present
@@ -386,7 +380,7 @@ int WifiProvider::puts(const char* s, int size)
 		// 	0x18: No clients connecting to this TCP server
 		// 	0x1E: too many errors ecountered during sending can not fixed
 		// 	0x1F: Other errors
-    	sent = M8266WIFI_SPI_Send_BlockData(WifiData, to_send, 5000, tcp_link_no, NULL, 0, &status);
+        sent = M8266WIFI_SPI_Send_BlockData(WifiTxData, to_send, 5000, link_no, NULL, 0, &status);
     	sent_index += sent;
 		if (sent == to_send) {
 			continue;
@@ -397,52 +391,81 @@ int WifiProvider::puts(const char* s, int size)
     return sent_index;
 }
 
-int WifiProvider::_putc(int c)
+int WifiProvider::send_byte_on_link(u8 link_no, int c)
 {
 	u16 status = 0;
 	u8 to_send = c;
-	if (M8266WIFI_SPI_Send_Data(&to_send, 1, tcp_link_no, &status) == 0) {
+	if (M8266WIFI_SPI_Send_Data(&to_send, 1, link_no, &status) == 0) {
 		return 0;
 	} else {
 		return 1;
 	}
 }
 
-int WifiProvider::_getc()
+int WifiProvider::read_byte_for(WifiTcpEndpoint& endpoint)
 {
-	u16 status;
-	u8 to_recv = 0, link_no;
-	M8266WIFI_SPI_RecvData(&to_recv, 1, WIFI_DATA_TIMEOUT_MS, &link_no, &status);
-	return to_recv;
-}
-
-int WifiProvider::gets(char** buf, int size)
-{
-	u16 status;
-	u8 link_no;
-	u16 received = M8266WIFI_SPI_RecvData(WifiData,
-			(size == 0 || size > WIFI_DATA_MAX_SIZE) ? WIFI_DATA_MAX_SIZE : size, WIFI_DATA_TIMEOUT_MS, &link_no, &status);
-	if (link_no == udp_link_no) {
-		// THEKERNEL->streams->printf("gets, data from udp");
-		return 0;
-	}
-	if (int(status & 0xff) == 32 || int(status & 0xff) == 34 || int(status & 0xff) == 47) {
-		THEKERNEL->streams->printf("gets, received: %d, status:%d, high: %d, low: %d!\n", received, status, int(status >> 8), int(status & 0xff));
-	}
-	*buf = (char *)&WifiData;
-	return received;
-}
-
-// Does the queue have a given char ?
-bool WifiProvider::has_char(char letter) {
-    int index = this->buffer.tail;
-    while( index != this->buffer.head ){
-        if( this->buffer.buffer[index] == letter ){
-            return true;
-        }
-        index = this->buffer.next_block_index(index);
+	u8 to_recv = 0;
+    while (M8266WIFI_SPI_Has_DataReceived()) {
+	    const ReceivedData received = receive_from_module(&to_recv, 1);
+        if (received.copied == 0) return -1;
+        if (received.link_no == endpoint.link_no()) return to_recv;
+        WifiTcpEndpoint *source = endpoint_for_link(received.link_no);
+        if (source != nullptr && !THEKERNEL->is_uploading()) source->receive_data(&to_recv, received.copied);
     }
-    return false;
+	return -1;
+}
+
+int WifiProvider::read_raw_for(WifiTcpEndpoint& endpoint, char **buf, int size)
+{
+    const u16 capacity = static_cast<u16>((size == 0 || size > int(WifiDataMaxSize)) ? WifiDataMaxSize : size);
+
+    while (true) {
+	    const ReceivedData received = receive_from_module(WifiData, capacity);
+        if (received.copied == 0) return 0;
+        if (received.link_no == udp_link_no) {
+            if (!received.partial && received.copied < capacity) return 0;
+            continue;
+        }
+
+	    if (receive_status_is_error(received.status)) {
+		    THEKERNEL->streams->printf("gets, received: %d, status:%d, high: %d, low: %d!\n",
+                    received.copied, received.status, int(received.status >> 8), int(received.status & 0xff));
+            return 0;
+	    }
+
+        WifiTcpEndpoint *source = endpoint_for_link(received.link_no);
+        if (source == &endpoint) {
+	        *buf = (char *)WifiData;
+	        return received.copied;
+        }
+
+        if (source != nullptr && !THEKERNEL->is_uploading()) source->receive_data(WifiData, received.copied);
+    }
+}
+
+int WifiProvider::read_framed_file_for(WifiTcpEndpoint& endpoint, char **buf, int size)
+{
+    const u16 capacity = static_cast<u16>((size == 0 || size > int(WifiDataMaxSize)) ? WifiDataMaxSize : size);
+
+    while (true) {
+        const ReceivedData received = receive_from_module(WifiData, capacity);
+        if (received.copied == 0) return 0;
+        if (received.link_no == udp_link_no) {
+            if (!received.partial && received.copied < capacity) return 0;
+            continue;
+        }
+
+        if (receive_status_is_error(received.status)) {
+            THEKERNEL->streams->printf("gets, received: %d, status:%d, high: %d, low: %d!\n",
+                    received.copied, received.status, int(received.status >> 8), int(received.status & 0xff));
+            return 0;
+        }
+
+        WifiTcpEndpoint *source = endpoint_for_link(received.link_no);
+        if (source == &endpoint) return endpoint.consume_framed_file_data(WifiData, received.copied, buf);
+
+        if (source != nullptr && !THEKERNEL->is_uploading()) source->receive_data(WifiData, received.copied);
+    }
 }
 
 void WifiProvider::on_gcode_received(void *argument)
@@ -465,7 +488,10 @@ void WifiProvider::on_gcode_received(void *argument)
 				//u8 M8266WIFI_SPI_Query_Connection(u8 link_no, u8* connection_type, u8* connection_state,
 				//												u16* local_port, u8* remote_ip, u16* remote_port, u16* status);
 
-				if (M8266WIFI_SPI_Query_Connection(tcp_link_no, NULL, &connection_state, NULL, NULL, NULL, NULL) == 0) {
+                WifiTcpEndpoint *endpoint = discovery_endpoint != nullptr ? discovery_endpoint : first_enabled_endpoint();
+                if (endpoint == nullptr) {
+                    THEKERNEL->streams->printf("No WiFi TCP endpoint enabled\n");
+                } else if (M8266WIFI_SPI_Query_Connection(endpoint->link_no(), NULL, &connection_state, NULL, NULL, NULL, NULL) == 0) {
 					THEKERNEL->streams->printf("M8266WIFI_SPI_Query_Connection ERROR!\n");
 				} else {
 					THEKERNEL->streams->printf("connection_state : %d\n", connection_state);
@@ -642,11 +668,11 @@ void WifiProvider::on_get_public_data(void* argument) {
 
 	M8266WIFI_SPI_Get_STA_Connection_Status(&connection_status, &status);
 
-	ScannedSigs wlans[MAX_WLAN_SIGNALS];
-	M8266WIFI_SPI_STA_Scan_Signals(wlans, MAX_WLAN_SIGNALS, 0xff, 0, &status);
+	ScannedSigs wlans[MaxWlanSignals];
+	M8266WIFI_SPI_STA_Scan_Signals(wlans, MaxWlanSignals, 0xff, 0, &status);
 	// wait for scan finish
 	while (true) {
-		signals = M8266WIFI_SPI_STA_Fetch_Last_Scanned_Signals(wlans, MAX_WLAN_SIGNALS, &status);
+		signals = M8266WIFI_SPI_STA_Fetch_Last_Scanned_Signals(wlans, MaxWlanSignals, &status);
 		if (signals == 0) {
 			// 0x25: If not start scan before
 			// 0x26: If currently module is scanning
@@ -834,16 +860,14 @@ void WifiProvider::init_wifi_module(bool reset) {
 
 	if (reset) {
 		THEKERNEL->streams->printf("M8266WIFI_SPI_Delete_Connections...\n");
+        remove_tcp_streams();
 		// disconnect current links
 		if (M8266WIFI_SPI_Delete_Connection( udp_link_no, &status) == 0){
 			THEKERNEL->streams->printf("M8266WIFI_SPI_Delete_Connection ERROR, status:%d, high: %d, low: %d!\n", status, int(status >> 8), int(status & 0xff));
 		}
-		if (M8266WIFI_SPI_Delete_Connection( tcp_link_no, &status) == 0){
-			THEKERNEL->streams->printf("M8266WIFI_SPI_Delete_Connection ERROR, status:%d, high: %d, low: %d!\n", status, int(status >> 8), int(status & 0xff));
-		}
-
-		// remove current stream
-		THEKERNEL->streams->remove_stream(this);
+        for (size_t i = 0; i < TcpEndpointCount; ++i) {
+            tcp_endpoint(i)->delete_connection();
+        }
 	}
 
 
@@ -855,23 +879,15 @@ void WifiProvider::init_wifi_module(bool reset) {
 		THEKERNEL->streams->printf("M8266WIFI_Module_Init_Via_SPI, ERROR!\n");
 	}
 
-	// init udp and tcp server connection
-	// THEKERNEL->streams->printf("Init UDP and TCP connection...\n");
-	// setup TCP Connection
-	snprintf(address, sizeof(address), "192.168.4.10");
-	if (M8266WIFI_SPI_Setup_Connection(2, this->tcp_port, address, 0, tcp_link_no, 3, &status) == 0) {
-		THEKERNEL->streams->printf("M8266WIFI_SPI_Setup_Connection ERROR, status:%d, high: %d, low: %d!\n", status, int(status >> 8), int(status & 0xff));
-	}
+	// init udp and tcp server connections
+    for (size_t i = 0; i < TcpEndpointCount; ++i) {
+        tcp_endpoint(i)->setup(tcp_timeout_s);
+    }
+
 	// setup UDP Connection
 	snprintf(address, sizeof(address), "192.168.4.255");
 	if (M8266WIFI_SPI_Setup_Connection(0, this->udp_recv_port, address, 0, udp_link_no, 3, &status) == 0) {
 		THEKERNEL->streams->printf("M8266WIFI_SPI_Setup_Connection ERROR, status:%d, high: %d, low: %d!\n", status, int(status >> 8), int(status & 0xff));
-	}
-
-	// set timeout
-	if( M8266WIFI_SPI_Set_TcpServer_Auto_Discon_Timeout(tcp_link_no, tcp_timeout_s, &status) == 0)
-	{
-		THEKERNEL->streams->printf("M8266WIFI_SPI_Set_TcpServer_Auto_Discon_Timeout ERROR, status:%d, high: %d, low: %d!\n", status, int(status >> 8), int(status & 0xff));
 	}
 
 	// load current AP IP and Netmask
@@ -885,8 +901,7 @@ void WifiProvider::init_wifi_module(bool reset) {
 	}
 
 	if (reset) {
-		// append stream again
-		THEKERNEL->streams->append_stream(this);
+		append_tcp_streams();
 	}
 
 	wifi_init_ok = true;
@@ -1001,10 +1016,3 @@ u8 WifiProvider::M8266WIFI_Module_Init_Via_SPI()
 
 	return 1;
 }
-
-int WifiProvider::type() {
-	return 1;
-}
-
-
-

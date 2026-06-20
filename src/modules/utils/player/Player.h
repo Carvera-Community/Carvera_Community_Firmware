@@ -9,6 +9,7 @@
 #pragma once
 
 #include "Module.h"
+#include "CommunicationProtocol.h"
 
 #include <stdio.h>
 #include <string>
@@ -21,7 +22,7 @@ using std::string;
 
 class StreamOutput;
 
-class Player : public Module {
+class Player : public Module, private comms::FileTransferHost {
     public:
         Player();
 
@@ -57,15 +58,15 @@ class Player : public Module {
         
         string extract_options(string& args);
 
-        void set_serial_rx_irq(bool enable);
-        int inbyte(StreamOutput *stream, unsigned int timeout_ms);
-        int inbytes(StreamOutput *stream, char **buf, int size, unsigned int timeout_ms);
-        void flush_input(StreamOutput *stream);
-        void cancel_transfer(StreamOutput *stream);
-        unsigned int crc16_ccitt(unsigned char *data, unsigned int len);
-        int check_crc(int crc, unsigned char *data, unsigned int len);
-		
-		int decompress(string sfilename, string dfilename, uint32_t sfilesize, StreamOutput* stream);
+        void set_serial_rx_irq(bool enable) override;
+        int read_byte(StreamOutput *stream, unsigned int timeout_ms) override;
+        int read_bytes(StreamOutput *stream, char **buf, int size, unsigned int timeout_ms) override;
+        int decompress(const std::string& source, const std::string& destination,
+                uint32_t source_size, StreamOutput* stream) override;
+        const char *last_md5() const override;
+        uint8_t *scratch_buffer() override;
+        size_t scratch_size() const override;
+
 //		int compressfile(string sfilename, string dfilename, StreamOutput* stream);
         // 2024
         // bool check_cluster(const char *gcode_str, float *x_value, float *y_value, float *distance, float *slope, float *s_value);

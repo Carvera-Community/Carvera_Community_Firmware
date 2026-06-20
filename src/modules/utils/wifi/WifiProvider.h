@@ -9,21 +9,18 @@
 #define WIFIPROVIDER_H_
 
 using namespace std;
-#include <vector>
-#include <queue>
 
 #include "Pin.h"
 #include "Module.h"
-#include "StreamOutput.h"
 
 #include "M8266WIFIDrv.h"
-#include "libs/RingBuffer.h"
+#include "CommunicationProtocol.h"
+#include "WifiConstants.h"
+#include "WifiTcpEndpoint.h"
 
-#define WIFI_DATA_MAX_SIZE 1460
-#define WIFI_DATA_TIMEOUT_MS 10
-#define MAX_WLAN_SIGNALS 8
+#include <cstddef>
 
-class WifiProvider : public Module, public StreamOutput
+class WifiProvider : public Module
 {
 public:
 	WifiProvider();
@@ -36,16 +33,18 @@ public:
     void on_get_public_data(void* argument);
     void on_set_public_data(void* argument);
 
-    int gets(char** buf, int size = 0);
-    int puts(const char*, int size = 0);
-    int _putc(int c);
-    int _getc(void);
-    bool ready();
-    bool has_char(char letter);
-    int type(); // 0: serial, 1: wifi
-
-
 private:
+    friend class WifiTcpEndpoint;
+
+    static constexpr size_t TcpEndpointCount = 1;
+
+    struct ReceivedData {
+        u16 copied;
+        u8 link_no;
+        u16 status;
+        bool partial;
+    };
+
     void M8266WIFI_Module_delay_ms(u16 nms);
     void set_wifi_op_mode(u8 op_mode);
 
@@ -57,20 +56,38 @@ private:
 
     uint32_t ip_to_int(const char* ip_addr);
     void int_to_ip(uint32_t i_ip, char *ip_addr, size_t buffer_size);
-    void get_broadcast_from_ip_and_netmask(char *broadcast_addr, size_t broadcast_buffer_size, char *ip_addr, char *netmask);
+    void get_broadcast_from_ip_and_netmask(char *broadcast_addr, size_t broadcast_buffer_size, const char *ip_addr, const char *netmask);
 
     void on_pin_rise();
     void receive_wifi_data();
+    void service_realtime_flags();
+    void configure_tcp_endpoints();
+    void append_tcp_streams();
+    void remove_tcp_streams();
+    void send_discovery_packet(const char *local_address, const char *netmask, bool client_connected);
+    WifiTcpEndpoint *tcp_endpoint(size_t index);
+    WifiTcpEndpoint *endpoint_for_link(u8 link_no);
+    WifiTcpEndpoint *endpoint_for_protocol(comms::Protocol protocol);
+    WifiTcpEndpoint *first_enabled_endpoint();
+    int configured_smoothie_port() const;
+    ReceivedData receive_from_module(u8 *buffer, u16 capacity);
+
+    int send_on_link(u8 link_no, const char *s, int size);
+    int send_byte_on_link(u8 link_no, int c);
+    int read_byte_for(WifiTcpEndpoint& endpoint);
+    int read_raw_for(WifiTcpEndpoint& endpoint, char **buf, int size);
+    int read_framed_file_for(WifiTcpEndpoint& endpoint, char **buf, int size);
 
     mbed::InterruptIn *wifi_interrupt_pin; // Interrupt pin for measuring speed
     float probe_slow_rate;
 
-    RingBuffer<char, 256> buffer; // Receive buffer
     string test_buffer;
 
-	u8 WifiData[WIFI_DATA_MAX_SIZE];
+    WifiTcpEndpoint smoothie_endpoint;
+    WifiTcpEndpoint *discovery_endpoint;
+    u8 WifiData[WifiDataMaxSize];
+    u8 WifiTxData[WifiDataMaxSize];
 
-	int tcp_port;
 	int udp_send_port;
 	int udp_recv_port;
 	int tcp_timeout_s;
@@ -82,13 +99,10 @@ private:
 	char sta_netmask[16];
 
     struct {
-    	u8  tcp_link_no;
     	u8  udp_link_no;
-    	bool wifi_init_ok:1;
-    	volatile bool halt_flag:1;
-    	volatile bool query_flag:1;
-    	volatile bool diagnose_flag:1;
-    	volatile bool has_data_flag:1;
+        bool wifi_init_ok:1;
+        volatile bool has_data_flag:1;
+        bool streams_appended:1;
     };
 
 };
