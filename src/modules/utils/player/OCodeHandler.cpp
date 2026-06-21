@@ -7,6 +7,8 @@
 #include "libs/utils.h"
 #include "modules/communication/utils/Gcode.h"
 
+#include "mbed.h"
+
 #include <string.h>
 #include <ctype.h>
 #include <stdarg.h>
@@ -42,16 +44,36 @@ void OCodeHandler::pre_scan(FILE* fh, StreamOutput* stream)
     if(!fh) return;
 
     long saved = fwfs::ftell(fh);
+    fwfs::fseek(fh, 0, SEEK_END);
+    long file_size = fwfs::ftell(fh);
     fwfs::fseek(fh, 0, SEEK_SET);
     sub_table_.clear();
 
+    if(file_size > 0) {
+        THEKERNEL->streams->printf("O-code: pre-scanning started...\r\n");
+    }
+
     char buf[130];
     int line_num = 0;
+    int last_pct = -1;
+    uint32_t last_idle_us = us_ticker_read();
     while(fwfs::fgets(buf, sizeof(buf), fh) != NULL) {
         // Keep the system responsive (and the watchdog fed) while scanning a
         // large file. This runs before playback motion starts, so yielding here
         // is safe; it must never happen mid-cut.
-        if((++line_num % 100) == 0) THEKERNEL->call_event(ON_IDLE);
+        uint32_t now_us = us_ticker_read();
+        if((now_us - last_idle_us) >= 200000) {
+            THEKERNEL->call_event(ON_IDLE);
+            if(file_size > 0) {
+                int pct = (int)((fwfs::ftell(fh) * 100L) / file_size);
+                if(pct > last_pct) {
+                    last_pct = pct;
+                    THEKERNEL->streams->printf("O-code: pre-scan progress %d%%\r\n", pct);
+                }
+            }
+            last_idle_us = now_us;
+        }
+        line_num++;
 
         int n;
         string kw, rest;
@@ -74,6 +96,10 @@ void OCodeHandler::pre_scan(FILE* fh, StreamOutput* stream)
     }
 
     fwfs::fseek(fh, saved, SEEK_SET);
+
+    if(file_size > 0 && last_pct < 100) {
+        THEKERNEL->streams->printf("O-code: pre-scan complete\r\n");
+    }
 
     if(!sub_table_.empty()) {
         stream->printf("O-code: pre-scan found %d subroutine(s)\n", (int)sub_table_.size());
@@ -208,11 +234,16 @@ bool OCodeHandler::skip_to(FILE* fh,
     int do_nums[OCODE_MAX_STACK_DEPTH];
     int do_count = 0;
     char buf[130];
+    uint32_t last_idle_us = us_ticker_read();
     while(fwfs::fgets(buf, sizeof(buf), fh) != NULL) {
         // Skipping a large block happens synchronously within a single main-loop
         // tick, so feed the watchdog (and let other ON_IDLE work run) periodically.
         lines_read++;
-        if((lines_read % 100) == 0) THEKERNEL->call_event(ON_IDLE);
+        uint32_t now_us = us_ticker_read();
+        if((now_us - last_idle_us) >= 200000) {
+            THEKERNEL->call_event(ON_IDLE);
+            last_idle_us = now_us;
+        }
 
         int n;
         string kw, rest;

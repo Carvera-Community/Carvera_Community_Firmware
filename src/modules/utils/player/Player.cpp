@@ -840,6 +840,7 @@ void Player::on_main_loop(void *argument)
         float clustered_distance[8];
         */
 
+        uint32_t last_idle_us = us_ticker_read();
         while (fwfs::fgets(buf, sizeof(buf), this->current_file_handler) != NULL) {
 
             int len = strlen(buf);
@@ -940,14 +941,22 @@ void Player::on_main_loop(void *argument)
                     if (this->ocode_handler.is_skipping()) {
                         // Fast-forwarding through a skipped block stays in this
                         // loop without returning, so feed the watchdog periodically.
-                        if ((this->file_line % 100) == 0) THEKERNEL->call_event(ON_IDLE);
+                        uint32_t now_us = us_ticker_read();
+                        if((now_us - last_idle_us) >= 200000) {
+                            THEKERNEL->call_event(ON_IDLE);
+                            last_idle_us = now_us;
+                        }
                         continue;
                     }
                     return;
                 }
                 if (this->ocode_handler.is_skipping()) {
                     this->sync_progress_max();
-                    if ((this->file_line % 100) == 0) THEKERNEL->call_event(ON_IDLE);
+                    uint32_t now_us = us_ticker_read();
+                    if((now_us - last_idle_us) >= 200000) {
+                        THEKERNEL->call_event(ON_IDLE);
+                        last_idle_us = now_us;
+                    }
                     continue;
                 }
 
