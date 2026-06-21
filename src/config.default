@@ -169,7 +169,7 @@ switch.probecharger.ignore_on_halt			true			# ignore on halt
 switch.probecharger.startup_state			true			# wireless probe startup state
 
 
-switch.extend.enable						false			# Disabled by default to avoid conflicts with spindle.dir_pin on EXT
+switch.extend.enable						false
 # switch.extend.input_pin						0.21			# Pin this module controls
 switch.extend.output_pin					2.2				# Pin this module controls
 switch.extend.output_type					hwpwm			# Digital means this is just an on or off pin
@@ -269,8 +269,6 @@ zprobe.debounce_ms							1				# Set if noisy
 zprobe.calibrate_pin						0.5^			# calibrate_pin
 zprobe.probe_tip_diameter					1.6				#3 axis probe tip diamter
 zprobe.calibration_safety_margin              0.1             # max distance to move after calibrate pin but before probe pin detected
-# zprobe.use_3dtoolsetter                    false            # Optional: for 3D probe tools on a 3D tool setter, stop TLO calibration on toolsetter hit only
-# 3dtoolsetter.disk_diameter                 10.0            # Optional: 3D toolsetter disk diameter (mm) used for M491.3 geometry-based diameter solve
 
 # Leveling strategy
 leveling-strategy.rectangular-grid.enable					true
@@ -331,7 +329,6 @@ e_stop_pin									0.26!^			# Emergency stop pin
 #spindle.type								pwm				# sets the spindle module to PWM mode
 spindle_suspend_restore_enable              true            # On suspend: if spindle is running, stop it and remember RPM. On resume: restore only if it was running.
 spindle.pwm_pin								2.5				# Big Mosfet Q7. Pin must be hardware PWM capable.
-spindle.dir_pin								2.2				# Spindle direction pin (EXT). Add ! to invert FW/REV polarity.
 spindle.pwm_period							1000			# default 1000, sets the PWM frequency
 spindle.feedback_pin						2.7				# Pin must be interrupt capable. 
 spindle.pulses_per_rev						12				# default 1. Defines the number of pulses occur for each rotation 

@@ -34,6 +34,7 @@
 *.DS_Store
 /make*/
 /gcc-arm-none-eabi*
+/make*
 /LPC1768
 /mbed/drop
 /mbed/src/Debug
@@ -49,10 +50,8 @@ gcc-arm-none-eabi*
 .analzyer
 .analyzer/**
 .cursor
-/comp_preprocess_bolt_on_refactor
-/config_files
 /cutter_comp_documentation
-/copilot_chat
-/FirmwareBuilds
+
+/FirmwareBin/*
 
 

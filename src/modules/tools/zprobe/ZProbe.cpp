@@ -49,8 +49,6 @@
 #define probe_height_checksum    CHECKSUM("probe_height")
 #define probe_tip_diameter_checksum CHECKSUM("probe_tip_diameter")
 #define probe_calibration_safety_margin_checksum CHECKSUM("calibration_safety_margin")
-#define probe_safe_margin_checksum CHECKSUM("probe_safe_margin")
-#define use_3dtoolsetter_checksum CHECKSUM("use_3dtoolsetter")
 #define toolZeroIs3Axis_checksum  CHECKSUM("tool_zero_is_3axis")
 #define gamma_max_checksum       CHECKSUM("gamma_max")
 #define max_z_checksum           CHECKSUM("max_z")
@@ -66,7 +64,6 @@
 #define state_checksum              CHECKSUM("state")
 #define ignore_on_halt_checksum     CHECKSUM("ignore_on_halt")
 #define set_tlo_calibrating_checksum CHECKSUM("set_tlo_calibrating")
-#define set_m491_3_mode_checksum    CHECKSUM("set_m491_3_mode")
 
 #define X_AXIS 0
 #define Y_AXIS 1
@@ -128,7 +125,6 @@ void ZProbe::config_load()
     this->probe_calibration_safety_margin = THEKERNEL->config->value(zprobe_checksum, probe_calibration_safety_margin_checksum)->as_number(0.1F);
     this->halt_pending = false;
     this->probe_triggered = false;
-    this->m491_3_mode = false;
 
     // get strategies to load
     vector<uint16_t> modules;
@@ -363,16 +359,13 @@ uint32_t ZProbe::read_calibrate(uint32_t dummy)
                 calibrate_pin_position = STEPPER[moving_axis]->get_current_position();
             }
 
-            if (!probing || probe_detected || (tlo_calibrating && probe_tool_tlo_toolsetter_only && check_probe_tool() > 0)) {
-                // if we are not probing, e.g. doing a regular TLO calibration,
-                // or we are probing and the probe was detected, or this probe-tool
-                // TLO calibration is configured to stop on the toolsetter alone,
-                // then we signal the motors to stop.
+            if (!probing || probe_detected) {
+                // If not probing (regular TLO calibration) or the probe is detected,
+                // signal the motors to stop.
                 for (auto &a : THEROBOT->actuators) a->stop_moving();
                 cali_debounce = 0;
-            } else if (!m491_3_mode) {
-                // We have a probe tool and NOT in M491.3 probe-safe mode
-                // We must make sure we don't move too far (standard dual-pin correlation check)
+            } else {
+                // Dual-pin correlation safety check for probe-tool calibration.
                 // Store the current Z position for later reporting if necessary.
                 calibrate_current_axis_pos = STEPPER[moving_axis]->get_current_position();
                 distance_moved = fabs(calibrate_current_axis_pos - calibrate_pin_position);
@@ -382,11 +375,6 @@ uint32_t ZProbe::read_calibrate(uint32_t dummy)
                     safety_margin_exceeded = true;
                     for (auto &a : THEROBOT->actuators) a->stop_moving();                    
                 }
-            } else {
-                // M491.3 probe-safe mode: stop immediately once the calibrate pin is debounced.
-                // This minimizes sensor contact dwell on the side touch pass.
-                for (auto &a : THEROBOT->actuators) a->stop_moving();
-                cali_debounce = 0;
             }
         } else {
             // The endstop was not hit yet
@@ -934,10 +922,6 @@ void ZProbe::set_tlo_calibrating(bool state) {
     tlo_calibrating = state;
 }
 
-void ZProbe::set_m491_3_mode(bool state) {
-    m491_3_mode = state;
-}
-
 void ZProbe::on_set_public_data(void* argument) {
     PublicDataRequest* pdr = static_cast<PublicDataRequest*>(argument);
     
@@ -946,11 +930,6 @@ void ZProbe::on_set_public_data(void* argument) {
     if(pdr->second_element_is(set_tlo_calibrating_checksum)) {
         bool *state = static_cast<bool*>(pdr->get_data_ptr());
         this->set_tlo_calibrating(*state);
-        pdr->set_taken();
-    }
-    else if(pdr->second_element_is(set_m491_3_mode_checksum)) {
-        bool *state = static_cast<bool*>(pdr->get_data_ptr());
-        this->set_m491_3_mode(*state);
         pdr->set_taken();
     }
 }

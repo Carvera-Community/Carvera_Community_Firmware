@@ -29,7 +29,8 @@ class StreamOutput;
  * - Lookahead buffer: 3-move window for corner detection and compensation
  * - String reconstruction: Rebuild G-code from modified coordinates
  * 
- * Memory cost: ~2.2KB (10 slots × ~220 bytes/Gcode)
+ * Buffer model: 3-slot lookahead ring for uncompensated input plus compensated output queue
+ * Allocation model: compensated lines are emitted as heap-allocated Gcode objects
  * Code savings: -150 lines (removes duplicate transform logic)
  */
 class CompensationPreprocessor {
@@ -67,23 +68,24 @@ public:
     bool is_active() const { return comp_active; }
 
     /**
-     * Resolve the compensation diameter from the G-code D word or EEPROM fallback.
+     * Resolve active compensation radius from nominal diameter plus additive wear.
      *
-     * Precedence:
+     * Nominal diameter precedence:
      *   1. G-code D word (if has_d_word is true)
-     *   2. EEPROM stored TOOL_DIA (eeprom_tool_dia, if > 0)
+     *   2. EEPROM stored TOOL_DIA (if > 0)
      *
-     * Prints the diameter source to stream so the operator can verify it.
+     * The EEPROM wear term (TOOL_DIA_WEAR) is always added to nominal.
      *
-     * @param has_d_word      True if the G-code contained a D word.
-     * @param d_word_value    Value of the D word (diameter, mm). Ignored when has_d_word is false.
-     * @param eeprom_tool_dia Value of THEKERNEL->eeprom_data->TOOL_DIA.
-     * @param stream          Stream for operator feedback.
-     * @param out_radius      [out] Resolved radius on success.
-     * @return true on success; false when no valid diameter is available (caller must alarm).
+     * @param has_d_word          True if the G-code contained a D word.
+     * @param d_word_value        Value of the D word (nominal diameter, mm).
+     * @param eeprom_tool_dia     Stored nominal diameter fallback from EEPROM.
+     * @param eeprom_tool_dia_wear Stored additive wear (diameter delta, mm).
+     * @param stream              Stream for operator feedback.
+     * @param out_radius          [out] Resolved radius on success.
+     * @return true on success; false when no valid effective diameter is available.
      */
     bool resolve_diameter(bool has_d_word, float d_word_value,
-                          float eeprom_tool_dia,
+                          float eeprom_tool_dia, float eeprom_tool_dia_wear,
                           StreamOutput* stream, float* out_radius);
 
     /**

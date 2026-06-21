@@ -106,9 +106,6 @@ inline bool tool_dia_from_m4912(const EEPROM_data* data)
 #define probe_mcs_z_checksum		CHECKSUM("probe_mcs_z")
 #define reference_tool_mz_checksum	CHECKSUM("reference_tool_mz")
 #define three_axis_probe_tlo_correction_checksum CHECKSUM("three_axis_probe_tlo_correction")
-#define use_3dtoolsetter_checksum CHECKSUM("use_3dtoolsetter")
-#define disk_diameter_checksum CHECKSUM("disk_diameter")
-#define three_d_toolsetter_checksum CHECKSUM("3dtoolsetter")
 
 ATCHandler::ATCHandler()
 {
@@ -119,9 +116,6 @@ ATCHandler::ATCHandler()
     ref_tool_mz = 0.0;
     cur_tool_mz = 0.0;
     tool_offset = 0.0;
-	tool_dia_probe_start_x = 0.0;
-	tool_dia_probe_start_valid = false;
-	toolsetter_disk_diameter = 10.0f;
     last_pos[0] = 0.0;
     last_pos[1] = 0.0;
     last_pos[2] = 0.0;
@@ -155,49 +149,6 @@ void ATCHandler::clear_script_queue(){
 	while (!this->script_queue.empty()) {
 		this->script_queue.pop();
 	}
-}
-
-bool ATCHandler::finalize_tool_dia_measurement(const char* source_tag)
-{
-	const char* src = (source_tag != nullptr) ? source_tag : "unknown";
-	if (!this->tool_dia_probe_start_valid) {
-		THEKERNEL->streams->printf("ERROR: Tool diameter start point not captured (%s)\n", src);
-		return false;
-	}
-
-	float px, py, pz;
-	uint8_t ps;
-	std::tie(px, py, pz, ps) = THEROBOT->get_last_probe_position();
-	if (ps != 1) {
-		THEKERNEL->streams->printf("ERROR: Tool diameter probe failed (%s)\n", src);
-		this->tool_dia_probe_start_valid = false;
-		return false;
-	}
-
-	float travel = px - this->tool_dia_probe_start_x;
-	float diameter = fabsf(THEROBOT->from_millimeters(travel));
-
-	if (this->use_3dtoolsetter) {
-		// In 3D toolsetter mode, the X touch is a single-side contact on the disk OD.
-		// Compute tool radius from center-to-touch distance minus disk radius, then double.
-		float probe_center_x = probe_mx_mm + (this->probe_oneoff_configured ? this->probe_oneoff_x : 0.0f);
-		float center_to_touch = fabsf(THEROBOT->from_millimeters(probe_center_x - px));
-		float disk_radius = this->toolsetter_disk_diameter * 0.5f;
-		float tool_radius = center_to_touch - disk_radius;
-		diameter = tool_radius * 2.0f;
-	}
-
-	if (diameter > 0.0f) {
-		THEKERNEL->eeprom_data->TOOL_DIA = diameter;
-		THEKERNEL->write_eeprom_data();
-		THEKERNEL->streams->printf("Measured tool diameter [%.3f] saved via M491.3 (%s)\n", diameter, src);
-		this->tool_dia_probe_start_valid = false;
-		return true;
-	}
-
-	THEKERNEL->streams->printf("ERROR: Invalid measured tool diameter (%s)\n", src);
-	this->tool_dia_probe_start_valid = false;
-	return false;
 }
 
 void ATCHandler::load_custom_tool_slots() {
@@ -1326,20 +1277,16 @@ void ATCHandler::fill_pick_scripts(int new_tool, bool clear_z) {
 
 }
 
-void ATCHandler::fill_cali_scripts(bool is_probe, bool clear_z, int repeat_count, bool measure_diameter) {
+void ATCHandler::fill_cali_scripts(bool is_probe, bool clear_z, int repeat_count) {
 	char buff[100];
 	if (!THEROBOT->is_homed_all_axes()) {
 		return;
 	};
 
 	if(is_probe){
-		// Probe-tool TLO calibration must run with the ZProbe TLO gate enabled,
-		// otherwise read_calibrate() will keep waiting for probe pin correlation
-		// and can raise a safety-margin alarm even when toolsetter contact is valid.
+		// Probe-tool TLO calibration runs with the ZProbe TLO gate enabled.
 		bool tlo_calibrating = true;
-		bool m491_3_mode = false;
 		PublicData::set_value( zprobe_checksum, set_tlo_calibrating_checksum, &tlo_calibrating );
-		PublicData::set_value( zprobe_checksum, set_m491_3_mode_checksum, &m491_3_mode );
 	// open probe laser
 		this->script_queue.push("M494.1");
 	}
@@ -1396,27 +1343,6 @@ void ATCHandler::fill_cali_scripts(bool is_probe, bool clear_z, int repeat_count
 			snprintf(buff, sizeof(buff), "M493.1 R%d", i);
 			this->script_queue.push(buff);
 
-			// Tool diameter measurement is only enabled for the explicit M491.3 path.
-			if (measure_diameter && !is_probe) {
-				this->script_queue.push("G91 G0 Z2");
-				this->script_queue.push("G91 G0 X-10.5");
-				// Slightly deeper engagement for small tools so X probing reaches at least center-height contact.
-				this->script_queue.push("G91 G1 Z-4.0 F100");
-				this->script_queue.push("M4 S2000");
-				this->script_queue.push("M493.7");
-				// Debounced diameter touch: fast approach, retract, then slow approach for final capture.
-				// This minimizes contact dwell while keeping final measurement from the slow touch.
-				this->script_queue.push("G38.6 X5.0 F60");
-				this->script_queue.push("G91 G0 X-0.5");
-				this->script_queue.push("G38.6 X1.0 F20");
-				// Retract immediately after final touch to reduce time pressing on the sensor.
-				this->script_queue.push("G91 G0 X-0.5");
-				// Ensure retract motion is complete before stopping spindle.
-				// Diameter finalization is handled by the ATC completion fallback in on_main_loop.
-				this->script_queue.push("M400");
-				this->script_queue.push("M5");
-			}
-
 			// lift z to safe position with fast speed
 			snprintf(buff, sizeof(buff), "G53 G0 Z%.3f", THEROBOT->from_millimeters(this->clearance_z));
 			this->script_queue.push(buff);
@@ -1430,8 +1356,7 @@ void ATCHandler::fill_cali_scripts(bool is_probe, bool clear_z, int repeat_count
 		
 	}
 	// Legacy probe-tool flow verifies the wireless probe can trigger.
-	// In 3D toolsetter mode, probe-tool TLO is allowed to stop on the toolsetter alone.
-	if (is_probe && !this->use_3dtoolsetter) {
+	if (is_probe) {
 		this->script_queue.push("M492.3");
 	}
 	
@@ -2834,6 +2759,11 @@ void ATCHandler::on_gcode_received(void *argument)
 				bool tlo_calibrating = true;
 				PublicData::set_value( zprobe_checksum, set_tlo_calibrating_checksum, &tlo_calibrating );
 				this->fill_cali_scripts(false, true, repeat_count, true);
+				THEKERNEL->streams->printf("ALARM: M491.3 toolsetter diameter measurement is not available in this branch\n");
+				THEKERNEL->streams->printf("INFO: Use M493.3 D<nominal_mm> and optional W<wear_mm> for manual compensation values\n");
+				THEKERNEL->call_event(ON_HALT, nullptr);
+				THEKERNEL->set_halt_reason(MANUAL);
+				return;
 
 			} else {
 				this->probe_oneoff_x = 0.0;
@@ -2909,15 +2839,8 @@ void ATCHandler::on_gcode_received(void *argument)
 			}
 		} else if (gcode->m == 493) {
 			if (gcode->subcode == 0 || gcode->subcode == 1) {
-				// Guard: refuse to write TLO if a diameter measurement is in progress.
-				// tool_dia_probe_start_valid=true means the X-probe sequence has begun and
-				// last_probe_position holds an X-probe Z, not a Z-probe Z.
-				if (this->tool_dia_probe_start_valid) {
-					THEKERNEL->streams->printf("WARNING: M493.%d TLO write blocked — diameter measurement in progress (tool_dia_probe_start_valid=TRUE)\n", gcode->subcode);
-				} else {
-					THEROBOT->set_tool_not_calibrated(false);
-					set_tool_offset(gcode->has_letter('R') ? gcode->get_value('R') : 1);
-				}
+				THEROBOT->set_tool_not_calibrated(false);
+				set_tool_offset(gcode->has_letter('R') ? gcode->get_value('R') : 1);
 			} else if (gcode->subcode == 2) {
 				// set new tool
 				if (gcode->has_letter('T')) {
@@ -2986,16 +2909,36 @@ void ATCHandler::on_gcode_received(void *argument)
 					if (diameter > 0.0f) {
 						THEKERNEL->eeprom_data->TOOL_DIA = diameter;
 						THEKERNEL->write_eeprom_data();
-						THEKERNEL->streams->printf("Tool diameter set to %.3fmm\n", diameter);
+						THEKERNEL->streams->printf("Nominal tool diameter set to %.3fmm\n", diameter);
 					} else {
 						THEKERNEL->streams->printf("WARNING: Tool diameter not changed - value must be > 0 (got %.3f)\n", diameter);
 					}
+				}
+				if (gcode->has_letter('W')) { // set additive diameter wear
+					if (THEROBOT->is_compensation_active()) {
+						bool is_playing = false;
+						PublicData::get_value(player_checksum, is_playing_checksum, &is_playing);
+						if (is_playing) {
+							THEKERNEL->streams->printf("ALARM: Cannot change tool diameter wear while G41/G42 compensation is active\n");
+							THEKERNEL->call_event(ON_HALT, nullptr);
+							THEKERNEL->set_halt_reason(MANUAL);
+							return;
+						} else {
+							THEKERNEL->streams->printf("WARNING: Tool diameter wear not changed - G41/G42 compensation is active. Issue G40 first.\n");
+							return;
+						}
+					}
+					float wear = gcode->get_value('W');
+					THEKERNEL->eeprom_data->TOOL_DIA_WEAR = wear;
+					THEKERNEL->write_eeprom_data();
+					THEKERNEL->streams->printf("Tool diameter wear set to %.3fmm\n", wear);
 				}
 
 				THEKERNEL->streams->printf("current tool offset [%.3f] , reference tool offset [%.3f]\n",cur_tool_mz,ref_tool_mz);
 			} else if (gcode->subcode == 4) { //report current TLO
 				THEKERNEL->streams->printf("current tool offset [%.3f] , reference tool offset [%.3f]\n",cur_tool_mz,ref_tool_mz);
 				THEKERNEL->streams->printf("stored tool diameter [%.3f]\n", THEKERNEL->eeprom_data->TOOL_DIA);
+				THEKERNEL->streams->printf("stored tool diameter wear [%.3f]\n", THEKERNEL->eeprom_data->TOOL_DIA_WEAR);
 				if (this->probe_oneoff_configured) {
 					THEKERNEL->streams->printf("one-off tool setter position offsets: X[%.3f] Y[%.3f] Z[%.3f]\n", this->probe_oneoff_x, this->probe_oneoff_y, this->probe_oneoff_z);
 				} else {
@@ -3019,14 +2962,8 @@ void ATCHandler::on_gcode_received(void *argument)
 						this->target_collet_type = UNDEFINED;
 					}
 				}
-			} else if (gcode->subcode == 7) {
-				float mpos[3] = {0};
-				THEROBOT->get_current_machine_position(mpos);
-				if(THEROBOT->compensationTransform) THEROBOT->compensationTransform(mpos, true, false);
-				this->tool_dia_probe_start_x = mpos[X_AXIS];
-				this->tool_dia_probe_start_valid = true;
-			} else if (gcode->subcode == 8) {
-				this->finalize_tool_dia_measurement("M493.8");
+			} else if (gcode->subcode == 7 || gcode->subcode == 8) {
+				THEKERNEL->streams->printf("INFO: M493.%d is reserved for future toolsetter support\n", gcode->subcode);
 			}
 		} else if (gcode->m == 494) {
 			if(CARVERA == THEKERNEL->factory_set->MachineModel)	//ATC 
@@ -3400,11 +3337,9 @@ void ATCHandler::on_main_loop(void *argument)
             	this->clear_script_queue();
 
 				this->atc_status = NONE;
-				// Clear TLO calibration flag and M491.3 mode to re-enable 3D probe crash detection
+				// Clear TLO calibration flag at end of scripted calibration flows.
 				bool tlo_calibrating = false;
-				bool m491_3_mode = false;
 				PublicData::set_value( zprobe_checksum, set_tlo_calibrating_checksum, &tlo_calibrating );
-				PublicData::set_value( zprobe_checksum, set_m491_3_mode_checksum, &m491_3_mode );
 				set_inner_playing(false);
 				THEKERNEL->set_atc_state(ATC_NONE);
 
@@ -3431,10 +3366,6 @@ void ATCHandler::on_main_loop(void *argument)
             return;
         }
 
-		if (this->tool_dia_probe_start_valid) {
-			this->finalize_tool_dia_measurement("ATC completion fallback");
-		}
-
 		if (this->atc_status != AUTOMATION) {
 	        // return to z clearance position
 	        rapid_move(true, NAN, NAN, this->clearance_z, NAN, NAN);
@@ -3444,11 +3375,9 @@ void ATCHandler::on_main_loop(void *argument)
 		}
 
         this->atc_status = NONE;
-			// Clear TLO calibration flag and M491.3 mode to re-enable 3D probe crash detection
+			// Clear TLO calibration flag at end of scripted calibration flows.
 			bool tlo_calibrating = false;
-			bool m491_3_mode = false;
 			PublicData::set_value( zprobe_checksum, set_tlo_calibrating_checksum, &tlo_calibrating );
-			PublicData::set_value( zprobe_checksum, set_m491_3_mode_checksum, &m491_3_mode );
 			set_inner_playing(false);
 
 		THEKERNEL->set_atc_state(ATC_NONE);

@@ -98,7 +98,7 @@ typedef struct {
 //	float G54[5*MAX_WCS];
 	float REFMZ;
 	float TOOLMZ;
-	float reserve;
+    float TOOL_DIA_WEAR;
 	int TOOL;
     float perm_vars[20];
     bool tool_not_calibrated;

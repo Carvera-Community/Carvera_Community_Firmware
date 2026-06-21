@@ -844,9 +844,9 @@ void Kernel::check_eeprom_data()
 		this->eeprom_data->TOOLMZ = 0;
 		needrewtite = true;
 	}
-	if(isnan(this->eeprom_data->reserve))
+    if(isnan(this->eeprom_data->TOOL_DIA_WEAR))
 	{
-		this->eeprom_data->reserve = 0;
+        this->eeprom_data->TOOL_DIA_WEAR = 0;
 		needrewtite = true;
 	}
 	if(isnan(this->eeprom_data->TOOL))
@@ -876,6 +876,10 @@ void Kernel::check_eeprom_data()
 
     if (isnan(this->eeprom_data->TOOL_DIA) || this->eeprom_data->TOOL_DIA < 0) {
         this->eeprom_data->TOOL_DIA = 0;
+        needrewtite = true;
+    }
+    if (isnan(this->eeprom_data->TOOL_DIA_WEAR)) {
+        this->eeprom_data->TOOL_DIA_WEAR = 0;
         needrewtite = true;
     }
     if(!((this->eeprom_data->tool_not_calibrated & ~1) == 0))

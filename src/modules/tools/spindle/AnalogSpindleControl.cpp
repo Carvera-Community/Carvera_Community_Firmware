@@ -39,8 +39,6 @@
 void AnalogSpindleControl::on_module_loaded()
 {
     spindle_on = false;
-    // Initialize optional spindle FW/REV pin while config is available.
-    init_direction_control_from_config();
     target_rpm = 0;
     current_rpm = 0;
     current_pwm_value = 0;
