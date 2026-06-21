@@ -115,8 +115,6 @@ private:
     void fill_zprobe_abs_scripts();
     void fill_xyzprobe_scripts(float tool_dia, float probe_height);
 
-    bool finalize_tool_dia_measurement(const char* source_tag);
-
     //
     void set_tlo_by_offset(float z_axis_offset);
 
@@ -341,8 +339,6 @@ private:
     float ref_tool_mz;
     float cur_tool_mz;
     float tool_offset;
-    float tool_dia_probe_start_x;
-    bool tool_dia_probe_start_valid;
     const uint8_t max_tl_mcz_values = 5;
     deque<float> tl_mcz_values = deque<float>(max_tl_mcz_values, 0.0f);
     int beep_state;

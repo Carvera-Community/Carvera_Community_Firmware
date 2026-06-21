@@ -14,9 +14,6 @@
 #include "SpindleControl.h"
 #include "libs/StreamOutputPool.h"
 #include "libs/PublicData.h"
-#include "Config.h"
-#include "ConfigValue.h"
-#include "checksumm.h"
 #include "SwitchPublicAccess.h"
 #include "ATCHandlerPublicAccess.h"
 #include "Conveyor.h"
@@ -200,8 +197,6 @@ void SpindleControl::on_gcode_received(void *argument)
         {
             if(THEKERNEL->is_halted()) return; // if in halted state ignore any commands
             if (!THEKERNEL->get_laser_mode()) {
-                bool reverse = (gcode->m == 4);
-                if (!apply_direction(reverse, gcode->stream)) return;
                 // current tool number and tool offset
                 struct tool_status tool;
                 bool tool_ok = PublicData::get_value( atc_handler_checksum, get_tool_status_checksum, &tool );

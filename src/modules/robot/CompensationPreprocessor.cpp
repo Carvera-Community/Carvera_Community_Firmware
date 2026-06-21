@@ -1,8 +1,8 @@
 /*
-      This file is part of Smoothie (http://smoothieware.org/).
-      Smoothie is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
-      Smoothie is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.
-      You should have received a copy of the GNU General Public License along with Smoothie. If not, see <http://www.gnu.org/licenses/>.
+      This file is part of Carvera Community Firmware, a fork of Smoothieware (http://smoothieware.org/).
+      Carvera Community Firmware is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
+      Carvera Community Firmware is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.
+      You should have received a copy of the GNU General Public License along with Carvera Community Firmware. If not, see <http://www.gnu.org/licenses/>.
 */
 
 #include "Gcode.h"
@@ -24,28 +24,36 @@ using namespace std;
 
 bool CompensationPreprocessor::resolve_diameter(bool has_d_word, float d_word_value,
                                                 float eeprom_tool_dia,
+                                                float eeprom_tool_dia_wear,
                                                 StreamOutput* stream, float* out_radius)
 {
+    StreamOutput* out = (stream != nullptr) ? stream : THEKERNEL->streams;
+    float nominal_diameter = 0.0f;
+
     if (has_d_word) {
         if (d_word_value <= 0.0f) {
-            THEKERNEL->streams->printf("ERROR: G41/G42 D word diameter must be > 0 (got %.3f)\n", d_word_value);
+            out->printf("ERROR: G41/G42 D word diameter must be > 0 (got %.3f)\n", d_word_value);
             return false;
         }
-        *out_radius = d_word_value / 2.0f;
-        THEKERNEL->streams->printf("Compensation diameter: G-code D word %.3fmm (radius=%.3fmm)\n",
-            d_word_value, *out_radius);
-        return true;
+        nominal_diameter = d_word_value;
+    } else if (eeprom_tool_dia > 0.0f) {
+        nominal_diameter = eeprom_tool_dia;
+    } else {
+        out->printf("ERROR: G41/G42 requires a D diameter word or stored TOOL_DIA > 0\n");
+        return false;
     }
 
-    if (eeprom_tool_dia > 0.0f) {
-        *out_radius = eeprom_tool_dia / 2.0f;
-        THEKERNEL->streams->printf("Compensation diameter: stored TOOL_DIA %.3fmm (radius=%.3fmm)\n",
-            eeprom_tool_dia, *out_radius);
-        return true;
+    float effective_diameter = nominal_diameter + eeprom_tool_dia_wear;
+    if (effective_diameter <= 0.0f) {
+        out->printf("ERROR: Effective compensation diameter must be > 0 (nominal=%.3f, wear=%.3f)\n",
+            nominal_diameter, eeprom_tool_dia_wear);
+        return false;
     }
 
-    THEKERNEL->streams->printf("ERROR: G41/G42 requires a D diameter word or a stored TOOL_DIA > 0\n");
-    return false;
+    *out_radius = effective_diameter / 2.0f;
+    out->printf("Compensation diameter: nominal %.3fmm + wear %.3fmm = %.3fmm (radius=%.3fmm)\n",
+        nominal_diameter, eeprom_tool_dia_wear, effective_diameter, *out_radius);
+    return true;
 }
 
 void CompensationPreprocessor::reset_load_balance_metrics(){

@@ -155,7 +155,6 @@ private:
     void reset_probe_tracking();
     uint8_t check_probe_tool();
     void set_tlo_calibrating(bool state);
-    void set_m491_3_mode(bool state);
 
     float slow_feedrate;
     float fast_feedrate;
@@ -220,8 +219,6 @@ private:
     volatile float calibrate_current_axis_pos;
     volatile bool safety_margin_exceeded;
     volatile float distance_moved;
-    // M491.3 probe-safe measurement mode flag - bypasses probe-correlation check
-    volatile bool m491_3_mode;
 };
 
 #endif /* ZPROBE_H_ */
