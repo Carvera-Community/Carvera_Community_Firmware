@@ -609,16 +609,10 @@ void Robot::on_gcode_received(void *argument)
 {
     Gcode *gcode = static_cast<Gcode *>(argument);
 
+    // R-format arcs cannot be compensated (no I/J offsets to transform); reject them at runtime.
+    // The G17 plane check is done at G41/G42 enable time; G18/G19 issued while comp is active
+    // is caught by the G18/G19 case in process_buffered_command.
     if (compensation_preprocessor->is_active() && gcode->has_g && (gcode->g == 2 || gcode->g == 3)) {
-        if (plane_axis_0 != X_AXIS || plane_axis_1 != Y_AXIS || plane_axis_2 != Z_AXIS) {
-            THEKERNEL->streams->printf("Error: G41/G42 compensation requires G17 (XY plane). G18/G19 compensation is not yet supported. Compensation disabled.\n");
-            compensation_preprocessor->set_compensation(CompensationType::NONE, 0.0f);
-            gcode->txt_after_ok = "Error: G41/G42 compensation requires G17 (XY plane). G18/G19 compensation is not yet supported. Compensation disabled.\n";
-            THEKERNEL->set_halt_reason(MANUAL);
-            THEKERNEL->call_event(ON_HALT, nullptr);
-            return;
-        }
-
         if (gcode->has_letter('R')) {
             THEKERNEL->streams->printf("Error: R-format arc (G2/G3 R...) is not supported with G41/G42 compensation. Use I/J offsets instead. Compensation disabled.\n");
             compensation_preprocessor->set_compensation(CompensationType::NONE, 0.0f);
@@ -636,6 +630,22 @@ void Robot::on_gcode_received(void *argument)
         process_buffered_command(gcode);
         return;
     }
+
+    if (gcode->has_g && gcode->g == 91) {
+        THEKERNEL->streams->printf("ERROR: G91 (relative mode) is not supported while G41/G42 compensation is active. Issue G40 first.\n");
+        gcode->txt_after_ok = "ERROR: G91 (relative mode) is not supported while G41/G42 compensation is active. Issue G40 first.\n";
+        THEKERNEL->set_halt_reason(MANUAL);
+        THEKERNEL->call_event(ON_HALT, nullptr);
+        return;
+    }
+
+    if (gcode->has_g && gcode->g >= 54 && gcode->g <= 59) {
+        THEKERNEL->streams->printf("ERROR: G5x work coordinate changes are not supported while G41/G42 compensation is active. Issue G40 first.\n");
+        gcode->txt_after_ok = "ERROR: G5x work coordinate changes are not supported while G41/G42 compensation is active. Issue G40 first.\n";
+        THEKERNEL->set_halt_reason(MANUAL);
+        THEKERNEL->call_event(ON_HALT, nullptr);
+        return;
+    }
     
     // CRITICAL: G40/G41/G42 must NEVER be buffered - they control the buffering system itself!
     // G40 needs to flush the buffer, so it must execute immediately
@@ -643,6 +653,13 @@ void Robot::on_gcode_received(void *argument)
     if (gcode->has_g && (gcode->g == 40 || gcode->g == 41 || gcode->g == 42)) {
         COMPENSATION_TRACE_PRINTF(gcode->stream, ">>BYPASS_BUFFER: G%d %s (compensation control command)\n", 
             gcode->g, gcode->get_command());
+        process_buffered_command(gcode);
+        return;
+    }
+
+    // Non-motion commands pass through unchanged while compensation is active.
+    if (!gcode->has_g || (gcode->g != 0 && gcode->g != 1 && gcode->g != 2 && gcode->g != 3)) {
+        COMPENSATION_TRACE_PRINTF(gcode->stream, ">>BYPASS_BUFFER: %s (non-motion while comp=ON)\n", gcode->get_command());
         process_buffered_command(gcode);
         return;
     }
@@ -877,6 +894,13 @@ void Robot::process_buffered_command(Gcode *gcode)
             case 42: // G42 - Compensation Right
             {
                 COMPENSATION_TRACE_PRINTF(gcode->stream, ">>ROBOT: G%d handler CALLED\n", gcode->g);
+                if (!this->absolute_mode) {
+                    THEKERNEL->streams->printf("ERROR: G41/G42 cannot be enabled while in G91 relative mode. Use G90 first.\n");
+                    gcode->txt_after_ok = "ERROR: G41/G42 cannot be enabled while in G91 relative mode. Use G90 first.\n";
+                    THEKERNEL->set_halt_reason(MANUAL);
+                    THEKERNEL->call_event(ON_HALT, nullptr);
+                    break;
+                }
                 if (plane_axis_0 != X_AXIS || plane_axis_1 != Y_AXIS || plane_axis_2 != Z_AXIS) {
                     THEKERNEL->streams->printf("Error: G41/G42 compensation requires G17 (XY plane). G18/G19 compensation is not yet supported.\n");
                     gcode->txt_after_ok = "Error: G41/G42 compensation requires G17 (XY plane). G18/G19 compensation is not yet supported.\n";
@@ -888,6 +912,7 @@ void Robot::process_buffered_command(Gcode *gcode)
                 if (!compensation_preprocessor->resolve_diameter(
                         gcode->has_letter('D'), gcode->has_letter('D') ? gcode->get_value('D') : 0.0f,
                         THEKERNEL->eeprom_data->TOOL_DIA,
+                        THEKERNEL->eeprom_data->TOOL_DIA_WEAR,
                         gcode->stream, &radius)) {
                     gcode->txt_after_ok = "ERROR: G41/G42 failed to resolve tool diameter\n";
                     THEKERNEL->set_halt_reason(MANUAL);
@@ -918,6 +943,13 @@ void Robot::process_buffered_command(Gcode *gcode)
             break;
 
             case 54: case 55: case 56: case 57: case 58: case 59:
+                if (compensation_preprocessor->is_active()) {
+                    THEKERNEL->streams->printf("ERROR: G5x work coordinate changes are not supported while G41/G42 compensation is active. Issue G40 first.\n");
+                    gcode->txt_after_ok = "ERROR: G5x work coordinate changes are not supported while G41/G42 compensation is active. Issue G40 first.\n";
+                    THEKERNEL->set_halt_reason(MANUAL);
+                    THEKERNEL->call_event(ON_HALT, nullptr);
+                    break;
+                }
                 // select WCS 0-8: G54..G59, G59.1, G59.2, G59.3
                 current_wcs = gcode->g - 54;
                 if(gcode->g == 59 && gcode->subcode > 0) {
@@ -934,7 +966,17 @@ void Robot::process_buffered_command(Gcode *gcode)
                 break;
 
             case 90: this->absolute_mode = true; this->e_absolute_mode = true; break;
-            case 91: this->absolute_mode = false; this->e_absolute_mode = false; break;
+            case 91:
+                if (compensation_preprocessor->is_active()) {
+                    THEKERNEL->streams->printf("ERROR: G91 (relative mode) is not supported while G41/G42 compensation is active. Issue G40 first.\n");
+                    gcode->txt_after_ok = "ERROR: G91 (relative mode) is not supported while G41/G42 compensation is active. Issue G40 first.\n";
+                    THEKERNEL->set_halt_reason(MANUAL);
+                    THEKERNEL->call_event(ON_HALT, nullptr);
+                    break;
+                }
+                this->absolute_mode = false;
+                this->e_absolute_mode = false;
+                break;
 
             case 92: {
                 if(gcode->subcode == 1 || gcode->subcode == 2 || gcode->get_num_args() == 0) {
