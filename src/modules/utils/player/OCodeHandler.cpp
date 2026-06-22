@@ -50,7 +50,7 @@ void OCodeHandler::pre_scan(FILE* fh, StreamOutput* stream)
     sub_table_.clear();
 
     if(file_size > 0) {
-        THEKERNEL->streams->printf("O-code: pre-scanning started...\r\n");
+        THEKERNEL->streams->printf("O-code: pre-scan started...\r\n");
     }
 
     char buf[130];
@@ -64,6 +64,13 @@ void OCodeHandler::pre_scan(FILE* fh, StreamOutput* stream)
         uint32_t now_us = us_ticker_read();
         if((now_us - last_idle_us) >= 200000) {
             THEKERNEL->call_event(ON_IDLE);
+            if(THEKERNEL->is_halted()) {
+                THEKERNEL->streams->printf("O-code: pre-scan aborted by halt\r\n");
+                pre_scanned_     = false;
+                pre_scan_failed_ = true;
+                fwfs::fseek(fh, saved, SEEK_SET);
+                return;
+            }
             if(file_size > 0) {
                 int pct = (int)((fwfs::ftell(fh) * 100L) / file_size);
                 if(pct > last_pct) {
@@ -334,6 +341,15 @@ bool OCodeHandler::process_line(const char* line, FILE* fh, StreamOutput* stream
         if((int)stack_.size() >= OCODE_MAX_STACK_DEPTH) {
             halt_error(stream, "O%d call exceeded max nesting depth %d", num, OCODE_MAX_STACK_DEPTH);
             return true;
+        }
+
+        if(!pre_scanned_) {
+            stream->printf("Warning: O%d call encountered without pre-scan, scanning now (may delay)\r\n", num);
+            pre_scan(fh, stream);
+            if(pre_scan_failed_) {
+                halt_error(stream, "O%d call: O-code pre-scan failed", num);
+                return true;
+            }
         }
 
         map<int,SubEntry>::iterator it = sub_table_.find(num);
