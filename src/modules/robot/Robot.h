@@ -19,6 +19,7 @@ using std::string;
 #include "ActuatorCoordinates.h"
 #include "nuts_bolts.h"
 #include <fastmath.h>
+#include "CompensationTypes.h"
 
 class Gcode;
 class BaseSolution;
@@ -209,6 +210,12 @@ class Robot : public Module {
         
         // Cutter compensation preprocessor (v2.0 bolt-on architecture)
         CompensationPreprocessor* compensation_preprocessor;
+
+        // Compensation suspend state — set when G18/G19 is issued while comp is active;
+        // cleared when G17 resumes or G40 explicitly cancels.
+        bool comp_suspended;
+        CompensationType suspended_comp_type;
+        float suspended_comp_radius;
 
         // Used by Planner
         friend class Planner;

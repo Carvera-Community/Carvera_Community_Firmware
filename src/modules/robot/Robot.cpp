@@ -148,6 +148,9 @@ Robot::Robot()
     
     // Initialize cutter compensation preprocessor (v2.0)
     this->compensation_preprocessor = new CompensationPreprocessor();
+    this->comp_suspended = false;
+    this->suspended_comp_type = CompensationType::NONE;
+    this->suspended_comp_radius = 0.0f;
 }
 
 //Called when the module has just been loaded
@@ -827,16 +830,43 @@ void Robot::process_buffered_command(Gcode *gcode)
                 }
                 break;
 
-            case 17: this->select_plane(X_AXIS, Y_AXIS, Z_AXIS);   break;
+            case 17:
+                // If compensation was suspended by a G18/G19 plane switch, automatically resume it.
+                if (this->comp_suspended) {
+                    float mpos[3] = { machine_position[X_AXIS], machine_position[Y_AXIS], machine_position[Z_AXIS] };
+                    compensation_preprocessor->set_initial_position(mpos);
+                    compensation_preprocessor->set_compensation(this->suspended_comp_type, this->suspended_comp_radius);
+                    this->comp_suspended = false;
+                    THEKERNEL->streams->printf("INFO: G41/G42 compensation resumed (G17 plane restored, radius=%.3fmm)\n",
+                        this->suspended_comp_radius);
+                }
+                this->select_plane(X_AXIS, Y_AXIS, Z_AXIS);
+                break;
             case 18:
             case 19:
                 if (compensation_preprocessor->is_active()) {
-                    THEKERNEL->streams->printf("Error: G41/G42 compensation requires G17 (XY plane). G18/G19 compensation is not yet supported. Compensation disabled.\n");
+                    // Suspend (not cancel) compensation: flush XY buffer, pass G18/G19 moves through
+                    // uncompensated, then auto-resume when G17 is restored.
+                    this->suspended_comp_type   = compensation_preprocessor->get_comp_type();
+                    this->suspended_comp_radius = compensation_preprocessor->get_comp_radius();
+                    // Flush remaining buffered XY moves before the plane changes
+                    compensation_preprocessor->flush();
+                    while (compensation_preprocessor->get_buffer_count() > 0) {
+                        Gcode* flushed = compensation_preprocessor->get_compensated_gcode();
+                        if (flushed != nullptr) {
+                            MOTION_MODE_T motion = NONE;
+                            if (flushed->has_g && (flushed->g == 0 || flushed->g == 1))
+                                motion = (flushed->g == 0) ? SEEK : LINEAR;
+                            else if (flushed->has_g && (flushed->g == 2 || flushed->g == 3))
+                                motion = (flushed->g == 2) ? CW_ARC : CCW_ARC;
+                            if (motion != NONE) process_move(flushed, motion);
+                            delete flushed;
+                        } else break;
+                    }
                     compensation_preprocessor->set_compensation(CompensationType::NONE, 0.0f);
-                    gcode->txt_after_ok = "Error: G41/G42 compensation requires G17 (XY plane). G18/G19 compensation is not yet supported. Compensation disabled.\n";
-                    THEKERNEL->set_halt_reason(MANUAL);
-                    THEKERNEL->call_event(ON_HALT, nullptr);
-                    break;
+                    this->comp_suspended = true;
+                    THEKERNEL->streams->printf("INFO: G41/G42 compensation suspended for G%d plane "
+                        "(moves pass through uncompensated; compensation resumes on G17)\n", gcode->g);
                 }
                 if (gcode->g == 18) this->select_plane(X_AXIS, Z_AXIS, Y_AXIS);
                 else this->select_plane(Y_AXIS, Z_AXIS, X_AXIS);
@@ -887,6 +917,8 @@ void Robot::process_buffered_command(Gcode *gcode)
                 compensation_preprocessor->print_load_balance_report(THEKERNEL->streams);
                 // Now it's safe to disable compensation
                 compensation_preprocessor->set_compensation(CompensationType::NONE, 0.0f);
+                // Clear any pending suspend state — G40 is an explicit cancel
+                this->comp_suspended = false;
             }
             break;
                 
