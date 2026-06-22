@@ -68,6 +68,13 @@ public:
     bool is_active() const { return comp_active; }
 
     /**
+     * Read current compensation type and radius.
+     * Used by Robot.cpp to save state before suspending for G18/G19.
+     */
+    CompensationType get_comp_type() const { return comp_type; }
+    float get_comp_radius() const { return comp_radius; }
+
+    /**
      * Resolve active compensation radius from nominal diameter plus additive wear.
      *
      * Nominal diameter precedence:
