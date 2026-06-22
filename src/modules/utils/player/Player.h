@@ -30,7 +30,7 @@ class Player : public Module {
         void on_console_line_received( void* argument );
         void on_main_loop( void* argument );
         void on_second_tick(void* argument);
-        void select_file(string argument);
+        void select_file(string argument, bool force_prescan = false);
         void goto_line_number(unsigned long line_number);
         void play_opened_file();
         void end_of_file();
@@ -117,6 +117,8 @@ class Player : public Module {
         bool last_spindle_on;
         bool last_spindle_ccw;
         std::map<uint16_t, float> saved_temperatures;
+        bool skip_ocodes_prescan = false;
+
         struct {
             bool on_boot_gcode_enable:1;
             bool booted:1;

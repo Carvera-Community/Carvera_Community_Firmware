@@ -165,7 +165,7 @@ bool Player::prepare_ocode_prescan(StreamOutput* stream, const char* fail_msg)
     return true;
 }
 
-void Player::select_file(string argument)
+void Player::select_file(string argument, bool force_prescan)
 {
 
     this->filename = argument;
@@ -209,8 +209,12 @@ void Player::select_file(string argument)
         }
         THEKERNEL->streams->printf("File opened:%s Size:%ld\r\n", this->filename.c_str(), this->file_size);
 
-        if(!this->prepare_ocode_prescan(THEKERNEL->streams, "File rejected: O-code pre-scan failed")) {
-            return;
+        if(force_prescan || !this->skip_ocodes_prescan) {
+            if(!this->prepare_ocode_prescan(THEKERNEL->streams, "File rejected: O-code pre-scan failed")) {
+                return;
+            }
+        } else {
+            this->ocode_handler.reset();
         }
         THEKERNEL->streams->printf("File selected\r\n");
     }
@@ -340,7 +344,7 @@ void Player::on_gcode_received(void *argument)
 
         } else if (gcode->m == 23) { // select file
             this->clear_macro_file_queue();
-            this->select_file(args);
+            this->select_file(args, true);
         } else if (gcode->m == 24) { // start print
             this->play_opened_file();
 
@@ -386,7 +390,7 @@ void Player::on_gcode_received(void *argument)
             //empty macro queue
             this->clear_macro_file_queue();
 
-            this->select_file(args);
+            this->select_file(args, true);
 
             this->play_opened_file();           
 
@@ -570,6 +574,7 @@ void Player::play_command( string parameters, StreamOutput *stream )
 
     // extract any options from the line and terminate the line there
     string options= extract_options(parameters);
+    this->skip_ocodes_prescan = (options.find_first_of("Oo") == string::npos);
     // Get filename which is the entire parameter line upto any options found or entire line
     this->filename = absolute_from_relative(shift_parameter(parameters));
     this->last_filename = this->filename;
@@ -598,9 +603,15 @@ void Player::play_command( string parameters, StreamOutput *stream )
         return;
     }
 
-    if(!this->prepare_ocode_prescan(stream, "Playback aborted: O-code pre-scan failed")) {
-        return;
+    if(!this->skip_ocodes_prescan) {
+        if(!this->prepare_ocode_prescan(stream, "Playback aborted: O-code pre-scan failed")) {
+            return;
+        }
+    } else {
+        this->ocode_handler.reset();
     }
+
+    if(THEKERNEL->is_halted()) return;
 
     stream->printf("Playing %s\r\n", this->filename.c_str());
 
