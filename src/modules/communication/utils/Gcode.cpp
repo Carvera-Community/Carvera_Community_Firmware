@@ -77,6 +77,25 @@ Gcode &Gcode::operator= (const Gcode &to_copy)
     return *this;
 }
 
+// Additive in-place re-initialization. Mirrors the constructor body but reuses the existing
+// object and keeps its stream, so a preallocated pool can be recycled without new/delete.
+void Gcode::reset(const string &command, bool strip)
+{
+    if(this->command != nullptr) {
+        free(this->command);
+    }
+    this->command = strdup(command.c_str());
+    this->m = 0;
+    this->g = 0;
+    this->subcode = 0;
+    this->add_nl = false;
+    this->is_error = false;
+    this->txt_after_ok.clear();
+    prepare_cached_values(strip);
+    this->stripped = strip;
+    this->line = 0;
+}
+
 
 // Whether or not a Gcode has a letter
 bool Gcode::has_letter( char letter ) const

@@ -216,6 +216,9 @@ class Robot : public Module {
         bool comp_suspended;
         CompensationType suspended_comp_type;
         float suspended_comp_radius;
+        // Model C frozen offset (WCS frame): the constant XY translation carried through a
+        // G18/G19 excursion so the wall offset is preserved during Z-dominant moves.
+        float comp_frozen_offset[2];
 
         // Used by Planner
         friend class Planner;
