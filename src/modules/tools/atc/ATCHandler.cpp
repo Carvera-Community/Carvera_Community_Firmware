@@ -2177,7 +2177,7 @@ void ATCHandler::set_tool_offset(uint8_t repeat_count)
 
 void ATCHandler::set_tlo_by_offset(float z_axis_offset){
 	// new TLO = Current TLO - (current WCS - z_axis_offset)
-	float mpos[5] = {0};
+	float mpos[k_max_actuators] = {0};
 	Robot::wcs_t pos;
 	THEROBOT->get_current_machine_position(mpos.data());
 	// current_position/mpos includes the compensation transform so we need to get the inverse to get actual position
@@ -2759,7 +2759,7 @@ void ATCHandler::on_gcode_received(void *argument)
 				bool tlo_calibrating = true;
 				PublicData::set_value( zprobe_checksum, set_tlo_calibrating_checksum, &tlo_calibrating );
 				this->fill_cali_scripts(false, true, repeat_count, true);
-				THEKERNEL->streams->printf("ALARM: M491.3 toolsetter diameter measurement is not available in this branch\n");
+				THEKERNEL->streams->printf("ERROR: M491.3 toolsetter diameter measurement is not available in this firmware version\n");
 				THEKERNEL->streams->printf("INFO: Use M493.3 D<nominal_mm> and optional W<wear_mm> for manual compensation values\n");
 				THEKERNEL->call_event(ON_HALT, nullptr);
 				THEKERNEL->set_halt_reason(MANUAL);

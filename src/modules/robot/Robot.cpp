@@ -151,6 +151,8 @@ Robot::Robot()
     this->comp_suspended = false;
     this->suspended_comp_type = CompensationType::NONE;
     this->suspended_comp_radius = 0.0f;
+    this->comp_frozen_offset[0] = 0.0f;
+    this->comp_frozen_offset[1] = 0.0f;
 }
 
 //Called when the module has just been loaded
@@ -617,9 +619,8 @@ void Robot::on_gcode_received(void *argument)
     // is caught by the G18/G19 case in process_buffered_command.
     if (compensation_preprocessor->is_active() && gcode->has_g && (gcode->g == 2 || gcode->g == 3)) {
         if (gcode->has_letter('R')) {
-            THEKERNEL->streams->printf("Error: R-format arc (G2/G3 R...) is not supported with G41/G42 compensation. Use I/J offsets instead. Compensation disabled.\n");
+            THEKERNEL->streams->printf("ERROR: R-format arc (G2/G3 R...) is not supported with G41/G42 compensation. Use I/J offsets instead. Compensation disabled.\n");
             compensation_preprocessor->set_compensation(CompensationType::NONE, 0.0f);
-            gcode->txt_after_ok = "Error: R-format arc (G2/G3 R...) is not supported with G41/G42 compensation. Use I/J offsets instead. Compensation disabled.\n";
             THEKERNEL->set_halt_reason(MANUAL);
             THEKERNEL->call_event(ON_HALT, nullptr);
             return;
@@ -636,7 +637,6 @@ void Robot::on_gcode_received(void *argument)
 
     if (gcode->has_g && gcode->g == 91) {
         THEKERNEL->streams->printf("ERROR: G91 (relative mode) is not supported while G41/G42 compensation is active. Issue G40 first.\n");
-        gcode->txt_after_ok = "ERROR: G91 (relative mode) is not supported while G41/G42 compensation is active. Issue G40 first.\n";
         THEKERNEL->set_halt_reason(MANUAL);
         THEKERNEL->call_event(ON_HALT, nullptr);
         return;
@@ -644,7 +644,6 @@ void Robot::on_gcode_received(void *argument)
 
     if (gcode->has_g && gcode->g >= 54 && gcode->g <= 59) {
         THEKERNEL->streams->printf("ERROR: G5x work coordinate changes are not supported while G41/G42 compensation is active. Issue G40 first.\n");
-        gcode->txt_after_ok = "ERROR: G5x work coordinate changes are not supported while G41/G42 compensation is active. Issue G40 first.\n";
         THEKERNEL->set_halt_reason(MANUAL);
         THEKERNEL->call_event(ON_HALT, nullptr);
         return;
@@ -660,8 +659,86 @@ void Robot::on_gcode_received(void *argument)
         return;
     }
 
-    // Non-motion commands pass through unchanged while compensation is active.
+    auto is_v1_safelist_mcode = [](int m) -> bool {
+        switch (m) {
+            case 7:   // air on
+            case 9:   // air off
+            case 112: // emergency stop
+            case 114: // position report
+            case 118: // console message
+            case 119: // endstop report
+            case 220: // feed override
+            case 221: // flow/spindle override on Carvera command surface
+            case 223: // feed hold override on Carvera command surface
+            case 400: // wait for idle
+            case 801: // vacuum on
+            case 802: // vacuum off
+            case 811: // spindle fan on
+            case 812: // spindle fan off
+            case 821: // light on
+            case 822: // light off
+            case 831: // toolsensor switch on
+            case 832: // toolsensor switch off
+            case 841: // probe charger on
+            case 842: // probe charger off
+            case 851: // extend on
+            case 852: // extend off
+            case 999: // reset
+                return true;
+            default:
+                return false;
+        }
+    };
+
+    auto is_blocked_mcode_while_comp = [](int m) -> bool {
+        switch (m) {
+            case 3:   // spindle CW
+            case 4:   // spindle CCW
+            case 5:   // spindle stop
+            case 6:   // tool change
+            case 30:  // program end/reset state
+                return true;
+            default:
+                return false;
+        }
+    };
+
+    auto is_blocked_gcode_while_comp = [](int g) -> bool {
+        switch (g) {
+            case 4:   // dwell
+            case 10:  // WCS/offset write
+            case 17:  // plane selection
+            case 18:
+            case 19:
+            case 43:  // tool length offset apply
+            case 49:  // tool length offset cancel
+            case 53:  // machine coordinate mode
+            case 92:  // local offset write
+                return true;
+            default:
+                return false;
+        }
+    };
+
+    // V1 approach: defend-only gating while compensation is active.
+    // Mature behavior will preserve strict command ordering through an order-preserving
+    // reassembly stage; for now, potentially unsafe state/motion-affecting non-motion
+    // commands are rejected and harmless operator QoL/report commands are safelisted.
     if (!gcode->has_g || (gcode->g != 0 && gcode->g != 1 && gcode->g != 2 && gcode->g != 3)) {
+        if (gcode->has_m && is_blocked_mcode_while_comp(gcode->m) && !is_v1_safelist_mcode(gcode->m)) {
+            THEKERNEL->streams->printf("ERROR: M%d is not supported while G41/G42 compensation is active. Issue G40 first.\n", gcode->m);
+            THEKERNEL->set_halt_reason(MANUAL);
+            THEKERNEL->call_event(ON_HALT, nullptr);
+            return;
+        }
+
+        if (gcode->has_g && is_blocked_gcode_while_comp(gcode->g)) {
+            THEKERNEL->streams->printf("ERROR: G%d is not supported while G41/G42 compensation is active. Issue G40 first.\n", gcode->g);
+            THEKERNEL->set_halt_reason(MANUAL);
+            THEKERNEL->call_event(ON_HALT, nullptr);
+            return;
+        }
+
         COMPENSATION_TRACE_PRINTF(gcode->stream, ">>BYPASS_BUFFER: %s (non-motion while comp=ON)\n", gcode->get_command());
         process_buffered_command(gcode);
         return;
@@ -680,7 +757,7 @@ void Robot::on_gcode_received(void *argument)
             output->get_command(), compensation_preprocessor->get_buffer_count());
 
         process_buffered_command(output);
-        delete output;
+        // Pool-owned Gcode: recycled by CompensationPreprocessor; do NOT delete here.
     } else if (compensation_preprocessor->get_buffer_count() > 0) {
         COMPENSATION_TRACE_PRINTF(gcode->stream, ">>BUFFERING: need more lookahead (count=%d)\n",
             compensation_preprocessor->get_buffer_count());
@@ -831,12 +908,25 @@ void Robot::process_buffered_command(Gcode *gcode)
                 break;
 
             case 17:
-                // If compensation was suspended by a G18/G19 plane switch, automatically resume it.
+                // Model C (V1 graceful degradation): if compensation was frozen by a G18/G19
+                // plane switch, resume live solving here. This is NOT full mixed-plane
+                // compensation — it just restores the live G17 solver after the excursion.
                 if (this->comp_suspended) {
-                    float mpos[3] = { machine_position[X_AXIS], machine_position[Y_AXIS], machine_position[Z_AXIS] };
-                    compensation_preprocessor->set_initial_position(mpos);
+                    // Re-seed the preprocessor with the *programmed* (uncompensated) WCS position,
+                    // which is the current physical WCS position minus the frozen offset we have
+                    // been carrying. set_compensation() calls clear() (wiping the seed), so it MUST
+                    // be called before set_initial_position(), mirroring the G41/G42 enable order.
+                    wcs_t wcs_pos = mcs2wcs(machine_position);
+                    float wcs_position[3] = {
+                        std::get<X_AXIS>(wcs_pos) - this->comp_frozen_offset[X_AXIS],
+                        std::get<Y_AXIS>(wcs_pos) - this->comp_frozen_offset[Y_AXIS],
+                        std::get<Z_AXIS>(wcs_pos)
+                    };
                     compensation_preprocessor->set_compensation(this->suspended_comp_type, this->suspended_comp_radius);
+                    compensation_preprocessor->set_initial_position(wcs_position);
                     this->comp_suspended = false;
+                    this->comp_frozen_offset[X_AXIS] = 0.0f;
+                    this->comp_frozen_offset[Y_AXIS] = 0.0f;
                     THEKERNEL->streams->printf("INFO: G41/G42 compensation resumed (G17 plane restored, radius=%.3fmm)\n",
                         this->suspended_comp_radius);
                 }
@@ -845,11 +935,14 @@ void Robot::process_buffered_command(Gcode *gcode)
             case 18:
             case 19:
                 if (compensation_preprocessor->is_active()) {
-                    // Suspend (not cancel) compensation: flush XY buffer, pass G18/G19 moves through
-                    // uncompensated, then auto-resume when G17 is restored.
+                    // Model C (V1 graceful degradation): freeze the current compensation offset and
+                    // carry it as a fixed XY translation through the G18/G19 plane excursion instead
+                    // of solving compensation live. Live solving resumes on G17. This keeps the wall
+                    // offset constant during Z-dominant moves; it is NOT full mixed-plane compensation.
                     this->suspended_comp_type   = compensation_preprocessor->get_comp_type();
                     this->suspended_comp_radius = compensation_preprocessor->get_comp_radius();
-                    // Flush remaining buffered XY moves before the plane changes
+                    // Flush remaining buffered XY moves so the machine is at the last fully
+                    // compensated point before the plane changes.
                     compensation_preprocessor->flush();
                     while (compensation_preprocessor->get_buffer_count() > 0) {
                         Gcode* flushed = compensation_preprocessor->get_compensated_gcode();
@@ -860,13 +953,18 @@ void Robot::process_buffered_command(Gcode *gcode)
                             else if (flushed->has_g && (flushed->g == 2 || flushed->g == 3))
                                 motion = (flushed->g == 2) ? CW_ARC : CCW_ARC;
                             if (motion != NONE) process_move(flushed, motion);
-                            delete flushed;
+                            // Pool-owned Gcode: recycled by CompensationPreprocessor; do NOT delete here.
                         } else break;
                     }
+                    // Capture the frozen offset (last compensated XY minus last programmed XY, WCS).
+                    float frozen[2] = { 0.0f, 0.0f };
+                    compensation_preprocessor->get_current_offset_vector(frozen);
+                    this->comp_frozen_offset[X_AXIS] = frozen[X_AXIS];
+                    this->comp_frozen_offset[Y_AXIS] = frozen[Y_AXIS];
                     compensation_preprocessor->set_compensation(CompensationType::NONE, 0.0f);
                     this->comp_suspended = true;
-                    THEKERNEL->streams->printf("INFO: G41/G42 compensation suspended for G%d plane "
-                        "(moves pass through uncompensated; compensation resumes on G17)\n", gcode->g);
+                    THEKERNEL->streams->printf("INFO: G41/G42 compensation frozen for G%d plane "
+                        "(offset carried as fixed translation; live compensation resumes on G17)\n", gcode->g);
                 }
                 if (gcode->g == 18) this->select_plane(X_AXIS, Z_AXIS, Y_AXIS);
                 else this->select_plane(Y_AXIS, Z_AXIS, X_AXIS);
@@ -906,7 +1004,7 @@ void Robot::process_buffered_command(Gcode *gcode)
                         if (motion != NONE) {
                             process_move(compensated, motion);
                         }
-                        delete compensated;
+                        // Pool-owned Gcode: recycled by CompensationPreprocessor; do NOT delete here.
                     } else {
                         COMPENSATION_TRACE_PRINTF(gcode->stream, ">>G40_FLUSH: NULL gcode returned!\n");
                         break;  // Safety: avoid infinite loop if something goes wrong
@@ -928,14 +1026,12 @@ void Robot::process_buffered_command(Gcode *gcode)
                 COMPENSATION_TRACE_PRINTF(gcode->stream, ">>ROBOT: G%d handler CALLED\n", gcode->g);
                 if (!this->absolute_mode) {
                     THEKERNEL->streams->printf("ERROR: G41/G42 cannot be enabled while in G91 relative mode. Use G90 first.\n");
-                    gcode->txt_after_ok = "ERROR: G41/G42 cannot be enabled while in G91 relative mode. Use G90 first.\n";
                     THEKERNEL->set_halt_reason(MANUAL);
                     THEKERNEL->call_event(ON_HALT, nullptr);
                     break;
                 }
                 if (plane_axis_0 != X_AXIS || plane_axis_1 != Y_AXIS || plane_axis_2 != Z_AXIS) {
-                    THEKERNEL->streams->printf("Error: G41/G42 compensation requires G17 (XY plane). G18/G19 compensation is not yet supported.\n");
-                    gcode->txt_after_ok = "Error: G41/G42 compensation requires G17 (XY plane). G18/G19 compensation is not yet supported.\n";
+                    THEKERNEL->streams->printf("ERROR: G41/G42 compensation requires G17 (XY plane). G18/G19 compensation is not yet supported.\n");
                     THEKERNEL->set_halt_reason(MANUAL);
                     THEKERNEL->call_event(ON_HALT, nullptr);
                     break;
@@ -946,7 +1042,6 @@ void Robot::process_buffered_command(Gcode *gcode)
                         THEKERNEL->eeprom_data->TOOL_DIA,
                         THEKERNEL->eeprom_data->TOOL_DIA_WEAR,
                         gcode->stream, &radius)) {
-                    gcode->txt_after_ok = "ERROR: G41/G42 failed to resolve tool diameter\n";
                     THEKERNEL->set_halt_reason(MANUAL);
                     THEKERNEL->call_event(ON_HALT, nullptr);
                     break;
@@ -977,7 +1072,6 @@ void Robot::process_buffered_command(Gcode *gcode)
             case 54: case 55: case 56: case 57: case 58: case 59:
                 if (compensation_preprocessor->is_active()) {
                     THEKERNEL->streams->printf("ERROR: G5x work coordinate changes are not supported while G41/G42 compensation is active. Issue G40 first.\n");
-                    gcode->txt_after_ok = "ERROR: G5x work coordinate changes are not supported while G41/G42 compensation is active. Issue G40 first.\n";
                     THEKERNEL->set_halt_reason(MANUAL);
                     THEKERNEL->call_event(ON_HALT, nullptr);
                     break;
@@ -1001,7 +1095,6 @@ void Robot::process_buffered_command(Gcode *gcode)
             case 91:
                 if (compensation_preprocessor->is_active()) {
                     THEKERNEL->streams->printf("ERROR: G91 (relative mode) is not supported while G41/G42 compensation is active. Issue G40 first.\n");
-                    gcode->txt_after_ok = "ERROR: G91 (relative mode) is not supported while G41/G42 compensation is active. Issue G40 first.\n";
                     THEKERNEL->set_halt_reason(MANUAL);
                     THEKERNEL->call_event(ON_HALT, nullptr);
                     break;
@@ -1554,6 +1647,13 @@ void Robot::process_move(Gcode *gcode, enum MOTION_MODE_T motion_mode)
             }
             if (isnan(param[Z_AXIS])) {
                 param[Z_AXIS] = std::get<Z_AXIS>(pos);
+            }
+            // Model C: while compensation is frozen for a G18/G19 excursion, carry the frozen XY
+            // offset as a fixed translation. Only explicit axes get the offset added; omitted axes
+            // already inherit it through machine_position (filled from pos above).
+            if (this->comp_suspended) {
+                if (gcode->has_letter('X')) param[X_AXIS] += this->comp_frozen_offset[X_AXIS];
+                if (gcode->has_letter('Y')) param[Y_AXIS] += this->comp_frozen_offset[Y_AXIS];
             }
             // apply g92 offset and tool offset
             param[X_AXIS] = param[X_AXIS] - std::get<X_AXIS>(g92_offset) + std::get<X_AXIS>(tool_offset);

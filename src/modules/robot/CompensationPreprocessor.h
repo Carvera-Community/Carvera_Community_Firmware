@@ -4,13 +4,17 @@
 #include "CompensationTypes.h"
 
 #include <cstddef>
-#include <cmath>
 #include <cstdint>
 
 #ifndef CUTTER_COMPENSATION_TRACE_ENABLED
 #define CUTTER_COMPENSATION_TRACE_ENABLED 0
 #endif
 
+#ifndef CUTTER_COMPENSATION_METRICS_ENABLED
+#define CUTTER_COMPENSATION_METRICS_ENABLED CUTTER_COMPENSATION_TRACE_ENABLED
+#endif
+
+// Intentional compile-time gate: keep trace/metrics instrumentation compiled out in default firmware builds.
 #if CUTTER_COMPENSATION_TRACE_ENABLED
 #define COMPENSATION_TRACE_PRINTF(stream, ...) do { (stream)->printf(__VA_ARGS__); } while (0)
 #else
@@ -73,6 +77,13 @@ public:
      */
     CompensationType get_comp_type() const { return comp_type; }
     float get_comp_radius() const { return comp_radius; }
+
+    /**
+     * Get the current compensation offset vector (last compensated XY minus last programmed XY,
+     * WCS frame). Used by Robot.cpp Model C to freeze the offset across a G18/G19 excursion.
+     * @return true if a valid offset is available, false (zeroed) if nothing emitted yet.
+     */
+    bool get_current_offset_vector(float out_xy[2]) const;
 
     /**
      * Resolve active compensation radius from nominal diameter plus additive wear.
@@ -181,6 +192,10 @@ private:
     
     // Compensated buffer (computed offset path)
     CompPoint comp_ring[BUFFER_SIZE];
+    // Preallocated Gcode pool, one object per comp_ring slot. comp_ring[i].gcode points to
+    // gcode_pool[i] when the slot is occupied, or nullptr when empty. Recycled via Gcode::reset()
+    // to avoid a per-move new/delete on the small LPC1768 heap.
+    Gcode* gcode_pool[BUFFER_SIZE];
     int comp_head;     // Next slot to write compensated output
     int comp_tail;     // Next slot to serve/drain
     int comp_count;    // Logical fullness of comp ring
@@ -196,6 +211,10 @@ private:
     bool has_initial_position;      // True once G41/G42 starting position is captured
     uint8_t last_g;                 // Last G-code number seen (for modal G-codes)
     float initial_position[3];      // WCS position captured when compensation activates
+    // Last emitted segment endpoints (WCS) used to derive the live compensation offset vector.
+    float last_emitted_uncomp[3];
+    float last_emitted_comp[3];
+    bool has_last_emitted;
     LoadBalanceMetrics load_balance_metrics;
     
     // Helper functions
@@ -251,18 +270,8 @@ private:
     );
     
     // Geometry utilities
-    float cross_product_2d(const float v1[2], const float v2[2]) {
-        return v1[0] * v2[1] - v1[1] * v2[0];
-    }
-    
-    void normalize_vector(float v[3]) {
-        float mag = sqrtf(v[0]*v[0] + v[1]*v[1] + v[2]*v[2]);
-        if (mag > 0.00001f) {
-            v[0] /= mag;
-            v[1] /= mag;
-            v[2] /= mag;
-        }
-    }
+    float cross_product_2d(const float v1[2], const float v2[2]);
+    void normalize_vector(float v[3]);
     
     // ========================================================================
     // PHASE 2: TRACE OUTPUT FUNCTIONS FOR DUAL BUFFER VISIBILITY

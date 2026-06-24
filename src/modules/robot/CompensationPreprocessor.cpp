@@ -75,6 +75,7 @@ void CompensationPreprocessor::reset_load_balance_metrics(){
 
 void CompensationPreprocessor::record_load_balance_sample()
 {
+#if CUTTER_COMPENSATION_METRICS_ENABLED
     int ready_margin = comp_ready_count - uncomp_count;
 
     if (uncomp_count > load_balance_metrics.max_uncomp_depth) {
@@ -100,6 +101,34 @@ void CompensationPreprocessor::record_load_balance_sample()
 
     load_balance_metrics.sample_count++;
     load_balance_metrics.cumulative_ready_margin += ready_margin;
+#endif
+}
+
+float CompensationPreprocessor::cross_product_2d(const float v1[2], const float v2[2])
+{
+    return v1[0] * v2[1] - v1[1] * v2[0];
+}
+
+void CompensationPreprocessor::normalize_vector(float v[3])
+{
+    float mag = sqrtf(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]);
+    if (mag > 0.00001f) {
+        v[0] /= mag;
+        v[1] /= mag;
+        v[2] /= mag;
+    }
+}
+
+bool CompensationPreprocessor::get_current_offset_vector(float out_xy[2]) const
+{
+    if (!has_last_emitted) {
+        out_xy[0] = 0.0f;
+        out_xy[1] = 0.0f;
+        return false;
+    }
+    out_xy[0] = last_emitted_comp[X_AXIS] - last_emitted_uncomp[X_AXIS];
+    out_xy[1] = last_emitted_comp[Y_AXIS] - last_emitted_uncomp[Y_AXIS];
+    return true;
 }
 
 uint8_t CompensationPreprocessor::resolve_motion_g(const Gcode* gcode) const
@@ -248,6 +277,13 @@ CompensationPreprocessor::CompensationPreprocessor()
     initial_position[0] = 0.0f;
     initial_position[1] = 0.0f;
     initial_position[2] = 0.0f;
+    last_emitted_uncomp[0] = 0.0f;
+    last_emitted_uncomp[1] = 0.0f;
+    last_emitted_uncomp[2] = 0.0f;
+    last_emitted_comp[0] = 0.0f;
+    last_emitted_comp[1] = 0.0f;
+    last_emitted_comp[2] = 0.0f;
+    has_last_emitted = false;
     
     // Initialize buffer memory to zero
     for (int i = 0; i < BUFFER_SIZE; i++) {
@@ -264,11 +300,21 @@ CompensationPreprocessor::CompensationPreprocessor()
         comp_ring[i].z = 0.0f;
         comp_ring[i].gcode = nullptr;  // Initialize Gcode pointers
     }
+
+    // Preallocate the Gcode pool once; recycled via Gcode::reset() instead of per-move new/delete.
+    for (int i = 0; i < BUFFER_SIZE; i++) {
+        gcode_pool[i] = new Gcode(std::string(), &StreamOutput::NullStream);
+    }
 }
 
 CompensationPreprocessor::~CompensationPreprocessor()
 {
     clear();
+    // Free the preallocated Gcode pool (owned by the preprocessor, never by the consumer).
+    for (int i = 0; i < BUFFER_SIZE; i++) {
+        delete gcode_pool[i];
+        gcode_pool[i] = nullptr;
+    }
 }
 
 void CompensationPreprocessor::set_compensation(CompensationType type, float radius)
@@ -297,9 +343,11 @@ void CompensationPreprocessor::set_compensation(CompensationType type, float rad
         pipeline_primed = false;
         first_output_pending = true;
         has_initial_position = false;
-        
+
+#if CUTTER_COMPENSATION_TRACE_ENABLED
         const char* side_str = (type == CompensationType::LEFT) ? "LEFT (G41)" : "RIGHT (G42)";
         COMPENSATION_TRACE_PRINTF(THEKERNEL->streams, ">>PHASE2: Compensation activated - type=%s, radius=%.3f\n", side_str, radius);
+#endif
     }
     
     COMPENSATION_TRACE_PRINTF(THEKERNEL->streams, ">>SET_COMP: EXIT - comp_active=%d\n", comp_active);
@@ -494,8 +542,16 @@ void CompensationPreprocessor::compute_and_output()
 
     print_output(gcode_str);
 
-    comp_ring[comp_idx].gcode = new Gcode(gcode_str, &StreamOutput::NullStream);
+    comp_ring[comp_idx].gcode = gcode_pool[comp_idx];
+    gcode_pool[comp_idx]->reset(gcode_str);
     load_balance_metrics.generated_gcode_count++;
+    last_emitted_uncomp[X_AXIS] = b.x;
+    last_emitted_uncomp[Y_AXIS] = b.y;
+    last_emitted_uncomp[Z_AXIS] = b.z;
+    last_emitted_comp[X_AXIS] = comp_end[X_AXIS];
+    last_emitted_comp[Y_AXIS] = comp_end[Y_AXIS];
+    last_emitted_comp[Z_AXIS] = comp_end[Z_AXIS];
+    has_last_emitted = true;
 
     if (comp_count < BUFFER_SIZE) {
         comp_count++;
@@ -553,8 +609,16 @@ bool CompensationPreprocessor::compute_terminal_output()
         char gcode_str[128];
         format_compensated_gcode(uncomp_start, comp_start, curr, comp_end, gcode_str, sizeof(gcode_str));
 
-        comp_ring[comp_idx].gcode = new Gcode(gcode_str, &StreamOutput::NullStream);
+        comp_ring[comp_idx].gcode = gcode_pool[comp_idx];
+        gcode_pool[comp_idx]->reset(gcode_str);
         load_balance_metrics.generated_gcode_count++;
+        last_emitted_uncomp[X_AXIS] = curr.x;
+        last_emitted_uncomp[Y_AXIS] = curr.y;
+        last_emitted_uncomp[Z_AXIS] = curr.z;
+        last_emitted_comp[X_AXIS] = comp_end[X_AXIS];
+        last_emitted_comp[Y_AXIS] = comp_end[Y_AXIS];
+        last_emitted_comp[Z_AXIS] = comp_end[Z_AXIS];
+        has_last_emitted = true;
 
         comp_head = (comp_head + 1) % BUFFER_SIZE;
         comp_ready_count++;
@@ -619,8 +683,16 @@ bool CompensationPreprocessor::compute_terminal_output()
     char gcode_str[128];
     format_compensated_gcode(uncomp_start, comp_start, curr, comp_end, gcode_str, sizeof(gcode_str));
 
-    comp_ring[comp_idx].gcode = new Gcode(gcode_str, &StreamOutput::NullStream);
+    comp_ring[comp_idx].gcode = gcode_pool[comp_idx];
+    gcode_pool[comp_idx]->reset(gcode_str);
     load_balance_metrics.generated_gcode_count++;
+    last_emitted_uncomp[X_AXIS] = curr.x;
+    last_emitted_uncomp[Y_AXIS] = curr.y;
+    last_emitted_uncomp[Z_AXIS] = curr.z;
+    last_emitted_comp[X_AXIS] = comp_end[X_AXIS];
+    last_emitted_comp[Y_AXIS] = comp_end[Y_AXIS];
+    last_emitted_comp[Z_AXIS] = comp_end[Z_AXIS];
+    has_last_emitted = true;
 
     comp_head = (comp_head + 1) % BUFFER_SIZE;
     comp_ready_count++;
@@ -747,6 +819,7 @@ Gcode* CompensationPreprocessor::get_compensated_gcode()
 
 void CompensationPreprocessor::print_load_balance_report(StreamOutput* stream) const
 {
+#if CUTTER_COMPENSATION_METRICS_ENABLED
     const LoadBalanceMetrics& m = load_balance_metrics;
     uint32_t pull_requests = m.served_gcode_count + m.empty_serve_count;
     float avg_margin = (m.sample_count > 0)
@@ -786,6 +859,9 @@ void CompensationPreprocessor::print_load_balance_report(StreamOutput* stream) c
         (unsigned)m.max_uncomp_depth,
         (unsigned)m.max_comp_ready_depth
     );
+#else
+    (void)stream;
+#endif
 }
 
 void CompensationPreprocessor::flush()
@@ -812,14 +888,10 @@ void CompensationPreprocessor::clear()
 {
     COMPENSATION_TRACE_PRINTF(THEKERNEL->streams, ">>CLEAR: Starting clear() - comp_count=%d, uncomp_count=%d\n", comp_count, uncomp_count);
     
-    // Delete any remaining Gcode objects to prevent memory leaks
+// Detach ring slots from the preallocated pool. The pool objects are owned by the
+    // preprocessor (freed in the destructor), so we must NOT delete them here.
     for (int i = 0; i < BUFFER_SIZE; i++) {
-        if (comp_ring[i].gcode != nullptr) {
-            COMPENSATION_TRACE_PRINTF(THEKERNEL->streams, ">>CLEAR: Deleting Gcode* at index %d (ptr=%p)\n", i, (void*)comp_ring[i].gcode);
-            delete comp_ring[i].gcode;
-            comp_ring[i].gcode = nullptr;
-            COMPENSATION_TRACE_PRINTF(THEKERNEL->streams, ">>CLEAR: Deleted and nullified index %d\n", i);
-        }
+        comp_ring[i].gcode = nullptr;
     }
     
     COMPENSATION_TRACE_PRINTF(THEKERNEL->streams, ">>CLEAR: All Gcode* objects deleted\n");
@@ -839,6 +911,13 @@ void CompensationPreprocessor::clear()
     initial_position[0] = 0.0f;
     initial_position[1] = 0.0f;
     initial_position[2] = 0.0f;
+    last_emitted_uncomp[0] = 0.0f;
+    last_emitted_uncomp[1] = 0.0f;
+    last_emitted_uncomp[2] = 0.0f;
+    last_emitted_comp[0] = 0.0f;
+    last_emitted_comp[1] = 0.0f;
+    last_emitted_comp[2] = 0.0f;
+    has_last_emitted = false;
     record_load_balance_sample();
     
     COMPENSATION_TRACE_PRINTF(THEKERNEL->streams, ">>CLEAR: Buffer indices reset\n");
@@ -925,11 +1004,13 @@ void CompensationPreprocessor::print_output(const char* gcode_str)
 
 void CompensationPreprocessor::print_buffer_state()
 {
+#if CUTTER_COMPENSATION_TRACE_ENABLED
     const char* comp_str = "NONE";
     if (comp_type == CompensationType::LEFT) comp_str = "LEFT";
     else if (comp_type == CompensationType::RIGHT) comp_str = "RIGHT";
 
     COMPENSATION_TRACE_PRINTF(THEKERNEL->streams, ">>BUFFER_STATE: uncomp_count=%d, uncomp_head=%d, uncomp_tail=%d, comp_count=%d, comp=%s, radius=%.3f\n",
         uncomp_count, uncomp_head, uncomp_tail, comp_count, comp_str, comp_radius);
+#endif
 }
 
