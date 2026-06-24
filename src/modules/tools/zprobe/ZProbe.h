@@ -144,7 +144,7 @@ private:
     void calibrate_probe_bore();
     void calibrate_probe_boss();
     void single_axis_probe_double_tap();
-    bool calibrate_Z(Gcode *gc);
+    void calibrate_Z(Gcode *gc);
     uint32_t read_probe(uint32_t dummy);
     uint32_t read_calibrate(uint32_t dummy);
     void on_get_public_data(void* argument);
@@ -208,7 +208,7 @@ private:
     float probe_calibration_safety_margin;
     // Z position when probe pin triggered        
     volatile float probe_pin_position;
-    volatile float calibrate_current_axis_pos;
+    volatile float calibrate_current_z;
     volatile bool safety_margin_exceeded;
     volatile float distance_moved;
 };

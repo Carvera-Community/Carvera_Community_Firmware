@@ -1655,6 +1655,12 @@ void ATCHandler::on_module_loaded()
         THEKERNEL->write_eeprom_data();
     }
     this->cur_tool_mz = THEKERNEL->eeprom_data->TOOLMZ;
+    this->tool_offset = THEKERNEL->eeprom_data->TLO;
+
+	this->target_tool = -1;
+	this->beep_state = BP_SLEEP;
+	this->beep_count = 0;
+
 }
 
 void ATCHandler::on_config_reload(void *argument)
@@ -2962,8 +2968,6 @@ void ATCHandler::on_gcode_received(void *argument)
 						this->target_collet_type = UNDEFINED;
 					}
 				}
-			} else if (gcode->subcode == 7 || gcode->subcode == 8) {
-				THEKERNEL->streams->printf("INFO: M493.%d is reserved for future toolsetter support\n", gcode->subcode);
 			}
 		} else if (gcode->m == 494) {
 			if(CARVERA == THEKERNEL->factory_set->MachineModel)	//ATC 

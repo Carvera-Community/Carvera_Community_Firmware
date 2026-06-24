@@ -63,7 +63,6 @@
 #define switch_checksum 			CHECKSUM("switch")
 #define state_checksum              CHECKSUM("state")
 #define ignore_on_halt_checksum     CHECKSUM("ignore_on_halt")
-#define set_tlo_calibrating_checksum CHECKSUM("set_tlo_calibrating")
 
 #define X_AXIS 0
 #define Y_AXIS 1
@@ -335,16 +334,8 @@ uint32_t ZProbe::read_calibrate(uint32_t dummy)
 {
     if (!calibrating) return 0;
 
-    int moving_axis = -1;
+    // just check z Axis move
     if (STEPPER[Z_AXIS]->is_moving()) {
-        moving_axis = Z_AXIS;
-    } else if (STEPPER[X_AXIS]->is_moving()) {
-        moving_axis = X_AXIS;
-    } else if (STEPPER[Y_AXIS]->is_moving()) {
-        moving_axis = Y_AXIS;
-    }
-
-    if (moving_axis >= 0) {
         // if it is moving then we check the probe, and debounce it
         if (this->calibrate_pin.get()) {
             if (cali_debounce < debounce_ms) {
@@ -356,19 +347,21 @@ uint32_t ZProbe::read_calibrate(uint32_t dummy)
                 // Record that the calibration pin is on, and at what position
                 // we detected this.
                 calibrate_detected = true;
-                calibrate_pin_position = STEPPER[moving_axis]->get_current_position();
+                calibrate_pin_position = STEPPER[Z_AXIS]->get_current_position();
             }
 
             if (!probing || probe_detected) {
-                // If not probing (regular TLO calibration) or the probe is detected,
-                // signal the motors to stop.
+                // if we are not probing, e.g. doing a regular TLO calibration,
+                // or we are probing and the probe was detected we signal the
+                // motors to stop, which will preempt any moves on that axis we
+                // do all motors as it may be a delta
                 for (auto &a : THEROBOT->actuators) a->stop_moving();
                 cali_debounce = 0;
             } else {
-                // Dual-pin correlation safety check for probe-tool calibration.
+                // We have a probe tool; we must make sure we don't move too far.
                 // Store the current Z position for later reporting if necessary.
-                calibrate_current_axis_pos = STEPPER[moving_axis]->get_current_position();
-                distance_moved = fabs(calibrate_current_axis_pos - calibrate_pin_position);
+                calibrate_current_z = STEPPER[Z_AXIS]->get_current_position();
+                distance_moved = fabs(calibrate_current_z - calibrate_pin_position);
                 // If we've exceeded the calibration distance, set PROBE_FAIL.
                 // The error will be reported in calibrate_Z.
                 if (distance_moved > probe_calibration_safety_margin) {
@@ -805,7 +798,7 @@ void ZProbe::reset_probe_tracking() {
     safety_margin_exceeded = false;
     calibrate_pin_position = 0.0F;
     probe_pin_position = 0.0F;
-    calibrate_current_axis_pos = 0.0F;
+    calibrate_current_z = 0.0F;
 }
 
 // special way to probe in the X or Y or Z direction using planned moves, should work with any kinematics
@@ -934,27 +927,17 @@ void ZProbe::on_set_public_data(void* argument) {
     }
 }
 
-// probe / calibrate using calibrate pin on any provided axis (X/Y/Z)
-bool ZProbe::calibrate_Z(Gcode *gcode)
+// just probe / calibrate Z using calibrate pin
+void ZProbe::calibrate_Z(Gcode *gcode)
 {
-    float x = 0;
-    float y = 0;
-    float z = 0;
-    if(gcode->has_letter('X')) {
-        x = gcode->get_value('X');
-    }
-
-    if(gcode->has_letter('Y')) {
-        y = gcode->get_value('Y');
-    }
-
+    float z= 0;
     if(gcode->has_letter('Z')) {
-        z = gcode->get_value('Z');
+        z= gcode->get_value('Z');
     }
 
-    if(x == 0 && y == 0 && z == 0) {
-        gcode->stream->printf("error: at least one of X, Y, or Z must be specified, and be > or < 0\n");
-        return false;
+    if(z == 0) {
+        gcode->stream->printf("error: Z must be specified, and be > or < 0\n");
+        return;
     }
 
     // get probe feedrate in mm/min and convert to mm/sec if specified
@@ -965,9 +948,7 @@ bool ZProbe::calibrate_Z(Gcode *gcode)
 
     if (this->calibrate_pin.get()) {
         gcode->stream->printf("error: ZCalibrate triggered before move, aborting command.\n");
-        THEKERNEL->set_halt_reason(CALIBRATE_FAIL);
-        THEKERNEL->call_event(ON_HALT, nullptr);
-        return false;
+        return;
     }
 
     probing = false;
@@ -985,7 +966,7 @@ bool ZProbe::calibrate_Z(Gcode *gcode)
     }
 
     // do a delta move which will stop as soon as the probe is triggered, or the distance is reached
-    float delta[3]= {x, y, z};
+    float delta[3]= {0, 0, z};
     THEKERNEL->set_zprobing(true);
     if(!THEROBOT->delta_move(delta, rate, 3)) {
         gcode->stream->printf("ERROR: Move too small, X: %1.3f, Y: %1.3f, Z: %1.3f\n", x, y, z);
@@ -995,7 +976,7 @@ bool ZProbe::calibrate_Z(Gcode *gcode)
         THEKERNEL->call_event(ON_HALT, nullptr);
         calibrating = false;
         THEKERNEL->set_zprobing(false);
-        return false;
+        return;
     }
     THEKERNEL->set_zprobing(false);
 
@@ -1022,7 +1003,7 @@ bool ZProbe::calibrate_Z(Gcode *gcode)
         gcode->stream->printf("Probe pin triggered: %d, position: %.3f\n", probe_detected, probe_pin_position);
         gcode->stream->printf("Calibrate pin triggered: %d, position: %.3f\n", calibrate_detected, calibrate_pin_position);
         gcode->stream->printf("Current position: %.3f\n", THEKERNEL->robot->from_millimeters(pos[Z_AXIS]));
-        gcode->stream->printf("Error detected at position: %.3f\n", calibrate_current_axis_pos);
+        gcode->stream->printf("Error detected at position: %.3f\n", calibrate_current_z);
         gcode->stream->printf("Safety Margin Value: %.3f\n",  probe_calibration_safety_margin);
         gcode->stream->printf("debounce: %d, cali_debounce: %d, debounce_ms: %d\n", debounce, cali_debounce, debounce_ms);
         return false;
@@ -1038,30 +1019,30 @@ bool ZProbe::calibrate_Z(Gcode *gcode)
                              probe_pin_position,
                              calibrate_pin_position);
     }
+    
+    uint8_t calibrateok = calibrate_detected ? 1 : 0;
 
-    uint8_t calibrateok = this->calibrate_detected ? 1 : 0;
-    gcode->stream->printf("[PRB:%1.3f,%1.3f,%1.3f:%d]\n",
-        THEKERNEL->robot->from_millimeters(pos[X_AXIS]),
-        THEKERNEL->robot->from_millimeters(pos[Y_AXIS]),
-        THEKERNEL->robot->from_millimeters(pos[Z_AXIS]),
+    // print results using the GRBL format
+    gcode->stream->printf("[PRB:%1.3f,%1.3f,%1.3f:%d]\n", 
+        THEKERNEL->robot->from_millimeters(pos[X_AXIS]), 
+        THEKERNEL->robot->from_millimeters(pos[Y_AXIS]), 
+        THEKERNEL->robot->from_millimeters(pos[Z_AXIS]), 
         calibrateok);
     THEROBOT->set_last_probe_position(std::make_tuple(pos[X_AXIS], pos[Y_AXIS], pos[Z_AXIS], calibrateok));
 
-    if (calibrateok == 0 && gcode->subcode == 6) {
+    if (calibrateok == 0) {
+        // issue error if probe was not triggered and subcode is 2 or 4
         gcode->stream->printf("ALARM: Calibrate fail!\n");
     if (calibrateok == 0) {
         // issue error if probe was not triggered and subcode is 2 or 4
         gcode->stream->printf("ERROR: Calibrate fail!\n");
         THEKERNEL->set_halt_reason(CALIBRATE_FAIL);
         THEKERNEL->call_event(ON_HALT, nullptr);
-        return false;
     }
 
     if (probe_detected) {
     	this->probe_trigger_time = us_ticker_read();
     }
-
-    return calibrateok == 1;
 
 }
 
