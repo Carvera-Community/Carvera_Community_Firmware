@@ -10,9 +10,6 @@
 
 #include "libs/Module.h"
 
-class Pin;
-class StreamOutput;
-
 class SpindleControl: public Module {
     public:
         SpindleControl() {};
