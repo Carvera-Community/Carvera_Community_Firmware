@@ -216,7 +216,7 @@ private:
     bool probe_tool_tlo_toolsetter_only;
     // Z position when probe pin triggered        
     volatile float probe_pin_position;
-    volatile float calibrate_current_axis_pos;
+    volatile float calibrate_current_z;
     volatile bool safety_margin_exceeded;
     volatile float distance_moved;
 };
