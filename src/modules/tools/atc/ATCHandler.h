@@ -128,6 +128,8 @@ private:
     void home_machine_with_pin(Gcode *gcode);
     void calibrate_set_value(Gcode *gcode);
 
+    void stock_firmware_inner_corner_probe(float x_val, float y_val, float z_val, float d_val);
+
     void clear_script_queue();
 
     void rapid_move(bool mc, float x, float y, float z, float a, float b);

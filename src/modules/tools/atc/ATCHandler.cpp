@@ -525,6 +525,17 @@ void ATCHandler::calibrate_set_value(Gcode *gcode)
 	}
 }
 
+void ATCHandler::stock_firmware_inner_corner_probe(float x_val, float y_val, float z_val, float d_val){
+	char buff[100];
+	snprintf(buff, sizeof(buff), "M466 Z-20 S2");
+	this->script_queue.push(buff);
+	snprintf(buff, sizeof(buff), "G91 G54 G0 X%.3f Y%.3f", -x_val, -y_val);
+	this->script_queue.push(buff);
+	snprintf(buff, sizeof(buff), "G91 G54 G0 Z%.3f S1", -z_val);
+	this->script_queue.push(buff);
+	snprintf(buff, sizeof(buff), "M463 X%.3f Y%.3f D%.3f S1", x_val, y_val, d_val);
+}
+
 void ATCHandler::calibrate_anchor1(Gcode *gcode) //M469.1
 {
 	THEKERNEL->streams->printf("Calibrating Anchor 1\n");
@@ -817,8 +828,8 @@ void ATCHandler::calibrate_a_axis_cor(Gcode *gcode) //M469.6
 		return;
 	}
 
-	if (!((this->active_tool == 0) || (this->active_tool >= 999990))) {
-		THEKERNEL->streams->printf("ERROR: Attempted to probe with an improper tool. A 3-axis probe must be installed (tool 0 or tool >= 999990).\n");
+	if (!((this->active_tool == 0) || (this->active_tool >= 999990) || (THEKERNEL->eeprom_data->TOOL == 9999))) {
+		THEKERNEL->streams->printf("ERROR: Attempted to probe with an improper tool. A 3-axis probe must be installed (tool 0, 9999 or tool >= 999990).\n");
 		THEKERNEL->call_event(ON_HALT, nullptr);
 		THEKERNEL->set_halt_reason(PROBE_FAIL);
 		return;
@@ -1148,7 +1159,7 @@ void ATCHandler::fill_manual_pickup_scripts(int new_tool, bool clear_z, bool aut
 		//pause
 		snprintf(buff, sizeof(buff), "M600.5");
 		this->script_queue.push(buff);
-		this->fill_cali_scripts(new_tool == 0 || new_tool >= 999990,false);
+		this->fill_cali_scripts(new_tool == 0 || new_tool >= 999990 || new_tool == 9999,false);
 	}else if (!isnan(custom_TLO)) {
 		//print status
 		snprintf(buff, sizeof(buff), ";Tool is now installed and TLO set as %.3f.\n Resume will continue program\n" , custom_TLO );
@@ -2108,7 +2119,7 @@ void ATCHandler::set_tool_offset(uint8_t repeat_count)
 			}
 			tool_offset = lowest_tl_mcz - ref_tool_mz;
         	float z_save = tool_offset;
-        	if (this->active_tool >= 999990) z_save += this->three_axis_probe_tlo_correction;
+        	if (this->active_tool >= 999990 || this->active_tool == 9999) z_save += this->three_axis_probe_tlo_correction;
         	const float offset[3] = {0.0, 0.0, z_save};
         	THEROBOT->saveToolOffset(offset, cur_tool_mz);
 		} else{
@@ -2300,7 +2311,7 @@ void ATCHandler::on_gcode_received(void *argument)
 						this->fill_change_scripts(new_tool, true, -1, false, colletIndex, custom_TLO);
 						
 						if (auto_calibrate){
-							this->fill_cali_scripts((new_tool == 0 || new_tool >= 999990), true, repeat_count); 
+							this->fill_cali_scripts((new_tool == 0 || new_tool >= 999990 || new_tool == 9999), true, repeat_count); 
 						}
 					}else if(new_is_atc_tool){ //standard ATC
 						// add change script to change collets
@@ -2310,7 +2321,7 @@ void ATCHandler::on_gcode_received(void *argument)
 						THEKERNEL->streams->printf("Start picking new tool: T%d\r\n", new_tool);
 						atc_status = PICK;
 						this->fill_pick_scripts(new_tool, true);
-						this->fill_cali_scripts(new_tool == 0 || new_tool >= 999990, false);
+						this->fill_cali_scripts(new_tool == 0 || new_tool >= 999990 || new_tool == 9999, false);
 					} else if(new_tool == -1 && (THEKERNEL->get_laser_mode())) {
 						THEROBOT->push_state();
 						THEROBOT->get_axis_position(last_pos, 3);
@@ -2330,7 +2341,7 @@ void ATCHandler::on_gcode_received(void *argument)
 					// Set TLO calibration flag to disable 3D probe crash detection
 					bool tlo_calibrating = true;
 					PublicData::set_value( zprobe_checksum, set_tlo_calibrating_checksum, &tlo_calibrating );
-					this->fill_cali_scripts(new_tool == 0 || new_tool >= 999990, true, repeat_count);
+					this->fill_cali_scripts(new_tool == 0 || new_tool >= 999990 || new_tool == 9999, true, repeat_count);
 				}
 	        }
 	        else	//Manual Tool Change for AIR
@@ -2347,7 +2358,7 @@ void ATCHandler::on_gcode_received(void *argument)
 					atc_status = CHANGE;
 					this->target_tool = new_tool;
 					this->fill_change_scripts(new_tool, true, active_tool, false, colletIndex);
-					this->fill_cali_scripts((new_tool == 0 || new_tool >= 999990), true);
+					this->fill_cali_scripts((new_tool == 0 || new_tool >= 999990 || new_tool == 9999), true);
 				} else if (new_tool == active_tool && THEROBOT->get_tool_not_calibrated() && new_tool != -1) {
 					// Tool is already selected but needs calibration (e.g., after e-stop during previous calibration)
 					THEKERNEL->streams->printf("Tool T%d needs TLO calibration\r\n", new_tool);
@@ -2359,7 +2370,7 @@ void ATCHandler::on_gcode_received(void *argument)
 					// Set TLO calibration flag to disable 3D probe crash detection
 					bool tlo_calibrating = true;
 					PublicData::set_value( zprobe_checksum, set_tlo_calibrating_checksum, &tlo_calibrating );
-					this->fill_cali_scripts((new_tool == 0 || new_tool >= 999990), true);
+					this->fill_cali_scripts((new_tool == 0 || new_tool >= 999990 || new_tool == 9999), true);
 				}
 	        }
 		} else if (gcode->m == 460){
@@ -2415,6 +2426,64 @@ void ATCHandler::on_gcode_received(void *argument)
 				atc_status = AUTOMATION;
 				this->clear_script_queue();
 				home_machine_with_pin(gcode);
+			}
+		} else if (gcode->m == 680) {
+			float d_val = 2;
+			float x_val = 20;
+			float y_val = 20;
+			float e_val = 4;
+			char buff[100];
+
+			if (gcode->has_letter('D')) {
+				d_val = gcode->get_value('D');
+			}
+			if (gcode->has_letter('Z')) {
+				e_val = gcode->get_value('Z');
+			}
+			if (gcode->has_letter('X')) {
+				x_val = gcode->get_value('X');
+			}
+
+			if (gcode->has_letter('Y')) {
+				y_val = gcode->get_value('Y');
+			}
+
+
+			if (gcode->subcode == 1){
+				snprintf(buff, sizeof(buff), "M464 X%.3f Y%.3f H20 E%.3f D%.3f S2", x_val, -y_val, e_val, d_val);
+				this->script_queue.push(buff);
+			}
+			else if (gcode->subcode == 2){
+				snprintf(buff, sizeof(buff), "M464 X%.3f Y%.3f H20 E%.3f D%.3f S2", -x_val, -y_val, e_val, d_val);
+				this->script_queue.push(buff);
+			}
+			else if (gcode->subcode == 3){
+				snprintf(buff, sizeof(buff), "M464 X%.3f Y%.3f H20 E%.3f D%.3f S2", -x_val, y_val, e_val, d_val);
+				this->script_queue.push(buff);
+			}
+			else if (gcode->subcode == 4){
+				snprintf(buff, sizeof(buff), "M464 X%.3f Y%.3f H20 E%.3f D%.3f S2", x_val, y_val, e_val, d_val);
+				this->script_queue.push(buff);
+			}
+			else if (gcode->subcode == 5){
+				this->stock_firmware_inner_corner_probe( x_val, y_val, e_val, d_val);
+			}
+			else if (gcode->subcode == 6){
+				this->stock_firmware_inner_corner_probe( -x_val, y_val, e_val, d_val);
+			}
+			else if (gcode->subcode == 7){
+				this->stock_firmware_inner_corner_probe( x_val,  -y_val,  e_val, d_val);
+			}
+			else if (gcode->subcode == 8){
+				this->stock_firmware_inner_corner_probe(-x_val, -y_val, e_val, d_val);
+			}
+			else if (gcode->subcode == 9){
+				snprintf(buff, sizeof(buff), "M461 X%.3f Y%.3f D%.3f S1", -x_val, -y_val, d_val);
+				this->script_queue.push(buff);
+			}
+			else if (gcode->subcode == 10){
+				snprintf(buff, sizeof(buff), "M462 X%.3f Y%.3f H20 E%.3f D%.3f S2", x_val, y_val, e_val, d_val);
+				this->script_queue.push(buff);
 			}
 		} else if (gcode->m == 490)  {
 			if(THEKERNEL->factory_set->FuncSetting & (1<<2))	//ATC 
@@ -2538,7 +2607,7 @@ void ATCHandler::on_gcode_received(void *argument)
 				// Set TLO calibration flag to disable 3D probe crash detection
 				bool tlo_calibrating = true;
 				PublicData::set_value( zprobe_checksum, set_tlo_calibrating_checksum, &tlo_calibrating );
-				this->fill_cali_scripts(active_tool == 0 || active_tool >= 999990, true);
+				this->fill_cali_scripts(active_tool == 0 || active_tool >= 9 || active_tool == 9999, true);
 
 				THECONVEYOR->wait_for_idle();
 				// lift z to safe position with fast speed
@@ -2621,7 +2690,7 @@ void ATCHandler::on_gcode_received(void *argument)
 				// Set TLO calibration flag to disable 3D probe crash detection
 				bool tlo_calibrating = true;
 				PublicData::set_value( zprobe_checksum, set_tlo_calibrating_checksum, &tlo_calibrating );
-				this->fill_cali_scripts(active_tool == 0 || active_tool >= 999990, true, repeat_count);
+				this->fill_cali_scripts(active_tool == 0 || active_tool >= 999990 || active_tool == 9999, true, repeat_count);
 
 			}
 		} else if (gcode->m == 492) {
@@ -2804,7 +2873,7 @@ void ATCHandler::on_gcode_received(void *argument)
 	        			THEKERNEL->streams->printf("ERROR: Can not do Automatic work in laser mode!\n");
 	        			return;
 	        		}
-					if ((this->active_tool == 0 || this->active_tool >= 999990) && THEROBOT->get_tool_not_calibrated()){
+					if ((this->active_tool == 0 || this->active_tool >= 999990 || this->active_tool == 9999) && THEROBOT->get_tool_not_calibrated()){
 						THEKERNEL->streams->printf("ERROR: Probe not calibrated. Please calibrate probe before probing.\n");
 						THEKERNEL->call_event(ON_HALT, nullptr);
 						THEKERNEL->set_halt_reason(CALIBRATE_FAIL);
