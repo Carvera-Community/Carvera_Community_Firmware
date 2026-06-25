@@ -50,6 +50,9 @@
 #define udp_send_port_checksum		      CHECKSUM("udp_send_port")
 #define udp_recv_port_checksum		      CHECKSUM("udp_recv_port")
 #define tcp_timeout_s_checksum			  CHECKSUM("tcp_timeout_s")
+#define ap_auto_disable_checksum          CHECKSUM("ap_auto_disable")
+
+#define WIFI_AP_OFF_DELAY_S          3
 
 
 WifiProvider::WifiProvider()
@@ -59,6 +62,10 @@ WifiProvider::WifiProvider()
 	wifi_init_ok = false;
 	has_data_flag = false;
 	connection_fail_count = 0;
+	sta_stable_seconds = 0;
+	ap_auto_disable = true;
+	ap_currently_on = true;
+	ap_off_by_auto_toggle = false;
 }
 
 void WifiProvider::on_module_loaded()
@@ -74,11 +81,21 @@ void WifiProvider::on_module_loaded()
 	this->udp_recv_port = THEKERNEL->config->value(wifi_checksum, udp_recv_port_checksum)->as_int(4444);
 	this->tcp_timeout_s = THEKERNEL->config->value(wifi_checksum, tcp_timeout_s_checksum)->as_int(10);
     std::string config_name = THEKERNEL->config->value(wifi_checksum, machine_name_checksum)->as_string("CARVERA");
+	this->ap_auto_disable = THEKERNEL->config->value(wifi_checksum, ap_auto_disable_checksum)->as_bool(true);
+
     strncpy(this->machine_name, config_name.c_str(), sizeof(this->machine_name) - 1);
     this->machine_name[sizeof(this->machine_name) - 1] = '\0'; // Ensure null termination
 
     // Init Wifi Module
     this->init_wifi_module(false);
+
+    // sync ap_currently_on with the saved op-mode the M8266 booted into
+    {
+        u8 boot_op_mode = 3;
+        u16 op_status = 0;
+        M8266WIFI_SPI_Get_Opmode(&boot_op_mode, &op_status);
+        this->ap_currently_on = (boot_op_mode != 1);
+    }
 
     // Add interrupt for WIFI data receving
     Pin *smoothie_pin = new Pin();
@@ -286,7 +303,34 @@ void WifiProvider::on_second_tick(void *)
 		connection_fail_count = 0;
 	}
 
+	// AP off when STA is up, AP back on when STA drops. saved=0 to avoid flash wear.
+	if (this->ap_auto_disable) {
+		if (connection_status == 5) {
+			if (this->sta_stable_seconds < WIFI_AP_OFF_DELAY_S) {
+				this->sta_stable_seconds++;
+			}
+			if (this->sta_stable_seconds >= WIFI_AP_OFF_DELAY_S && this->ap_currently_on) {
+				u16 op_status = 0;
+				if (M8266WIFI_SPI_Set_Opmode(1, 0, &op_status)) {
+					this->ap_currently_on = false;
+					this->ap_off_by_auto_toggle = true;
+				}
+			}
+		} else {
+			this->sta_stable_seconds = 0;
+			// only re-enable if we were the ones who turned it off; ap disable stays off
+			if (!this->ap_currently_on && this->ap_off_by_auto_toggle) {
+				u16 op_status = 0;
+				if (M8266WIFI_SPI_Set_Opmode(3, 0, &op_status)) {
+					this->ap_currently_on = true;
+					this->ap_off_by_auto_toggle = false;
+				}
+			}
+		}
+	}
+
 	// send ap info through UDP
+	if (!this->ap_currently_on) return;
 	memset(udp_buff, 0, sizeof(udp_buff));
 	{
 		// Inlined get_broadcast_from_ip_and_netmask
@@ -342,12 +386,9 @@ void WifiProvider::on_idle(void *argument)
     if (halt_flag) {
         halt_flag = false;
         THEKERNEL->set_halt_reason(MANUAL);
+		puts("ERROR: Controller Abort during cycle\r\n");
         THEKERNEL->call_event(ON_HALT, nullptr);
-        if(THEKERNEL->is_grbl_mode()) {
-            puts("ALARM: Abort during cycle\r\n");
-        } else {
-            puts("HALTED, M999 or $X to exit HALT state\r\n");
-        }
+		
     }
 }
 
@@ -808,8 +849,13 @@ void WifiProvider::on_set_public_data(void *argument)
     	bool *enable_op = static_cast<bool *>(pdr->get_data_ptr());
     	if (*enable_op) {
         	set_wifi_op_mode(3);
+        	this->ap_currently_on = true;
+        	this->sta_stable_seconds = 0;
+        	this->ap_off_by_auto_toggle = false;
     	} else {
         	set_wifi_op_mode(1);
+        	this->ap_currently_on = false;
+        	this->ap_off_by_auto_toggle = false;
     	}
     }
 	pdr->set_taken();

@@ -185,8 +185,9 @@ float Gcode::get_variable_value(const char* expr, char** endptr) const{
                 return THEKERNEL->local_vars[var_num -101];
             }
             THEKERNEL->set_halt_reason(MANUAL);
+            THEKERNEL->streams->printf("ERROR: Variable %d not set \n", var_num);
             THEKERNEL->call_event(ON_HALT, nullptr);
-            THEKERNEL->streams->printf("Variable %d not set \n", var_num);
+            
             return NAN;
         
         } else if(var_num == 150)
@@ -199,8 +200,8 @@ float Gcode::get_variable_value(const char* expr, char** endptr) const{
                 return THEKERNEL->probe_outputs[var_num - 151];
             }
             THEKERNEL->set_halt_reason(MANUAL);
+            THEKERNEL->streams->printf("ERROR: Variable %d not set \n", var_num);
             THEKERNEL->call_event(ON_HALT, nullptr);
-            THEKERNEL->streams->printf("Variable %d not set \n", var_num);
             return NAN;
 
         } else if(var_num >= 501 && var_num <= 520)
@@ -211,8 +212,8 @@ float Gcode::get_variable_value(const char* expr, char** endptr) const{
             }
             
             THEKERNEL->set_halt_reason(MANUAL);
+            THEKERNEL->streams->printf("ERROR: Variable %d not set \n", var_num);
             THEKERNEL->call_event(ON_HALT, nullptr);
-            THEKERNEL->streams->printf("Variable %d not set \n", var_num);
             return NAN;
         }else //system variables
         {
@@ -299,8 +300,9 @@ float Gcode::get_variable_value(const char* expr, char** endptr) const{
 
                 default:
                     THEKERNEL->set_halt_reason(MANUAL);
+                    THEKERNEL->streams->printf("ERROR: Variable %d not found \n", var_num);
                     THEKERNEL->call_event(ON_HALT, nullptr);
-                    THEKERNEL->streams->printf("Variable %d not found \n", var_num);
+                    
                     return NAN;
                     break;
             }
@@ -312,8 +314,8 @@ float Gcode::get_variable_value(const char* expr, char** endptr) const{
 float Gcode::parse_expression(const char*& expr) const {
     if (*expr == ']') {
         THEKERNEL->set_halt_reason(MANUAL);
+        THEKERNEL->streams->printf("ERROR: Mismatched closing bracket ']' without opening '['\n");
         THEKERNEL->call_event(ON_HALT, nullptr);
-        THEKERNEL->streams->printf("Mismatched closing bracket ']' without opening '['\n");
         return NAN;
     }
 
@@ -415,8 +417,9 @@ float Gcode::parse_term(const char*& expr) const {
                     result /= next_factor;
                 } else {
                     THEKERNEL->set_halt_reason(MANUAL);
+                    THEKERNEL->streams->printf("ERROR: Division by zero\n");
                     THEKERNEL->call_event(ON_HALT, nullptr);
-                    THEKERNEL->streams->printf("Division by zero\n");
+                    
                     return NAN;
                 }
             }
@@ -428,8 +431,9 @@ float Gcode::parse_term(const char*& expr) const {
                 result = fmod(result, next_factor);
             } else {
                 THEKERNEL->set_halt_reason(MANUAL);
+                THEKERNEL->streams->printf("ERROR: Modulo by zero\n");
                 THEKERNEL->call_event(ON_HALT, nullptr);
-                THEKERNEL->streams->printf("Modulo by zero\n");
+                
                 return NAN;
             }
         }
@@ -504,14 +508,14 @@ float Gcode::parse_factor(const char*& expr) const {
                 }
             } else {
                 THEKERNEL->set_halt_reason(MANUAL);
+                THEKERNEL->streams->printf("ERROR: Mismatched brackets in function argument\n");
                 THEKERNEL->call_event(ON_HALT, nullptr);
-                THEKERNEL->streams->printf("Mismatched brackets in function argument\n");
                 return NAN;
             }
         } else {
             THEKERNEL->set_halt_reason(MANUAL);
+            THEKERNEL->streams->printf("ERROR: Expected '[' after function name\n");
             THEKERNEL->call_event(ON_HALT, nullptr);
-            THEKERNEL->streams->printf("Expected '[' after function name\n");
             return NAN;
         }
     } else if (*expr == '[') {
@@ -521,8 +525,8 @@ float Gcode::parse_factor(const char*& expr) const {
             expr++; // Skip ']'
         } else {
             THEKERNEL->set_halt_reason(MANUAL);
+            THEKERNEL->streams->printf("ERROR: Mismatched brackets in expression\n");
             THEKERNEL->call_event(ON_HALT, nullptr);
-            THEKERNEL->streams->printf("Mismatched brackets in expression\n");
             return NAN;
         }
     } else if (*expr == '#') {
@@ -544,8 +548,8 @@ float Gcode::parse_factor(const char*& expr) const {
 
         if (end == original_expr) {
             THEKERNEL->set_halt_reason(MANUAL);
+            THEKERNEL->streams->printf("ERROR: Invalid number in expression, %c\n", *expr);
             THEKERNEL->call_event(ON_HALT, nullptr);
-            THEKERNEL->streams->printf("Invalid number in expression, %c\n", *expr);
             return NAN;
         }
         expr = end;
@@ -567,8 +571,8 @@ float Gcode::evaluate_expression(const char* expr, char** endptr) const {
     // Check for unexpected closing bracket at the beginning
     if (*expr == ']') {
         THEKERNEL->set_halt_reason(MANUAL);
+        THEKERNEL->streams->printf("ERROR: Mismatched closing bracket ']' without opening '['\n");
         THEKERNEL->call_event(ON_HALT, nullptr);
-        THEKERNEL->streams->printf("Mismatched closing bracket ']' without opening '['\n");
         return NAN;
     }
 
@@ -577,8 +581,8 @@ float Gcode::evaluate_expression(const char* expr, char** endptr) const {
     // Ensure any remaining unmatched brackets are caught
     if (*expr == ']') {
         THEKERNEL->set_halt_reason(MANUAL);
+        THEKERNEL->streams->printf("ERROR: Mismatched closing bracket at end of expression\n");
         THEKERNEL->call_event(ON_HALT, nullptr);
-        THEKERNEL->streams->printf("Mismatched closing bracket at end of expression\n");
         return NAN;
     }
 
