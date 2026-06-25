@@ -86,6 +86,7 @@ epsilon_steps_per_mm						888.88888		# may be steps per degree for example (26.6
 # wifi.udp_recv_port							4444
 # wifi.tcp_timeout_s							10
 # wifi.machine_name							CARVERA_01001
+# wifi.ap_auto_disable							true			# false to keep AP enabled even when STA is connected
 
 # ATC
 # atc.enable									true
@@ -389,6 +390,11 @@ sd_ok false								# Indicate SD card is corrected read
 
 ## Basic Settings ##
 # Vacuum
+switch.vacuum.enable 	true			# Enable this module
+switch.vacuum.input_on_command			M801			# Command that will turn this switch on
+switch.vacuum.input_off_command			M802			# Command that will turn this switch off
+switch.vacuum.output_pin				nc				# Pin this module controls
+switch.vacuum.output_type				hwpwm		# Digital means this is just an on or off pin
 switch.vacuum.default_on_value 80		# Default vacuum power when open (50 - 100)
 
 # Light
