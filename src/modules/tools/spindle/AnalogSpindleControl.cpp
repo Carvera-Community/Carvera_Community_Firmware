@@ -176,7 +176,7 @@ void AnalogSpindleControl::on_idle(void *argument)
     (void)argument;
     if(THEKERNEL->is_halted()) return;
     if (this->get_alarm()) {
-        THEKERNEL->streams->printf("ALARM: Spindle alarm triggered -  power off/on required\n");
+        THEKERNEL->streams->printf("ERROR: Spindle alarm triggered -  power off/on required\n");
         THEKERNEL->set_halt_reason(SPINDLE_ALARM);
         THEKERNEL->call_event(ON_HALT, nullptr);
     }

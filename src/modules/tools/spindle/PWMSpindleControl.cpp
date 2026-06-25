@@ -351,7 +351,7 @@ void PWMSpindleControl::on_idle(void *argument)
 	if(THEKERNEL->is_halted()) return;
 	// check spindle alarm
     if (this->get_alarm()) {
-		THEKERNEL->streams->printf("ALARM: Spindle alarm triggered -  power off/on required\n");
+		THEKERNEL->streams->printf("ERROR: Spindle alarm triggered -  power off/on required\n");
 		THEKERNEL->set_halt_reason(SPINDLE_ALARM);
 		THEKERNEL->call_event(ON_HALT, nullptr);
 		return;
@@ -359,7 +359,7 @@ void PWMSpindleControl::on_idle(void *argument)
     // check spindle stall
     /*
     if (this->get_stall()) {
-		THEKERNEL->streams->printf("ALARM: Spindle stall triggered -  reset required\n");
+		THEKERNEL->streams->printf("ERROR: Spindle stall triggered -  reset required\n");
 		THEKERNEL->set_halt_reason(SPINDLE_STALL);
 		THEKERNEL->call_event(ON_HALT, nullptr);
     }*/

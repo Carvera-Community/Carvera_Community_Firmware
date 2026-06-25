@@ -55,7 +55,7 @@ void SpindleControl::on_gcode_received(void *argument)
             	if (!tool_ok) {
         			THEKERNEL->set_halt_reason(MANUAL);
         			THEKERNEL->call_event(ON_HALT, nullptr);
-        			THEKERNEL->streams->printf("ERROR: No tool or probe tool!\n");
+        			THEKERNEL->streams->printf("ERROR: Spindle cannot run without a valid tool\n");
         			return;
             	}
 
