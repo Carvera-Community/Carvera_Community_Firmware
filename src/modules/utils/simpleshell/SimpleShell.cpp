@@ -230,8 +230,7 @@ void SimpleShell::on_gcode_received(void *argument)
             if(!args.empty() && !THEKERNEL->is_grbl_mode())
                 rm_command("/sd/" + args, gcode->stream);
         } else if (gcode->m == 331) { // change to vacuum mode
-        	if(CARVERA == THEKERNEL->factory_set->MachineModel)
-        	{
+        	if (gcode->subcode == 0) {
 				THEKERNEL->set_vacuum_mode(true);
 			    // get spindle state
 			    struct spindle_status ss;
@@ -240,17 +239,29 @@ void SimpleShell::on_gcode_received(void *argument)
 			    	if (ss.state) {
 		        		// open vacuum
 		        		bool b = true;
-		                PublicData::set_value( switch_checksum, vacuum_checksum, state_checksum, &b );
-	
+		        		PublicData::set_value( switch_checksum, vacuum_checksum, state_checksum, &b );
 			    	}
 	        	}
-			    // turn on vacuum mode
-				gcode->stream->printf("turning vacuum mode on\r\n");
+	        	//PacketMessage(PTYPE_NORMAL_INFO, "turning vacuum mode on\r\n", 0, gcode->stream);
+                gcode->stream->printf("turning vacuum mode on\r\n");
 			}
-		} else if (gcode->m == 332) { // change to CNC mode
-			
-        	if(CARVERA == THEKERNEL->factory_set->MachineModel)
-        	{
+			else if (gcode->subcode == 3) {
+				THEKERNEL->set_extout_mode(true);
+			    // get spindle state
+			    struct spindle_status ss;
+			    bool ok = PublicData::get_value(pwm_spindle_control_checksum, get_spindle_status_checksum, &ss);
+			    if (ok) {
+			    	if (ss.state) {
+		        		// open vacuum
+		        		bool b = true;
+		        		PublicData::set_value( switch_checksum, extendout_checksum, state_checksum, &b );
+			    	}
+	        	}
+	        	//PacketMessage(PTYPE_NORMAL_INFO, "turning extend out mode on\r\n", 0, gcode->stream);
+                gcode->stream->printf("turning extend out mode on\r\n");
+            }
+        } else if (gcode->m == 332) { // change to CNC mode			
+			if (gcode->subcode == 0) {
 				THEKERNEL->set_vacuum_mode(false);
 			    // get spindle state
 			    struct spindle_status ss;
@@ -259,12 +270,19 @@ void SimpleShell::on_gcode_received(void *argument)
 			    	if (ss.state) {
 		        		// close vacuum
 		        		bool b = false;
-		                PublicData::set_value( switch_checksum, vacuum_checksum, state_checksum, &b );
-	
+		        		PublicData::set_value( switch_checksum, vacuum_checksum, state_checksum, &b );
 			    	}
 	        	}
 				// turn off vacuum mode
-				gcode->stream->printf("turning vacuum mode off\r\n");
+		
+				//PacketMessage(PTYPE_NORMAL_INFO, "turning vacuum mode off\r\n", 0, gcode->stream);
+                gcode->stream->printf("turning vacuum mode off\r\n");
+			}
+			else
+			{
+				// turn on extend out mode
+				//PacketMessage(PTYPE_NORMAL_INFO, "turning extend out mode off\r\n", 0, gcode->stream);
+                gcode->stream->printf("turning extend out mode off\r\n");
 			}
 
 		} else if (gcode->m == 333) { // turn off optional stop mode
@@ -1095,21 +1113,25 @@ void SimpleShell::diagnose_command( string parameters, StreamOutput *stream)
         if(n > sizeof(buf)) n = sizeof(buf);
         str.append(buf, n);
     }
-    if(CARVERA_AIR == THEKERNEL->factory_set->MachineModel)
-	{	
-    	bool ok2 = false;
-    	bool ok3 = false;
-    	struct pad_switch pad2,pad3;
-	    ok = PublicData::get_value(switch_checksum, get_checksum("beep"), 0, &pad);
-	    ok2 = PublicData::get_value(switch_checksum, get_checksum("extendin"), 0, &pad2);
-	   	ok3 = PublicData::get_value(switch_checksum, get_checksum("extendout"), 0, &pad3);
-	    if (ok&&ok2&&ok3) {
-	        n = snprintf(buf, sizeof(buf), ",%d,%d,%d,%d", (int)pad.state, (int)pad2.state, (int)pad3.state, (int)pad3.value);
-	        if(n > sizeof(buf)) n = sizeof(buf);
-	        str.append(buf, n);
-	    }
-	    
-	}
+    bool ok2 = false;
+
+
+	bool ok3 = false;
+
+
+	struct pad_switch pad2,pad3;
+
+
+    ok = PublicData::get_value(switch_checksum, get_checksum("beep"), 0, &pad);
+    ok2 = PublicData::get_value(switch_checksum, get_checksum("extendin"), 0, &pad2);
+   	ok3 = PublicData::get_value(switch_checksum, get_checksum("extendout"), 0, &pad3);
+    if(!ok) pad.state = false;
+    if(!ok2) pad2.state = false;
+    if(!ok3) {pad3.state = false; pad3.value = 0;}
+    n = snprintf(buf, sizeof(buf), ",%d,%d,%d,%d", (int)pad.state, (int)pad2.state, (int)pad3.state, (int)pad3.value);
+    if(n > sizeof(buf)) n = sizeof(buf);
+    str.append(buf, n);
+
     ok = PublicData::get_value(switch_checksum, get_checksum("toolsensor"), 0, &pad);
     if (ok) {
         n = snprintf(buf, sizeof(buf), "|T:%d", (int)pad.state);
