@@ -8,7 +8,8 @@
 - Enhancement: Added improved PID Spindle control that increases performance of carvera C1 spindles. Setup requires following the guide on the documentation page
 - Enhancement: Add option to auto-disable on-board wifi AP once machine is connected to external wifi (STA). By default this is turned on, to turn off type config-set sd wifi.ap_auto_disable false into the MDI
 - Fixed: Prevent incorrect current line reporting after a tool change
-- Lint: conformed all error messages to the format ERROR: <message> for easier hooks in the controller
+Fixed: Line-numbered gcode (e.g. N123 X10) are no longer dropped. After the line number is stripped, the rest of the line is now reprocessed normally, so modal moves without an explicit G word (e.g. N123 X10 Y10) run instead of being discarded. Backported and simplified from Makera firmware
+- Changed: conformed all error messages to the format ERROR: <message> for easier hooks in the controller
 
 [2.1.0c]
 - Fixed: Unused Variables removed
