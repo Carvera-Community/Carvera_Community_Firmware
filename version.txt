@@ -10,6 +10,7 @@
 - Enhancement: Add option to auto-disable on-board wifi AP once machine is connected to external wifi (STA). By default this is turned on, to turn off type config-set sd wifi.ap_auto_disable false into the MDI
 - Fixed: Prevent incorrect current line reporting after a tool change
 - Lint: conformed all error messages to the format ERROR: <message> for easier hooks in the controller
+- Fixed: inconsistent formatting on commands that respond with `ok`
 - Enhancement: Support for turning On an external connected vacuum via M851/M852. Backported from Makera firmware
 - Changed: reduce PWM period in software spindle speed pwm. Change from Makera
 - Changed: Increased Software based PWM frequency from 50hz to 100hz. Backported from Makera firmware.

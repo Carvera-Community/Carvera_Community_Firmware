@@ -174,7 +174,7 @@ try_again:
 							THEKERNEL->call_event(ON_HALT, (void *)1); // clears on_halt
 							new_message.stream->printf("WARNING: After HALT you should HOME as position is currently unknown\n");
 						}
-						new_message.stream->printf("ok\n");
+						new_message.stream->printf("ok\r\n");
 						delete gcode;
 						return;
 
@@ -225,7 +225,7 @@ try_again:
 						// optimize G1 to send ok immediately (one per line) before it is planned
 						if(!sent_ok) {
 							sent_ok= true;
-							new_message.stream->printf("ok\n");
+							new_message.stream->printf("ok\r\n");
 						}
 					}
 
@@ -299,9 +299,9 @@ try_again:
 							#endif
 
 							if(THEKERNEL->is_bad_mcu()) {
-								new_message.stream->printf(", X-WARNING:deprecated_MCU");
+								new_message.stream->printf(", X-WARNING:deprecated_MCU\n");
 							}
-							new_message.stream->printf("\nok\n");
+							new_message.stream->printf("ok\r\n");
 							return;
 						}
 
@@ -496,7 +496,7 @@ try_again:
 		}
     } else if ( first_char == ';' || first_char == '(' || first_char == '\n' || first_char == '\r' ) {
         // Ignore comments and blank lines
-        new_message.stream->printf("ok\n");
+        new_message.stream->printf("ok\r\n");
 
     } else if( (n=possible_command.find_first_of("XYZAF")) == 0 || (first_char == ' ' && n != string::npos) ) {
         // handle pycam syntax, use last modal group 1 command and resubmit if an X Y Z or F is found on its own line
@@ -514,6 +514,6 @@ try_again:
 
     } else {
         // an uppercase non command word on its own (except XYZAF) just returns ok, we could add an error but no hosts expect that.
-        new_message.stream->printf("ok - ignore: [%s]\n", possible_command.c_str());
+        new_message.stream->printf("ok - ignore: [%s]\r\n", possible_command.c_str());
     }
 }
