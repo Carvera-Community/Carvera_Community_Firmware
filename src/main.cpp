@@ -103,6 +103,15 @@ void init() {
     GPIO beep = GPIO(P1_14);
     beep.output();
     beep = 0;
+    GPIO extout = GPIO(P0_29);
+    extout.output();
+    extout = 0;
+    extout = GPIO(P0_30);
+    extout.output();
+    extout = 0;
+    extout = GPIO(P1_19);
+    extout.output();
+    extout = 0;
 
     // open 12V
     // GPIO v12 = GPIO(P0_11);
