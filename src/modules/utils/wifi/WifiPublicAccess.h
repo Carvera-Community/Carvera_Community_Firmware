@@ -11,7 +11,7 @@
 
 struct ap_conn_info {
     char ssid[33];
-    char password[65];
+    char password[64];
     char ip_address[15];
     bool has_error;
     char error_info[64];
