@@ -896,10 +896,10 @@ uint8_t ZProbe::check_probe_tool() {
     }
     
     // 3d probe tool
-    if ((tool.active_tool == 0 && this->tool_0_3axis) || tool.active_tool >= 999990){
+    if ((tool.active_tool == 0 && this->tool_0_3axis) || tool.active_tool >= 999990 || tool.active_tool == 9999){
         return 2;
     // probe tool in general
-    }else if (tool.active_tool == 0 || tool.active_tool >= 999990){
+    }else if (tool.active_tool == 0){ //removed extra compares that would never be reached
         return 1;
     }
     return 0;
@@ -1287,7 +1287,7 @@ void ZProbe::z_probe_move_with_retract(int probe_g38_subcode, float z, float cle
 bool ZProbe::parse_parameters(Gcode *gcode, bool override_probe_check){
     init_parameters_and_out_coords();
 
-    if (!((override_probe_check && THEKERNEL->eeprom_data->TOOL == 0) || (this->tool_0_3axis && THEKERNEL->eeprom_data->TOOL == 0) || THEKERNEL->eeprom_data->TOOL >= 999990)){
+    if (!((override_probe_check && THEKERNEL->eeprom_data->TOOL == 0) || (this->tool_0_3axis && THEKERNEL->eeprom_data->TOOL == 0) || THEKERNEL->eeprom_data->TOOL >= 999990 || THEKERNEL->eeprom_data->TOOL == 9999)){
         THEKERNEL->streams->printf("ERROR: Attempted to 3 axis probe with an improper tool number. Tool number needs to be >= 999990\n or you need to set tool 0 as a 3 axis probe with: \n config-set sd zprobe.tool_zero_is_3axis true \n");
         THEKERNEL->call_event(ON_HALT, nullptr);
         THEKERNEL->set_halt_reason(PROBE_FAIL);
