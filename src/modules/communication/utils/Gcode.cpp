@@ -139,7 +139,11 @@ float Gcode::set_variable_value() const {
         }
 
         // Proceed to set the variable if it's valid
-        if (var_num >= 101 && var_num <= 120) {
+        if (var_num >= 1 && var_num <= 30) {
+            THEKERNEL->local_params[var_num - 1] = value;
+            this->stream->printf("Variable %d set %.4f \n", var_num, value);
+            return value;
+        } else if (var_num >= 101 && var_num <= 120) {
             THEKERNEL->local_vars[var_num - 101] = value; // Set local variable
             this->stream->printf("Variable %d set %.4f \n", var_num, value);
             return value;
@@ -178,8 +182,10 @@ float Gcode::set_variable_value() const {
 float Gcode::get_variable_value(const char* expr, char** endptr) const{
     // Expecting a number after the `#` from 1-20, like #12
     if (*expr == '#') {
-        int var_num = strtol(expr + 1, endptr, 10);         
-        if (var_num >= 101 && var_num <= 120) {
+        int var_num = strtol(expr + 1, endptr, 10);
+        if (var_num >= 1 && var_num <= 30) {
+            return THEKERNEL->local_params[var_num - 1];
+        } else if (var_num >= 101 && var_num <= 120) {
             if (THEKERNEL->local_vars[var_num -101] > -100000)
             {
                 return THEKERNEL->local_vars[var_num -101];
@@ -590,6 +596,13 @@ float Gcode::evaluate_expression(const char* expr, char** endptr) const {
         *endptr = const_cast<char*>(expr); // Set endptr to the current position
     }
     return result;
+}
+
+// Evaluate an expression without a full Gcode context.
+float Gcode::evaluate_standalone_expression(char* expr, char** endptr, StreamOutput* stream)
+{
+    Gcode tmp("", stream, false, 0);
+    return tmp.evaluate_expression(expr, endptr);
 }
 
 // Retrieve the value for a given letter
