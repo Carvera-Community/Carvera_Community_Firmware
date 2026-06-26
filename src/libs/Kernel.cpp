@@ -65,6 +65,9 @@
 #define halt_on_error_debug_checksum                CHECKSUM("halt_on_error_debug")
 Kernel* Kernel::instance;
 
+static float ahb_local_vars[20]   __attribute__((section("AHBSRAM")));
+static float ahb_local_params[30] __attribute__((section("AHBSRAM")));
+
 #define	EEP_MAX_PAGE_SIZE	32
 #define EEPROM_DATA_STARTPAGE	1
 #define EEPROM_FACTORYSET_PAGE	16
@@ -99,6 +102,14 @@ Kernel::Kernel()
     keep_alive_request = false;
     flex_compensation_load_error = false;
     config_load_error = false;
+
+    // Point the variable arrays at their AHBSRAM-backed storage
+    local_vars   = ahb_local_vars;
+    local_params = ahb_local_params;
+
+    // Initialize user defined variables and subroutine call parameters.
+    for(int i = 0; i < 20; ++i) local_vars[i]   = -1.0e6f;
+    for(int i = 0; i < 30; ++i) local_params[i] = 0.0f;
 
     instance = this; // setup the Singleton instance of the kernel
 
