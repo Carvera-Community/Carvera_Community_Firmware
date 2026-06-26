@@ -11,6 +11,7 @@
 - Enhancement: Add option to auto-disable on-board wifi AP once machine is connected to external wifi (STA). By default this is turned on, to turn off type config-set sd wifi.ap_auto_disable false into the MDI
 - Fixed: Prevent incorrect current line reporting after a tool change
 - Lint: conformed all error messages to the format ERROR: <message> for easier hooks in the controller
+- Fixed: Increased max supported ssid length from 27 to 32 characters. Backported from Makera firmware.
 - Compatibility: Makera Probing commands M480.1-M480.10 have been added and call their community firmware equivalent. The inside probing routines are slightly different and start inside the corner instead of above it.  See https://carvera-community.gitbook.io/docs/firmware/supported-commands/mcodes for more information.
 - Changed: increased allowed gcode subcodes from 0-7 to 0-15
 - Fixed: Tool 9999 is a probe in the Makera specific probing commands. Added crash protection to tool 9999 in addition to tool 0 and tool >= 999990. These tool numbers should not be used for non-probes
