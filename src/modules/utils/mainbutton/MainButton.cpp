@@ -194,11 +194,11 @@ void MainButton::on_idle(void *argument)
                 	ok = PublicData::get_value(endstops_checksum, get_cover_endstop_state_checksum, 0, &cover_endstop_state);
 					if (ok) {
 						if (!cover_endstop_state) {
-								if (THEKERNEL->get_state() != TOOL)
-								{
-									cover_open_stop = true;
-								}
+							if (THEKERNEL->get_state() != TOOL)
+							{
+								cover_open_stop = true;
 							}
+							
 						}
 					}
                 }
