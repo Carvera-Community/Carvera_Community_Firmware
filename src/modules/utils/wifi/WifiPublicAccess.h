@@ -10,7 +10,7 @@
 #define ap_enable_checksum   CHECKSUM("ap_enable")
 
 struct ap_conn_info {
-    char ssid[32];
+    char ssid[33];
     char password[64];
     char ip_address[15];
     bool has_error;

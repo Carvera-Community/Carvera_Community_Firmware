@@ -47,6 +47,7 @@ void safe_delay_ms(uint32_t delay);
 struct tm *get_fftime(unsigned short t_date, unsigned short t_time, struct tm *timeinfo);
 
 void ltrim(std::string& s, const char* t = " \t\n\r\f\v");
+const char* ltrim_cstr(const char* s);
 
 
 //#define dd(...) LPC_GPIO2->FIODIR = 0xffff; LPC_GPIO2->FIOCLR = 0xffff; LPC_GPIO2->FIOSET = __VA_ARGS__

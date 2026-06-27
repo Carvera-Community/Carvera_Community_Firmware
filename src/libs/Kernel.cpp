@@ -65,6 +65,9 @@
 #define halt_on_error_debug_checksum                CHECKSUM("halt_on_error_debug")
 Kernel* Kernel::instance;
 
+static float ahb_local_vars[20]   __attribute__((section("AHBSRAM")));
+static float ahb_local_params[30] __attribute__((section("AHBSRAM")));
+
 #define	EEP_MAX_PAGE_SIZE	32
 #define EEPROM_DATA_STARTPAGE	1
 #define EEPROM_FACTORYSET_PAGE	16
@@ -79,6 +82,7 @@ Kernel::Kernel()
     uploading = false;
     laser_mode = false;
     vacuum_mode = false;
+    extout_mode = false;
     optional_stop_mode = false;
     line_by_line_exec_mode = false;
     sleeping = false;
@@ -98,6 +102,14 @@ Kernel::Kernel()
     keep_alive_request = false;
     flex_compensation_load_error = false;
     config_load_error = false;
+
+    // Point the variable arrays at their AHBSRAM-backed storage
+    local_vars   = ahb_local_vars;
+    local_params = ahb_local_params;
+
+    // Initialize user defined variables and subroutine call parameters.
+    for(int i = 0; i < 20; ++i) local_vars[i]   = -1.0e6f;
+    for(int i = 0; i < 30; ++i) local_params[i] = 0.0f;
 
     instance = this; // setup the Singleton instance of the kernel
 
@@ -385,11 +397,14 @@ std::string Kernel::get_query_string()
 	
     // get power temperature
     ok = PublicData::get_value( temperature_control_checksum, current_temperature_checksum, power_temperature_checksum, &temp );
-	if (ok) {
-        n= snprintf(buf, sizeof(buf), ",%1.1f", temp.current_temperature);
-        if(n > sizeof(buf)) n= sizeof(buf);
-        str.append(buf, n);
-	}
+	if (!ok) temp.current_temperature = 0;
+    n= snprintf(buf, sizeof(buf), ",%1.1f", temp.current_temperature);
+    if(n > sizeof(buf)) n= sizeof(buf);
+    str.append(buf, n);
+	// get extout_mode 
+	n= snprintf(buf, sizeof(buf), ",%d,%d,%d", 0, 0, int(this->get_extout_mode()));
+    if(n > sizeof(buf)) n= sizeof(buf);
+    str.append(buf, n);
 
     // current tool number and tool offset
     struct tool_status tool;
@@ -541,21 +556,18 @@ std::string Kernel::get_diagnose_string()
         if(n > sizeof(buf)) n = sizeof(buf);
         str.append(buf, n);
     }
-    if(CARVERA_AIR == THEKERNEL->factory_set->MachineModel)
-	{	
-    	bool ok2 = false;
-    	bool ok3 = false;
-    	struct pad_switch pad2,pad3;
-	    ok = PublicData::get_value(switch_checksum, get_checksum("beep"), 0, &pad);
-	    ok2 = PublicData::get_value(switch_checksum, get_checksum("extendin"), 0, &pad2);
-	   	ok3 = PublicData::get_value(switch_checksum, get_checksum("extendout"), 0, &pad3);
-	    if (ok&&ok2&&ok3) {
-	        n = snprintf(buf, sizeof(buf), ",%d,%d,%d,%d", (int)pad.state, (int)pad2.state, (int)pad3.state, (int)pad3.value);
-	        if(n > sizeof(buf)) n = sizeof(buf);
-	        str.append(buf, n);
-	    }
-	    
-	}
+    bool ok2 = false;
+	bool ok3 = false;
+	struct pad_switch pad2,pad3;
+    ok = PublicData::get_value(switch_checksum, get_checksum("beep"), 0, &pad);
+    ok2 = PublicData::get_value(switch_checksum, get_checksum("extendin"), 0, &pad2);
+   	ok3 = PublicData::get_value(switch_checksum, get_checksum("extendout"), 0, &pad3);
+    if(!ok) pad.state = false;
+    if(!ok2) pad2.state = false;
+    if(!ok3) { pad3.state = false; pad3.value = 0; }
+    n = snprintf(buf, sizeof(buf), ",%d,%d,%d,%d", (int)pad.state, (int)pad2.state, (int)pad3.state, (int)pad3.value);
+    if(n > sizeof(buf)) n = sizeof(buf);
+    str.append(buf, n);
     ok = PublicData::get_value(switch_checksum, get_checksum("toolsensor"), 0, &pad);
     if (ok) {
         n = snprintf(buf, sizeof(buf), "|T:%d", (int)pad.state);
