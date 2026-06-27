@@ -177,6 +177,28 @@ void MainButton::on_second_tick(void *)
 
 void MainButton::on_idle(void *argument)
 {
+	//halt code
+	if (this->stop_on_cover_open && !THEKERNEL->is_halted()) {
+		bool cover_endstop_state;
+
+		bool ok = PublicData::get_value(endstops_checksum, get_cover_endstop_state_checksum, 0, &cover_endstop_state);
+		if (ok && !cover_endstop_state) {
+			if (THEKERNEL->spindleon) {
+				THEKERNEL->set_halt_reason(COVER_OPEN);
+				THEKERNEL->call_event(ON_HALT, nullptr);
+			}
+			
+			for (size_t i = 0; i < 4; i++) {
+				if(THEROBOT->actuators[i]->is_moving()){
+					THEKERNEL->set_halt_reason(COVER_OPEN);
+					THEKERNEL->call_event(ON_HALT, nullptr);
+					break;
+				}
+			}
+		}
+
+	}
+		
 	bool e_stop_pressed = this->e_stop.get();
     if (e_stop_pressed || button_state == BUTTON_LED_UPDATE || button_state == BUTTON_SHORT_PRESSED || button_state == BUTTON_LONG_PRESSED) {
     	// get current status
@@ -463,25 +485,6 @@ void MainButton::on_idle(void *argument)
 // otherwise it will look for a 2 second press on the kill button to unkill if unkill is set
 uint32_t MainButton::button_tick(uint32_t dummy)
 {
-	bool cover_open_stop = false;
-	if (this->stop_on_cover_open && !THEKERNEL->is_halted()) {
-		void *return_value;
-		bool cover_endstop_state;
-
-
-		bool ok = PublicData::get_value(endstops_checksum, get_cover_endstop_state_checksum, 0, &cover_endstop_state);
-		if (ok && !cover_endstop_state) {
-			for (size_t i = 0; i < 4; i++) {
-				if(THEROBOT->actuators[i]->is_moving()){
-					cover_open_stop = true;
-					THEKERNEL->set_halt_reason(COVER_OPEN);
-					THEKERNEL->call_event(ON_HALT, nullptr);
-					break;
-				}
-			}
-		}
-
-	}
 
 	if (this->main_button.get()) {
 		if (!this->button_pressed) {
