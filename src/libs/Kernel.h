@@ -172,6 +172,9 @@ class Kernel {
         bool get_optional_stop_mode() const { return optional_stop_mode; }
         void set_line_by_line_exec_mode(bool f) { line_by_line_exec_mode = f; }
         bool get_line_by_line_exec_mode() const { return line_by_line_exec_mode; }
+        
+        void set_extout_mode(bool f) { extout_mode = f; }
+        bool get_extout_mode() const { return extout_mode; }
 
         void set_sleeping(bool f) { sleeping = f; }
         bool is_sleeping() const { return sleeping; }
@@ -262,10 +265,16 @@ class Kernel {
             bool slowticker_profiling:1;
             bool cpu_load:1;
         } debug_flags;
-        float local_vars[20];
-        float probe_outputs[6];
-        float probe_tip_diameter = 1.6;
+        float  probe_outputs[6];
+        float  probe_tip_diameter = 1.6;
         bool disable_endstops = false;
+
+        // #1–#30 (local_params) and #101–#120 (local_vars) are stored in static
+        // AHBSRAM arrays and referenced here through pointers, so they do not add
+        // to the size of the heap-allocated Kernel object.
+        // The arrays and their initialisation live in Kernel.cpp.
+        float* local_params;      // #1–#30: subroutine call parameters
+        float* local_vars;        // #101–#120: user defined variables
 
     private:
         // When a module asks to be called for a specific event ( a hook ), this is where that request is remembered
@@ -286,6 +295,7 @@ class Kernel {
             volatile bool uploading:1;
             bool laser_mode:1;
             bool vacuum_mode:1;
+            bool extout_mode:1;
             bool optional_stop_mode:1;
             bool line_by_line_exec_mode:1;
             bool sleeping:1;
