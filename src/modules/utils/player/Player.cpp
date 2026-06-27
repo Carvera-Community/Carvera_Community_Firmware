@@ -90,6 +90,18 @@ Player::Player()
     this->last_spindle_rpm = 0.0f;
     this->last_spindle_ccw = false;
     this->saved_spindle_ccw = false;
+    this->file_line = 0;
+}
+
+void Player::sync_progress_max()
+{
+    if(this->current_file_handler == nullptr) return;
+
+    long pos = fwfs::ftell(this->current_file_handler);
+    if(pos > 0 && (unsigned long)pos > this->played_cnt)
+        this->played_cnt = (unsigned long)pos;
+    if(this->file_line > this->played_lines)
+        this->played_lines = this->file_line;
 }
 
 void Player::on_module_loaded()
@@ -140,7 +152,20 @@ void Player::on_second_tick(void *)
     if(this->playing_file) this->elapsed_secs++;
 }
 
-void Player::select_file(string argument)
+bool Player::prepare_ocode_prescan(StreamOutput* stream, const char* fail_msg)
+{
+    this->ocode_handler.reset();
+    this->ocode_handler.pre_scan(this->current_file_handler, stream);
+    if(this->ocode_handler.pre_scan_failed()) {
+        stream->printf("%s\r\n", fail_msg);
+        fwfs::fclose(this->current_file_handler);
+        this->current_file_handler = NULL;
+        return false;
+    }
+    return true;
+}
+
+void Player::select_file(string argument, bool force_prescan)
 {
 
     this->filename = argument;
@@ -183,10 +208,19 @@ void Player::select_file(string argument)
             fwfs::fseek(this->current_file_handler, 0, SEEK_SET);
         }
         THEKERNEL->streams->printf("File opened:%s Size:%ld\r\n", this->filename.c_str(), this->file_size);
+
+        if(force_prescan || !this->skip_ocodes_prescan) {
+            if(!this->prepare_ocode_prescan(THEKERNEL->streams, "File rejected: O-code pre-scan failed")) {
+                return;
+            }
+        } else {
+            this->ocode_handler.reset();
+        }
         THEKERNEL->streams->printf("File selected\r\n");
     }
     this->played_cnt = 0;
     this->played_lines = 0;
+    this->file_line = 0;
     this->elapsed_secs = 0;
     this->playing_lines = 0;
     this->goto_line = 0;
@@ -200,26 +234,33 @@ void Player::goto_line_number(unsigned long line_number)
     // goto line
     char buf[130]; // lines upto 128 characters are allowed, anything longer is discarded
 
+    // Jumping to an arbitrary line discards any in-progress O-code block stack
+    // (it can't be reconstructed from a line number; stray closers afterwards
+    // warn rather than halt). The subroutine table is (re)built here, before
+    // playback resumes, so no file scan ever happens mid-cut.
+    this->ocode_handler.prepare_jump(this->current_file_handler, THEKERNEL->streams);
+
     // goto file begin
     fwfs::fseek(this->current_file_handler, 0, SEEK_SET);
     played_lines = 0;
     played_cnt   = 0;
+    file_line    = 0;
 
     // Read lines until we've positioned at the target line
     // We want to break BEFORE reading the target line, so the file pointer is at the target
-    while (played_lines < this->goto_line - 1) {
+    while (file_line < this->goto_line - 1) {
         if (fwfs::fgets(buf, sizeof(buf), this->current_file_handler) == NULL) {
             break; // EOF reached
         }
-        
-        if (played_lines % 100 == 0) {
+
+        if (file_line % 100 == 0) {
             THEKERNEL->call_event(ON_IDLE);
         }
         int len = strlen(buf);
         if (len == 0) continue; // empty line? should not be possible
 
-        played_lines += 1;
-        played_cnt += len;
+        file_line++;
+        this->sync_progress_max();
     }
 
     // Keep status report current line in sync with file position
@@ -303,7 +344,7 @@ void Player::on_gcode_received(void *argument)
 
         } else if (gcode->m == 23) { // select file
             this->clear_macro_file_queue();
-            this->select_file(args);
+            this->select_file(args, true);
         } else if (gcode->m == 24) { // start print
             this->play_opened_file();
 
@@ -327,9 +368,11 @@ void Player::on_gcode_received(void *argument)
                     if(this->current_file_handler == NULL) {
                         gcode->stream->printf("file.open failed: %s\r\n", currentfn.c_str());
                     } else {
-                        this->filename = currentfn;
-                        this->file_size = old_size;
                         this->current_stream = nullptr;
+                        if(this->prepare_ocode_prescan(gcode->stream, "Reset failed: O-code pre-scan failed")) {
+                            this->filename = currentfn;
+                            this->file_size = old_size;
+                        }
                     }
                 }
             } else {
@@ -347,7 +390,7 @@ void Player::on_gcode_received(void *argument)
             //empty macro queue
             this->clear_macro_file_queue();
 
-            this->select_file(args);
+            this->select_file(args, true);
 
             this->play_opened_file();           
 
@@ -421,7 +464,8 @@ void Player::on_gcode_received(void *argument)
             }
 
             //TODO: test new_filepath length to make sure it is valid
-            std::tuple<std::string, unsigned long> queueItem (this->filename,(played_lines + 2));
+            // Resume on the line after M98: file_line is already the M98 line
+            std::tuple<std::string, unsigned long> queueItem (this->filename, this->file_line + 1);
             //set up return queue
             this->macro_file_queue.push(queueItem);
 
@@ -527,9 +571,12 @@ void Player::play_command( string parameters, StreamOutput *stream )
 //		THEKERNEL->streams->printf("ERROR: No tool or probe tool!\n");
 //		return;
 //	}
-
+    if (!THEROBOT->is_homed_all_axes()) {
+		return;
+	}
     // extract any options from the line and terminate the line there
     string options= extract_options(parameters);
+    this->skip_ocodes_prescan = (options.find_first_of("Oo") == string::npos);
     // Get filename which is the entire parameter line upto any options found or entire line
     this->filename = absolute_from_relative(shift_parameter(parameters));
     this->last_filename = this->filename;
@@ -558,6 +605,16 @@ void Player::play_command( string parameters, StreamOutput *stream )
         return;
     }
 
+    if(!this->skip_ocodes_prescan) {
+        if(!this->prepare_ocode_prescan(stream, "Playback aborted: O-code pre-scan failed")) {
+            return;
+        }
+    } else {
+        this->ocode_handler.reset();
+    }
+
+    if(THEKERNEL->is_halted()) return;
+
     stream->printf("Playing %s\r\n", this->filename.c_str());
 
     this->playing_file = true;
@@ -582,6 +639,7 @@ void Player::play_command( string parameters, StreamOutput *stream )
     }
     this->played_cnt = 0;
     this->played_lines = 0;
+    this->file_line = 0;
     this->elapsed_secs = 0;
     this->playing_lines = 0;
     this->goto_line = 0;
@@ -681,10 +739,13 @@ void Player::abort_command( string parameters, StreamOutput *stream )
     this->playing_file = false;
     this->played_cnt = 0;
     this->played_lines = 0;
+    this->file_line = 0;
     this->playing_lines = 0;
     this->goto_line = 0;
     this->file_size = 0;
     this->clear_buffered_queue();
+    this->clear_macro_file_queue();
+    this->ocode_handler.reset();
     this->filename = "";
     this->current_stream = NULL;
 
@@ -792,6 +853,7 @@ void Player::on_main_loop(void *argument)
         float clustered_distance[8];
         */
 
+        uint32_t last_idle_us = us_ticker_read();
         while (fwfs::fgets(buf, sizeof(buf), this->current_file_handler) != NULL) {
 
             int len = strlen(buf);
@@ -802,7 +864,13 @@ void Player::on_main_loop(void *argument)
                     continue;
                 }
 
-                if (len == 1) continue; // empty line
+                if (len == 1) {
+                    this->file_line++;
+                    this->sync_progress_max();
+                    continue; // empty line
+                }
+
+                this->file_line++;
 
                 /*
             	// Add laser cluster support when in laser mode
@@ -876,22 +944,46 @@ void Player::on_main_loop(void *argument)
             	}
 */
 
-                if (this->current_stream != nullptr) {
-                    this->current_stream->printf("%s", buf);
-                }
-
+                // O-code flow control: intercept O-prefixed lines before dispatch
                 struct SerialMessage message;
                 message.message = buf;
                 message.stream = this->current_stream == nullptr ? &(StreamOutput::NullStream) : this->current_stream;
-                message.line = played_lines + 1;
+
+                if (this->ocode_handler.process_line(buf, this->current_file_handler, message.stream, this->file_line)) {
+                    this->sync_progress_max();
+                    if (this->ocode_handler.is_skipping()) {
+                        // Fast-forwarding through a skipped block stays in this
+                        // loop without returning, so feed the watchdog periodically.
+                        uint32_t now_us = us_ticker_read();
+                        if((now_us - last_idle_us) >= 200000) {
+                            THEKERNEL->call_event(ON_IDLE);
+                            last_idle_us = now_us;
+                        }
+                        continue;
+                    }
+                    return;
+                }
+                if (this->ocode_handler.is_skipping()) {
+                    this->sync_progress_max();
+                    uint32_t now_us = us_ticker_read();
+                    if((now_us - last_idle_us) >= 200000) {
+                        THEKERNEL->call_event(ON_IDLE);
+                        last_idle_us = now_us;
+                    }
+                    continue;
+                }
+
+                if (this->current_stream != nullptr) {
+                    this->current_stream->printf("%s", buf);
+                }
+                message.line = this->file_line;
 
                 // waits for the queue to have enough room
                 // this->current_stream->printf("Run: %s", buf);
                 THEKERNEL->call_event(ON_CONSOLE_LINE_RECEIVED, &message);
                 // fputs(buf, this->temp_file_handler);
                 // THEKERNEL->streams->printf("0-[Line: %d] %s\n", message.line, buf);
-                played_lines += 1;
-                played_cnt += len;
+                this->sync_progress_max();
                 //M335 disables line by line, M336 Enables. Pauses after every valid gcode line
                 if (THEKERNEL->get_line_by_line_exec_mode() && len > 2 && buf[0] != ';' && buf[0] != '('){
                     this->suspend_command("", THEKERNEL->streams);
@@ -913,10 +1005,12 @@ void Player::on_main_loop(void *argument)
         this->last_filename = this->filename;
         this->has_last_progress = true;
 
+        this->ocode_handler.reset();
         this->playing_file = false;
         this->filename = "";
         played_cnt = 0;
         played_lines = 0;
+        file_line = 0;
         playing_lines = 0;
         goto_line = 0;
         file_size = 0;
