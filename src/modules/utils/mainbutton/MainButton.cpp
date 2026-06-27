@@ -23,6 +23,8 @@
 #include "Gcode.h"
 #include "modules/robot/Conveyor.h"
 #include "MainButtonLed.h"
+#include "StepperMotor.h"
+#include "Robot.h"
 
 using namespace std;
 
@@ -175,7 +177,6 @@ void MainButton::on_second_tick(void *)
 
 void MainButton::on_idle(void *argument)
 {
-	bool cover_open_stop = false;
 	bool e_stop_pressed = this->e_stop.get();
     if (e_stop_pressed || button_state == BUTTON_LED_UPDATE || button_state == BUTTON_SHORT_PRESSED || button_state == BUTTON_LONG_PRESSED) {
     	// get current status
@@ -184,26 +185,6 @@ void MainButton::on_idle(void *argument)
     	    THEKERNEL->set_halt_reason(E_STOP);
     	    THEKERNEL->call_event(ON_HALT, nullptr);
     	}
-		if (this->stop_on_cover_open && !THEKERNEL->is_halted()) {
-            void *return_value;
-			bool cover_endstop_state;
-            bool ok = PublicData::get_value( player_checksum, is_playing_checksum, &return_value );
-            if (ok) {
-                bool playing = *static_cast<bool *>(return_value);
-                if (playing) {
-                	ok = PublicData::get_value(endstops_checksum, get_cover_endstop_state_checksum, 0, &cover_endstop_state);
-					if (ok) {
-						if (!cover_endstop_state) {
-							if (THEKERNEL->get_state() != TOOL)
-							{
-								cover_open_stop = true;
-							}
-							
-						}
-					}
-                }
-            }
-		}
 		// turn on/off power fan with delay
 		if ((state == IDLE || state == SLEEP) && !using_12v) {
     		// reset sleep timer
@@ -471,10 +452,6 @@ void MainButton::on_idle(void *argument)
 	        	}
 
 		    }*/
-    		if (cover_open_stop) {
-		        THEKERNEL->set_halt_reason(COVER_OPEN);
-		        THEKERNEL->call_event(ON_HALT, nullptr);
-    		}
     	}
     	button_state = NONE;
     }
@@ -486,6 +463,26 @@ void MainButton::on_idle(void *argument)
 // otherwise it will look for a 2 second press on the kill button to unkill if unkill is set
 uint32_t MainButton::button_tick(uint32_t dummy)
 {
+	bool cover_open_stop = false;
+	if (this->stop_on_cover_open && !THEKERNEL->is_halted()) {
+		void *return_value;
+		bool cover_endstop_state;
+
+
+		bool ok = PublicData::get_value(endstops_checksum, get_cover_endstop_state_checksum, 0, &cover_endstop_state);
+		if (ok && !cover_endstop_state) {
+			for (size_t i = 0; i < 4; i++) {
+				if(THEROBOT->actuators[i]->is_moving()){
+					cover_open_stop = true;
+					THEKERNEL->set_halt_reason(COVER_OPEN);
+					THEKERNEL->call_event(ON_HALT, nullptr);
+					break;
+				}
+			}
+		}
+
+	}
+
 	if (this->main_button.get()) {
 		if (!this->button_pressed) {
 			// button down
