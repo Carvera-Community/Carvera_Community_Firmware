@@ -194,14 +194,7 @@ void MainButton::on_idle(void *argument)
                 	ok = PublicData::get_value(endstops_checksum, get_cover_endstop_state_checksum, 0, &cover_endstop_state);
 					if (ok) {
 						if (!cover_endstop_state) {
-							if(THEKERNEL->factory_set->FuncSetting & (1<<2))	//ATC 
-							{
-								cover_open_stop = true;
-							}
-							else
-							{								
-								uint8_t state = THEKERNEL->get_state();
-								if( state != TOOL)
+								if (THEKERNEL->get_state() != TOOL)
 								{
 									cover_open_stop = true;
 								}
