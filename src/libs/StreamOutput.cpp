@@ -58,7 +58,7 @@ int StreamOutput::printf(const char *format, ...)
     }
     va_end(args);
 
-    if (false) {
+    if (protocol() == PROTOCOL_SMOOTHIE) {
         puts(buffer, strlen(buffer));
     } else {
         PacketMessage(PTYPE_NORMAL_INFO, buffer, strlen(buffer));

@@ -1337,5 +1337,8 @@ int WifiProvider::type() {
 	return 1;
 }
 
+ProtocolMode WifiProvider::protocol(){
+	return THEKERNEL->cur_comm_protocol;
+}
 
 
