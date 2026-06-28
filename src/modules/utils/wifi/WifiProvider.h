@@ -45,6 +45,7 @@ public:
     bool ready();
     bool has_char(char letter);
     int type(); // 0: serial, 1: wifi
+    ProtocolMode protocol();
     void reset(void){ptrData=0;ptr_xbuff=0;currentState = WAIT_HEADER;};
     int printfcmd(const char cmd, const char *format, ...);
     int printf(const char *format, ...) __attribute__ ((format(printf, 2, 3)));
