@@ -59,11 +59,21 @@ extern SDFAT mounter;
 unsigned char xbuff[XBUFF_LENGTH] LOCATED_IN_AHBSRAM; /* 2 for data length, 8192 for XModem + 3 head chars + 2 crc + nul */
 unsigned char fbuff[4096] LOCATED_IN_AHBSRAM;
 
+// used for XMODEM - smoothie
+#define SOH  0x01
+#define STX  0x02
+#define EOT  0x04
+#define ACK  0x06
+#define NAK  0x15
+#define CAN  0x16 //0x18
+#define CTRLZ 0x1A
+
+
 char error_msg[64] LOCATED_IN_AHBSRAM;
 char md5buf[64] LOCATED_IN_AHBSRAM;
 extern const unsigned short crc_table[256];
 
-// used for XMODEM
+// used for XMODEM 
 #define WAIT_MD5  0x01
 #define WAIT_FILE_VIEW  0x02
 #define READ_FILE_DATA  0x03
@@ -741,6 +751,20 @@ void Player::abort_command( string parameters, StreamOutput *stream )
 
     this->current_stream = NULL;
 
+    //smoothie
+    this->playing_file = false;
+    this->played_cnt = 0;
+    this->played_lines = 0;
+    this->file_line = 0;
+    this->playing_lines = 0;
+    this->goto_line = 0;
+    this->file_size = 0;
+    this->clear_buffered_queue();
+    this->clear_macro_file_queue();
+    this->ocode_handler.reset();
+    this->filename = "";
+    // end smoothie
+
     fwfs::fclose(current_file_handler);
     current_file_handler = NULL;
 
@@ -750,45 +774,75 @@ void Player::abort_command( string parameters, StreamOutput *stream )
     // wait for queue to empty
     THEKERNEL->conveyor->wait_for_idle();
 
-    if(THEKERNEL->is_halted()) {
-        THEKERNEL->streams->printf("Aborted by halt\n");
+
+    if (THEKERNEL->cur_comm_protocol == PROTOCOL_SMOOTHIE) {
+         if(THEKERNEL->is_halted()) {
+            THEKERNEL->streams->printf("Aborted by halt\n");
+            THEKERNEL->set_waiting(false);
+            return;
+        }
+
         THEKERNEL->set_waiting(false);
-        this->playing_file = false;
-	    this->played_cnt = 0;
-	    this->played_lines = 0;
-	    this->playing_lines = 0;
-	    this->goto_line = 0;
-	    this->file_size = 0;
-	    this->clear_buffered_queue();
-	    this->filename = "";
-    }
-    else
-    {
-		THEKERNEL->set_waiting(false);
-	    // turn off spindle
-	    {
-			struct SerialMessage message;
-			message.message = "M5";
-			message.stream = THEKERNEL->streams;
-			message.line = 0;
-			THEKERNEL->call_event(ON_CONSOLE_LINE_RECEIVED, &message);
-	    }
-	    if (parameters.empty()) {
-	        // clear out the block queue, will wait until queue is empty
-	        // MUST be called in on_main_loop to make sure there are no blocked main loops waiting to put something on the queue
-	        THEKERNEL->conveyor->flush_queue();
-	        // now the position will think it is at the last received pos, so we need to do FK to get the actuator position and reset the current position
-	        THEROBOT->reset_position_from_current_actuator_position();
-	        stream->printf("Aborted playing or paused file. \r\n");
-	    }    
-	    this->playing_file = false;
-	    this->played_cnt = 0;
-	    this->played_lines = 0;
-	    this->playing_lines = 0;
-	    this->goto_line = 0;
-	    this->file_size = 0;
-	    this->clear_buffered_queue();
-	    this->filename = "";
+
+        // turn off spindle
+        {
+            struct SerialMessage message;
+            message.message = "M5";
+            message.stream = THEKERNEL->streams;
+            message.line = 0;
+            THEKERNEL->call_event(ON_CONSOLE_LINE_RECEIVED, &message);
+        }
+
+        if (parameters.empty()) {
+            // clear out the block queue, will wait until queue is empty
+            // MUST be called in on_main_loop to make sure there are no blocked main loops waiting to put something on the queue
+            THEKERNEL->conveyor->flush_queue();
+
+            // now the position will think it is at the last received pos, so we need to do FK to get the actuator position and reset the current position
+            THEROBOT->reset_position_from_current_actuator_position();
+            stream->printf("Aborted playing or paused file. \r\n");
+        }
+    } else {
+        if(THEKERNEL->is_halted()) {
+            THEKERNEL->streams->printf("Aborted by halt\n");
+            THEKERNEL->set_waiting(false);
+            this->playing_file = false;
+            this->played_cnt = 0;
+            this->played_lines = 0;
+            this->playing_lines = 0;
+            this->goto_line = 0;
+            this->file_size = 0;
+            this->clear_buffered_queue();
+            this->filename = "";
+        }
+        else
+        {
+            THEKERNEL->set_waiting(false);
+            // turn off spindle
+            {
+                struct SerialMessage message;
+                message.message = "M5";
+                message.stream = THEKERNEL->streams;
+                message.line = 0;
+                THEKERNEL->call_event(ON_CONSOLE_LINE_RECEIVED, &message);
+            }
+            if (parameters.empty()) {
+                // clear out the block queue, will wait until queue is empty
+                // MUST be called in on_main_loop to make sure there are no blocked main loops waiting to put something on the queue
+                THEKERNEL->conveyor->flush_queue();
+                // now the position will think it is at the last received pos, so we need to do FK to get the actuator position and reset the current position
+                THEROBOT->reset_position_from_current_actuator_position();
+                stream->printf("Aborted playing or paused file. \r\n");
+            }    
+            this->playing_file = false;
+            this->played_cnt = 0;
+            this->played_lines = 0;
+            this->playing_lines = 0;
+            this->goto_line = 0;
+            this->file_size = 0;
+            this->clear_buffered_queue();
+            this->filename = "";
+        }
     }
 }
 
@@ -1425,6 +1479,21 @@ int Player::inbytes(StreamOutput *stream, char **buf, int size, unsigned int tim
     return -1;
 }
 
+void Player::flush_input(StreamOutput *stream)
+{
+    while (inbyte(stream, TIMEOUT_MS) >= 0)
+        continue;
+}
+
+void Player::cancel_transfer(StreamOutput *stream)
+{
+	stream->_putc(CAN);
+	//stream->_putc(CAN);
+	//stream->_putc(CAN);
+	flush_input(stream);
+}
+
+
 void Player::set_serial_rx_irq(bool enable)
 {
 	// disable serial rx irq
@@ -1438,14 +1507,21 @@ int Player::decompress(string sfilename, string dfilename, uint32_t sfilesize, S
 	uint8_t u8ReadBuffer_hdr[BLOCK_HEADER_SIZE] = { 0 };
 	uint32_t u32DcmprsSize = 0, u32BlockSize = 0, u32BlockNum = 0, u32TotalDcmprsSize = 0, i = 0,j = 0,k=0;
 	qlz_state_decompress s_stDecompressState;
-    char error_msg[80];
-	memset(error_msg, 0, sizeof(error_msg));
-	sprintf(error_msg, "decompress!");
+    char error_msg[80]; //makera
+    if (THEKERNEL->cur_comm_protocol == PROTOCOL_MAKERA) {
+        memset(error_msg, 0, sizeof(error_msg));
+        sprintf(error_msg, "decompress!");
+    }
 	f_in= fwfs::fopen(sfilename.c_str(), "rb");
 	f_out= fwfs::fopen(dfilename.c_str(), "w+");
 	if (f_in == NULL || f_out == NULL)
 	{
-        sprintf(error_msg, "Error: failed to create file [%s]!\r\n", filename.substr(0, 30).c_str());
+        if (THEKERNEL->cur_comm_protocol == PROTOCOL_SMOOTHIE) {
+            memset(fbuff, 0, sizeof(fbuff));
+		    sprintf((char*)fbuff, "Error: failed to create file [%s]!\r\n", filename.substr(0, 30).c_str());
+        } else {
+            sprintf(error_msg, "Error: failed to create file [%s]!\r\n", filename.substr(0, 30).c_str());
+        }
 		goto _exit;
 	}
 	for(i = 0; i < sfilesize-2; i+= BLOCK_HEADER_SIZE + u32BlockSize)
@@ -1455,14 +1531,18 @@ int Player::decompress(string sfilename, string dfilename, uint32_t sfilesize, S
 		u32BlockSize = u8ReadBuffer_hdr[0] * (1 << 24) + u8ReadBuffer_hdr[1] * (1 << 16) + u8ReadBuffer_hdr[2] * (1 << 8) + u8ReadBuffer_hdr[3];
 		if(!u32BlockSize)
 		{
-			sprintf(error_msg, "Error: decompress file error,bad block num.");
+            if (THEKERNEL->cur_comm_protocol == PROTOCOL_SMOOTHIE) {
+			    sprintf(error_msg, "Error: decompress file error,bad block num.");
+            }
             goto _exit;
 		}
 		fwfs::fread(xbuff, sizeof(char), u32BlockSize, f_in);
 		u32DcmprsSize = qlz_decompress((const char *)xbuff, fbuff, &s_stDecompressState);
 		if(!u32DcmprsSize)
 		{
-            sprintf(error_msg, "Error: decompress file error,bad decompress size.");
+            if (THEKERNEL->cur_comm_protocol == PROTOCOL_SMOOTHIE) {
+                sprintf(error_msg, "Error: decompress file error,bad decompress size.");
+            }
 			goto _exit;
 		}
 		for(j = 0; j < u32DcmprsSize; j++)
@@ -1478,14 +1558,22 @@ int Player::decompress(string sfilename, string dfilename, uint32_t sfilesize, S
 		{
 			k=0;
 			THEKERNEL->call_event(ON_IDLE);
-			sprintf(error_msg, "#Info: decompart = %lu\r\n", u32BlockNum);
-			stream->printf(error_msg);
+            if (THEKERNEL->cur_comm_protocol == PROTOCOL_SMOOTHIE) {
+                memset(fbuff, 0, sizeof(fbuff));
+                sprintf((char*)fbuff, "#Info: decompart = %lu\r\n", u32BlockNum);
+                stream->printf((char*)fbuff);
+            } else {
+                sprintf(error_msg, "#Info: decompart = %lu\r\n", u32BlockNum);
+			    stream->printf(error_msg);
+            }
 		}
 	}
 	fwfs::fread(fbuff, sizeof(char), 2, f_in);
 	if(u16Sum != ((fbuff[0] <<8) + fbuff[1]))
 	{
-		sprintf(error_msg, "Error: decompress file sum check error.");
+        if (THEKERNEL->cur_comm_protocol == PROTOCOL_MAKERA) {
+		    sprintf(error_msg, "Error: decompress file sum check error.");
+        }
         goto _exit;
 	}
 
@@ -1493,27 +1581,50 @@ int Player::decompress(string sfilename, string dfilename, uint32_t sfilesize, S
 		fwfs::fclose(f_in);
 	if (f_out!= NULL)
 		fwfs::fclose(f_out);
-	sprintf(error_msg, "#Info: decompart = %lu\r\n", u32BlockNum);
-	stream->printf(error_msg);
+    if (THEKERNEL->cur_comm_protocol == PROTOCOL_SMOOTHIE) {
+        memset(fbuff, 0, sizeof(fbuff));
+        sprintf((char*)fbuff, "#Info: decompart = %lu\r\n", u32BlockNum);
+        stream->printf((char*)fbuff);
+    } else {
+        sprintf(error_msg, "#Info: decompart = %lu\r\n", u32BlockNum);
+        stream->printf(error_msg);
+    }
 	return 1;
 _exit:
 	if (f_in != NULL)
 		fwfs::fclose(f_in );
 	if (f_out != NULL)
 		fwfs::fclose(f_out);
-	stream->printf(error_msg);
+	if (THEKERNEL->cur_comm_protocol == PROTOCOL_SMOOTHIE) {
+        stream->printf((char*)fbuff);
+    } else {
+        stream->printf(error_msg);
+    }
 	return 0;
 }
 
 void Player::upload_command( string parameters, StreamOutput *stream )
 {
+    uint32_t u32filesize = 0;
     char *recv_buff;
+    int retry = 0;
+    int crc = 0;
+
+    //smoothie
+    unsigned char *p;
+    int retrans = MAXRETRANS;
+    int timeouts = MAXRETRANS;
+    int recv_count = 0;
+    bool md5_received = false;
+    int bufsz = 0, is_stx = 0;
+    unsigned char trychar = 'C';
+    unsigned char packetno = 1;
+    int c, len = 0;
+
+    //makera
     char FileRcvState = WAIT_MD5;
     int cmdType = 0;
-    int retry = 0;
-    uint32_t u32filesize = 0;
     int tatalretry = 0;
-    int crc = 0;
     uint32_t total_packet = 0;
     uint16_t packet_size = 0;
     uint16_t data_len = 0;
@@ -1522,6 +1633,8 @@ void Player::upload_command( string parameters, StreamOutput *stream )
     uint32_t seq;
     char buf[] = "ok\r\n";
     // open file
+    char error_msg[64]; //Smoothie
+
 	memset(error_msg, 0, sizeof(error_msg));
 	sprintf(error_msg, "Nothing!");
     string filename = absolute_from_relative(shift_parameter(parameters));
@@ -1537,7 +1650,11 @@ void Player::upload_command( string parameters, StreamOutput *stream )
     THEKERNEL->set_uploading(true);
 
     if (!THECONVEYOR->is_idle()) {
-        SendMessage(PTYPE_FILE_CAN, buf, sizeof(buf), stream);
+        if (THEKERNEL->cur_comm_protocol == PROTOCOL_SMOOTHIE) {
+            stream->_putc(EOT);
+        } else {
+            SendMessage(PTYPE_FILE_CAN, buf, sizeof(buf), stream);
+        }
         if (stream->type() == 0) {
         	set_serial_rx_irq(true);
         }
@@ -1566,223 +1683,347 @@ void Player::upload_command( string parameters, StreamOutput *stream )
 	if (start_pos != string::npos) {
 		md5_filename=md5_filename.substr(0, start_pos);
 	}
-    fd_md5 = fwfs::fopen(md5_filename.c_str(), "wb");
-    if (fd == NULL || fd_md5 == NULL) {
-        SendMessage(PTYPE_FILE_CAN, buf, sizeof(buf), stream);
-    	sprintf(error_msg, "Error: failed to open file [%s]!\r\n", fd == NULL ? filename.substr(0, 30).c_str() : md5_filename.substr(0, 30).c_str() );
-    	goto upload_error;
+
+
+    if (THEKERNEL->cur_comm_protocol == PROTOCOL_SMOOTHIE) {
+        if (filename.find("firmware.bin") == string::npos) {
+            fd_md5 = fwfs::fopen(md5_filename.c_str(), "wb");
+        }
+        if (fd == NULL || (filename.find("firmware.bin") == string::npos && fd_md5 == NULL)) {
+            stream->_putc(EOT);    
+            sprintf(error_msg, "Error: failed to open file [%s]!\r\n", fd == NULL ? filename.substr(0, 30).c_str() : md5_filename.substr(0, 30).c_str() );
+            goto upload_error;
+        }
+    } else {
+        fd_md5 = fwfs::fopen(md5_filename.c_str(), "wb");
+        if (fd == NULL || fd_md5 == NULL) {
+            SendMessage(PTYPE_FILE_CAN, buf, sizeof(buf), stream);
+            sprintf(error_msg, "Error: failed to open file [%s]!\r\n", fd == NULL ? filename.substr(0, 30).c_str() : md5_filename.substr(0, 30).c_str() );
+            goto upload_error;
+        }
     }
+
+
+    
 	
 	// stop TIMER0 and TIMER1 for save time
 	NVIC_DisableIRQ(TIMER0_IRQn);
 	NVIC_DisableIRQ(TIMER1_IRQn);
-    starttime = us_ticker_read();
-    stream->reset();
+    if (THEKERNEL->cur_comm_protocol == PROTOCOL_MAKERA) {
+        starttime = us_ticker_read();
+        stream->reset();
+    }
 
     for (;;) {
-        cmdType = inbytes(stream, &recv_buff, 0, TIMEOUT_MS);
-        if (cmdType > 0) 
-        {
-        	starttime = us_ticker_read();
-		    if ( cmdType == PTYPE_FILE_CAN )
-		    {
-		    	FileRcvState = WAIT_MD5;
-	            retry = 0;
-                sprintf(error_msg, "Info: Upload canceled by Controller!\r\n");
-				goto upload_error;
-			}
-        	switch (FileRcvState) {
-	            case WAIT_MD5:
-	                if (cmdType == PTYPE_FILE_MD5)
-	                {
-	                	fwrite(&recv_buff[3], sizeof(char), 32, fd_md5);
-				        SendMessage(PTYPE_FILE_VIEW, buf, 0, stream);	//request File view
-	                	FileRcvState = WAIT_FILE_VIEW;
-	                	retry = 0;
-	                	tatalretry = 0;
-	                }
-	                else
-	                {
-	                	retry ++;
-	                	if(retry > RETRYTIME)
-	                	{
-				        	SendMessage(PTYPE_FILE_MD5, buf, 0, stream);		//request MD5
-				        	retry = 0;
-	                		tatalretry ++;
-				        }
-				        else
-				        {
-							THEKERNEL->call_event(ON_IDLE);
-				        	continue;
-				        }
-	                }
-	                break;
-	            case WAIT_FILE_VIEW:
-	            	if (cmdType == PTYPE_FILE_VIEW)
-	                {
-	                	total_packet = (recv_buff[3]<<24) | (recv_buff[4]<<16) | (recv_buff[5]<<8) | recv_buff[6];
-	                	packet_size = (recv_buff[7]<<8) | recv_buff[8];
-	                	sequence = 1;   
-	                	xbuff[0] = (HEADER>>8)&0xFF;
-						xbuff[1] = HEADER&0xFF;
-						char len = 4 + 3;
-						xbuff[2] = (len>>8)&0xFF;
-						xbuff[3] = len&0xFF;
-						xbuff[4] = PTYPE_FILE_DATA;		
-						xbuff[5] = (sequence>>24)&0xff;
-						xbuff[6] = (sequence>>16)&0xff;
-						xbuff[7] = (sequence>>8)&0xff;
-						xbuff[8] = sequence&0xff;
-						crc = crc16_ccitt(&xbuff[2], len);
-						xbuff[len+2] = (crc>>8)&0xFF;
-						xbuff[len+3] = crc&0xFF;
-						xbuff[len+4] = (FOOTER>>8)&0xFF;
-						xbuff[len+5] = FOOTER&0xFF;
-						stream->puts((char *)xbuff, len+6);
-						FileRcvState = READ_FILE_DATA;
-	                	retry = 0;    	
-	                	tatalretry = 0;
-	                }
-	                else
-	                {
-	                	retry ++;		      
-	                	if(retry > RETRYTIME)
-	                	{
-				        	SendMessage(PTYPE_FILE_VIEW, buf, 0, stream);	//request File view
-				        	retry = 0;
-	                		tatalretry ++;		  
-				        }
-				        else
-				        {
-							THEKERNEL->call_event(ON_IDLE);
-				        	continue;
-				        }
-	                }
-	                break;
-	            case READ_FILE_DATA:
-	                seq = (recv_buff[3]<<24) | (recv_buff[4]<<16) | (recv_buff[5]<<8) | recv_buff[6];
-	                if ((cmdType == PTYPE_FILE_DATA) && (seq == sequence))
-	                {
-	                	data_len = ((recv_buff[0]<<8) | recv_buff[1]) - 7;
-	                	if(data_len > 8192)
-						{
-							sprintf(error_msg, "Error: Wrong data len:%d!,retry...\r\n",data_len);
-							stream->printf(error_msg);
-							break;
-						}
-	                	// Set the file write system buffer 4096 Byte
-			        	setvbuf(fd, (char*)fbuff, _IOFBF, 4096);
-						if( fwrite(&recv_buff[7], sizeof(char), data_len, fd) != data_len)
-						{
-							sprintf(error_msg, "Error: File Write error!retry...\r\n");
-							stream->printf(error_msg);
-							break;
-						}
-						fflush(fd);
-						u32filesize += data_len;
-						if(sequence < total_packet)
-						{
-							sequence += 1;
-							xbuff[0] = (HEADER>>8)&0xFF;
-							xbuff[1] = HEADER&0xFF;
-							char len = 4 + 3;
-							xbuff[2] = (len>>8)&0xFF;
-							xbuff[3] = len&0xFF;
-							xbuff[4] = PTYPE_FILE_DATA;		
-							xbuff[5] = (sequence>>24)&0xff;
-							xbuff[6] = (sequence>>16)&0xff;
-							xbuff[7] = (sequence>>8)&0xff;
-							xbuff[8] = sequence&0xff;
-							crc = crc16_ccitt(&xbuff[2], len);
-							xbuff[len+2] = (crc>>8)&0xFF;
-							xbuff[len+3] = crc&0xFF;
-							xbuff[len+4] = (FOOTER>>8)&0xFF;
-							xbuff[len+5] = FOOTER&0xFF;
-							stream->puts((char *)xbuff, len+6);				
-						}
-						else
-						{
-					        SendMessage(PTYPE_FILE_END, buf, 0, stream);	//the end flag of upload
-							FileRcvState = WAIT_MD5;
-	                		retry = 0;
-							goto upload_success;
-						}
-	                	retry = 0;    	
-	                	tatalretry = 0;
-	                }
-	                else
-	                {
-						retry ++;				    
-	                	if(retry > RETRYTIME)
-	                	{
-				        	xbuff[0] = (HEADER>>8)&0xFF;
-							xbuff[1] = HEADER&0xFF;
-							char len = 4 + 3;
-							xbuff[2] = (len>>8)&0xFF;
-							xbuff[3] = len&0xFF;
-							xbuff[4] = PTYPE_FILE_DATA;		
-							xbuff[5] = (sequence>>24)&0xff;
-							xbuff[6] = (sequence>>16)&0xff;
-							xbuff[7] = (sequence>>8)&0xff;
-							xbuff[8] = sequence&0xff;
-							crc = crc16_ccitt(&xbuff[2], len);
-							xbuff[len+2] = (crc>>8)&0xFF;
-							xbuff[len+3] = crc&0xFF;
-							xbuff[len+4] = (FOOTER>>8)&0xFF;
-							xbuff[len+5] = FOOTER&0xFF;
-							stream->puts((char *)xbuff, len+6);	
-							retry = 0;
-	                		tatalretry ++;    
-						}
-				        else
-				        {
-							THEKERNEL->call_event(ON_IDLE);
-				        	continue;
-				        }
-	                }
-	                break;
-	            default:
-					tatalretry ++;
-					THEKERNEL->call_event(ON_IDLE);
-                    break;
+        if (THEKERNEL->cur_comm_protocol == PROTOCOL_SMOOTHIE) {
+            for (retry = 0; retry < MAXRETRANS; ++retry) {  // approx 3 seconds allowed to make connection
+                if (trychar)
+                    stream->_putc(trychar);
+                if ((c = inbyte(stream, TIMEOUT_MS)) >= 0) {
+                    retry = 0;
+                    switch (c) {
+                    case SOH:
+                        bufsz = 128;
+                        is_stx = 0;
+                        goto start_recv;
+                    case STX:
+                        bufsz = 8192;
+                        is_stx = 1;
+                        goto start_recv;
+                    case EOT:
+                        stream->_putc(ACK);
+                        flush_input(stream);
+                        goto upload_success; /* normal end */
+                    case CAN:
+                        if ((c = inbyte(stream, TIMEOUT_MS)) == CAN) {
+                            stream->_putc(ACK);
+                            flush_input(stream);
+                            sprintf(error_msg, "Info: Upload canceled by remote!\r\n");
+                            goto upload_error;
+                        }
+                        goto upload_error;
+                        break;
+                    default:
+                        break;
+                    }
                 }
-        }
-        else
-		{
-			retry ++;
-			if(retry > RETRYTIME*10)
-	        {
-				SendMessage(PTYPE_FILE_RETRY, buf, 0, stream);	//resend the last package
-				retry = 0;				
-	        	tatalretry ++;
-				stream->reset();
-			}
-		}
-		THEKERNEL->call_event(ON_IDLE);		
-		if(tatalretry > MAXRETRANS)
-		{
-			sprintf(error_msg, "Info: Machine receive file too many retry error!\r\n");			
-	        SendMessage(PTYPE_FILE_CAN, buf, sizeof(buf), stream);
-            goto upload_error;
-        }
-        else
-		{
-			retry ++;
-			if(retry > RETRYTIME*10)
-	        {
-				SendMessage(PTYPE_FILE_RETRY, buf, 0, stream);	//resend the last package
-				retry = 0;				
-	        	tatalretry ++;
-				stream->reset();
-			}
+                else
+                {
+                    safe_delay_ms(10);
+                }
+            }
 
-		}
-		THEKERNEL->call_event(ON_IDLE);		
-		if(tatalretry > MAXRETRANS)
-		{
-			sprintf(error_msg, "Info: Machine receive file too many retry error!\r\n");			
-	        SendMessage(PTYPE_FILE_CAN, buf, sizeof(buf), stream);
+            if (trychar == 'C') {
+                trychar = NAK;
+                continue;
+            }
+            cancel_transfer(stream);
+            sprintf(error_msg, "Error: upload sync error! get char [%d], retry [%d]!\r\n", c, retry);
             goto upload_error;
+
+        start_recv:
+            if (trychar == 'C')
+                crc = 1;
+            trychar = 0;
+            p = xbuff;
+            *p++ = c;
+
+            recv_count = 1 + bufsz + (crc ? 1 : 0) + 3 + is_stx;
+
+            timeouts = MAXRETRANS;
+
+            while (recv_count > 0) {
+                c = inbytes(stream, &recv_buff, recv_count, TIMEOUT_MS);
+                if (c < 0) {
+                    safe_delay_ms(10);
+                    timeouts --;
+                    if (timeouts < 0) {
+                        goto reject;
+                    }
+                } else {
+                    timeouts = MAXRETRANS;
+                    for (int i = 0; i < c; i ++) {
+                        *p++ = recv_buff[i];
+                    }
+                    recv_count -= c;
+                }
+            }
+            len = is_stx ? (xbuff[3] << 8 | xbuff[4]) : xbuff[3];
+            if (!md5_received && xbuff[1] == 0 && xbuff[1] == (unsigned char)(~xbuff[2])
+                    && check_crc(crc, &xbuff[3], bufsz + 1 + is_stx) && len == 32) {
+                // received md5
+                if (NULL != fd_md5) {
+                    fwfs::fwrite(&xbuff[4 + is_stx], sizeof(char), 32, fd_md5);
+                }
+                THEKERNEL->call_event(ON_IDLE);
+                stream->_putc(ACK);
+                md5_received = true;
+                continue;
+            } else if (xbuff[1] == (unsigned char)(~xbuff[2]) &&
+                    xbuff[1] == packetno && check_crc(crc, &xbuff[3], bufsz + 1 + is_stx)) {
+
+                // Set the file write system buffer 4096 Byte
+                setvbuf(fd, (char*)fbuff, _IOFBF, 4096);
+                fwfs::fwrite(&xbuff[4 + is_stx], sizeof(char), len, fd);
+                u32filesize += len;
+                ++ packetno;
+                retrans = MAXRETRANS + 1;
+                THEKERNEL->call_event(ON_IDLE);
+                stream->_putc(ACK);
+                continue;
+            }
+        reject:
+            stream->_putc(NAK);
+            if (-- retrans <= 0) {
+                cancel_transfer(stream);
+                sprintf(error_msg, "Error: too many retry error!\r\n");
+                goto upload_error; /* too many retry error */
+            }
+        } else { //Makera protocol
+            cmdType = inbytes(stream, &recv_buff, 0, TIMEOUT_MS);
+            if (cmdType > 0) 
+            {
+                starttime = us_ticker_read();
+                if ( cmdType == PTYPE_FILE_CAN )
+                {
+                    FileRcvState = WAIT_MD5;
+                    retry = 0;
+                    sprintf(error_msg, "Info: Upload canceled by Controller!\r\n");
+                    goto upload_error;
+                }
+                switch (FileRcvState) {
+                    case WAIT_MD5:
+                        if (cmdType == PTYPE_FILE_MD5)
+                        {
+                            fwrite(&recv_buff[3], sizeof(char), 32, fd_md5);
+                            SendMessage(PTYPE_FILE_VIEW, buf, 0, stream);	//request File view
+                            FileRcvState = WAIT_FILE_VIEW;
+                            retry = 0;
+                            tatalretry = 0;
+                        }
+                        else
+                        {
+                            retry ++;
+                            if(retry > RETRYTIME)
+                            {
+                                SendMessage(PTYPE_FILE_MD5, buf, 0, stream);		//request MD5
+                                retry = 0;
+                                tatalretry ++;
+                            }
+                            else
+                            {
+                                THEKERNEL->call_event(ON_IDLE);
+                                continue;
+                            }
+                        }
+                        break;
+                    case WAIT_FILE_VIEW:
+                        if (cmdType == PTYPE_FILE_VIEW)
+                        {
+                            total_packet = (recv_buff[3]<<24) | (recv_buff[4]<<16) | (recv_buff[5]<<8) | recv_buff[6];
+                            packet_size = (recv_buff[7]<<8) | recv_buff[8];
+                            sequence = 1;   
+                            xbuff[0] = (HEADER>>8)&0xFF;
+                            xbuff[1] = HEADER&0xFF;
+                            char len = 4 + 3;
+                            xbuff[2] = (len>>8)&0xFF;
+                            xbuff[3] = len&0xFF;
+                            xbuff[4] = PTYPE_FILE_DATA;		
+                            xbuff[5] = (sequence>>24)&0xff;
+                            xbuff[6] = (sequence>>16)&0xff;
+                            xbuff[7] = (sequence>>8)&0xff;
+                            xbuff[8] = sequence&0xff;
+                            crc = crc16_ccitt(&xbuff[2], len);
+                            xbuff[len+2] = (crc>>8)&0xFF;
+                            xbuff[len+3] = crc&0xFF;
+                            xbuff[len+4] = (FOOTER>>8)&0xFF;
+                            xbuff[len+5] = FOOTER&0xFF;
+                            stream->puts((char *)xbuff, len+6);
+                            FileRcvState = READ_FILE_DATA;
+                            retry = 0;    	
+                            tatalretry = 0;
+                        }
+                        else
+                        {
+                            retry ++;		      
+                            if(retry > RETRYTIME)
+                            {
+                                SendMessage(PTYPE_FILE_VIEW, buf, 0, stream);	//request File view
+                                retry = 0;
+                                tatalretry ++;		  
+                            }
+                            else
+                            {
+                                THEKERNEL->call_event(ON_IDLE);
+                                continue;
+                            }
+                        }
+                        break;
+                    case READ_FILE_DATA:
+                        seq = (recv_buff[3]<<24) | (recv_buff[4]<<16) | (recv_buff[5]<<8) | recv_buff[6];
+                        if ((cmdType == PTYPE_FILE_DATA) && (seq == sequence))
+                        {
+                            data_len = ((recv_buff[0]<<8) | recv_buff[1]) - 7;
+                            if(data_len > 8192)
+                            {
+                                sprintf(error_msg, "Error: Wrong data len:%d!,retry...\r\n",data_len);
+                                stream->printf(error_msg);
+                                break;
+                            }
+                            // Set the file write system buffer 4096 Byte
+                            setvbuf(fd, (char*)fbuff, _IOFBF, 4096);
+                            if( fwrite(&recv_buff[7], sizeof(char), data_len, fd) != data_len)
+                            {
+                                sprintf(error_msg, "Error: File Write error!retry...\r\n");
+                                stream->printf(error_msg);
+                                break;
+                            }
+                            fflush(fd);
+                            u32filesize += data_len;
+                            if(sequence < total_packet)
+                            {
+                                sequence += 1;
+                                xbuff[0] = (HEADER>>8)&0xFF;
+                                xbuff[1] = HEADER&0xFF;
+                                char len = 4 + 3;
+                                xbuff[2] = (len>>8)&0xFF;
+                                xbuff[3] = len&0xFF;
+                                xbuff[4] = PTYPE_FILE_DATA;		
+                                xbuff[5] = (sequence>>24)&0xff;
+                                xbuff[6] = (sequence>>16)&0xff;
+                                xbuff[7] = (sequence>>8)&0xff;
+                                xbuff[8] = sequence&0xff;
+                                crc = crc16_ccitt(&xbuff[2], len);
+                                xbuff[len+2] = (crc>>8)&0xFF;
+                                xbuff[len+3] = crc&0xFF;
+                                xbuff[len+4] = (FOOTER>>8)&0xFF;
+                                xbuff[len+5] = FOOTER&0xFF;
+                                stream->puts((char *)xbuff, len+6);				
+                            }
+                            else
+                            {
+                                SendMessage(PTYPE_FILE_END, buf, 0, stream);	//the end flag of upload
+                                FileRcvState = WAIT_MD5;
+                                retry = 0;
+                                goto upload_success;
+                            }
+                            retry = 0;    	
+                            tatalretry = 0;
+                        }
+                        else
+                        {
+                            retry ++;				    
+                            if(retry > RETRYTIME)
+                            {
+                                xbuff[0] = (HEADER>>8)&0xFF;
+                                xbuff[1] = HEADER&0xFF;
+                                char len = 4 + 3;
+                                xbuff[2] = (len>>8)&0xFF;
+                                xbuff[3] = len&0xFF;
+                                xbuff[4] = PTYPE_FILE_DATA;		
+                                xbuff[5] = (sequence>>24)&0xff;
+                                xbuff[6] = (sequence>>16)&0xff;
+                                xbuff[7] = (sequence>>8)&0xff;
+                                xbuff[8] = sequence&0xff;
+                                crc = crc16_ccitt(&xbuff[2], len);
+                                xbuff[len+2] = (crc>>8)&0xFF;
+                                xbuff[len+3] = crc&0xFF;
+                                xbuff[len+4] = (FOOTER>>8)&0xFF;
+                                xbuff[len+5] = FOOTER&0xFF;
+                                stream->puts((char *)xbuff, len+6);	
+                                retry = 0;
+                                tatalretry ++;    
+                            }
+                            else
+                            {
+                                THEKERNEL->call_event(ON_IDLE);
+                                continue;
+                            }
+                        }
+                        break;
+                    default:
+                        tatalretry ++;
+                        THEKERNEL->call_event(ON_IDLE);
+                        break;
+                    }
+            }
+            else
+            {
+                retry ++;
+                if(retry > RETRYTIME*10)
+                {
+                    SendMessage(PTYPE_FILE_RETRY, buf, 0, stream);	//resend the last package
+                    retry = 0;				
+                    tatalretry ++;
+                    stream->reset();
+                }
+            }
+            THEKERNEL->call_event(ON_IDLE);		
+            if(tatalretry > MAXRETRANS)
+            {
+                sprintf(error_msg, "Info: Machine receive file too many retry error!\r\n");			
+                SendMessage(PTYPE_FILE_CAN, buf, sizeof(buf), stream);
+                goto upload_error;
+            }
+            else
+            {
+                retry ++;
+                if(retry > RETRYTIME*10)
+                {
+                    SendMessage(PTYPE_FILE_RETRY, buf, 0, stream);	//resend the last package
+                    retry = 0;				
+                    tatalretry ++;
+                    stream->reset();
+                }
+
+            }
+            THEKERNEL->call_event(ON_IDLE);		
+            if(tatalretry > MAXRETRANS)
+            {
+                sprintf(error_msg, "Info: Machine receive file too many retry error!\r\n");			
+                SendMessage(PTYPE_FILE_CAN, buf, sizeof(buf), stream);
+                goto upload_error;
+            }
         }
     }
 upload_error:
@@ -1800,6 +2041,9 @@ upload_error:
 		fd_md5 = NULL;
 		fwfs::remove(md5_filename.c_str());
 	}
+    if (THEKERNEL->cur_comm_protocol == PROTOCOL_SMOOTHIE) {
+        flush_input(stream);
+    } 
     if (stream->type() == 0) {
     	set_serial_rx_irq(true);
     }
@@ -1819,6 +2063,9 @@ upload_success:
 		fwfs::fclose(fd_md5);
 		fd_md5 = NULL;
 	}
+    if (THEKERNEL->cur_comm_protocol == PROTOCOL_SMOOTHIE) {
+        flush_input(stream);
+    } 
 
     THEKERNEL->set_uploading(false);
 	//if file is lzCompress file,then need to Decompress
@@ -1829,7 +2076,9 @@ upload_success:
 		desfilename=filename.substr(0, start_pos);
 		if(!decompress(srcfilename,desfilename,u32filesize,stream))
         {
-            sprintf(error_msg, "error: error in decompressing file!\r\n");	
+            if (THEKERNEL->cur_comm_protocol == PROTOCOL_MAKERA) { 
+                sprintf(error_msg, "error: error in decompressing file!\r\n");	
+            }
 			goto upload_error;
         }
     }
@@ -1849,9 +2098,15 @@ void Player::test_command( string parameters, StreamOutput* stream ) {
 	FILE *fd = fwfs::fopen(filename.c_str(), "rb");
 	if (NULL != fd) {
         MD5 md5;
+        uint8_t smoothie_md5_buf[64];
         do {
-            size_t n = fwfs::fread(md5buf, 1, sizeof(md5buf), fd);
-            if (n > 0) md5.update(md5buf, n);
+            if (THEKERNEL->cur_comm_protocol == PROTOCOL_SMOOTHIE) { 
+                size_t n = fwfs::fread(smoothie_md5_buf, 1, sizeof(smoothie_md5_buf), fd);
+                if (n > 0) md5.update(smoothie_md5_buf, n);
+            } else {
+                size_t n = fwfs::fread(md5buf, 1, sizeof(md5buf), fd);
+                if (n > 0) md5.update(md5buf, n);
+            }
             THEKERNEL->call_event(ON_IDLE);
         } while (!fwfs::feof(fd));
         strcpy(md5_str, md5.finalize().hexdigest().c_str());
@@ -1862,24 +2117,40 @@ void Player::test_command( string parameters, StreamOutput* stream ) {
 
 void Player::download_command( string parameters, StreamOutput *stream )
 {
+    int c = 0;
+    int bufsz = 8192;
+    int crc = 0;
+
+    //smoothie
+    
+    int is_stx = 1;
+    unsigned char smooth_packetno = 0;
+    int i = 0;
+    int retry = 0;
+    bool resend = true;
+
+    //makera
 	long packetno = 0;
     long file_size = 0;
     long filesendseq = 0;
     char lastcmd = 0;
     char *recv_buff;
     char errorcmd = 0;
-    int bufsz = 8192;
     int cmd = 0;
-    int c = 0;
+    
     unsigned int len;
-    int crc = 0;
     uint32_t starttime;
     bool beretry = false;
     char buf[] = "ok\r\n";
 
     // open file
+    char error_msg[64]; //Smoothie
+    unsigned char md5_sent = 0; //smoothie
+
 	memset(error_msg, 0, sizeof(error_msg));
-    sprintf(error_msg, "Nothing!");
+    if (THEKERNEL->cur_comm_protocol == PROTOCOL_MAKERA) { 
+        sprintf(error_msg, "Nothing!");
+    }
     string filename = absolute_from_relative(shift_parameter(parameters));
     string md5_filename = change_to_md5_path(filename);
     string lz_filename = change_to_lz_path(filename);
@@ -1887,13 +2158,20 @@ void Player::download_command( string parameters, StreamOutput *stream )
 	// diasble irq
     if (stream->type() == 0) {
     	bufsz = 128;
+        if (THEKERNEL->cur_comm_protocol == PROTOCOL_SMOOTHIE) { 
+            is_stx = 0;
+        }
     	set_serial_rx_irq(false);
     }
     THEKERNEL->set_uploading(true);
 
     if (!THECONVEYOR->is_idle()) {
-        SendMessage(PTYPE_FILE_CAN, buf, sizeof(buf), stream);
-		stream->printf("error: Machine is busy.\r\n");
+        if (THEKERNEL->cur_comm_protocol == PROTOCOL_SMOOTHIE) {
+            cancel_transfer(stream);
+        } else {
+            SendMessage(PTYPE_FILE_CAN, buf, sizeof(buf), stream);
+		    stream->printf("error: Machine is busy.\r\n");
+        }
         if (stream->type() == 0) {
         	set_serial_rx_irq(true);
         }
@@ -1904,141 +2182,285 @@ void Player::download_command( string parameters, StreamOutput *stream )
         
         return;
     }
-
-    memset(md5buf, 0, sizeof(md5buf));
+    char md5[64]; //Smoothie need to replace with md5buf
+    if (THEKERNEL->cur_comm_protocol == PROTOCOL_SMOOTHIE) {
+        memset(md5, 0, sizeof(md5));
+    } else {
+        memset(md5buf, 0, sizeof(md5buf));
+    }
+    
 
     FILE *fd = fwfs::fopen(md5_filename.c_str(), "rb");
     if (fd != NULL) {
-        fwfs::fread(md5buf, sizeof(char), 64, fd);
+        if (THEKERNEL->cur_comm_protocol == PROTOCOL_SMOOTHIE) {
+            fwfs::fread(md5, sizeof(char), 64, fd);
+        } else {
+            fwfs::fread(md5buf, sizeof(char), 64, fd);
+        }
         fwfs::fclose(fd);
         fd = NULL;
     } else {
-    	strcpy(md5buf, this->md5_str);
+        if (THEKERNEL->cur_comm_protocol == PROTOCOL_SMOOTHIE) {
+            strcpy(md5, this->md5_str);
+        } else {
+            strcpy(md5buf, this->md5_str);
+        }
     }
 	
 	fd = fwfs::fopen(lz_filename.c_str(), "rb");		//first try to open /.lz/filename
 	if (NULL == fd) {	
 	    fd = fwfs::fopen(filename.c_str(), "rb");
 	    if (NULL == fd) {
-		    SendMessage(PTYPE_FILE_CAN, buf, sizeof(buf), stream);
+            if (THEKERNEL->cur_comm_protocol == PROTOCOL_SMOOTHIE) {
+                cancel_transfer(stream);
+            } else {
+                SendMessage(PTYPE_FILE_CAN, buf, sizeof(buf), stream);
+            }
 			sprintf(error_msg, "Error: failed to open file [%s]!\r\n", filename.substr(0, 30).c_str());
 			goto download_error;
 	    }
 	}
-    stream->reset();
-	starttime = us_ticker_read();
-	//Send MD5 first
-	SendMessage(PTYPE_FILE_MD5, md5buf, 0, stream);
-	lastcmd = PTYPE_FILE_MD5;
+
+
+    if (THEKERNEL->cur_comm_protocol == PROTOCOL_MAKERA) {
+        stream->reset();
+        starttime = us_ticker_read();
+        //Send MD5 first
+        SendMessage(PTYPE_FILE_MD5, md5buf, 0, stream);
+        lastcmd = PTYPE_FILE_MD5;
+    }
+
+
+
 
     for(;;) {
-		cmd = inbytes(stream, &recv_buff, 0, TIMEOUT_MS);
-		if (cmd > 0) {			
-			starttime = us_ticker_read();
-			if( cmd == PTYPE_FILE_RETRY)
-			{
-				cmd = lastcmd;
-				beretry = true;
-			}		
-			switch (cmd) {
-                case PTYPE_FILE_MD5:         
-					SendMessage(PTYPE_FILE_MD5, md5buf, 0, stream);
-					lastcmd = PTYPE_FILE_MD5;
-					errorcmd = 0;
-                    break;
-                case PTYPE_FILE_VIEW:
-                	fwfs::fseek(fd, 0, SEEK_END);
-					file_size = fwfs::ftell(fd);
-					rewind(fd);
-					packetno = file_size/bufsz + ((file_size%bufsz) >0 ? 1: 0) ;	
-					xbuff[0] = (HEADER>>8)&0xFF;
-					xbuff[1] = HEADER&0xFF;
-					len = 6 + 3;
-					xbuff[2] = (len>>8)&0xFF;
-					xbuff[3] = len&0xFF;
-					xbuff[4] = PTYPE_FILE_VIEW;					
-					xbuff[5] = (packetno>>24)&0xff;
-					xbuff[6] = (packetno>>16)&0xff;
-					xbuff[7] = (packetno>>8)&0xff;
-					xbuff[8] = packetno&0xff;
-					xbuff[9] = (bufsz>>8)&0xff;
-					xbuff[10] = bufsz&0xff;
-					crc = crc16_ccitt(&xbuff[2], len);
-					xbuff[6+5] = (crc>>8)&0xFF;
-					xbuff[6+6] = crc&0xFF;
-					xbuff[6+7] = (FOOTER>>8)&0xFF;
-					xbuff[6+8] = FOOTER&0xFF;
-					stream->puts((char *)xbuff, len+6);
-					lastcmd = PTYPE_FILE_VIEW;
-					errorcmd = 0;
-                    break;
-                case PTYPE_FILE_DATA:
-                	if( !beretry )
-						filesendseq = recv_buff[3]<<24 | recv_buff[4]<<16 | recv_buff[5]<<8 | recv_buff[6];
-					xbuff[0] = (HEADER>>8)&0xFF;
-					xbuff[1] = HEADER&0xFF;
-					xbuff[4] = PTYPE_FILE_DATA;
-					xbuff[5] = (filesendseq >>24) & 0xff;
-					xbuff[6] = (filesendseq >>16) & 0xff;
-					xbuff[7] = (filesendseq >>8) & 0xff;
-					xbuff[8] = filesendseq & 0xff;
-					fwfs::fseek(fd, (filesendseq-1)*bufsz, SEEK_SET);
-					c = fwfs::fread(&xbuff[9], sizeof(char), bufsz, fd);
-					if (c <= 0) {
-						sprintf(error_msg, "Error: Machine read file error!\r\n");
-						SendMessage(PTYPE_FILE_CAN, buf, sizeof(buf), stream);
-						goto download_error;
-					}                	
-					len = c + 7;
-					xbuff[2] = (len>>8)&0xFF;
-					xbuff[3] = len&0xFF;
-					crc = crc16_ccitt(&xbuff[2], len);
-					xbuff[c+9] = (crc>>8)&0xFF;
-					xbuff[c+10] = crc&0xFF;
-					xbuff[c+11] = (FOOTER>>8)&0xFF;
-					xbuff[c+12] = FOOTER&0xFF;
-					stream->puts((char *)xbuff, len+6);
-					lastcmd = PTYPE_FILE_DATA;
-					errorcmd = 0;
-					beretry = false;
-                    break;
-                case PTYPE_FILE_END:
-                    SendMessage(PTYPE_FILE_END, buf, 0, stream);
-					errorcmd = 0;
-                    goto download_success; /* normal end */
-                    break;
-                case PTYPE_FILE_CAN:
-                	sprintf(error_msg, "Info: Download canceled by Controller!\r\n");
-					errorcmd = 0;
-                    goto download_error;
-                    break;
-                default:                	
-					errorcmd ++;
-					THEKERNEL->call_event(ON_IDLE);
-                    break;
-            }
-		}
-        else
-		{
-			if(us_ticker_read()-starttime > 29000000)
-			{
-				sprintf(error_msg, "Error: Machine received cmd timeout!\r\n");
-				SendMessage(PTYPE_FILE_CAN, buf, sizeof(buf), stream);
+        if (THEKERNEL->cur_comm_protocol == PROTOCOL_SMOOTHIE) {
+            for (retry = 0; retry < MAXRETRANS; ++retry) {
+                if ((c = inbyte(stream, TIMEOUT_MS)) >= 0) {
+                    retry = 0;
+                    switch (c) {
+                    case 'C':
+                        crc = 1;
+                        goto start_trans;
+                    case NAK:
+                        crc = 0;
+                        goto start_trans;
+                    case CAN:
+                        if ((c = inbyte(stream, TIMEOUT_MS)) == CAN) {
+                            stream->_putc(ACK);
+                            flush_input(stream);
+                            sprintf(error_msg, "Info: canceled by remote!\r\n");
+                            goto download_error;
+                        }
+                        break;
+                    default:
+                        break;
+                    }
+                }
+                else {
+				    safe_delay_ms(10);
+			    }
+
+
+                }
+            cancel_transfer(stream);
+            sprintf(error_msg, "Error: download sync error! get char [%02X], retry [%d]!\r\n", c, retry);
+            goto download_error;
+
+            for(;;) {
+            start_trans:
+                if (smooth_packetno == 0 && md5_sent == 0) {
+                    c = strlen(md5);
+                    memcpy(&xbuff[4 + is_stx], md5, c);
+                    md5_sent = 1;
+                } else {
+                    c = fwfs::fread(&xbuff[4 + is_stx], sizeof(char), bufsz, fd);
+                    if (c <= 0) {
+                        for (retry = 0; retry < MAXRETRANS; ++retry) {
+                            stream->_putc(EOT);
+                            if ((c = inbyte(stream, TIMEOUT_MS)) == ACK) break;
+                        }
+                        flush_input(stream);
+                        if (c == ACK) {
+                            goto download_success;
+                        } else {
+                            sprintf(error_msg, "Error: get finish ACK error!\r\n");
+                            goto download_error;
+                        }
+                    }
+                }
+                xbuff[0] = is_stx ? STX : SOH;
+                xbuff[1] = smooth_packetno;
+                xbuff[2] = ~smooth_packetno;
+                xbuff[3] = is_stx ? c >> 8 : c;
+                if (is_stx) {
+                    xbuff[4] = c & 0xff;
+                }
+                if (c < bufsz) {
+                    memset(&xbuff[4 + is_stx + c], CTRLZ, bufsz - c);
+                }
+
+                if (crc) {
+                    unsigned short ccrc = crc16_ccitt(&xbuff[3], bufsz + 1 + is_stx);
+                    xbuff[bufsz + 4 + is_stx] = (ccrc >> 8) & 0xFF;
+                    xbuff[bufsz + 5 + is_stx] = ccrc & 0xFF;
+                } else {
+                    unsigned char ccks = 0;
+                    for (i = 3; i < bufsz + 1 + is_stx; ++i) {
+                        ccks += xbuff[i];
+                    }
+                    xbuff[bufsz + 4 + is_stx] = ccks;
+                }
+
+                resend = true;
+                for (retry = 0; retry < MAXRETRANS; ++retry) {
+                    if (resend) {
+                        stream->puts((char *)xbuff, bufsz + 5 + is_stx + (crc ? 1:0));
+                        resend = false;
+                    }
+                    if ((c = inbyte(stream, TIMEOUT_MS)) >= 0 ) {
+                        retry = 0;
+                        switch (c) {
+                        case ACK:
+                            ++smooth_packetno;
+                            goto start_trans;
+                        case CAN:
+                            if ((c = inbyte(stream, TIMEOUT_MS)) == CAN) {
+                                stream->_putc(ACK);
+                                flush_input(stream);
+                                sprintf(error_msg, "Info: canceled by remote!\r\n");
+                                goto download_error;
+                            }
+                            break;
+                        case NAK:
+                            resend = true;
+                        default:
+                            break;
+                        }
+                    }
+                    else
+                    {
+                        safe_delay_ms(500);
+                    }
+
+                }
+
+                cancel_transfer(stream);
+                sprintf(error_msg, "Error: transmit error, char: [%d], retry: [%d]!\r\n", c, retry);
                 goto download_error;
             }
-		}
-		if ( errorcmd > MAXRETRANS)
-		{
-			sprintf(error_msg, "Error: Machine received too many wrong command!\r\n");
-			SendMessage(PTYPE_FILE_CAN, buf, sizeof(buf), stream);
-            goto download_error;
-		}
-	}
+        } else{
+            cmd = inbytes(stream, &recv_buff, 0, TIMEOUT_MS);
+            if (cmd > 0) {			
+                starttime = us_ticker_read();
+                if( cmd == PTYPE_FILE_RETRY)
+                {
+                    cmd = lastcmd;
+                    beretry = true;
+                }		
+                switch (cmd) {
+                    case PTYPE_FILE_MD5:         
+                        SendMessage(PTYPE_FILE_MD5, md5buf, 0, stream);
+                        lastcmd = PTYPE_FILE_MD5;
+                        errorcmd = 0;
+                        break;
+                    case PTYPE_FILE_VIEW:
+                        fwfs::fseek(fd, 0, SEEK_END);
+                        file_size = fwfs::ftell(fd);
+                        rewind(fd);
+                        packetno = file_size/bufsz + ((file_size%bufsz) >0 ? 1: 0) ;	
+                        xbuff[0] = (HEADER>>8)&0xFF;
+                        xbuff[1] = HEADER&0xFF;
+                        len = 6 + 3;
+                        xbuff[2] = (len>>8)&0xFF;
+                        xbuff[3] = len&0xFF;
+                        xbuff[4] = PTYPE_FILE_VIEW;					
+                        xbuff[5] = (packetno>>24)&0xff;
+                        xbuff[6] = (packetno>>16)&0xff;
+                        xbuff[7] = (packetno>>8)&0xff;
+                        xbuff[8] = packetno&0xff;
+                        xbuff[9] = (bufsz>>8)&0xff;
+                        xbuff[10] = bufsz&0xff;
+                        crc = crc16_ccitt(&xbuff[2], len);
+                        xbuff[6+5] = (crc>>8)&0xFF;
+                        xbuff[6+6] = crc&0xFF;
+                        xbuff[6+7] = (FOOTER>>8)&0xFF;
+                        xbuff[6+8] = FOOTER&0xFF;
+                        stream->puts((char *)xbuff, len+6);
+                        lastcmd = PTYPE_FILE_VIEW;
+                        errorcmd = 0;
+                        break;
+                    case PTYPE_FILE_DATA:
+                        if( !beretry )
+                            filesendseq = recv_buff[3]<<24 | recv_buff[4]<<16 | recv_buff[5]<<8 | recv_buff[6];
+                        xbuff[0] = (HEADER>>8)&0xFF;
+                        xbuff[1] = HEADER&0xFF;
+                        xbuff[4] = PTYPE_FILE_DATA;
+                        xbuff[5] = (filesendseq >>24) & 0xff;
+                        xbuff[6] = (filesendseq >>16) & 0xff;
+                        xbuff[7] = (filesendseq >>8) & 0xff;
+                        xbuff[8] = filesendseq & 0xff;
+                        fwfs::fseek(fd, (filesendseq-1)*bufsz, SEEK_SET);
+                        c = fwfs::fread(&xbuff[9], sizeof(char), bufsz, fd);
+                        if (c <= 0) {
+                            sprintf(error_msg, "Error: Machine read file error!\r\n");
+                            SendMessage(PTYPE_FILE_CAN, buf, sizeof(buf), stream);
+                            goto download_error;
+                        }                	
+                        len = c + 7;
+                        xbuff[2] = (len>>8)&0xFF;
+                        xbuff[3] = len&0xFF;
+                        crc = crc16_ccitt(&xbuff[2], len);
+                        xbuff[c+9] = (crc>>8)&0xFF;
+                        xbuff[c+10] = crc&0xFF;
+                        xbuff[c+11] = (FOOTER>>8)&0xFF;
+                        xbuff[c+12] = FOOTER&0xFF;
+                        stream->puts((char *)xbuff, len+6);
+                        lastcmd = PTYPE_FILE_DATA;
+                        errorcmd = 0;
+                        beretry = false;
+                        break;
+                    case PTYPE_FILE_END:
+                        SendMessage(PTYPE_FILE_END, buf, 0, stream);
+                        errorcmd = 0;
+                        goto download_success; /* normal end */
+                        break;
+                    case PTYPE_FILE_CAN:
+                        sprintf(error_msg, "Info: Download canceled by Controller!\r\n");
+                        errorcmd = 0;
+                        goto download_error;
+                        break;
+                    default:                	
+                        errorcmd ++;
+                        THEKERNEL->call_event(ON_IDLE);
+                        break;
+                }
+            }
+            else
+            {
+                if(us_ticker_read()-starttime > 29000000)
+                {
+                    sprintf(error_msg, "Error: Machine received cmd timeout!\r\n");
+                    SendMessage(PTYPE_FILE_CAN, buf, sizeof(buf), stream);
+                    goto download_error;
+                }
+            }
+            if ( errorcmd > MAXRETRANS)
+            {
+                sprintf(error_msg, "Error: Machine received too many wrong command!\r\n");
+                SendMessage(PTYPE_FILE_CAN, buf, sizeof(buf), stream);
+                goto download_error;
+            }
+        }
+    }
 download_error:
 	if (fd != NULL) {
 		fwfs::fclose(fd);
 		fd = NULL;
 	}
+    if (THEKERNEL->cur_comm_protocol == PROTOCOL_SMOOTHIE) {
+        flush_input(stream);
+    }
     if (stream->type() == 0) {
     	set_serial_rx_irq(true);
     }
@@ -2053,6 +2475,9 @@ download_success:
 		fwfs::fclose(fd);
 		fd = NULL;
 	}
+    if (THEKERNEL->cur_comm_protocol == PROTOCOL_SMOOTHIE) {
+        flush_input(stream);
+    }
     if (stream->type() == 0) {
     	set_serial_rx_irq(true);
     }
