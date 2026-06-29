@@ -26,8 +26,14 @@ public:
     {
         int r = 0;
         for(set<StreamOutput*>::iterator i = this->streams.begin(); i != this->streams.end(); i++)
-        {
-            int k = (*i)->puts(s,size);
+        {   
+            int k;
+            if ((*i)->protocol() == PROTOCOL_SMOOTHIE) {
+                k = (*i)->puts(s);
+            }
+            else {
+                k = (*i)->puts(s,size);
+            }
             if (k > r)
                 r = k;
         }
