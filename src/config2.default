@@ -78,6 +78,9 @@ epsilon_max_rate							3600.0			# mm/min
 #epsilon_acceleration						360.0			# mm/secÂ²
 epsilon_steps_per_mm						888.88888		# may be steps per degree for example (26.67)
 
+#communication protocol
+protocol 					smoothie 	#makera for the stock configuration, smoothie for default smoothieware behavior/current community firmware
+
 # WIFI
 # wifi.enable									true
 # wifi.interrupt_pin						2.11

@@ -1151,6 +1151,8 @@ void WifiProvider::on_gcode_received(void *argument)
 			else if (gcode->subcode == 2) {
 				THEKERNEL->streams->printf("setting to makera communication protocol\n");
 				communication_protocol = PROTOCOL_MAKERA;
+			} else {
+				THEKERNEL->streams->printf("current communication protocol: %s\n", (communication_protocol == PROTOCOL_SMOOTHIE) ? "smoothie" : "makera" );
 			}
 		} else if (gcode->m == 489) {
 			// query wifi status
