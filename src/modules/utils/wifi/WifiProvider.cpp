@@ -727,8 +727,13 @@ int WifiProvider::printfcmd(const char cmd, const char *format, ...)
     }
     va_end(args);
 
+	if (THEKERNEL->cur_comm_protocol == PROTOCOL_SMOOTHIE) {
+		puts(buffer, strlen(buffer));
+	} else {
+		PacketMessage(PTYPE_DIAG_RES, buffer, strlen(buffer));
+	}
 //    puts(buffer, strlen(buffer));
-	PacketMessage(PTYPE_DIAG_RES, buffer, strlen(buffer));
+	
 
     if (buffer != b)
         delete[] buffer;
@@ -754,7 +759,12 @@ int WifiProvider::printf(const char *format, ...)
     }
     va_end(args);
 
-	PacketMessage(PTYPE_NORMAL_INFO, buffer, strlen(buffer));
+
+	if (THEKERNEL->cur_comm_protocol == PROTOCOL_SMOOTHIE) {
+		puts(buffer, strlen(buffer));
+	} else {
+		PacketMessage(PTYPE_DIAG_RES, buffer, strlen(buffer));
+	}
 
     if (buffer != b)
         delete[] buffer;
