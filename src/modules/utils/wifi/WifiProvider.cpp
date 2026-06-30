@@ -58,7 +58,7 @@
 #define XBUFF_LENGTH	8208
 extern unsigned char xbuff[XBUFF_LENGTH];
 extern unsigned char fbuff[4096];
-__attribute__((section("AHBSRAM1"), aligned(4))) char WifiSerialbuff[544];
+alignas(4) static char WifiSerialbuff[544];
 
 
 
@@ -108,6 +108,7 @@ WifiProvider::WifiProvider()
 	ap_auto_disable = true;
 	ap_currently_on = true;
 	ap_off_by_auto_toggle = false;
+	protocol_restart_pending = false;
 }
 
 void WifiProvider::on_module_loaded()
@@ -173,6 +174,24 @@ void WifiProvider::on_module_loaded()
 void WifiProvider::on_pin_rise()
 {
 	has_data_flag = true;
+}
+
+void WifiProvider::on_protocol_changed()
+{
+	buffer.tail = buffer.head;
+	reset();
+	query_flag = false;
+	diagnose_flag = false;
+	halt_flag = false;
+	has_data_flag = false;
+	protocol_restart_pending = true;
+}
+
+void WifiProvider::restart_after_protocol_change()
+{
+	protocol_restart_pending = false;
+	wifi_init_ok = false;
+	init_wifi_module(true);
 }
 
 void WifiProvider::receive_wifi_data() {
@@ -275,7 +294,7 @@ void WifiProvider::receive_wifi_data() {
 		}
 		if( errorcnt > 20)
 		{
-			THEKERNEL->streams->puts("Please use Controller version V0.9.12 or later to connect.\r\n", 124); 
+			THEKERNEL->streams->puts("Please use Controller version V0.9.12 or later to connect.\r\n", 0);
 			return;
 		}
 			
@@ -303,7 +322,7 @@ void WifiProvider::receive_wifi_data() {
 		uint16_t data_len = (WifiSerialbuff[2]<<8) | WifiSerialbuff[3];
 		uint16_t total_len = 4 + data_len + 2; // header + data + crc + tail
 		
-		if (data_len > 513 || total_len > sizeof(WifiSerialbuff)){
+		if (data_len < 3 || data_len > 513 || total_len > sizeof(WifiSerialbuff)){
 	//	    	PacketMessage(PTYPE_NORMAL_INFO, "ALARM: Abort receive datalen error\r\n", 0);
 			return; 
 		}
@@ -330,7 +349,6 @@ void WifiProvider::receive_wifi_data() {
 			return;
 		}
 		
-	/*	    
 		// check CRC
 		uint16_t received_crc = (WifiSerialbuff[total_len-4] << 8) | WifiSerialbuff[total_len-3];
 		uint16_t calculated_crc = crc16_ccitt((unsigned char *)&WifiSerialbuff[2], data_len);
@@ -338,10 +356,11 @@ void WifiProvider::receive_wifi_data() {
 	//	    	PacketMessage(PTYPE_NORMAL_INFO, "ALARM: Abort receive wrong crc\r\n", 0);
 			return;
 		}
-	*/
+
 		uint8_t cmdType = WifiSerialbuff[4];
 		switch(cmdType) {
 			case PTYPE_CTRL_SINGLE: { 
+				if (data_len < 4) break;
 				if(WifiSerialbuff[5] == '?') {
 					query_flag = true;
 				}
@@ -350,6 +369,7 @@ void WifiProvider::receive_wifi_data() {
 				}
 				else if(WifiSerialbuff[5] == 'Y' - 'A' + 1) { // ^Y
 					THEKERNEL->set_stop_request(true); // generic stop what you are doing request
+					THEKERNEL->set_stop_request_time(us_ticker_read() / 1000);
 				}
 				else if(WifiSerialbuff[5] == 'Z' - 'A' + 1) { // ^Z
 					THEKERNEL->set_keep_alive_request(true);
@@ -624,11 +644,20 @@ void WifiProvider::on_second_tick(void *)
 
 void WifiProvider::on_idle(void *argument)
  {
+	if (protocol_restart_pending) {
+		restart_after_protocol_change();
+		return;
+	}
+
 	if (THEKERNEL->is_uploading()) return;
 
 	if (has_data_flag || M8266WIFI_SPI_Has_DataReceived()) {
 		has_data_flag = false;
 		receive_wifi_data();
+		if (protocol_restart_pending) {
+			restart_after_protocol_change();
+			return;
+		}
 	}
 
     if (query_flag) {
@@ -730,7 +759,7 @@ int WifiProvider::printfcmd(const char cmd, const char *format, ...)
 	if (communication_protocol == PROTOCOL_SMOOTHIE) {
 		puts(buffer, strlen(buffer));
 	} else {
-		PacketMessage(PTYPE_DIAG_RES, buffer, strlen(buffer));
+		PacketMessage(cmd, buffer, strlen(buffer));
 	}
 //    puts(buffer, strlen(buffer));
 	
@@ -763,7 +792,7 @@ int WifiProvider::printf(const char *format, ...)
 	if (communication_protocol == PROTOCOL_SMOOTHIE) {
 		puts(buffer, strlen(buffer));
 	} else {
-		PacketMessage(PTYPE_DIAG_RES, buffer, strlen(buffer));
+		PacketMessage(PTYPE_NORMAL_INFO, buffer, strlen(buffer));
 	}
 
     if (buffer != b)
@@ -1143,17 +1172,6 @@ void WifiProvider::on_gcode_received(void *argument)
 					THEKERNEL->streams->printf("AP param[%d]: %s\n", gcode->subcode, param);
 				}
 			}
-		} else if (gcode->m == 485)  {
-			if (gcode->subcode == 1) {
-				THEKERNEL->streams->printf("setting to smoothie communication protocol\n");
-				communication_protocol = PROTOCOL_SMOOTHIE;
-			}
-			else if (gcode->subcode == 2) {
-				THEKERNEL->streams->printf("setting to makera communication protocol\n");
-				communication_protocol = PROTOCOL_MAKERA;
-			} else {
-				THEKERNEL->streams->printf("current communication protocol: %s\n", (communication_protocol == PROTOCOL_SMOOTHIE) ? "smoothie" : "makera" );
-			}
 		} else if (gcode->m == 489) {
 			// query wifi status
 			query_wifi_status();
@@ -1423,10 +1441,10 @@ void WifiProvider::on_set_public_data(void *argument)
 				} else {
 					u16 status = 0;
 					u8 param_len = 0;
-					char sta_address[16];
-					char ap_address[16];
+					char sta_address[16] = {0};
+					char ap_address[16] = {0};
 					M8266WIFI_SPI_Get_STA_IP_Addr(sta_address, &status);
-					memcpy(s->ip_address,sta_address,16);
+					memcpy(s->ip_address, sta_address, sizeof(s->ip_address));
 					
 					if( M8266WIFI_SPI_Query_AP_Param(AP_PARAM_TYPE_IP_ADDR, (u8 *)ap_address, &param_len, &status) )
 					{
@@ -1534,6 +1552,8 @@ void WifiProvider::init_wifi_module(bool reset) {
 
 
 	if (reset) {
+		// Stop broadcasting to the connection before deleting it.
+		THEKERNEL->streams->remove_stream(this);
 		THEKERNEL->streams->printf("M8266WIFI_SPI_Delete_Connections...\n");
 		// disconnect current links
 		if (M8266WIFI_SPI_Delete_Connection( udp_link_no, &status) == 0){
@@ -1543,8 +1563,6 @@ void WifiProvider::init_wifi_module(bool reset) {
 			THEKERNEL->streams->printf("M8266WIFI_SPI_Delete_Connection ERROR, status:%d, high: %d, low: %d!\n", status, int(status >> 8), int(status & 0xff));
 		}
 
-		// remove current stream
-		THEKERNEL->streams->remove_stream(this);
 	}
 
 
@@ -1720,5 +1738,3 @@ int WifiProvider::type() {
 ProtocolMode WifiProvider::protocol(){
 	return communication_protocol;
 }
-
-

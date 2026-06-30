@@ -19,9 +19,10 @@ class StreamOutput;
 class SimpleShell : public Module
 {
 public:
-    SimpleShell() {}
+    SimpleShell() : protocol_change_pending(false), pending_protocol_makera(false) {}
 
     void on_module_loaded();
+    void on_main_loop(void *);
     void on_console_line_received( void *argument );
     void on_gcode_received(void *argument);
     void on_second_tick(void *);
@@ -112,4 +113,6 @@ private:
     static int reset_delay_secs;
     uint32_t keep_alive_time;
     bool cont_mode_active;
+    bool protocol_change_pending;
+    bool pending_protocol_makera;
 };

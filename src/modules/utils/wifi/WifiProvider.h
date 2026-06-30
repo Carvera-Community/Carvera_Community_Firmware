@@ -47,6 +47,8 @@ public:
     int type(); // 0: serial, 1: wifi
     ProtocolMode protocol();
     void reset(void){ptrData=0;ptr_xbuff=0;currentState = WAIT_HEADER;};
+    bool frames_protocol_output() const { return true; }
+    void on_protocol_changed();
     int printfcmd(const char cmd, const char *format, ...);
     int printf(const char *format, ...) __attribute__ ((format(printf, 2, 3)));
 
@@ -67,6 +69,7 @@ private:
 
     void on_pin_rise();
     void receive_wifi_data();
+    void restart_after_protocol_change();
     unsigned int crc16_ccitt(unsigned char *data, unsigned int len);
     int CheckFilePacket(char** buf);
 
@@ -103,6 +106,7 @@ private:
     	volatile bool query_flag:1;
     	volatile bool diagnose_flag:1;
     	volatile bool has_data_flag:1;
+        bool protocol_restart_pending:1;
     };
     ParseState currentState = WAIT_HEADER;    
     int ptrData;

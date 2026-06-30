@@ -2005,25 +2005,6 @@ void Player::upload_command( string parameters, StreamOutput *stream )
                 SendMessage(PTYPE_FILE_CAN, buf, sizeof(buf), stream);
                 goto upload_error;
             }
-            else
-            {
-                retry ++;
-                if(retry > RETRYTIME*10)
-                {
-                    SendMessage(PTYPE_FILE_RETRY, buf, 0, stream);	//resend the last package
-                    retry = 0;				
-                    tatalretry ++;
-                    stream->reset();
-                }
-
-            }
-            THEKERNEL->call_event(ON_IDLE);		
-            if(tatalretry > MAXRETRANS)
-            {
-                sprintf(error_msg, "Info: Machine receive file too many retry error!\r\n");			
-                SendMessage(PTYPE_FILE_CAN, buf, sizeof(buf), stream);
-                goto upload_error;
-            }
         }
     }
 upload_error:

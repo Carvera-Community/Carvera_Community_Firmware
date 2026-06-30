@@ -200,12 +200,25 @@ static uint32_t heapWalk(StreamOutput *stream, bool verbose)
 
 void SimpleShell::on_module_loaded()
 {
+    this->register_for_event(ON_MAIN_LOOP);
     this->register_for_event(ON_CONSOLE_LINE_RECEIVED);
     this->register_for_event(ON_GCODE_RECEIVED);
     this->register_for_event(ON_SECOND_TICK);
     this->cont_mode_active = false;
 
     reset_delay_secs = 0;
+}
+
+void SimpleShell::on_main_loop(void *)
+{
+    if (!protocol_change_pending) return;
+
+    ProtocolMode new_protocol = pending_protocol_makera ? PROTOCOL_MAKERA : PROTOCOL_SMOOTHIE;
+    protocol_change_pending = false;
+    if (new_protocol != communication_protocol) {
+        communication_protocol = new_protocol;
+        THEKERNEL->streams->on_protocol_changed();
+    }
 }
 
 void SimpleShell::on_second_tick(void *)
@@ -222,6 +235,26 @@ void SimpleShell::on_gcode_received(void *argument)
 {
     Gcode *gcode = static_cast<Gcode *>(argument);
     string args = get_arguments(gcode->get_command());
+
+    if (gcode->has_m && gcode->m == 485) {
+        ProtocolMode new_protocol = communication_protocol;
+        if (gcode->subcode == 1) {
+            gcode->stream->printf("setting to smoothie communication protocol\n");
+            new_protocol = PROTOCOL_SMOOTHIE;
+        } else if (gcode->subcode == 2) {
+            gcode->stream->printf("setting to makera communication protocol\n");
+            new_protocol = PROTOCOL_MAKERA;
+        } else {
+            gcode->stream->printf("current communication protocol: %s\n",
+                    communication_protocol == PROTOCOL_SMOOTHIE ? "smoothie" : "makera");
+        }
+
+        if (new_protocol != communication_protocol) {
+            pending_protocol_makera = new_protocol == PROTOCOL_MAKERA;
+            protocol_change_pending = true;
+        }
+        return;
+    }
 
     if (gcode->has_m) {
         if (gcode->m == 20) { // list sd card
@@ -479,6 +512,7 @@ void SimpleShell::ls_command( string parameters, StreamOutput *stream )
     struct tm timeinfo;
     char dirTmp[256]; 
     unsigned int npos=0;
+    const unsigned int chunk_limit = communication_protocol == PROTOCOL_SMOOTHIE ? 7900 : 4000;
     d = fwfs::opendir(path.c_str());
     if (d != NULL) {
         while ((p = readdir(d)) != NULL) {
@@ -490,26 +524,34 @@ void SimpleShell::ls_command( string parameters, StreamOutput *stream )
         	}
         	if (opts.find("-s", 0, 2) != string::npos) {
         	    get_fftime(p->d_date, p->d_time, &timeinfo);
-        		// name size date
-                memset(dirTmp, 0, sizeof(dirTmp));
-                sprintf(dirTmp, "%s%s %d %04d%02d%02d%02d%02d%02d\r\n", string(p->d_name).c_str(),  p->d_isdir ? "/" : "",
+			// name size date
+				snprintf(dirTmp, sizeof(dirTmp), "%s%s %d %04d%02d%02d%02d%02d%02d\r\n", string(p->d_name).c_str(),  p->d_isdir ? "/" : "",
                 		p->d_isdir ? 0 : p->d_fsize, timeinfo.tm_year + 1980, timeinfo.tm_mon, timeinfo.tm_mday,
                 				timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec);
         	} else {
         		// only name
-                memset(dirTmp, 0, sizeof(dirTmp));
-                sprintf(dirTmp, "%s%s\r\n", string(p->d_name).c_str(), p->d_isdir ? "/" : "");
+				snprintf(dirTmp, sizeof(dirTmp), "%s%s\r\n", string(p->d_name).c_str(), p->d_isdir ? "/" : "");
         	}
-        	memcpy(&xbuff[npos], dirTmp, strlen(dirTmp));
-        	npos += strlen(dirTmp);
+
+			size_t entry_length = strlen(dirTmp);
+			if (npos != 0 && npos + entry_length > chunk_limit) {
+				if (communication_protocol == PROTOCOL_SMOOTHIE) {
+					stream->puts((char *)xbuff, npos);
+				} else {
+					PacketMessage(PTYPE_LOAD_INFO, (char *)xbuff, npos, stream);
+				}
+				npos = 0;
+			}
+			memcpy(&xbuff[npos], dirTmp, entry_length);
+			npos += entry_length;
             if (communication_protocol == PROTOCOL_SMOOTHIE) {
-                if(npos >= 7900)
+                if(npos >= chunk_limit)
                 {
         		    stream->puts((char *)xbuff, npos);
                     npos = 0;
                 }
             } else {
-                if(npos >= 4000)
+                if(npos >= chunk_limit)
                 {
                     PacketMessage(PTYPE_LOAD_INFO, (char *)xbuff, npos, stream);
                     npos = 0;
@@ -1095,17 +1137,24 @@ void SimpleShell::wlan_command( string parameters, StreamOutput *stream)
         		}
             	if (send_eof) {
                     if (communication_protocol == PROTOCOL_SMOOTHIE) {
-                        stream->_putc(CAN);
+                        stream->_putc(EOT);
                     } else {
                 	    PacketMessage(PTYPE_LOAD_FINISH, "ok\r\n", 0, stream);
                     }
             	}
         	}
         } else {
-            PacketMessage(PTYPE_LOAD_INFO, "Parameter error when setting wlan!\n", 0, stream);
-        	if (send_eof) {
-        		PacketMessage(PTYPE_LOAD_ERROR, "Parameter error when setting wlan!\r\n", 0, stream);
-        	}
+            if (communication_protocol == PROTOCOL_SMOOTHIE) {
+                stream->printf("Parameter error when setting wlan!\n");
+                if (send_eof) {
+                    stream->_putc(CAN);
+                }
+            } else {
+                PacketMessage(PTYPE_LOAD_INFO, "Parameter error when setting wlan!\n", 0, stream);
+                if (send_eof) {
+                    PacketMessage(PTYPE_LOAD_ERROR, "Parameter error when setting wlan!\r\n", 0, stream);
+                }
+            }
         }
     }
 }
