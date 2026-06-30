@@ -8,7 +8,7 @@ extern unsigned char fbuff[4096];
 extern const unsigned short crc_table[256];
 NullStreamOutput StreamOutput::NullStream;
 
-ProtocolMode communication_protocol = PROTOCOL_MAKERA;
+ProtocolMode communication_protocol = PROTOCOL_SMOOTHIE;
 
 unsigned int StreamOutput::crc16_ccitt(unsigned char *data, unsigned int len)
 {

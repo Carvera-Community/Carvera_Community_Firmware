@@ -435,6 +435,9 @@ acceleration 150						# Acceleration for X/Y/Z axis (mm/second/second)
 delta_acceleration 360.0 				# Acceleration for rotation axis (degree/second/second)
 epsilon_acceleration 10.0				# Acceleration for auto tool changer (mm/second/second)
 
+#communication protocol
+protocol 					smoothie 	#makera for the stock configuration, smoothie for default smoothieware behavior/current community firmware
+
 # WIFI
 wifi.machine_name CARVERA_01001	    	# Machine name that is shown in the WiFi list
 
