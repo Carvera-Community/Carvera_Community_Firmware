@@ -775,7 +775,7 @@ void Player::abort_command( string parameters, StreamOutput *stream )
     THEKERNEL->conveyor->wait_for_idle();
 
 
-    if (THEKERNEL->cur_comm_protocol == PROTOCOL_SMOOTHIE) {
+    if (communication_protocol == PROTOCOL_SMOOTHIE) {
          if(THEKERNEL->is_halted()) {
             THEKERNEL->streams->printf("Aborted by halt\n");
             THEKERNEL->set_waiting(false);
@@ -1508,7 +1508,7 @@ int Player::decompress(string sfilename, string dfilename, uint32_t sfilesize, S
 	uint32_t u32DcmprsSize = 0, u32BlockSize = 0, u32BlockNum = 0, u32TotalDcmprsSize = 0, i = 0,j = 0,k=0;
 	qlz_state_decompress s_stDecompressState;
     char error_msg[80]; //makera
-    if (THEKERNEL->cur_comm_protocol == PROTOCOL_MAKERA) {
+    if (communication_protocol == PROTOCOL_MAKERA) {
         memset(error_msg, 0, sizeof(error_msg));
         sprintf(error_msg, "decompress!");
     }
@@ -1516,7 +1516,7 @@ int Player::decompress(string sfilename, string dfilename, uint32_t sfilesize, S
 	f_out= fwfs::fopen(dfilename.c_str(), "w+");
 	if (f_in == NULL || f_out == NULL)
 	{
-        if (THEKERNEL->cur_comm_protocol == PROTOCOL_SMOOTHIE) {
+        if (communication_protocol == PROTOCOL_SMOOTHIE) {
             memset(fbuff, 0, sizeof(fbuff));
 		    sprintf((char*)fbuff, "Error: failed to create file [%s]!\r\n", filename.substr(0, 30).c_str());
         } else {
@@ -1531,7 +1531,7 @@ int Player::decompress(string sfilename, string dfilename, uint32_t sfilesize, S
 		u32BlockSize = u8ReadBuffer_hdr[0] * (1 << 24) + u8ReadBuffer_hdr[1] * (1 << 16) + u8ReadBuffer_hdr[2] * (1 << 8) + u8ReadBuffer_hdr[3];
 		if(!u32BlockSize)
 		{
-            if (THEKERNEL->cur_comm_protocol == PROTOCOL_SMOOTHIE) {
+            if (communication_protocol == PROTOCOL_SMOOTHIE) {
 			    sprintf(error_msg, "Error: decompress file error,bad block num.");
             }
             goto _exit;
@@ -1540,7 +1540,7 @@ int Player::decompress(string sfilename, string dfilename, uint32_t sfilesize, S
 		u32DcmprsSize = qlz_decompress((const char *)xbuff, fbuff, &s_stDecompressState);
 		if(!u32DcmprsSize)
 		{
-            if (THEKERNEL->cur_comm_protocol == PROTOCOL_SMOOTHIE) {
+            if (communication_protocol == PROTOCOL_SMOOTHIE) {
                 sprintf(error_msg, "Error: decompress file error,bad decompress size.");
             }
 			goto _exit;
@@ -1558,7 +1558,7 @@ int Player::decompress(string sfilename, string dfilename, uint32_t sfilesize, S
 		{
 			k=0;
 			THEKERNEL->call_event(ON_IDLE);
-            if (THEKERNEL->cur_comm_protocol == PROTOCOL_SMOOTHIE) {
+            if (communication_protocol == PROTOCOL_SMOOTHIE) {
                 memset(fbuff, 0, sizeof(fbuff));
                 sprintf((char*)fbuff, "#Info: decompart = %lu\r\n", u32BlockNum);
                 stream->printf((char*)fbuff);
@@ -1571,7 +1571,7 @@ int Player::decompress(string sfilename, string dfilename, uint32_t sfilesize, S
 	fwfs::fread(fbuff, sizeof(char), 2, f_in);
 	if(u16Sum != ((fbuff[0] <<8) + fbuff[1]))
 	{
-        if (THEKERNEL->cur_comm_protocol == PROTOCOL_MAKERA) {
+        if (communication_protocol == PROTOCOL_MAKERA) {
 		    sprintf(error_msg, "Error: decompress file sum check error.");
         }
         goto _exit;
@@ -1581,7 +1581,7 @@ int Player::decompress(string sfilename, string dfilename, uint32_t sfilesize, S
 		fwfs::fclose(f_in);
 	if (f_out!= NULL)
 		fwfs::fclose(f_out);
-    if (THEKERNEL->cur_comm_protocol == PROTOCOL_SMOOTHIE) {
+    if (communication_protocol == PROTOCOL_SMOOTHIE) {
         memset(fbuff, 0, sizeof(fbuff));
         sprintf((char*)fbuff, "#Info: decompart = %lu\r\n", u32BlockNum);
         stream->printf((char*)fbuff);
@@ -1595,7 +1595,7 @@ _exit:
 		fwfs::fclose(f_in );
 	if (f_out != NULL)
 		fwfs::fclose(f_out);
-	if (THEKERNEL->cur_comm_protocol == PROTOCOL_SMOOTHIE) {
+	if (communication_protocol == PROTOCOL_SMOOTHIE) {
         stream->printf((char*)fbuff);
     } else {
         stream->printf(error_msg);
@@ -1650,7 +1650,7 @@ void Player::upload_command( string parameters, StreamOutput *stream )
     THEKERNEL->set_uploading(true);
 
     if (!THECONVEYOR->is_idle()) {
-        if (THEKERNEL->cur_comm_protocol == PROTOCOL_SMOOTHIE) {
+        if (communication_protocol == PROTOCOL_SMOOTHIE) {
             stream->_putc(EOT);
         } else {
             SendMessage(PTYPE_FILE_CAN, buf, sizeof(buf), stream);
@@ -1685,7 +1685,7 @@ void Player::upload_command( string parameters, StreamOutput *stream )
 	}
 
 
-    if (THEKERNEL->cur_comm_protocol == PROTOCOL_SMOOTHIE) {
+    if (communication_protocol == PROTOCOL_SMOOTHIE) {
         if (filename.find("firmware.bin") == string::npos) {
             fd_md5 = fwfs::fopen(md5_filename.c_str(), "wb");
         }
@@ -1709,13 +1709,13 @@ void Player::upload_command( string parameters, StreamOutput *stream )
 	// stop TIMER0 and TIMER1 for save time
 	NVIC_DisableIRQ(TIMER0_IRQn);
 	NVIC_DisableIRQ(TIMER1_IRQn);
-    if (THEKERNEL->cur_comm_protocol == PROTOCOL_MAKERA) {
+    if (communication_protocol == PROTOCOL_MAKERA) {
         starttime = us_ticker_read();
         stream->reset();
     }
 
     for (;;) {
-        if (THEKERNEL->cur_comm_protocol == PROTOCOL_SMOOTHIE) {
+        if (communication_protocol == PROTOCOL_SMOOTHIE) {
             for (retry = 0; retry < MAXRETRANS; ++retry) {  // approx 3 seconds allowed to make connection
                 if (trychar)
                     stream->_putc(trychar);
@@ -2041,7 +2041,7 @@ upload_error:
 		fd_md5 = NULL;
 		fwfs::remove(md5_filename.c_str());
 	}
-    if (THEKERNEL->cur_comm_protocol == PROTOCOL_SMOOTHIE) {
+    if (communication_protocol == PROTOCOL_SMOOTHIE) {
         flush_input(stream);
     } 
     if (stream->type() == 0) {
@@ -2063,7 +2063,7 @@ upload_success:
 		fwfs::fclose(fd_md5);
 		fd_md5 = NULL;
 	}
-    if (THEKERNEL->cur_comm_protocol == PROTOCOL_SMOOTHIE) {
+    if (communication_protocol == PROTOCOL_SMOOTHIE) {
         flush_input(stream);
     } 
 
@@ -2076,7 +2076,7 @@ upload_success:
 		desfilename=filename.substr(0, start_pos);
 		if(!decompress(srcfilename,desfilename,u32filesize,stream))
         {
-            if (THEKERNEL->cur_comm_protocol == PROTOCOL_MAKERA) { 
+            if (communication_protocol == PROTOCOL_MAKERA) { 
                 sprintf(error_msg, "error: error in decompressing file!\r\n");	
             }
 			goto upload_error;
@@ -2100,7 +2100,7 @@ void Player::test_command( string parameters, StreamOutput* stream ) {
         MD5 md5;
         uint8_t smoothie_md5_buf[64];
         do {
-            if (THEKERNEL->cur_comm_protocol == PROTOCOL_SMOOTHIE) { 
+            if (communication_protocol == PROTOCOL_SMOOTHIE) { 
                 size_t n = fwfs::fread(smoothie_md5_buf, 1, sizeof(smoothie_md5_buf), fd);
                 if (n > 0) md5.update(smoothie_md5_buf, n);
             } else {
@@ -2148,7 +2148,7 @@ void Player::download_command( string parameters, StreamOutput *stream )
     unsigned char md5_sent = 0; //smoothie
 
 	memset(error_msg, 0, sizeof(error_msg));
-    if (THEKERNEL->cur_comm_protocol == PROTOCOL_MAKERA) { 
+    if (communication_protocol == PROTOCOL_MAKERA) { 
         sprintf(error_msg, "Nothing!");
     }
     string filename = absolute_from_relative(shift_parameter(parameters));
@@ -2158,7 +2158,7 @@ void Player::download_command( string parameters, StreamOutput *stream )
 	// diasble irq
     if (stream->type() == 0) {
     	bufsz = 128;
-        if (THEKERNEL->cur_comm_protocol == PROTOCOL_SMOOTHIE) { 
+        if (communication_protocol == PROTOCOL_SMOOTHIE) { 
             is_stx = 0;
         }
     	set_serial_rx_irq(false);
@@ -2166,7 +2166,7 @@ void Player::download_command( string parameters, StreamOutput *stream )
     THEKERNEL->set_uploading(true);
 
     if (!THECONVEYOR->is_idle()) {
-        if (THEKERNEL->cur_comm_protocol == PROTOCOL_SMOOTHIE) {
+        if (communication_protocol == PROTOCOL_SMOOTHIE) {
             cancel_transfer(stream);
         } else {
             SendMessage(PTYPE_FILE_CAN, buf, sizeof(buf), stream);
@@ -2183,7 +2183,7 @@ void Player::download_command( string parameters, StreamOutput *stream )
         return;
     }
     char md5[64]; //Smoothie need to replace with md5buf
-    if (THEKERNEL->cur_comm_protocol == PROTOCOL_SMOOTHIE) {
+    if (communication_protocol == PROTOCOL_SMOOTHIE) {
         memset(md5, 0, sizeof(md5));
     } else {
         memset(md5buf, 0, sizeof(md5buf));
@@ -2192,7 +2192,7 @@ void Player::download_command( string parameters, StreamOutput *stream )
 
     FILE *fd = fwfs::fopen(md5_filename.c_str(), "rb");
     if (fd != NULL) {
-        if (THEKERNEL->cur_comm_protocol == PROTOCOL_SMOOTHIE) {
+        if (communication_protocol == PROTOCOL_SMOOTHIE) {
             fwfs::fread(md5, sizeof(char), 64, fd);
         } else {
             fwfs::fread(md5buf, sizeof(char), 64, fd);
@@ -2200,7 +2200,7 @@ void Player::download_command( string parameters, StreamOutput *stream )
         fwfs::fclose(fd);
         fd = NULL;
     } else {
-        if (THEKERNEL->cur_comm_protocol == PROTOCOL_SMOOTHIE) {
+        if (communication_protocol == PROTOCOL_SMOOTHIE) {
             strcpy(md5, this->md5_str);
         } else {
             strcpy(md5buf, this->md5_str);
@@ -2211,7 +2211,7 @@ void Player::download_command( string parameters, StreamOutput *stream )
 	if (NULL == fd) {	
 	    fd = fwfs::fopen(filename.c_str(), "rb");
 	    if (NULL == fd) {
-            if (THEKERNEL->cur_comm_protocol == PROTOCOL_SMOOTHIE) {
+            if (communication_protocol == PROTOCOL_SMOOTHIE) {
                 cancel_transfer(stream);
             } else {
                 SendMessage(PTYPE_FILE_CAN, buf, sizeof(buf), stream);
@@ -2222,7 +2222,7 @@ void Player::download_command( string parameters, StreamOutput *stream )
 	}
 
 
-    if (THEKERNEL->cur_comm_protocol == PROTOCOL_MAKERA) {
+    if (communication_protocol == PROTOCOL_MAKERA) {
         stream->reset();
         starttime = us_ticker_read();
         //Send MD5 first
@@ -2234,7 +2234,7 @@ void Player::download_command( string parameters, StreamOutput *stream )
 
 
     for(;;) {
-        if (THEKERNEL->cur_comm_protocol == PROTOCOL_SMOOTHIE) {
+        if (communication_protocol == PROTOCOL_SMOOTHIE) {
             for (retry = 0; retry < MAXRETRANS; ++retry) {
                 if ((c = inbyte(stream, TIMEOUT_MS)) >= 0) {
                     retry = 0;
@@ -2458,7 +2458,7 @@ download_error:
 		fwfs::fclose(fd);
 		fd = NULL;
 	}
-    if (THEKERNEL->cur_comm_protocol == PROTOCOL_SMOOTHIE) {
+    if (communication_protocol == PROTOCOL_SMOOTHIE) {
         flush_input(stream);
     }
     if (stream->type() == 0) {
@@ -2475,7 +2475,7 @@ download_success:
 		fwfs::fclose(fd);
 		fd = NULL;
 	}
-    if (THEKERNEL->cur_comm_protocol == PROTOCOL_SMOOTHIE) {
+    if (communication_protocol == PROTOCOL_SMOOTHIE) {
         flush_input(stream);
     }
     if (stream->type() == 0) {

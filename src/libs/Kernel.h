@@ -136,8 +136,6 @@ class Kernel {
 
         float get_user_var(int var_num);
 
-        ProtocolMode cur_comm_protocol = PROTOCOL_SMOOTHIE;
-
         bool is_using_leds() const { return use_leds; }
         bool is_halted() const { return halted; }
         bool is_grbl_mode() const { return grbl_mode; }

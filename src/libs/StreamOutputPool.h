@@ -28,7 +28,7 @@ public:
         for(set<StreamOutput*>::iterator i = this->streams.begin(); i != this->streams.end(); i++)
         {   
             int k;
-            if ((*i)->protocol() == PROTOCOL_SMOOTHIE) {
+            if (communication_protocol == PROTOCOL_SMOOTHIE) {
                 k = (*i)->puts(s);
             }
             else {

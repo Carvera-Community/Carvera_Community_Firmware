@@ -225,7 +225,7 @@ void SimpleShell::on_gcode_received(void *argument)
 
     if (gcode->has_m) {
         if (gcode->m == 20) { // list sd card
-            if (THEKERNEL->cur_comm_protocol == PROTOCOL_SMOOTHIE) {
+            if (communication_protocol == PROTOCOL_SMOOTHIE) {
                 gcode->stream->printf("Begin file list\r\n");
                 ls_command("/sd", gcode->stream);
                 gcode->stream->printf("End file list\r\n");
@@ -502,7 +502,7 @@ void SimpleShell::ls_command( string parameters, StreamOutput *stream )
         	}
         	memcpy(&xbuff[npos], dirTmp, strlen(dirTmp));
         	npos += strlen(dirTmp);
-            if (THEKERNEL->cur_comm_protocol == PROTOCOL_SMOOTHIE) {
+            if (communication_protocol == PROTOCOL_SMOOTHIE) {
                 if(npos >= 7900)
                 {
         		    stream->puts((char *)xbuff, npos);
@@ -520,7 +520,7 @@ void SimpleShell::ls_command( string parameters, StreamOutput *stream )
         }
         if( npos != 0)
         {
-            if (THEKERNEL->cur_comm_protocol == PROTOCOL_SMOOTHIE) {
+            if (communication_protocol == PROTOCOL_SMOOTHIE) {
                 stream->puts((char *)xbuff, npos);
             } else {
                 PacketMessage(PTYPE_LOAD_INFO, (char *)xbuff, npos, stream);
@@ -529,11 +529,16 @@ void SimpleShell::ls_command( string parameters, StreamOutput *stream )
         }
         closedir(d); 
         
-        if (THEKERNEL->cur_comm_protocol == PROTOCOL_MAKERA) {
+        if (communication_protocol == PROTOCOL_SMOOTHIE) {
+            if(opts.find("-e", 0, 2) != string::npos) {
+                char eot = EOT;
+                stream->puts(&eot, 1);
+            }
+        } else {
             PacketMessage(PTYPE_LOAD_FINISH, "Load directory finished.\r\n", 0, stream);
         }
     } else {
-        if (THEKERNEL->cur_comm_protocol == PROTOCOL_SMOOTHIE) {
+        if (communication_protocol == PROTOCOL_SMOOTHIE) {
             if(opts.find("-e", 0, 2) != string::npos) {
                 stream->_putc(CAN);
             }
@@ -549,7 +554,7 @@ extern SDFAT mounter;
 void SimpleShell::remount_command( string parameters, StreamOutput *stream )
 {
     mounter.remount();
-    if (THEKERNEL->cur_comm_protocol == PROTOCOL_SMOOTHIE) {
+    if (communication_protocol == PROTOCOL_SMOOTHIE) {
         stream->printf("remounted\r\n");
     } else {
         PacketMessage(PTYPE_NORMAL_INFO, "remounted\r\n", 0, stream);
@@ -563,7 +568,7 @@ void SimpleShell::rm_command( string parameters, StreamOutput *stream )
     string path = absolute_from_relative(shift_parameter( parameters ));
     string md5_path = change_to_md5_path(path);
     string lz_path = change_to_lz_path(path);
-    if (THEKERNEL->cur_comm_protocol == PROTOCOL_SMOOTHIE) {
+    if (communication_protocol == PROTOCOL_SMOOTHIE) {
         if(!parameters.empty() && shift_parameter(parameters) == "-e") {
             send_eof = true;
         }
@@ -574,7 +579,7 @@ void SimpleShell::rm_command( string parameters, StreamOutput *stream )
     string toRemove = absolute_from_relative(path);
     int s = fwfs::remove(toRemove.c_str());
     if (s != 0) {
-        if (THEKERNEL->cur_comm_protocol == PROTOCOL_SMOOTHIE) {
+        if (communication_protocol == PROTOCOL_SMOOTHIE) {
             if(send_eof) {
                 stream->_putc(CAN);
             }
@@ -590,7 +595,7 @@ void SimpleShell::rm_command( string parameters, StreamOutput *stream )
     	string str_lz = absolute_from_relative(lz_path);
 		s = fwfs::remove(str_lz.c_str());
 
-        if (THEKERNEL->cur_comm_protocol == PROTOCOL_SMOOTHIE) {
+        if (communication_protocol == PROTOCOL_SMOOTHIE) {
             if(send_eof) {
                 stream->_putc(EOT);
             }
@@ -611,14 +616,14 @@ void SimpleShell::mv_command( string parameters, StreamOutput *stream )
     string md5_to = change_to_md5_path(to);
     string lz_to = change_to_lz_path(to);
 
-    if (THEKERNEL->cur_comm_protocol == PROTOCOL_SMOOTHIE) {
+    if (communication_protocol == PROTOCOL_SMOOTHIE) {
         if(!parameters.empty() && shift_parameter(parameters) == "-e") {
             send_eof = true;
         }
     }
     int s = fwfs::rename(from.c_str(), to.c_str());
     if (s != 0)  {
-        if (THEKERNEL->cur_comm_protocol == PROTOCOL_SMOOTHIE) {
+        if (communication_protocol == PROTOCOL_SMOOTHIE) {
             if (send_eof) {
                 stream->_putc(CAN);
             }
@@ -630,7 +635,7 @@ void SimpleShell::mv_command( string parameters, StreamOutput *stream )
     	s = fwfs::rename(md5_from.c_str(), md5_to.c_str());
         s = fwfs::rename(lz_from.c_str(), lz_to.c_str());
 
-        if (THEKERNEL->cur_comm_protocol == PROTOCOL_SMOOTHIE) {
+        if (communication_protocol == PROTOCOL_SMOOTHIE) {
             if (send_eof) {
                 stream->_putc(EOT);
             }
@@ -649,7 +654,7 @@ void SimpleShell::mkdir_command( string parameters, StreamOutput *stream )
     string md5_path = change_to_md5_path(path);
     string lz_path = change_to_lz_path(path);
 
-    if (THEKERNEL->cur_comm_protocol == PROTOCOL_SMOOTHIE) {
+    if (communication_protocol == PROTOCOL_SMOOTHIE) {
         if(!parameters.empty() && shift_parameter(parameters) == "-e") {
             send_eof = true;
         }
@@ -657,7 +662,7 @@ void SimpleShell::mkdir_command( string parameters, StreamOutput *stream )
 
     int result = fwfs::mkdir(path.c_str(), 0);
     if (result != 0) {
-        if (THEKERNEL->cur_comm_protocol == PROTOCOL_SMOOTHIE) {
+        if (communication_protocol == PROTOCOL_SMOOTHIE) {
             if (send_eof) {
                 stream->_putc(CAN); // ^Z terminates error
             }
@@ -669,7 +674,7 @@ void SimpleShell::mkdir_command( string parameters, StreamOutput *stream )
     	result = fwfs::mkdir(md5_path.c_str(), 0);
 		fwfs::mkdir(lz_path.c_str(), 0);
 
-        if (THEKERNEL->cur_comm_protocol == PROTOCOL_SMOOTHIE) {
+        if (communication_protocol == PROTOCOL_SMOOTHIE) {
             if (send_eof) {
             	stream->_putc(EOT); // ^D terminates the upload
         	}
@@ -1014,14 +1019,14 @@ void SimpleShell::wlan_command( string parameters, StreamOutput *stream)
         bool ok = PublicData::get_value( wlan_checksum, get_wlan_checksum, &returned_data );
         if (ok) {
             char *str = (char *)returned_data;
-            if (THEKERNEL->cur_comm_protocol == PROTOCOL_SMOOTHIE) {
+            if (communication_protocol == PROTOCOL_SMOOTHIE) {
                 stream->printf("%s", str);
             } else {
                 PacketMessage(PTYPE_LOAD_INFO, str, 0, stream);
             }
             AHB.dealloc(str);
         	if (send_eof) {
-                if (THEKERNEL->cur_comm_protocol == PROTOCOL_SMOOTHIE) {
+                if (communication_protocol == PROTOCOL_SMOOTHIE) {
                     stream->_putc(EOT);
                 } else {
                     PacketMessage(PTYPE_LOAD_FINISH, "ok\r\n", 0, stream);
@@ -1031,7 +1036,7 @@ void SimpleShell::wlan_command( string parameters, StreamOutput *stream)
 
         } else {
         	if (send_eof) {
-                if (THEKERNEL->cur_comm_protocol == PROTOCOL_SMOOTHIE) {
+                if (communication_protocol == PROTOCOL_SMOOTHIE) {
                     stream->_putc(CAN);
                 } else {
                     PacketMessage(PTYPE_LOAD_ERROR, "No wlan detected\r\n", 0, stream);
@@ -1057,7 +1062,7 @@ void SimpleShell::wlan_command( string parameters, StreamOutput *stream)
         bool ok = PublicData::set_value( wlan_checksum, set_wlan_checksum, &t );
         if (ok) {
         	if (t.has_error) {
-                if (THEKERNEL->cur_comm_protocol == PROTOCOL_SMOOTHIE) {
+                if (communication_protocol == PROTOCOL_SMOOTHIE) {
                     stream->printf("Error: %s\n", t.error_info);
                     if (send_eof) {
             		    stream->_putc(CAN);
@@ -1073,13 +1078,13 @@ void SimpleShell::wlan_command( string parameters, StreamOutput *stream)
                 }
         	} else {
         		if (t.disconnect) {
-                    if (THEKERNEL->cur_comm_protocol == PROTOCOL_SMOOTHIE) {
+                    if (communication_protocol == PROTOCOL_SMOOTHIE) {
                         stream->printf("Wifi Disconnected!\n");
                     } else {
             		    PacketMessage(PTYPE_LOAD_INFO, "Wifi Disconnected!\n", 0, stream);
                     }
         		} else {
-                    if (THEKERNEL->cur_comm_protocol == PROTOCOL_SMOOTHIE) {
+                    if (communication_protocol == PROTOCOL_SMOOTHIE) {
                         stream->printf("Wifi connected, ip: %s\n", t.ip_address);
                     } else {
             		    char error_msg[64];
@@ -1089,7 +1094,7 @@ void SimpleShell::wlan_command( string parameters, StreamOutput *stream)
                     }
         		}
             	if (send_eof) {
-                    if (THEKERNEL->cur_comm_protocol == PROTOCOL_SMOOTHIE) {
+                    if (communication_protocol == PROTOCOL_SMOOTHIE) {
                         stream->_putc(CAN);
                     } else {
                 	    PacketMessage(PTYPE_LOAD_FINISH, "ok\r\n", 0, stream);
@@ -1252,7 +1257,7 @@ void SimpleShell::diagnose_command( string parameters, StreamOutput *stream)
         str.append(buf, n);
     }
     str.append("}\n");
-    if (THEKERNEL->cur_comm_protocol == PROTOCOL_SMOOTHIE) {
+    if (communication_protocol == PROTOCOL_SMOOTHIE) {
         stream->printf("%s", str.c_str());
     } else {
         stream->printfcmd(PTYPE_DIAG_RES, "%s", str.c_str());

@@ -187,7 +187,7 @@ void WifiProvider::receive_wifi_data() {
     u8 RecvData;
     
 
-	if (THEKERNEL->cur_comm_protocol == PROTOCOL_SMOOTHIE) {
+	if (communication_protocol == PROTOCOL_SMOOTHIE) {
 		while (true)
 		{
 			received = M8266WIFI_SPI_RecvData(WifiData, WIFI_DATA_MAX_SIZE, WIFI_DATA_TIMEOUT_MS, &link_no, &status);
@@ -433,7 +433,7 @@ uint32_t WifiProvider::ip_to_int(const char* ip_addr) {
         return 0; // failed to parse
     }
 
-	//if (THEKERNEL->cur_comm_protocol == PROTOCOL_SMOOTHIE) {
+	//if (communication_protocol == PROTOCOL_SMOOTHIE) {
 	//	    return (bytes[0] << 24) | (bytes[1] << 16) | (bytes[2] << 8) | bytes[3];
 	//}
     return ((uint32_t)bytes[0] << 24) |
@@ -444,7 +444,7 @@ uint32_t WifiProvider::ip_to_int(const char* ip_addr) {
 
 void WifiProvider::on_second_tick(void *)
 {
-	if (THEKERNEL->cur_comm_protocol == PROTOCOL_SMOOTHIE) { //can be simplified and cleaned up
+	if (communication_protocol == PROTOCOL_SMOOTHIE) { //can be simplified and cleaned up
 		u16 status = 0;
 		char address[16];
 		char udp_buff[100];
@@ -633,7 +633,7 @@ void WifiProvider::on_idle(void *argument)
 
     if (query_flag) {
         query_flag = false;
-		if (THEKERNEL->cur_comm_protocol == PROTOCOL_SMOOTHIE) {
+		if (communication_protocol == PROTOCOL_SMOOTHIE) {
 			puts(THEKERNEL->get_query_string().c_str());
 		} else {
 			PacketMessage(PTYPE_STATUS_RES,THEKERNEL->get_query_string().c_str(),0);
@@ -642,7 +642,7 @@ void WifiProvider::on_idle(void *argument)
 
     if (diagnose_flag) {
     	diagnose_flag = false;
-		if (THEKERNEL->cur_comm_protocol == PROTOCOL_SMOOTHIE) {
+		if (communication_protocol == PROTOCOL_SMOOTHIE) {
 			puts(THEKERNEL->get_diagnose_string().c_str(), 0);
 		} else {
 			PacketMessage(PTYPE_DIAG_RES,THEKERNEL->get_diagnose_string().c_str(),0);
@@ -655,7 +655,7 @@ void WifiProvider::on_idle(void *argument)
         THEKERNEL->set_halt_reason(MANUAL);
         THEKERNEL->call_event(ON_HALT, nullptr);
 
-		if (THEKERNEL->cur_comm_protocol == PROTOCOL_SMOOTHIE) {
+		if (communication_protocol == PROTOCOL_SMOOTHIE) {
 			puts("ERROR: Controller Abort during cycle\r\n");
 		} else {
 			PacketMessage(PTYPE_NORMAL_INFO, "ERROR: Abort during cycle\r\n", 0);
@@ -665,7 +665,7 @@ void WifiProvider::on_idle(void *argument)
 
 void WifiProvider::on_main_loop(void *argument)
 {
-    if (THEKERNEL->cur_comm_protocol == PROTOCOL_SMOOTHIE) {
+    if (communication_protocol == PROTOCOL_SMOOTHIE) {
 		if( this->has_char('\n') ){
 			string received;
 			received.reserve(20);
@@ -727,7 +727,7 @@ int WifiProvider::printfcmd(const char cmd, const char *format, ...)
     }
     va_end(args);
 
-	if (THEKERNEL->cur_comm_protocol == PROTOCOL_SMOOTHIE) {
+	if (communication_protocol == PROTOCOL_SMOOTHIE) {
 		puts(buffer, strlen(buffer));
 	} else {
 		PacketMessage(PTYPE_DIAG_RES, buffer, strlen(buffer));
@@ -760,7 +760,7 @@ int WifiProvider::printf(const char *format, ...)
     va_end(args);
 
 
-	if (THEKERNEL->cur_comm_protocol == PROTOCOL_SMOOTHIE) {
+	if (communication_protocol == PROTOCOL_SMOOTHIE) {
 		puts(buffer, strlen(buffer));
 	} else {
 		PacketMessage(PTYPE_DIAG_RES, buffer, strlen(buffer));
@@ -789,7 +789,7 @@ int WifiProvider::puts(const char* s, int size)
 		// 	0x18: No clients connecting to this TCP server
 		// 	0x1E: too many errors ecountered during sending can not fixed
 		// 	0x1F: Other errors
-		if (THEKERNEL->cur_comm_protocol == PROTOCOL_SMOOTHIE) {
+		if (communication_protocol == PROTOCOL_SMOOTHIE) {
 			sent = M8266WIFI_SPI_Send_BlockData(WifiData, to_send, 5000, tcp_link_no, NULL, 0, &status);
 		} else {
 			sent = M8266WIFI_SPI_Send_BlockData(WifiData, to_send, 500, tcp_link_no, NULL, 0, &status);
@@ -825,7 +825,7 @@ int WifiProvider::_getc()
 
 int WifiProvider::gets(char** buf, int size)
 {
-	if (THEKERNEL->cur_comm_protocol == PROTOCOL_SMOOTHIE) { //smoothie can be cleaned up and merged
+	if (communication_protocol == PROTOCOL_SMOOTHIE) { //smoothie can be cleaned up and merged
 		u16 status;
 		u8 link_no;
 		u16 received = M8266WIFI_SPI_RecvData(WifiData,
@@ -1015,7 +1015,7 @@ void WifiProvider::on_gcode_received(void *argument)
 				char ip_addr[16] = "192.168.1.2";
 				char netmask[16] = "255.255.255.0";
 				char broadcast[16];
-				if (THEKERNEL->cur_comm_protocol == PROTOCOL_SMOOTHIE) {
+				if (communication_protocol == PROTOCOL_SMOOTHIE) {
 					// Inlined get_broadcast_from_ip_and_netmask
 					uint32_t i_ip = ip_to_int(ip_addr);
 					uint32_t i_mask = ip_to_int(netmask);
@@ -1034,7 +1034,7 @@ void WifiProvider::on_gcode_received(void *argument)
 				gcode->stream->printf("broadcast: %s\n", broadcast);
 			} else if (gcode->subcode == 7) {
 				gcode->stream->printf("aaaaaaa\n");
-				if (THEKERNEL->cur_comm_protocol == PROTOCOL_SMOOTHIE) {
+				if (communication_protocol == PROTOCOL_SMOOTHIE) {
 					gcode->stream->printf("test buffer: %s\n", test_buffer.c_str());
 				}
 			}
@@ -1146,11 +1146,11 @@ void WifiProvider::on_gcode_received(void *argument)
 		} else if (gcode->m == 485)  {
 			if (gcode->subcode == 1) {
 				THEKERNEL->streams->printf("setting to smoothie communication protocol\n");
-				THEKERNEL->cur_comm_protocol = PROTOCOL_SMOOTHIE;
+				communication_protocol = PROTOCOL_SMOOTHIE;
 			}
 			else if (gcode->subcode == 2) {
 				THEKERNEL->streams->printf("setting to makera communication protocol\n");
-				THEKERNEL->cur_comm_protocol = PROTOCOL_MAKERA;
+				communication_protocol = PROTOCOL_MAKERA;
 			}
 		} else if (gcode->m == 489) {
 			// query wifi status
@@ -1172,7 +1172,7 @@ void WifiProvider::set_wifi_op_mode(u8 op_mode) {
 }
 
 void WifiProvider::on_get_public_data(void* argument) {
-	if (THEKERNEL->cur_comm_protocol == PROTOCOL_SMOOTHIE) { //smoothie can be cleaned up and merged
+	if (communication_protocol == PROTOCOL_SMOOTHIE) { //smoothie can be cleaned up and merged
 		PublicDataRequest* pdr = static_cast<PublicDataRequest*>(argument);
 		if(!pdr->starts_with(wlan_checksum)) return;
 		if(!pdr->second_element_is(get_wlan_checksum)) return;
@@ -1416,7 +1416,7 @@ void WifiProvider::on_set_public_data(void *argument)
 
     		// get ip address if no error
     		if (!s->has_error) {
-    			if (THEKERNEL->cur_comm_protocol == PROTOCOL_SMOOTHIE) {
+    			if (communication_protocol == PROTOCOL_SMOOTHIE) {
 					M8266WIFI_SPI_Get_STA_IP_Addr(s->ip_address, &status);
 				} else {
 					u16 status = 0;
@@ -1457,7 +1457,7 @@ void WifiProvider::on_set_public_data(void *argument)
     	u16 len =0;
     	u8  ssid2[33];
     	char *ssid = static_cast<char *>(pdr->get_data_ptr());
-		if (THEKERNEL->cur_comm_protocol == PROTOCOL_SMOOTHIE) {
+		if (communication_protocol == PROTOCOL_SMOOTHIE) {
 			if (M8266WIFI_SPI_Config_AP_Param(AP_PARAM_TYPE_SSID, (u8 *)ssid, strlen(ssid), 1, &status) == 0) {
 					THEKERNEL->streams->printf("WiFi set AP SSID ERROR, status:%d, high: %d, low: %d!\n", status, int(status >> 8), int(status & 0xff));
 			} else {
@@ -1716,7 +1716,7 @@ int WifiProvider::type() {
 }
 
 ProtocolMode WifiProvider::protocol(){
-	return THEKERNEL->cur_comm_protocol;
+	return communication_protocol;
 }
 
 

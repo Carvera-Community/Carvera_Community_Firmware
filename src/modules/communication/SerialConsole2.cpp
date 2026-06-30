@@ -118,7 +118,7 @@ void SerialConsole2::on_main_loop(void * argument) {
         	   } else if (received[0] == 'P' && received.length() > 1) {
         		   THEKERNEL->streams->printf("WP PAIR %s!\n", received[1] ? "SUCCESS" : "TIMEOUT");
         	   }
-               else if (received.length() > 2 && THEKERNEL->cur_comm_protocol == PROTOCOL_MAKERA)
+               else if (received.length() > 2 && communication_protocol == PROTOCOL_MAKERA)
         	   {
         	   		THEKERNEL->streams->printf("RF Received Data: %d,%d,%d!\n", received[0] ,received[1],received[2]);
         		}
