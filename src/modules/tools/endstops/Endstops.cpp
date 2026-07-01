@@ -29,9 +29,13 @@
 #include "StepTicker.h"
 #include "BaseSolution.h"
 #include "SerialMessage.h"
+#include "PublicData.h"
+#include "PlayerPublicAccess.h"
+#include "ATCHandlerPublicAccess.h"
 
 #include <ctype.h>
 #include <algorithm>
+#include <vector>
 
 // OLD deprecated syntax
 #define endstops_module_enable_checksum         CHECKSUM("endstops_enable")
@@ -1049,6 +1053,234 @@ void Endstops::home(axis_bitmap_t a)
     this->status = NOT_HOMING;
 }
 
+bool Endstops::slow_approach_axis(int axis_index, float feed_rate_mm_s, float &result_mm, float approach_retract_multiplier)
+{
+    if (axis_index < 0 || axis_index >= (int)homing_axis.size()) return false;
+
+    auto &h = homing_axis[axis_index];
+    if (h.pin_info == nullptr) return false;
+
+    h.pin_info->debounce = 0;
+    h.pin_info->triggered = false;
+    h.pin_info->Nontriggered = false;
+
+    float feed_rate = isnan(feed_rate_mm_s) ? h.slow_rate : feed_rate_mm_s;
+
+    this->axis_to_home.reset();
+    this->axis_to_home.set(axis_index);
+
+    THEROBOT->disable_segmentation = true;
+
+    std::vector<float> delta(homing_axis.size(), 0.0F);
+
+    this->status = MOVING_BACK;
+    delta[axis_index] = h.retract;
+    if (!h.home_direction) delta[axis_index] = -delta[axis_index];
+    THEROBOT->delta_move(delta.data(), feed_rate, homing_axis.size());
+    THECONVEYOR->wait_for_idle();
+
+    this->status = MOVING_TO_ENDSTOP_SLOW;
+    delta.assign(homing_axis.size(), 0.0F);
+    delta[axis_index] = h.retract * approach_retract_multiplier;
+    if (h.home_direction) delta[axis_index] = -delta[axis_index];
+    THEROBOT->delta_move(delta.data(), feed_rate, homing_axis.size());
+    THECONVEYOR->wait_for_idle();
+
+    THEROBOT->disable_segmentation = false;
+
+    if (!h.pin_info->triggered) {
+        this->status = NOT_HOMING;
+        return false;
+    }
+
+    THEROBOT->reset_position_from_current_actuator_position();
+    result_mm = THEROBOT->actuators[axis_index]->get_current_position();
+    this->status = NOT_HOMING;
+    return true;
+}
+
+void Endstops::ensure_z_clearance_for_xy_test()
+{
+    struct machine_offsets offsets{};
+    if (!PublicData::get_value(atc_handler_checksum, get_machine_offsets_checksum, &offsets)) return;
+
+    float mpos[THEROBOT->get_number_registered_motors()];
+    THEROBOT->get_current_machine_position(mpos);
+    if (mpos[Z_AXIS] >= offsets.clearance_z) return;
+
+    char buf[64];
+    snprintf(buf, sizeof(buf), "G53 G0 Z%.3f", THEROBOT->from_millimeters(offsets.clearance_z));
+    struct SerialMessage message;
+    message.message = buf;
+    message.stream = &(StreamOutput::NullStream);
+    THEKERNEL->call_event(ON_CONSOLE_LINE_RECEIVED, &message);
+    THECONVEYOR->wait_for_idle();
+}
+
+void Endstops::test_endstop_repeatability(Gcode* gcode)
+{
+    if (THEKERNEL->is_halted()) {
+        gcode->stream->printf("ERROR: Cannot run endstop repeatability test while halted\n");
+        return;
+    }
+
+    void *return_value = nullptr;
+    if (PublicData::get_value(player_checksum, is_playing_checksum, &return_value)) {
+        if (*static_cast<bool *>(return_value)) {
+            gcode->stream->printf("ERROR: Cannot run endstop repeatability test while playing file\n");
+            return;
+        }
+    }
+
+    THECONVEYOR->wait_for_idle();
+
+    int repeat_count = 5;
+    if (gcode->has_letter('R')) {
+        repeat_count = (int)gcode->get_value('R');
+        if (repeat_count < 1) repeat_count = 1;
+        if (repeat_count > 50) repeat_count = 50;
+    }
+
+    float feed_override = NAN;
+    if (gcode->has_letter('F')) {
+        feed_override = gcode->get_value('F') / 60.0F;
+    }
+
+    axis_bitmap_t haxis;
+    haxis.reset();
+    bool axis_speced = (gcode->has_letter('X') || gcode->has_letter('Y') || gcode->has_letter('Z') ||
+                        gcode->has_letter('A') || gcode->has_letter('B') || gcode->has_letter('C'));
+
+    for (auto &p : homing_axis) {
+        if (p.pin_info == nullptr) continue;
+        if (!axis_speced || gcode->has_letter(p.axis)) {
+            haxis.set(p.axis_index);
+        }
+    }
+
+    if (haxis.none()) {
+        gcode->stream->printf("ERROR: No homing endstops selected for repeatability test\n");
+        return;
+    }
+
+    if (haxis[X_AXIS] || haxis[Y_AXIS]) {
+        ensure_z_clearance_for_xy_test();
+    }
+
+    bool previous_disable_endstops = THEKERNEL->disable_endstops;
+    THEKERNEL->disable_endstops = false;
+    auto savect = THEROBOT->compensationTransform;
+    THEROBOT->compensationTransform = nullptr;
+
+
+    // home the given axes first
+    process_home_command(gcode);
+    if (THEKERNEL->is_halted()) {
+        THEKERNEL->disable_endstops = previous_disable_endstops;
+        THEROBOT->compensationTransform = savect;
+        return;
+    }
+
+    bool aborted = false;
+
+    for (auto &p : homing_axis) {
+        if (!haxis[p.axis_index]) continue;
+
+        std::vector<float> samples;
+        samples.reserve(repeat_count);
+
+        bool is_rotary = (p.axis_index >= A_AXIS);
+        const char *unit = is_rotary ? "deg" : "mm";
+        const char *rate_unit = is_rotary ? "deg/s" : "mm/s";
+        bool use_full_homing_procedure = is_rotary && (THEKERNEL->factory_set->FuncSetting & (1 << 0));
+
+        gcode->stream->printf("--- Endstop repeatability: %c (R=%d) ---\n", p.axis, repeat_count);
+
+        // The test can never resolve differences smaller than one step or smaller
+        // than the distance travelled between two read_endstops() polls at the
+        // tap feed rate.
+        float tap_feed_rate = isnan(feed_override) ? p.slow_rate : feed_override;
+        float step_resolution = 1.0F / STEPS_PER_MM(p.axis_index);
+        float poll_resolution = tap_feed_rate / 1000.0F; // distance moved per 1ms debounce poll
+        float floor_resolution = std::max(step_resolution, poll_resolution);
+        gcode->stream->printf("Note: resolution floor ~%.4f %s\n", floor_resolution, unit);
+        gcode->stream->printf("  step: %.4f %s, poll: %.4f %s @ %.2f %s\n", step_resolution, unit, poll_resolution, unit, tap_feed_rate, rate_unit);
+        gcode->stream->printf("  differences at or below floor are not meaningful\n");
+
+        if (!use_full_homing_procedure) {
+            // Do a first warm-up tap to put the axis back into the same "just past the
+            // previous trigger point" state that all real samples start from, then
+            // discard it.
+            // Unlike the samples (which start from the trigger point), this tap starts
+            // from the post-homing rest position, so a larger approach distance is needed.
+            float warmup_mm = 0.0F;
+            if (!slow_approach_axis(p.axis_index, feed_override, warmup_mm, 3.0F)) {
+                THEKERNEL->set_halt_reason(HOME_FAIL);
+                gcode->stream->printf("ERROR: Endstop repeatability test failed on %c warm-up tap (no trigger)\n", p.axis);
+                THEKERNEL->call_event(ON_HALT, nullptr);
+                aborted = true;
+                break;
+            }
+        }
+
+        for (int i = 0; i < repeat_count; ++i) {
+            float sample_mm = 0.0F;
+
+            // A axis has a different homing procedure, so we
+            // directly use home() instead of only trying to
+            // do slow approaches.
+            if (use_full_homing_procedure) {
+                axis_bitmap_t bs;
+                bs.reset();
+                bs.set(p.axis_index);
+                home(bs);
+                if (THEKERNEL->is_halted()) {
+                    gcode->stream->printf("ERROR: Endstop repeatability test failed on %c iteration %d\n", p.axis, i + 1);
+                    aborted = true;
+                    break;
+                }
+                sample_mm = THEROBOT->actuators[p.axis_index]->get_current_position();
+            } else {
+                if (!slow_approach_axis(p.axis_index, feed_override, sample_mm)) {
+                    THEKERNEL->set_halt_reason(HOME_FAIL);
+                    gcode->stream->printf("ERROR: Endstop repeatability test failed on %c iteration %d (no trigger)\n", p.axis, i + 1);
+                    THEKERNEL->call_event(ON_HALT, nullptr);
+                    aborted = true;
+                    break;
+                }
+            }
+
+            samples.push_back(sample_mm);
+        }
+
+        if (aborted) break;
+
+        if (!samples.empty()) {
+            float ref = samples[0];
+            float min_rel = 0.0F;
+            float max_rel = 0.0F;
+            for (size_t i = 0; i < samples.size(); ++i) {
+                float rel = samples[i] - ref;
+                gcode->stream->printf("Sample %2u: %+.4f %s\n", i+1, rel, unit);
+                if (i == 0) {
+                    min_rel = max_rel = rel;
+                } else {
+                    min_rel = std::min(min_rel, rel);
+                    max_rel = std::max(max_rel, rel);
+                }
+            }
+            gcode->stream->printf("Min: %+.4f  Max: %+.4f  Range: %.4f %s\n", min_rel, max_rel, max_rel - min_rel, unit);
+        }
+    }
+
+    if (!aborted) {
+        process_home_command(gcode);
+    }
+
+    THEKERNEL->disable_endstops = previous_disable_endstops;
+    THEROBOT->compensationTransform = savect;
+}
+
 void Endstops::process_home_command(Gcode* gcode)
 {
     bool previous_disable_endstops = THEKERNEL->disable_endstops;
@@ -1467,6 +1699,10 @@ void Endstops::on_gcode_received(void *argument)
                 if(g28_position[X_AXIS] != 0 || g28_position[Y_AXIS] != 0) {
                     gcode->stream->printf(";predefined position:\nG28.1 X%1.4f Y%1.4f\n", g28_position[X_AXIS], g28_position[Y_AXIS]);
                 }
+                break;
+
+            case 575: // test endstop repeatability for the given axes
+                test_endstop_repeatability(gcode);
                 break;
 
             case 665:
