@@ -13,7 +13,6 @@
 #include "ConfigCache.h"
 #include "checksumm.h"
 #include "utils.h"
-#include <malloc.h>
 
 using namespace std;
 #include <string>
@@ -147,10 +146,9 @@ bool FileConfigSource::write( string setting, string value )
     // search each line for a match
     while(!fwfs::feof(lp)) {
         string line;
-        fpos_t bol, eol;
-        fwfs::fgetpos( lp, &bol ); // get start of line
+        long bol = fwfs::ftell(lp); // get start of line
         if(readLine(line, 0, lp)) {
-            fwfs::fgetpos( lp, &eol ); // get end of line
+            long eol = fwfs::ftell(lp); // get end of line
             if(!process_line_from_ascii_config(line, setting_checksums).empty()) {
                 // found it
                 unsigned int free_space = eol - bol - 4; // length of line
@@ -304,7 +302,6 @@ string FileConfigSource::get_config_file()
         return "";
     }
 }
-
 
 
 
