@@ -38,7 +38,9 @@ class StreamOutput {
         virtual bool ready() { return true; };
         virtual int type() {return 0; }; // 0: serial, 1: wifi
         virtual void reset(void) {return ; };
-        virtual int printfcmd(const char cmd, const char *format, ...) __attribute__ ((format(printf, 3, 4))){ return -1; };
+        virtual bool frames_protocol_output() const { return false; }
+        virtual void on_protocol_changed() {}
+        virtual int printfcmd(const char cmd, const char *format, ...) __attribute__ ((format(printf, 3, 4)));
 
         static NullStreamOutput NullStream;
         void PacketMessage(char cmd, const char* s, int size);

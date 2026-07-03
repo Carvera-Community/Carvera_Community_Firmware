@@ -50,6 +50,15 @@ public:
         this->streams.erase(stream);
     }
 
+    bool frames_protocol_output() const { return true; }
+
+    void on_protocol_changed()
+    {
+        for(set<StreamOutput*>::iterator i = this->streams.begin(); i != this->streams.end(); i++) {
+            (*i)->on_protocol_changed();
+        }
+    }
+
 private:
     set<StreamOutput*> streams;
 };
