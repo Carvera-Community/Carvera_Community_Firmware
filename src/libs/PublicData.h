@@ -8,6 +8,8 @@
 #ifndef PUBLICDATA_H
 #define PUBLICDATA_H
 
+#include <stdint.h>
+
 class PublicData {
     public:
         // there are two ways to get data from a module

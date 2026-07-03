@@ -1,6 +1,7 @@
 #include "OCodeHandler.h"
 
 #include "libs/FirmwareFileSystem.h"
+#include "libs/compiler.h"
 #include "libs/StreamOutput.h"
 #include "libs/StreamOutputPool.h"
 #include "libs/Kernel.h"
@@ -19,7 +20,7 @@ using std::map;
 
 // Block-stack storage placed in AHBSRAM to keep it off the tight main SRAM heap.
 // Zeroed at startup by mbed_custom.cpp; frames are always written before read.
-OCodeHandler::Frame OCodeHandler::frame_storage_[OCODE_MAX_STACK_DEPTH] __attribute__((section("AHBSRAM")));
+OCodeHandler::Frame OCodeHandler::frame_storage_[OCODE_MAX_STACK_DEPTH] LOCATED_IN_AHBSRAM;
 
 OCodeHandler::OCodeHandler()
 {
