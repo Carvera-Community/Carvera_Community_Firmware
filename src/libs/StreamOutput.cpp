@@ -60,7 +60,7 @@ int StreamOutput::printf(const char *format, ...)
     }
     va_end(args);
 
-    if (communication_protocol == PROTOCOL_SMOOTHIE) {
+    if (communication_protocol == PROTOCOL_SMOOTHIE || !frames_protocol_output()) {
         puts(buffer, strlen(buffer));
     } else {
         PacketMessage(PTYPE_NORMAL_INFO, buffer, strlen(buffer));
@@ -70,5 +70,34 @@ int StreamOutput::printf(const char *format, ...)
     if (buffer != b)
         delete[] buffer;
 
+    return size - 1;
+}
+
+int StreamOutput::printfcmd(const char cmd, const char *format, ...)
+{
+    char b[64];
+    char *buffer;
+    va_list args;
+    va_start(args, format);
+
+    int size = vsnprintf(b, sizeof(b), format, args) + 1;
+    va_end(args);
+
+    if (size < static_cast<int>(sizeof(b))) {
+        buffer = b;
+    } else {
+        buffer = new char[size];
+        va_start(args, format);
+        vsnprintf(buffer, size, format, args);
+        va_end(args);
+    }
+
+    if (communication_protocol == PROTOCOL_SMOOTHIE || !frames_protocol_output()) {
+        puts(buffer, strlen(buffer));
+    } else {
+        PacketMessage(cmd, buffer, strlen(buffer));
+    }
+
+    if (buffer != b) delete[] buffer;
     return size - 1;
 }

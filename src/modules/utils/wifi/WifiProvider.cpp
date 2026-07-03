@@ -1143,17 +1143,6 @@ void WifiProvider::on_gcode_received(void *argument)
 					THEKERNEL->streams->printf("AP param[%d]: %s\n", gcode->subcode, param);
 				}
 			}
-		} else if (gcode->m == 485)  {
-			if (gcode->subcode == 1) {
-				THEKERNEL->streams->printf("setting to smoothie communication protocol\n");
-				communication_protocol = PROTOCOL_SMOOTHIE;
-			}
-			else if (gcode->subcode == 2) {
-				THEKERNEL->streams->printf("setting to makera communication protocol\n");
-				communication_protocol = PROTOCOL_MAKERA;
-			} else {
-				THEKERNEL->streams->printf("current communication protocol: %s\n", (communication_protocol == PROTOCOL_SMOOTHIE) ? "smoothie" : "makera" );
-			}
 		} else if (gcode->m == 489) {
 			// query wifi status
 			query_wifi_status();
@@ -1534,6 +1523,8 @@ void WifiProvider::init_wifi_module(bool reset) {
 
 
 	if (reset) {
+		// Stop broadcasting to the connection before deleting it.
+		THEKERNEL->streams->remove_stream(this);
 		THEKERNEL->streams->printf("M8266WIFI_SPI_Delete_Connections...\n");
 		// disconnect current links
 		if (M8266WIFI_SPI_Delete_Connection( udp_link_no, &status) == 0){
@@ -1542,9 +1533,6 @@ void WifiProvider::init_wifi_module(bool reset) {
 		if (M8266WIFI_SPI_Delete_Connection( tcp_link_no, &status) == 0){
 			THEKERNEL->streams->printf("M8266WIFI_SPI_Delete_Connection ERROR, status:%d, high: %d, low: %d!\n", status, int(status >> 8), int(status & 0xff));
 		}
-
-		// remove current stream
-		THEKERNEL->streams->remove_stream(this);
 	}
 
 
