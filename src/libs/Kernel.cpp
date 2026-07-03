@@ -12,6 +12,7 @@
 #include "libs/nuts_bolts.h"
 #include "libs/SlowTicker.h"
 #include "libs/Adc.h"
+#include "libs/compiler.h"
 #include "libs/StreamOutputPool.h"
 #include <mri.h>
 #include "checksumm.h"
@@ -48,7 +49,6 @@
 
 #include "platform_memory.h"
 
-#include <malloc.h>
 #include <array>
 #include <string>
 
@@ -66,8 +66,8 @@
 #define halt_on_error_debug_checksum                CHECKSUM("halt_on_error_debug")
 Kernel* Kernel::instance;
 
-static float ahb_local_vars[20]   __attribute__((section("AHBSRAM")));
-static float ahb_local_params[30] __attribute__((section("AHBSRAM")));
+static float ahb_local_vars[20] LOCATED_IN_AHBSRAM;
+static float ahb_local_params[30] LOCATED_IN_AHBSRAM;
 
 #define	EEP_MAX_PAGE_SIZE	32
 #define EEPROM_DATA_STARTPAGE	1
@@ -1271,4 +1271,3 @@ void Kernel::set_tool_waiting(bool f) {
 		}
 	}
 }
-
