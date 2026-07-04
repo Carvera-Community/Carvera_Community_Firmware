@@ -9,6 +9,8 @@ int StreamOutput::printf(const char *format, ...)
     // Make the message
     va_list args;
     va_start(args, format);
+    va_list args_copy;
+    va_copy(args_copy, args);
 
     int size = vsnprintf(b, 64, format, args) + 1; // we add one to take into account space for the terminating \0
 
@@ -16,8 +18,9 @@ int StreamOutput::printf(const char *format, ...)
         buffer = b;
     } else {
         buffer = new char[size];
-        vsnprintf(buffer, size, format, args);
+        vsnprintf(buffer, size, format, args_copy);
     }
+    va_end(args_copy);
     va_end(args);
 
     puts(buffer, strlen(buffer));
