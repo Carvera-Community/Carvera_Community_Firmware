@@ -21,6 +21,8 @@
 - Enhancement: Support for turning On an external connected vacuum via M851/M852. Backported from Makera firmware
 - Changed: reduce PWM period in software spindle speed pwm. Change from Makera
 - Changed: Increased Software based PWM frequency from 50hz to 100hz. Backported from Makera firmware.
+- Changed: improved M118.1 P command return to give more information. M118.1 P#101 now returns #101 = (value), will also return #101+3 = (value)
+- Fixed: any call to a variable out of range will now return a machine halt. 
 
 [2.1.0c]
 - Fixed: Unused Variables removed
