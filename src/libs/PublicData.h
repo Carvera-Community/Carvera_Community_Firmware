@@ -26,6 +26,7 @@
 #define PTYPE_LOAD_FINISH	0x84
 #define PTYPE_LOAD_ERROR	0x85
 #define PTYPE_NORMAL_INFO	0x90
+#include <stdint.h>
 
 class PublicData {
     public:

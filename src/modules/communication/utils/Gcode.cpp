@@ -166,14 +166,18 @@ float Gcode::set_variable_value() const {
             this->stream->printf("Variable %d set %.4f \n", var_num, value);
             return value;
         } else {
-            // If the variable number is out of the expected range, print an error
-            this->stream->printf("Variable not found \n");
-            return NAN; // Variable not found
+            // If the variable number is out of the expected range, print an error;
+            THEKERNEL->set_halt_reason(MANUAL);
+            THEKERNEL->streams->printf("ERROR: Variable %d out of range \n", var_num);
+            THEKERNEL->call_event(ON_HALT, nullptr);
+            return NAN;
         }
     }
 
     // If the input doesn't start with '#', print an error message
+    THEKERNEL->set_halt_reason(MANUAL);
     this->stream->printf("Variable not found \n");
+    THEKERNEL->call_event(ON_HALT, nullptr);
     return 0; // Default return value
 }
 

@@ -69,10 +69,10 @@ extern unsigned char fbuff[4096];
 #define EOT  0x04
 #define CAN  0x16 //0x18
 
-#include <malloc.h>
 #include <mri.h>
 #include <stdio.h>
 #include <stdint.h>
+#include <stdlib.h>
 #include <functional>
 
 extern "C" uint32_t  __end__;
