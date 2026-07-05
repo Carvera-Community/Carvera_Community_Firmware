@@ -7,10 +7,12 @@
 - Enhancement: Add O-codes support
 - Enhancement: Added a new 4th axis self-calibration routine M469.6. This routine calibrates the 4th axis centreline in both Y and Z axis by probing a round object (such as chuck body) from multiple directions. This routine find the true zero point without being affected by runout or surface imperfections.
 - Enhancement: Added improved PID Spindle control that increases performance of carvera C1 spindles. Setup requires following the guide on the documentation page
+- Enhancement: Add endstops repeatability test (M575)
 - Fixed: Corrected the Shrink A command G92.4 A0 S0. Now instead of compressing machine coordinates it compresses work coordinates. Backported from Makera firmware
 - Enhancement: Add option to auto-disable on-board wifi AP once machine is connected to external wifi (STA). By default this is turned on, to turn off type config-set sd wifi.ap_auto_disable false into the MDI
 - Fixed: Prevent incorrect current line reporting after a tool change
 - Lint: conformed all error messages to the format ERROR: <message> for easier hooks in the controller
+- Changed: M495 now retracts Z and clears the chuck in separate axis moves before approaching the work origin (new R flag for rotary jobs), and unwinds the 4th axis in work coordinates when returning to work origin, preventing collisions with the workpiece or fixture. Backported from Makera firmware
 - Fixed: Increased max supported ssid length from 27 to 32 characters. Backported from Makera firmware.
 - Compatibility: Makera Probing commands M480.1-M480.10 have been added and call their community firmware equivalent. The inside probing routines are slightly different and start inside the corner instead of above it.  See https://carvera-community.gitbook.io/docs/firmware/supported-commands/mcodes for more information.
 - Changed: increased allowed gcode subcodes from 0-7 to 0-15
@@ -21,6 +23,8 @@
 - Changed: reduce PWM period in software spindle speed pwm. Change from Makera
 - Changed: Increased Software based PWM frequency from 50hz to 100hz. Backported from Makera firmware.
 - Fixed: If config is set to halt when the lid is opened, the machine will halt if any of the motion motors are moving, or the spindle is on. This change also allows manual changes if the cover is open, but will halt if the machine starts its calibration routine. refactored and signifigantly improved from makera code
+- Changed: improved M118.1 P command return to give more information. M118.1 P#101 now returns #101 = (value), will also return #101+3 = (value)
+- Fixed: any call to a variable out of range will now return a machine halt. 
 
 [2.1.0c]
 - Fixed: Unused Variables removed
