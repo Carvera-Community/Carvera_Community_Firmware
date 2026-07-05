@@ -133,7 +133,7 @@
 #define GRIDFILE_NM "/sd/cartesian_nm.grid"
 #define FLEX_COMPENSATION_FILE "/sd/flex_compensation.dat"
 
-#define FLEX_COMPENSATION_VERSION 1
+#define FLEX_COMPENSATION_VERSION 2
 
 #define PI 3.14159265358979323846F
 
@@ -145,6 +145,8 @@ CartGridStrategy::CartGridStrategy(ZProbe *zprobe) : LevelingStrategy(zprobe)
     flex_data_size = 0;
     cartesian_grid_active = false;
     flex_compensation_always_active = false;
+    loaded_flex_compensation_version = 0.0f;
+    flex_z_measurement_active = false;
 }
 
 CartGridStrategy::~CartGridStrategy()
@@ -242,9 +244,16 @@ bool CartGridStrategy::handleConfig()
     this->flex_x_points = THEKERNEL->config->value(leveling_strategy_checksum, cart_grid_leveling_strategy_checksum, flex_x_points_checksum)->as_number(30);
     this->flex_x_start = 0.0F;
 
-    // Allocate memory for flex compensation data
-    flex_data_size = flex_x_points * sizeof(float);
-    flex_compensation_data = (float *)AHB.alloc(flex_data_size);
+    if (this->flex_x_points <= 30){
+        // Allocate memory for flex compensation data
+        flex_data_size = flex_x_points * sizeof(float) * 2;
+        flex_compensation_data = (float *)AHB.alloc(flex_data_size);
+    }else{
+        THEKERNEL->set_flex_compensation_load_error(2);
+        flex_compensation_active = false;
+        return false;
+    }
+    
 
     if(flex_compensation_data == nullptr) {
         THEKERNEL->streams->printf("Error: Not enough memory for flex compensation data\n");
@@ -260,7 +269,7 @@ bool CartGridStrategy::handleConfig()
             flex_compensation_active = true;
             updateCompensationTransform();
         }else{
-            THEKERNEL->set_flex_compensation_load_error(true);
+            THEKERNEL->set_flex_compensation_load_error(1);
             flex_compensation_active = false;
             updateCompensationTransform();
         }
@@ -490,6 +499,11 @@ bool CartGridStrategy::handleGcode(Gcode *gcode)
 
         }else if(gcode->g == 33) { // G33: Perform flex measurement and enable compensation
 
+            if (THEKERNEL->is_flex_compensation_load_error() == 2) {
+                gcode->stream->printf("ERROR: Configured flex compensation size too big. Max size is 30\n");
+                return false;
+            }
+
             if(THEKERNEL->factory_set->MachineModel != CARVERA_AIR) {
                 gcode->stream->printf("Flex compensation is only supported on Carvera Air\n");
                 return false;
@@ -508,9 +522,42 @@ bool CartGridStrategy::handleGcode(Gcode *gcode)
                 gcode->stream->printf("Flex measurement failed to complete\n");
             } else {
                 gcode->stream->printf("Flex measurement completed and compensation enabled.\n");
-                THEKERNEL->set_flex_compensation_load_error(false);
+                THEKERNEL->set_flex_compensation_load_error(0);
             }
             THEROBOT->disable_segmentation = false;
+
+            if(!after_probe.empty()) {
+                Gcode gc(after_probe, &(StreamOutput::NullStream));
+                THEKERNEL->call_event(ON_GCODE_RECEIVED, &gc);
+            }
+
+            return true;
+
+        } else if(gcode->g == 34) { // G34: Flex Z measurement on machine bed (same X grid as G33)
+
+            if (THEKERNEL->is_flex_compensation_load_error() == 2) {
+                gcode->stream->printf("ERROR: Configured flex compensation size too big. Max size is 30\n");
+                return false;
+            }
+
+            if(THEKERNEL->factory_set->MachineModel != CARVERA_AIR) {
+                gcode->stream->printf("Flex compensation is only supported on Carvera Air\n");
+                return false;
+            }
+
+            THEKERNEL->conveyor->wait_for_idle();
+
+            if(!before_probe.empty()) {
+                Gcode gc(before_probe, &(StreamOutput::NullStream));
+                THEKERNEL->call_event(ON_GCODE_RECEIVED, &gc);
+            }
+
+            if(!doFlexZMeasurement(gcode)) {
+                gcode->stream->printf("Flex Z measurement failed to complete\n");
+            } else {
+                gcode->stream->printf("Flex Z measurement completed.\n");
+                THEKERNEL->set_flex_compensation_load_error(0);
+            }
 
             if(!after_probe.empty()) {
                 Gcode gc(after_probe, &(StreamOutput::NullStream));
@@ -567,7 +614,7 @@ bool CartGridStrategy::handleGcode(Gcode *gcode)
                 if (load_flex_compensation_data(gcode->stream)) {
                     flex_compensation_active = true;
                     updateCompensationTransform();
-                    THEKERNEL->set_flex_compensation_load_error(false);
+                    THEKERNEL->set_flex_compensation_load_error(0);
                 }else{
                     flex_compensation_active = false;
                     updateCompensationTransform();
@@ -576,14 +623,20 @@ bool CartGridStrategy::handleGcode(Gcode *gcode)
                 // Delete flex compensation data
                 fwfs::remove(FLEX_COMPENSATION_FILE);
                 gcode->stream->printf("Flex compensation data deleted\n");
-            }else if(gcode->subcode == 5) {
-                // Enable Debugging
-                this->force_debug = true;
-                gcode->stream->printf("Flex compensation debugging enabled\n");
-            }else if(gcode->subcode == 6) {
-                // Disable Debugging
-                this->force_debug = false;
-                gcode->stream->printf("Flex compensation debugging disabled\n");
+            } else if(gcode->subcode == 5) {
+                // Set flex compensation version
+                if (gcode->has_letter('V')) {
+                    if (gcode->get_value('V') == 1) {
+                        loaded_flex_compensation_version = 1.0f;
+                        gcode->stream->printf("Flex compensation version set to v%1.3f\n", loaded_flex_compensation_version);
+                    }else if(gcode->get_value('V') == 2) {
+                        loaded_flex_compensation_version = 2.0f;
+                        gcode->stream->printf("Flex compensation version set to v%1.3f\n", loaded_flex_compensation_version);
+                    }else{
+                        gcode->stream->printf("ERROR: Invalid flex compensation version\n");
+                        return false;
+                    }
+                }
             } else {
                 // Disable flex compensation only
                 flex_compensation_active = false;
@@ -934,32 +987,41 @@ void CartGridStrategy::doCompensation(float *target, bool inverse, bool debug)
             float delta_low = flex_compensation_data[grid_index];
             float delta_high = flex_compensation_data[grid_index + 1];
             interpolated_delta = delta_low + (t_int / 10000.0f) * (delta_high - delta_low);
+            if (loaded_flex_compensation_version == (float)(FLEX_COMPENSATION_VERSION)) {
+                z_trans = flex_compensation_data[grid_index + flex_current_x_points] + (t_int / 10000.0f) * (flex_compensation_data[grid_index + flex_current_x_points + 1] - flex_compensation_data[grid_index + flex_current_x_points]);
+            }
         }else{
-            if(target[X_AXIS] < this->x_start){
+            if(target[X_AXIS] < this->flex_x_start){
                 interpolated_delta = flex_compensation_data[0];
+                if (loaded_flex_compensation_version == (float)(FLEX_COMPENSATION_VERSION)) {
+                    z_trans = flex_compensation_data[flex_current_x_points];
+                }
             }else{
                 interpolated_delta = flex_compensation_data[flex_current_x_points - 1];
+                if (loaded_flex_compensation_version == (float)(FLEX_COMPENSATION_VERSION)) {
+                    z_trans = flex_compensation_data[flex_current_x_points - 1 + flex_current_x_points];
+                }
             }
         }
-
-        z_trans = 0.5f * interpolated_delta * (rod_distance_int / (2.0f *10000.0f));
+        if (loaded_flex_compensation_version == 1.0f && !flex_z_measurement_active) {
+            z_trans = -0.5f * interpolated_delta * (rod_distance_int / (2.0f *10000.0f));
+        }else if(flex_z_measurement_active) {
+            z_trans = 0.0f;
+        }
 
         // The data has been normalized to a radius of 1.0 so we need to multiply by the triangle length to get the actual distance for the rotational components
         interpolated_delta = interpolated_delta * triangle_length_float;
 
         // rotational component
         y_rot = cos(atan((triangle_y_int / 10000.0f) / (triangle_z_int / 10000.0f))) * interpolated_delta;
-        z_rot = sin(atan((triangle_y_int / 10000.0f) / (triangle_z_int / 10000.0f))) * interpolated_delta;
+        z_rot = -1.0f * sin(atan((triangle_y_int / 10000.0f) / (triangle_z_int / 10000.0f))) * interpolated_delta;
 
         if (inverse) {
             target[Y_AXIS] = target[Y_AXIS] - y_rot;
-            target[Z_AXIS] = target[Z_AXIS] + z_rot + z_trans;
+            target[Z_AXIS] = target[Z_AXIS] - z_rot - z_trans;
         } else {
             target[Y_AXIS] = target[Y_AXIS] + y_rot;
-            target[Z_AXIS] = target[Z_AXIS] - z_rot - z_trans;
-            if (this->force_debug) {
-                THEKERNEL->streams->printf("//DEBUG: FLEX COMPENSATION: X:%f, DeltaY:%f, DeltaZ: %f\n", target[0], y_rot, z_rot + z_trans);
-            }
+            target[Z_AXIS] = target[Z_AXIS] + z_rot + z_trans;
         }
     }
 
@@ -1125,11 +1187,6 @@ bool CartGridStrategy::doFlexMeasurement(Gcode *gc)
         repeat = gc->get_value('L');
     }
 
-    bool debug = false;
-    if(gc->has_letter('D')) {
-        debug = true;
-    }
-
     if(this->flex_x_size <= 0 || num_points <= 0) {
         gc->stream->printf("ERROR: X and I parameters must be positive\n");
         return false;
@@ -1236,17 +1293,87 @@ bool CartGridStrategy::doFlexMeasurement(Gcode *gc)
     }
 
     flex_compensation_active = true;
+    loaded_flex_compensation_version = 1.0f;
     updateCompensationTransform();
     gc->stream->printf("Flex measurement completed and activated\n");
-    if(debug) {
-        this->force_debug = true;
-        for (int i = num_points - 1; i >= 0; i--) {
-            float probe_x = current_x + (i * x_step);
-            gc->stream->printf("Debug move to %1.3f\n", probe_x);
-            zprobe->coordinated_move(probe_x, NAN, NAN, params.rapid_rate / 60);
-        }
-        this->force_debug = false;
+    return true;
+}
+
+bool CartGridStrategy::doFlexZMeasurement(Gcode *gc)
+{
+    if (!flex_compensation_active) {
+        gc->stream->printf("ERROR: Flex compensation is not active. Please run G33 before G34\n");
+        return false;
     }
+    if(flex_current_x_points < 2 || flex_x_size <= 0.0F || flex_compensation_data == nullptr) {
+        gc->stream->printf("ERROR: Load flex grid (M380.3) or run G33 before G34\n");
+        return false;
+    }
+
+    int repeat = 1;
+    if(gc->has_letter('L') && gc->get_int('L') > 1) {
+        repeat = (int)gc->get_value('L');
+    }
+
+    float probe_y = THEROBOT->get_axis_position(Y_AXIS);
+    float x_step = flex_x_size / (flex_current_x_points - 1);
+    float rapid = (gc->has_letter('R')) ? gc->get_value('R') : 800;
+
+    zprobe->init_parameters_and_out_coords();
+
+    gc->stream->printf("Flex Z bed probe along X: start X=%1.3f span=%1.3f points=%d probe Y=%1.3f\n",
+                       flex_x_start, flex_x_size, flex_current_x_points, probe_y);
+    gc->stream->printf("// Index 0 skipped (no bed); ref at i=1; Z[0] extrapolated from Z[1],Z[2] if I>=3\n");
+
+    float z_reference = 0.0F;
+    float mm = 0.0F;
+
+    flex_z_measurement_active = true;
+    for(int r = 1; r <= repeat; r++) {
+        for(int i = 1; i < flex_current_x_points; i++) {
+            if(THEKERNEL->is_halted()) {
+                gc->stream->printf("ERROR: Halted during flex Z measurement\n");
+                flex_z_measurement_active = false;
+                return false;
+            }
+            float probe_x = flex_x_start + (i * x_step);
+            zprobe->coordinated_move(probe_x, probe_y, NAN, rapid / 60);
+            if(!zprobe->doProbeAt(mm, probe_x, probe_y)) {
+                gc->stream->printf("ERROR: Z probe failed at point %d\n", i);
+                flex_z_measurement_active = false;
+                return false;
+            }
+            float z_abs = (gc->has_letter('H') ? gc->get_value('H') : zprobe->getProbeHeight()) - mm;
+            if(i == 1) {
+                z_reference = z_abs;
+            }
+            float delta = z_abs - z_reference;
+            if(r > 1) {
+                flex_compensation_data[i + flex_current_x_points] = delta / (float)r + flex_compensation_data[i + flex_current_x_points] * (float)(r - 1) / (float)r;
+            } else {
+                flex_compensation_data[i + flex_current_x_points] = delta;
+            }
+            gc->stream->printf("RUN: %d | POINT: %d | X: %1.3f | DELTA Z: %1.3f\n", r, i, probe_x, delta);
+        }
+    }
+
+    // Option 2: same grid as Y; index 0 not probed — linear extrapolation along X using samples at i=1 and i=2
+    // delta[i] = z_i - z_ref with z_ref at i=1 => delta[0] = z0 - z1 = (2*z1 - z2) - z1 = z1 - z2 = -delta[2]
+    if(flex_current_x_points >= 3) {
+        float d2 = flex_compensation_data[2 + flex_current_x_points];
+        flex_compensation_data[0 + flex_current_x_points] = -d2;
+        gc->stream->printf("// Z[0] extrapolated: delta[0] = -delta[2] (%1.4f)\n", flex_compensation_data[flex_current_x_points]);
+    } else {
+        flex_compensation_data[0 + flex_current_x_points] = 0.0F;
+        gc->stream->printf("// Z[0] set to 0 (need I>=3 for extrapolation from Z[1],Z[2])\n");
+    }
+
+    gc->stream->printf("--- Flex Z delta vs point 1 (machine X, delta Z mm) ---\n");
+    for(int i = 0; i < flex_current_x_points; i++) {
+        gc->stream->printf("%1.3f, %1.3f\n", flex_x_start + (i * x_step), flex_compensation_data[i + flex_current_x_points]);
+    }
+    flex_z_measurement_active = false;
+    loaded_flex_compensation_version = (float)(FLEX_COMPENSATION_VERSION);
     return true;
 }
 
@@ -1260,7 +1387,6 @@ void CartGridStrategy::print_flex_compensation_data(StreamOutput *stream)
     // Get current machine position
     float current_z = THEROBOT->get_axis_position(Z_AXIS);
     
-    int rod_distance_int = 900000;
     int machine_offset_z_int = 510000;      // Z distance between the centerplane between the rods and the end of the spindle (51.0 * 10000)
     int sensor_machine_z_int = -1153400;   // Z machine coordinate if the tool length would be 0 (-115.36 * 10000)
     int refmz_int = (int)(THEKERNEL->eeprom_data->REFMZ * 10000.0f);                  
@@ -1270,6 +1396,8 @@ void CartGridStrategy::print_flex_compensation_data(StreamOutput *stream)
     int triangle_z_int = abs(current_z * 10000.0f	) + machine_offset_z_int + TLO_int + refmz_int - sensor_machine_z_int;
 
     float triangle_length_float = sqrtf((triangle_y_int / 10000.0f) * (triangle_y_int / 10000.0f) + (triangle_z_int / 10000.0f) * (triangle_z_int / 10000.0f));
+
+    THEKERNEL->streams->printf("Flex compensation version: v%1.3f\n", loaded_flex_compensation_version);
 
     THEKERNEL->streams->printf("--- Average flex compensation data (x, (y+z)) ---\n");
     for (int i = 0; i < flex_current_x_points; i++) {
@@ -1282,9 +1410,16 @@ void CartGridStrategy::print_flex_compensation_data(StreamOutput *stream)
         THEKERNEL->streams->printf("%1.3f, %1.3f\n", this->flex_x_start + (i * (this->flex_x_size / (flex_current_x_points - 1))), flex_compensation_data[i] * cos(atan((triangle_y_int / 10000.0f) / (triangle_z_int / 10000.0f))) * triangle_length_float);
     }
     
-    THEKERNEL->streams->printf("--- Average delta Z calculation at current Z height (x, z) ---\n");
+    THEKERNEL->streams->printf("--- Average delta Z_rotational calculation at current Z height (x, z) ---\n");
     for (int i = 0; i < flex_current_x_points; i++) {
-        THEKERNEL->streams->printf("%1.3f, %1.3f\n", this->flex_x_start + (i * (this->flex_x_size / (flex_current_x_points - 1))), flex_compensation_data[i] * sin(atan((triangle_y_int / 10000.0f) / (triangle_z_int / 10000.0f))) * triangle_length_float + (0.5 * flex_compensation_data[i] * (rod_distance_int / (2.0f * 10000.0f))));
+        THEKERNEL->streams->printf("%1.3f, %1.3f\n", this->flex_x_start + (i * (this->flex_x_size / (flex_current_x_points - 1))), flex_compensation_data[i] * sin(atan((triangle_y_int / 10000.0f) / (triangle_z_int / 10000.0f))) * triangle_length_float);
+    }
+
+    if (loaded_flex_compensation_version == (float)(FLEX_COMPENSATION_VERSION)) {
+        THEKERNEL->streams->printf("--- Flex Z measurement data (x, z) ---\n");
+        for (int i = 0; i < flex_current_x_points; i++) {
+            THEKERNEL->streams->printf("%1.3f, %1.3f\n", this->flex_x_start + (i * (this->flex_x_size / (flex_current_x_points - 1))), flex_compensation_data[i + flex_current_x_points]);
+        }
     }
     return;
 }
@@ -1303,7 +1438,7 @@ void CartGridStrategy::save_flex_compensation_data(StreamOutput *stream)
     }
 
     bool has_valid_data = false;
-    for(int i = 0; i < flex_current_x_points; i++) {
+    for(int i = 0; i < flex_current_x_points * 2; i++) {
         if(!isnan(flex_compensation_data[i])) {
             has_valid_data = true;
             break;
@@ -1321,10 +1456,8 @@ void CartGridStrategy::save_flex_compensation_data(StreamOutput *stream)
         return;
     }
 
-    float version = (float)(FLEX_COMPENSATION_VERSION);
-
     // Write version (float)
-    if(fwfs::fwrite(&version, sizeof(float), 1, fp) != 1) {
+    if(fwfs::fwrite(&loaded_flex_compensation_version, sizeof(float), 1, fp) != 1) {
         stream->printf("error: Failed to write version\n");
         fwfs::fclose(fp);
         return;
@@ -1351,16 +1484,15 @@ void CartGridStrategy::save_flex_compensation_data(StreamOutput *stream)
         return;
     }
 
-    // Write compensation data for the actual grid size used
-    for(int i = 0; i < flex_current_x_points; i++) {
+    for(int i = 0; i < flex_current_x_points * 2; i++) {
         if(fwfs::fwrite(&flex_compensation_data[i], sizeof(float), 1, fp) != 1) {
-            stream->printf("error: Failed to write flex compensation data at index %d\n", i);
+            stream->printf("error: Failed to write flex data at index %d\n", i);
             fwfs::fclose(fp);
             return;
         }
     }
 
-    stream->printf("Flex compensation data saved to %s\n", FLEX_COMPENSATION_FILE);
+    stream->printf("Flex compensation data saved to %s (format v%d)\n", FLEX_COMPENSATION_FILE, FLEX_COMPENSATION_VERSION);
     stream->printf("Saved: flex_x_start=%.3f, flex_grid_size=%d, flex_x_size=%.3f\n", 
                    flex_x_start, flex_current_x_points, flex_x_size);
     fwfs::fclose(fp);
@@ -1368,6 +1500,11 @@ void CartGridStrategy::save_flex_compensation_data(StreamOutput *stream)
 
 bool CartGridStrategy::load_flex_compensation_data(StreamOutput *stream)
 {
+    if (THEKERNEL->is_flex_compensation_load_error() == 2) {
+        stream->printf("ERROR: Configured flex compensation size too big. Max size is 30\n");
+        return false;
+    }
+
     FILE *fp = fwfs::fopen(FLEX_COMPENSATION_FILE, "r");
     if(fp == NULL) {
         stream->printf("error: Failed to open flex compensation file %s\n", FLEX_COMPENSATION_FILE);
@@ -1378,18 +1515,16 @@ bool CartGridStrategy::load_flex_compensation_data(StreamOutput *stream)
     uint8_t load_flex_current_x_points;
     float load_flex_x_size;
 
-    float version;
-
     // Read version (float)
-    if(fwfs::fread(&version, sizeof(float), 1, fp) != 1) {
+    if(fwfs::fread(&loaded_flex_compensation_version, sizeof(float), 1, fp) != 1) {
         stream->printf("error: Failed to read version\n");
         fwfs::fclose(fp);
         return false;
     }
 
-    if(version != (float)(FLEX_COMPENSATION_VERSION) || version < 0) {
-        if(version > 0) {
-            stream->printf("error: Invalid flex compensation version | Expected: %f, Found: %f\n", (float)(FLEX_COMPENSATION_VERSION), version);
+    if(loaded_flex_compensation_version > (float)(FLEX_COMPENSATION_VERSION) || loaded_flex_compensation_version < 0) {
+        if(loaded_flex_compensation_version > 0) {
+            stream->printf("error: Invalid flex compensation version | Expected: %f, Found: %f\n", (float)(FLEX_COMPENSATION_VERSION), loaded_flex_compensation_version);
         }else{
             stream->printf("error: Invalid flex compensation version\n");
         }
@@ -1429,13 +1564,30 @@ bool CartGridStrategy::load_flex_compensation_data(StreamOutput *stream)
 
     // Reset compensation data to NAN
     reset_flex_compensation();
-
-    // Load compensation data for the actual grid size used
-    for(int i = 0; i < load_flex_current_x_points; i++) {
-        if(fwfs::fread(&flex_compensation_data[i], sizeof(float), 1, fp) != 1) {
-            stream->printf("error: Failed to read flex compensation data at index %d\n", i);
-            fwfs::fclose(fp);
-            return false;
+    if (loaded_flex_compensation_version == 1.0f) {
+        // Load compensation data for the actual grid size used
+        for(int i = 0; i < load_flex_current_x_points; i++) {
+            if(fwfs::fread(&flex_compensation_data[i], sizeof(float), 1, fp) != 1) {
+                stream->printf("error: Failed to read flex compensation data at index %d\n", i);
+                fwfs::fclose(fp);
+                return false;
+            }
+        }
+    }else if(loaded_flex_compensation_version == (float)(FLEX_COMPENSATION_VERSION)){
+        // Load compensation data for the actual grid size used
+        for(int i = 0; i < load_flex_current_x_points; i++) {
+            if(fwfs::fread(&flex_compensation_data[i], sizeof(float), 1, fp) != 1) {
+                stream->printf("error: Failed to read flex compensation data at index %d\n", i);
+                fwfs::fclose(fp);
+                return false;
+            }
+        }
+        for(int i = load_flex_current_x_points; i < load_flex_current_x_points * 2; i++) {
+            if(fwfs::fread(&flex_compensation_data[i], sizeof(float), 1, fp) != 1) {
+                stream->printf("error: Failed to read flex compensation data at index %d\n", i);
+                fwfs::fclose(fp);
+                return false;
+            }
         }
     }
 
@@ -1455,7 +1607,7 @@ bool CartGridStrategy::load_flex_compensation_data(StreamOutput *stream)
 
 void CartGridStrategy::reset_flex_compensation()
 {
-    memset(flex_compensation_data, 0, flex_x_points * sizeof(float));
+    memset(flex_compensation_data, 0, flex_x_points * sizeof(float) * 2);
     flex_compensation_active = false;
     flex_current_x_points = 0;
     updateCompensationTransform();
