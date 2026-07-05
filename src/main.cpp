@@ -13,8 +13,12 @@
 #include "modules/tools/temperaturecontrol/TemperatureControlPool.h"
 #include "modules/tools/endstops/Endstops.h"
 #include "modules/tools/zprobe/ZProbe.h"
+#ifndef NO_TOOLS_SCARACAL
 #include "modules/tools/scaracal/SCARAcal.h"
+#endif
+#ifndef NO_TOOLS_ROTARYDELTACALIBRATION
 #include "RotaryDeltaCalibration.h"
+#endif
 #include "modules/tools/switch/SwitchPool.h"
 #include "modules/tools/temperatureswitch/TemperatureSwitch.h"
 #include "modules/tools/drillingcycles/Drillingcycles.h"
@@ -47,7 +51,6 @@
 // #include "libs/USBDevice/DFU.h"
 #include "libs/SDFAT.h"
 #include "StreamOutputPool.h"
-#include "ToolManager.h"
 
 #include "libs/Watchdog.h"
 #include "libs/compiler.h"

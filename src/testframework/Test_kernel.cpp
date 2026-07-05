@@ -32,7 +32,6 @@ This is aprt of the Smoothie test framework, it generates a Mockable Kernl so ke
 #include "Config.h"
 #include "FirmConfigSource.h"
 
-#include <malloc.h>
 #include <array>
 #include <functional>
 #include <map>
