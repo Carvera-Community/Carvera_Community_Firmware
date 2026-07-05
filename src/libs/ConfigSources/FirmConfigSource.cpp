@@ -9,7 +9,6 @@
 #include "ConfigValue.h"
 #include "FirmConfigSource.h"
 #include "ConfigCache.h"
-#include <malloc.h>
 #include "utils.h"
 
 using namespace std;
@@ -98,4 +97,3 @@ string FirmConfigSource::read( uint16_t check_sums[3] ){
 
     return value;
 }
-

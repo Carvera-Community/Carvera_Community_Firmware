@@ -12,6 +12,7 @@
 #include "libs/nuts_bolts.h"
 #include "libs/SlowTicker.h"
 #include "libs/Adc.h"
+#include "libs/compiler.h"
 #include "libs/StreamOutputPool.h"
 #include <mri.h>
 #include "checksumm.h"
@@ -40,6 +41,7 @@
 #include "MainButtonPublicAccess.h"
 #include "mbed.h"
 #include "utils.h"
+#include "WifiPublicAccess.h"
 
 #ifndef NO_TOOLS_LASER
 #include "Laser.h"
@@ -47,7 +49,6 @@
 
 #include "platform_memory.h"
 
-#include <malloc.h>
 #include <array>
 #include <string>
 
@@ -65,8 +66,8 @@
 #define halt_on_error_debug_checksum                CHECKSUM("halt_on_error_debug")
 Kernel* Kernel::instance;
 
-static float ahb_local_vars[20]   __attribute__((section("AHBSRAM")));
-static float ahb_local_params[30] __attribute__((section("AHBSRAM")));
+static float ahb_local_vars[20] LOCATED_IN_AHBSRAM;
+static float ahb_local_params[30] LOCATED_IN_AHBSRAM;
 
 #define	EEP_MAX_PAGE_SIZE	32
 #define EEPROM_DATA_STARTPAGE	1
@@ -628,6 +629,14 @@ std::string Kernel::get_diagnose_string()
     ok = PublicData::get_value(main_button_checksum, get_e_stop_state_checksum, 0, &data[10]);
     if (ok) {
         n = snprintf(buf, sizeof(buf), "|I:%d", data[10]);
+        if(n > sizeof(buf)) n = sizeof(buf);
+        str.append(buf, n);
+    }
+    // get wifi rssi
+    signed char rssidata;
+    ok = PublicData::get_value(wlan_checksum, get_rssi_checksum, 0, &rssidata);
+    if (ok) {
+        n = snprintf(buf, sizeof(buf), "|RSSI:%d", rssidata);
         if(n > sizeof(buf)) n = sizeof(buf);
         str.append(buf, n);
     }
@@ -1262,4 +1271,3 @@ void Kernel::set_tool_waiting(bool f) {
 		}
 	}
 }
-

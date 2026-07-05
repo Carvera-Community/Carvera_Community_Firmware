@@ -318,7 +318,16 @@ try_again:
 						{    // concatenate the command again and send to the MDI
 							if (gcode->subcode == 1){
 								if (gcode->has_letter('P')) {
-									THEKERNEL->streams->printf("result = %.3f \n", gcode->get_value('P'));
+									float final_value = gcode->get_value('P');
+									size_t ppos = single_command.find_first_of("P");
+									if (ppos == string::npos || ppos + 1 >= single_command.length()) {
+										THEKERNEL->streams->printf("no value for M118.1 command\r\n");
+										delete gcode;
+										return;
+									}
+									string str = single_command.substr(ppos + 1);
+									str += possible_command;
+									THEKERNEL->streams->printf(" %s = %.3f \r\n", str.c_str(), final_value); // the space at the start is important for variable displays
 									delete gcode;
 									return;
 								}

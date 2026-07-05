@@ -1,10 +1,12 @@
 #ifndef _PLATFORM_MEMORY_H
 #define _PLATFORM_MEMORY_H
 
-#include "MemoryPool.h"
+#ifndef AHB
+    #include "MemoryPool.h"
 
-#define AHB (*_ahb)
+    #define AHB (*_ahb)
 
-extern MemoryPool* _ahb;
+    extern MemoryPool* _ahb;
+#endif
 
 #endif /* _PLATFORM_MEMORY_H */
