@@ -660,8 +660,8 @@ void ATCHandler::calibrate_a_axis_headstock(Gcode *gcode)//M469.4
 	if (gcode->has_letter('Y')){
 		headstock_width = gcode->get_value('Y')/2+5;
 	}
-	if (gcode->has_letter('H')){
-		probe_height = gcode->get_value('H');
+	if (gcode->has_letter('E')){
+		probe_height = gcode->get_value('E');
 	}
 
 	//print status
