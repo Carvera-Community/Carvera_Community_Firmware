@@ -243,7 +243,7 @@ void Kernel::protocol_from_name(const std::string& name, ProtocolMode& protocol)
         protocol = PROTOCOL_MAKERA;
         return;
     }
-    protocol = PROTOCOL_SMOOTHIE;
+    protocol = PROTOCOL_MAKERA;
     return;
 }
 
