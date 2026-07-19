@@ -66,6 +66,8 @@
 #define second_usb_serial_enable_checksum  CHECKSUM("second_usb_serial_enable")
 // #define disable_msd_checksum  CHECKSUM("msd_disable")
 // #define dfu_enable_checksum  CHECKSUM("dfu_enable")
+#define usb_msc_checksum       CHECKSUM("usb_msc")
+#define enable_checksum        CHECKSUM("enable")
 #define watchdog_timeout_checksum  CHECKSUM("watchdog_timeout")
 
 // USB Stuff
@@ -170,8 +172,12 @@ void init() {
     // ATC Handler
     kernel->add_module( new ATCHandler() );
 
-    // MSC File System Handler
-    kernel->add_module( new MSCFileSystem("ud") );
+    // This module owns the USB host controller while enabled.
+    if (kernel->config->value(usb_msc_checksum, enable_checksum)->as_bool(true)) {
+        kernel->add_module( new MSCFileSystem("ud") );
+    } else {
+        kernel->streams->printf("NOTE: USB mass storage host is disabled\n");
+    }
 
     // Serial Console handles IO with the wireless probe
     kernel->add_module( new(AHB) SerialConsole2() ); // must stay in AHB: UART RxIrq writes RingBuffer
