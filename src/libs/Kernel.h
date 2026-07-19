@@ -281,6 +281,7 @@ class Kernel {
         mbed::I2C* i2c;
         std::array<std::vector<Module*>, NUMBER_OF_DEFINED_EVENTS> hooks;
         uint32_t stop_request_time;
+        void protocol_from_name(const std::string& name, ProtocolMode& protocol);
         struct {
             bool use_leds:1;
             bool halted:1;

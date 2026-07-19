@@ -26,8 +26,14 @@ public:
     {
         int r = 0;
         for(set<StreamOutput*>::iterator i = this->streams.begin(); i != this->streams.end(); i++)
-        {
-            int k = (*i)->puts(s);
+        {   
+            int k;
+            if (communication_protocol == PROTOCOL_SMOOTHIE) {
+                k = (*i)->puts(s);
+            }
+            else {
+                k = (*i)->puts(s,size);
+            }
             if (k > r)
                 r = k;
         }
@@ -42,6 +48,15 @@ public:
     void remove_stream(StreamOutput* stream)
     {
         this->streams.erase(stream);
+    }
+
+    bool frames_protocol_output() const { return true; }
+
+    void on_protocol_changed()
+    {
+        for(set<StreamOutput*>::iterator i = this->streams.begin(); i != this->streams.end(); i++) {
+            (*i)->on_protocol_changed();
+        }
     }
 
 private:
