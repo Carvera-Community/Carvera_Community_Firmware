@@ -125,6 +125,12 @@ private:
     void calibrate_a_axis_headstock(Gcode *gcode);
     void calibrate_a_axis_height(Gcode *gcode);
     void calibrate_a_axis_cor(Gcode *gcode);
+    void calibrate_a_axis_cor_step();
+    void cor_queue_z_clearance();
+    void cor_queue_probe_y_front();
+    void cor_queue_probe_y_back();
+    void cor_queue_probe_z_top();
+    void cor_queue_probe_module_ref();
     void home_machine_with_pin(Gcode *gcode);
     void calibrate_set_value(Gcode *gcode);
 
@@ -213,6 +219,29 @@ private:
     float rotation_offset_y;
     float rotation_offset_z;
     float rotation_width = 100;
+
+    // M469.6 A-axis center-of-rotation calibration state
+    struct {
+        uint8_t phase;         // CorPhase in ATCHandler.cpp
+        uint8_t pass;          // 1 = first measure, 2 = convergence
+        bool invert_probe;
+        float artifact_dia;
+        float tip_r;           // probe tip radius
+        float clearance;
+        float probe_travel;    // clearance * 2
+        float pos_feed;
+        float y_clr;           // Y offset from start to clearance
+        float z_clr;           // Z clearance above estimated CoR
+        float z_ctr;           // ball-geometry Z offset for side probing
+        float z_corr;          // three_axis_probe_tlo_correction
+        float z_est;           // estimated Z CoR in MCS (from initial Z probe)
+        float start_y;         // starting Y MCS
+        float start_a;         // starting A MCS
+        float z_centerline;    // Z height used for Y probing
+        float y1, y2;          // Y contacts (tip-radius compensated)
+        float y_center;        // Y CoR in MCS
+        float z_cor_mcs;       // Z CoR in MCS (from artifact probes)
+    } a_axis_cor;
 
     float toolrack_offset_x;
     float toolrack_offset_y;
