@@ -939,7 +939,7 @@ void ATCHandler::calibrate_a_axis_cor(Gcode *gcode) //M469.6
 	float pos_feed = 400.0f;
 	bool invert_probe = false;
 
-	if (gcode->has_letter('I') && gcode->get_value('I')) invert_probe = true;
+	if (gcode->has_letter("I")) invert_probe = gcode->get_value("I") == 1 ? true:false;
 	if (gcode->has_letter('R')) artifact_dia = gcode->get_value('R');
 	if (gcode->has_letter('D')) tip_dia = gcode->get_value('D');
 	if (gcode->has_letter('C')) clearance = gcode->get_value('C');
