@@ -22,6 +22,7 @@
 - Enhancement: Support for turning On an external connected vacuum via M851/M852. Backported from Makera firmware
 - Changed: reduce PWM period in software spindle speed pwm. Change from Makera
 - Changed: Increased Software based PWM frequency from 50hz to 100hz. Backported from Makera firmware.
+- Changed: uplifted the makera communication protocol from their PRs. This should make it so that the community firmware works with makera studio at a basic level
 - Fixed: If config is set to halt when the lid is opened, the machine will halt if any of the motion motors are moving, or the spindle is on. This change also allows manual changes if the cover is open, but will halt if the machine starts its calibration routine. refactored and signifigantly improved from makera code
 - Changed: improved M118.1 P command return to give more information. M118.1 P#101 now returns #101 = (value), will also return #101+3 = (value)
 - Fixed: any call to a variable out of range will now return a machine halt. 
