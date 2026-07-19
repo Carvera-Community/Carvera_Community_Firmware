@@ -288,10 +288,19 @@ void SimpleShell::on_gcode_received(void *argument)
 				//PacketMessage(PTYPE_NORMAL_INFO, "turning vacuum mode off\r\n", 0, gcode->stream);
                 gcode->stream->printf("turning vacuum mode off\r\n");
 			}
-			else
-			{
-				// turn on extend out mode
-				//PacketMessage(PTYPE_NORMAL_INFO, "turning extend out mode off\r\n", 0, gcode->stream);
+			else if (gcode->subcode == 3) {
+				THEKERNEL->set_extout_mode(false);
+			    // get spindle state
+			    struct spindle_status ss;
+			    bool ok = PublicData::get_value(pwm_spindle_control_checksum, get_spindle_status_checksum, &ss);
+			    if (ok) {
+			    	if (ss.state) {
+		        		// close extout
+		        		bool b = false;
+		        		PublicData::set_value( switch_checksum, extendout_checksum, state_checksum, &b );
+			    	}
+	        	}
+	        	//PacketMessage(PTYPE_NORMAL_INFO, "turning extend out mode off\r\n", 0, gcode->stream);
                 gcode->stream->printf("turning extend out mode off\r\n");
 			}
 
