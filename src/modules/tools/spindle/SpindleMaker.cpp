@@ -15,6 +15,9 @@
 #ifndef NO_MODBUS_SPINDLE
 #include "HuanyangSpindleControl.h"
 #endif
+#ifndef NO_VESC_SPINDLE
+#include "VESCSpindleControl.h"
+#endif
 #include "Config.h"
 #include "checksumm.h"
 #include "ConfigValue.h"
@@ -55,6 +58,10 @@ void SpindleMaker::load_spindle(){
             delete spindle;
             THEKERNEL->streams->printf("ERROR: No valid spindle VFD type defined\n");
         }
+#endif
+#ifndef NO_VESC_SPINDLE
+    } else if ( spindle_type.compare("vesc") == 0 ) {
+        spindle = new VESCSpindleControl();
 #endif
     } else {
         delete spindle;
