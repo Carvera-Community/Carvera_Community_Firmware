@@ -112,12 +112,6 @@ void ZProbe::on_module_loaded()
 
 void ZProbe::config_load()
 {
-    this->pin.from_string( THEKERNEL->config->value(zprobe_checksum, probe_pin_checksum)->by_default("2.6v" )->as_string())->as_input();
-    this->calibrate_pin.from_string( THEKERNEL->config->value(zprobe_checksum, calibrate_pin_checksum)->by_default("0.5^" )->as_string())->as_input();
-    this->debounce_ms    = THEKERNEL->config->value(zprobe_checksum, debounce_ms_checksum)->by_default(0  )->as_number();
-    this->probe_calibration_safety_margin = THEKERNEL->config->value(zprobe_checksum, probe_calibration_safety_margin_checksum)->by_default(0.1F)->as_number();
-    this->probe_safe_margin = THEKERNEL->config->value(zprobe_checksum, probe_safe_margin_checksum)->by_default(0.1F)->as_number();
-    this->probe_tool_tlo_toolsetter_only = THEKERNEL->config->value(zprobe_checksum, use_3dtoolsetter_checksum)->by_default(false)->as_bool();
     this->pin.from_string( THEKERNEL->config->value(zprobe_checksum, probe_pin_checksum)->as_string("2.6v" ))->as_input();
     this->calibrate_pin.from_string( THEKERNEL->config->value(zprobe_checksum, calibrate_pin_checksum)->as_string("0.5^" ))->as_input();
     this->debounce_ms    = THEKERNEL->config->value(zprobe_checksum, debounce_ms_checksum)->as_number(0  );
@@ -969,8 +963,6 @@ void ZProbe::calibrate_Z(Gcode *gcode)
     float delta[3]= {0, 0, z};
     THEKERNEL->set_zprobing(true);
     if(!THEROBOT->delta_move(delta, rate, 3)) {
-        gcode->stream->printf("ERROR: Move too small, X: %1.3f, Y: %1.3f, Z: %1.3f\n", x, y, z);
-        THEKERNEL->set_halt_reason(CALIBRATE_FAIL);
         gcode->stream->printf("ERROR: Probing move too small,  %1.3f\n", z);
         THEKERNEL->set_halt_reason(PROBE_FAIL);
         THEKERNEL->call_event(ON_HALT, nullptr);
@@ -1006,7 +998,6 @@ void ZProbe::calibrate_Z(Gcode *gcode)
         gcode->stream->printf("Error detected at position: %.3f\n", calibrate_current_z);
         gcode->stream->printf("Safety Margin Value: %.3f\n",  probe_calibration_safety_margin);
         gcode->stream->printf("debounce: %d, cali_debounce: %d, debounce_ms: %d\n", debounce, cali_debounce, debounce_ms);
-        return false;
         gcode->stream->printf("ERROR: Probe failed to trigger within safety margin (%.2fmm). See MDI\n", this->probe_calibration_safety_margin);
         THEKERNEL->call_event(ON_HALT, nullptr);
         return;
@@ -1030,9 +1021,6 @@ void ZProbe::calibrate_Z(Gcode *gcode)
         calibrateok);
     THEROBOT->set_last_probe_position(std::make_tuple(pos[X_AXIS], pos[Y_AXIS], pos[Z_AXIS], calibrateok));
 
-    if (calibrateok == 0) {
-        // issue error if probe was not triggered and subcode is 2 or 4
-        gcode->stream->printf("ALARM: Calibrate fail!\n");
     if (calibrateok == 0) {
         // issue error if probe was not triggered and subcode is 2 or 4
         gcode->stream->printf("ERROR: Calibrate fail!\n");

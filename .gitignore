@@ -34,7 +34,6 @@
 *.DS_Store
 /make*/
 /gcc-arm-none-eabi*
-/make*
 /LPC1768
 /mbed/drop
 /mbed/src/Debug
@@ -45,13 +44,7 @@ win_install.log
 .cache/*
 **/.DS_Store
 .vscode
-.github/skills
 gcc-arm-none-eabi*
 .analzyer
 .analyzer/**
 .cursor
-/cutter_comp_documentation
-
-/FirmwareBin/*
-
-
