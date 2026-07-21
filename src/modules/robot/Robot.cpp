@@ -705,11 +705,7 @@ void Robot::on_gcode_received(void *argument)
 
     auto is_blocked_gcode_while_comp = [](int g) -> bool {
         switch (g) {
-            case 4:   // dwell
             case 10:  // WCS/offset write
-            case 17:  // plane selection
-            case 18:
-            case 19:
             case 43:  // tool length offset apply
             case 49:  // tool length offset cancel
             case 53:  // machine coordinate mode
@@ -725,6 +721,28 @@ void Robot::on_gcode_received(void *argument)
     // reassembly stage; for now, potentially unsafe state/motion-affecting non-motion
     // commands are rejected and harmless operator QoL/report commands are safelisted.
     if (!gcode->has_g || (gcode->g != 0 && gcode->g != 1 && gcode->g != 2 && gcode->g != 3)) {
+        if (gcode->has_g && gcode->g == 4) {
+            // Preserve command order: execute buffered compensated motion first, then dwell.
+            compensation_preprocessor->flush();
+            while (compensation_preprocessor->get_buffer_count() > 0) {
+                Gcode* flushed = compensation_preprocessor->get_compensated_gcode();
+                if (flushed != nullptr) {
+                    MOTION_MODE_T motion = NONE;
+                    if (flushed->has_g && (flushed->g == 0 || flushed->g == 1)) {
+                        motion = (flushed->g == 0) ? SEEK : LINEAR;
+                    } else if (flushed->has_g && (flushed->g == 2 || flushed->g == 3)) {
+                        motion = (flushed->g == 2) ? CW_ARC : CCW_ARC;
+                    }
+                    if (motion != NONE) process_move(flushed, motion);
+                } else {
+                    break;
+                }
+            }
+            COMPENSATION_TRACE_PRINTF(gcode->stream, ">>BYPASS_BUFFER: %s (ordered dwell while comp=ON)\n", gcode->get_command());
+            process_buffered_command(gcode);
+            return;
+        }
+
         if (gcode->has_m && is_blocked_mcode_while_comp(gcode->m) && !is_v1_safelist_mcode(gcode->m)) {
             THEKERNEL->streams->printf("ERROR: M%d is not supported while G41/G42 compensation is active. Issue G40 first.\n", gcode->m);
             THEKERNEL->set_halt_reason(MANUAL);
@@ -969,9 +987,6 @@ void Robot::process_buffered_command(Gcode *gcode)
                 if (gcode->g == 18) this->select_plane(X_AXIS, Z_AXIS, Y_AXIS);
                 else this->select_plane(Y_AXIS, Z_AXIS, X_AXIS);
                 break;
-            case 20: this->inch_mode = true;   break;
-            case 18: this->select_plane(X_AXIS, Z_AXIS, Y_AXIS);   break;
-            case 19: this->select_plane(Y_AXIS, Z_AXIS, X_AXIS);   break;
             // Inch mode is broken see https://github.com/Carvera-Community/Carvera_Community_Firmware/issues/209
             // case 20: this->inch_mode = true;   break;
             case 20: {
