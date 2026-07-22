@@ -2503,7 +2503,7 @@ void ATCHandler::on_gcode_received(void *argument)
 				this->clear_script_queue();
 				home_machine_with_pin(gcode);
 			}
-		} else if (gcode->m == 680) {
+		} else if (gcode->m == 480) {
 			float d_val = 2;
 			float x_val = 20;
 			float y_val = 20;
