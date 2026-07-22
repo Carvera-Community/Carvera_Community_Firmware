@@ -516,9 +516,10 @@ void ATCHandler::stock_firmware_inner_corner_probe(float x_val, float y_val, flo
 	this->script_queue.push(buff);
 	snprintf(buff, sizeof(buff), "G91 G54 G0 X%.3f Y%.3f", -x_val, -y_val);
 	this->script_queue.push(buff);
-	snprintf(buff, sizeof(buff), "G91 G54 G0 Z%.3f S1", -z_val);
+	snprintf(buff, sizeof(buff), "G91 G54 G0 Z%.3f", -z_val);
 	this->script_queue.push(buff);
 	snprintf(buff, sizeof(buff), "M463 X%.3f Y%.3f D%.3f S1", x_val, y_val, d_val);
+	this->script_queue.push(buff);
 }
 
 void ATCHandler::calibrate_anchor1(Gcode *gcode) //M469.1
@@ -2503,7 +2504,7 @@ void ATCHandler::on_gcode_received(void *argument)
 				this->clear_script_queue();
 				home_machine_with_pin(gcode);
 			}
-		} else if (gcode->m == 680) {
+		} else if (gcode->m == 480) {
 			float d_val = 2;
 			float x_val = 20;
 			float y_val = 20;
