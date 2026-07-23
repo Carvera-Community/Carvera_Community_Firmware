@@ -255,18 +255,27 @@ bool CartGridStrategy::handleConfig()
     reset_flex_compensation();
     reset_bed_level();
 
-    if(flex_compensation_always_active) {
-        if(load_flex_compensation_data(THEKERNEL->streams)) {
-            flex_compensation_active = true;
-            updateCompensationTransform();
-        }else{
-            THEKERNEL->set_flex_compensation_load_error(true);
-            flex_compensation_active = false;
-            updateCompensationTransform();
-        }
-    }
+    // Flex file load is deferred until after_config_cache_clear(): fopen/std::function
+    // and long printf paths allocate on the main heap, which must not grow into the
+    // fixed config-cache region while the cache is still live.
 
     return true;
+}
+
+void CartGridStrategy::after_config_cache_clear()
+{
+    if(!flex_compensation_always_active) {
+        return;
+    }
+
+    if(load_flex_compensation_data(THEKERNEL->streams)) {
+        flex_compensation_active = true;
+        updateCompensationTransform();
+    } else {
+        THEKERNEL->set_flex_compensation_load_error(true);
+        flex_compensation_active = false;
+        updateCompensationTransform();
+    }
 }
 
 void CartGridStrategy::save_grid(StreamOutput *stream)

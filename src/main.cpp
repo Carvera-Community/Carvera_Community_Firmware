@@ -225,7 +225,8 @@ void init() {
     // kernel->add_module( new(AHB) Panel() );
     #endif
     #ifndef NO_TOOLS_ZPROBE
-    kernel->add_module( new ZProbe() );
+    ZProbe *zprobe = new ZProbe();
+    kernel->add_module( zprobe );
     #endif
     #ifndef NO_TOOLS_SCARACAL
     kernel->add_module( new SCARAcal() );
@@ -289,6 +290,12 @@ void init() {
 
     // clear up the config cache to save some memory
     kernel->config->config_cache_clear();
+
+    #ifndef NO_TOOLS_ZPROBE
+    // Flex compensation autoload (and anything else that needs main-heap room)
+    // must run only after the config cache is released.
+    zprobe->after_config_cache_clear();
+    #endif
 
     if(kernel->is_using_leds()) {
         // set some leds to indicate status... led0 init done, led1 mainloop running, led2 idle loop running, led3 sdcard ok
