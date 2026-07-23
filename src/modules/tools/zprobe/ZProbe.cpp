@@ -191,6 +191,13 @@ void ZProbe::config_load()
 
 }
 
+void ZProbe::after_config_cache_clear()
+{
+    for(auto ls : strategies) {
+        ls->after_config_cache_clear();
+    }
+}
+
 void ZProbe::on_main_loop(void *argument)
 {
     // Handle deferred halt event from crash detection
