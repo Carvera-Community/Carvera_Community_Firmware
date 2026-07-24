@@ -50,13 +50,18 @@ private:
 };
 
 // this overloads "placement new"
-inline void* operator new(size_t nbytes, MemoryPool& pool)
+// noexcept matters here: alloc() returns NULL when the pool is exhausted, and
+// the compiler only emits the null check that skips construction when the
+// allocation function is declared non-throwing (building with -fno-exceptions
+// does not change that rule). Without it, `new(AHB) Foo()` on an exhausted
+// pool would run Foo's constructor at address 0.
+inline void* operator new(size_t nbytes, MemoryPool& pool) noexcept
 {
     return pool.alloc(nbytes);
 }
 
 // this allows placement new to free memory if the constructor fails
-inline void  operator delete(void* p, MemoryPool& pool)
+inline void  operator delete(void* p, MemoryPool& pool) noexcept
 {
     pool.dealloc(p);
 }

@@ -666,6 +666,12 @@ std::string Kernel::get_diagnose_string()
 // Add a module to Kernel. We don't actually hold a list of modules we just call its on_module_loaded
 void Kernel::add_module(Module* module)
 {
+    if(module == nullptr) {
+        // new(AHB) yields nullptr when the pool is exhausted (see MemoryPool.h);
+        // report loudly and skip instead of faulting on the call below.
+        this->streams->printf("FATAL: add_module(nullptr) - module allocation failed, AHB pool exhausted?\n");
+        return;
+    }
     module->on_module_loaded();
 }
 
