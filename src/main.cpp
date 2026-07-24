@@ -270,18 +270,14 @@ void init() {
     //     kernel->add_module( new(AHB) DFU(&u));
     // }
 
-    // 10 second watchdog timeout (or config as seconds)
-
-    // LUKE : DISABLED
-
-    float t= kernel->config->value( watchdog_timeout_checksum )->as_number(10.0F);
-    if(t > 0.1F) {
-        // NOTE setting WDT_RESET with the current bootloader would leave it in DFU mode which would be suboptimal
-        kernel->add_module( new Watchdog(t * 1000000, WDT_RESET )); // WDT_RESET));
-        kernel->streams->printf("Watchdog enabled for %1.3f seconds\n", t);
-    }else{
-        kernel->streams->printf("WARNING Watchdog is disabled\n");
-    }
+    // 10 second watchdog timeout (or config as seconds). Only read the value
+    // here, while the config cache is still loaded; arming is deferred to the
+    // end of init() so that slow boot work (SD autoloads after the cache
+    // release, config override execution) cannot trip a watchdog that nothing
+    // is feeding yet - it is only fed from ON_IDLE, which does not run during
+    // init. NOTE a watchdog reset with the current bootloader would leave the
+    // machine in DFU mode, so tripping it during a slow boot must not happen.
+    float watchdog_timeout= kernel->config->value( watchdog_timeout_checksum )->as_number(10.0F);
 
     // kernel->add_module( &u );
 
@@ -325,6 +321,16 @@ void init() {
     THEKERNEL->conveyor->start(THEROBOT->get_number_registered_motors());
     THEKERNEL->step_ticker->start();
     THEKERNEL->slow_ticker->start();
+
+    // Arm the watchdog last, when no boot work remains that could starve it.
+    // From here on the main loop's ON_IDLE keeps it fed.
+    if(watchdog_timeout > 0.1F) {
+        // NOTE setting WDT_RESET with the current bootloader would leave it in DFU mode which would be suboptimal
+        kernel->add_module( new Watchdog(watchdog_timeout * 1000000, WDT_RESET ));
+        kernel->streams->printf("Watchdog enabled for %1.3f seconds\n", watchdog_timeout);
+    }else{
+        kernel->streams->printf("WARNING Watchdog is disabled\n");
+    }
 }
 
 int main()
