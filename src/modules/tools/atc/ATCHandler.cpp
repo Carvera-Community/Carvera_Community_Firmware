@@ -10,6 +10,7 @@
 
 #include "libs/Module.h"
 #include "libs/Kernel.h"
+#include "libs/BootCounter.h"
 #include "libs/gpio.h"
 #include "ATCHandler.h"
 #include "SlowTicker.h"
@@ -145,6 +146,11 @@ void ATCHandler::clear_script_queue(){
 }
 
 void ATCHandler::load_custom_tool_slots() {
+    if(BootCounter::is_safe_boot()) {
+        THEKERNEL->streams->printf("SAFE BOOT: skipping custom tool slots load\n");
+        return;
+    }
+
     // Clear existing tool slots
     this->atc_tools.clear();
 

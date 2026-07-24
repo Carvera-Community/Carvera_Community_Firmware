@@ -9,6 +9,7 @@
 
 #include "Kernel.h"
 #include "BaseSolution.h"
+#include "BootCounter.h"
 #include "Config.h"
 #include "Robot.h"
 #include "StepperMotor.h"
@@ -194,6 +195,10 @@ void ZProbe::config_load()
 
 void ZProbe::on_config_cache_cleared(void *argument)
 {
+    if(BootCounter::is_safe_boot()) {
+        THEKERNEL->streams->printf("SAFE BOOT: skipping leveling/flex compensation autoload\n");
+        return;
+    }
     for(auto ls : strategies) {
         ls->after_config_cache_clear();
     }
