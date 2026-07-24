@@ -21,6 +21,7 @@ enum _EVENT_ENUM {
     ON_SET_PUBLIC_DATA,
     ON_HALT,
     ON_ENABLE,
+    ON_CONFIG_CACHE_CLEARED,
     NUMBER_OF_DEFINED_EVENTS
 };
 
@@ -50,6 +51,11 @@ public:
     virtual void on_set_public_data(void *) {};
     virtual void on_halt(void *) {};
     virtual void on_enable(void *) {};
+    // Fired once at boot, right after Config::config_cache_clear() has released
+    // the fixed cache region below __StackLimit. Boot work that allocates on the
+    // main heap (file autoloads, large buffers) must be deferred to this event —
+    // never done in on_module_loaded()/on_config_reload() while the cache is live.
+    virtual void on_config_cache_cleared(void *) {};
 
 };
 

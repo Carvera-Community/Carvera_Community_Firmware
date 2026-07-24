@@ -1695,6 +1695,7 @@ void ATCHandler::on_module_loaded()
     this->register_for_event(ON_SET_PUBLIC_DATA);
     this->register_for_event(ON_MAIN_LOOP);
     this->register_for_event(ON_HALT);
+    this->register_for_event(ON_CONFIG_CACHE_CLEARED);
 
     this->on_config_reload(this);
 
@@ -1722,6 +1723,14 @@ void ATCHandler::on_module_loaded()
 	this->beep_state = BP_SLEEP;
 	this->beep_count = 0;
 	
+}
+
+void ATCHandler::on_config_cache_cleared(void *argument)
+{
+    // File autoloads allocate on the main heap (stdio buffers, string/vector
+    // growth) and must therefore wait until the config cache region has been
+    // released — see the ON_CONFIG_CACHE_CLEARED broadcast in main.cpp.
+    this->load_custom_tool_slots();
 }
 
 void ATCHandler::on_config_reload(void *argument)
@@ -1787,9 +1796,9 @@ void ATCHandler::on_config_reload(void *argument)
 	this->probe_mcs_z = THEKERNEL->config->value(coordinate_checksum, probe_mcs_z_checksum)->as_number(NAN);
 	this->probe_position_configured = !isnan(this->probe_mcs_x) || !isnan(this->probe_mcs_y) || !isnan(this->probe_mcs_z);
 	
-	// Load custom tool slots configuration
-	// Delay loading to ensure system is fully initialized
-	this->load_custom_tool_slots();
+	// Custom tool slots are loaded in on_config_cache_cleared(): the file read
+	// allocates on the main heap, which must not grow while the config cache
+	// region is still live during init.
 
 	// Calculate probe position - use configured absolute MCS coordinates if available, otherwise use hardcoded values
 	if(CARVERA == THEKERNEL->factory_set->MachineModel){
