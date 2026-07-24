@@ -220,6 +220,32 @@ extern int errno;
 
 static int doesHeapCollideWithStack(unsigned int newHeap);
 
+/* Optional extra heap ceiling below the stack guard.
+   The config cache occupies a fixed region just below __StackLimit while the
+   machine boots (see ConfigCache.h). Config lowers this ceiling to the cache
+   base for that window so an over-allocating boot fails cleanly with ENOMEM
+   instead of malloc handing out memory inside the live cache. 0 = inactive. */
+static unsigned int g_heapCeilingAddress = 0;
+
+/* Highest heap address ever handed out by _sbrk. Lets us report the real boot
+   heap margin instead of guessing at it. */
+static unsigned int g_heapHighWaterMark = 0;
+
+extern "C" void setHeapCeiling(unsigned int ceiling)
+{
+    g_heapCeilingAddress = ceiling;
+}
+
+extern "C" void clearHeapCeiling(void)
+{
+    g_heapCeilingAddress = 0;
+}
+
+extern "C" unsigned int getHeapHighWaterMark(void)
+{
+    return g_heapHighWaterMark;
+}
+
 /* Dynamic memory allocation related syscalls. */
 extern "C" caddr_t _sbrk(int incr)
 {
@@ -233,13 +259,16 @@ extern "C" caddr_t _sbrk(int incr)
     }
 
     heap = new_heap;
+    if ((unsigned int)new_heap > g_heapHighWaterMark)
+        g_heapHighWaterMark = (unsigned int)new_heap;
     return (caddr_t) prev_heap;
 }
 
 static int doesHeapCollideWithStack(unsigned int newHeap)
 {
     return ((newHeap >= __get_MSP()) ||
-            (STACK_SIZE && newHeap >= g_maximumHeapAddress));
+            (STACK_SIZE && newHeap >= g_maximumHeapAddress) ||
+            (g_heapCeilingAddress && newHeap > g_heapCeilingAddress));
 }
 
 

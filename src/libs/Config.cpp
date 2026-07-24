@@ -20,6 +20,9 @@ using namespace std;
 #include "libs/ConfigSources/FileConfigSource.h"
 
 extern "C" caddr_t _sbrk(int);
+extern "C" void setHeapCeiling(unsigned int);
+extern "C" void clearHeapCeiling(void);
+extern "C" unsigned int getHeapHighWaterMark(void);
 #include "libs/ConfigSources/FirmConfigSource.h"
 #include "StreamOutputPool.h"
 
@@ -92,6 +95,11 @@ void Config::config_cache_load(bool parse)
         return;
     }
 
+    // Cap the malloc heap at the cache base while the cache is live, so an
+    // over-allocating boot fails with ENOMEM instead of _sbrk handing out
+    // memory inside the cache (which the stack-based guard alone permits).
+    setHeapCeiling(cache_start);
+
     if(parse) {
         // For each ConfigSource in our stack
         for( ConfigSource *source : this->config_sources ) {
@@ -116,6 +124,16 @@ void Config::config_cache_clear()
         this->config_cache->clear();
         delete this->config_cache;  // frees the small ConfigCache object itself
         this->config_cache = NULL;
+
+        // The cache region is free again; let the heap use it.
+        clearHeapCeiling();
+
+        // Report the boot heap high-water mark against the cache base. This is
+        // the margin that, when exhausted, used to corrupt the cache silently —
+        // now it is measured on every boot instead of guessed at.
+        const auto high_water = getHeapHighWaterMark();
+        THEKERNEL->streams->printf("Config cache released, heap high water 0x%08lX, boot margin %ld bytes\n",
+            (unsigned long)high_water, (long)cache_start - (long)high_water);
     }
 }
 
