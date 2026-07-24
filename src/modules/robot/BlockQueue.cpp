@@ -1,6 +1,9 @@
 #include "BlockQueue.h"
 #include "Block.h"
 
+#include "libs/Kernel.h"
+#include "libs/StreamOutputPool.h"
+
 #include <cstdlib>
 #include "cmsis.h"
 #include "platform_memory.h"
@@ -23,11 +26,12 @@ BlockQueue::BlockQueue(unsigned int length)
     isr_tail_i = tail_i;
     void *v= AHB.alloc(sizeof(Block) * length);
     if (v == nullptr) {
-        // TODO: Optionally add error reporting here (e.g., THEKERNEL->streams->printf("FATAL: BlockQueue alloc failed!\n");)
-        // For now, just ensure the queue is unusable
+        // A zero-length queue means no motion can ever be queued; that must
+        // never happen silently.
+        THEKERNEL->streams->printf("FATAL: BlockQueue allocation failed (%u bytes) - AHB pool exhausted, motion queue disabled\n",
+            (unsigned int)(sizeof(Block) * length));
         this->length = 0;
         this->ring = nullptr;
-        // Consider adding __disable_irq(); while(1); or similar if this is truly fatal
         return;
     }
     ring = new(v) Block[length];
@@ -192,7 +196,8 @@ bool BlockQueue::resize(unsigned int length)
         // Note: we don't use realloc so we can fall back to the existing ring if allocation fails
         void *v= AHB.alloc(sizeof(Block) * length);
         if (v == nullptr) {
-            // Allocation failed, cannot resize
+            THEKERNEL->streams->printf("ERROR: BlockQueue resize to %u blocks failed (%u bytes) - AHB pool exhausted, keeping previous queue\n",
+                length, (unsigned int)(sizeof(Block) * length));
             return false;
         }
         Block* newring = new(v) Block[length];
