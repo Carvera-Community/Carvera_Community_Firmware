@@ -94,6 +94,7 @@ void ZProbe::on_module_loaded()
     register_for_event(ON_GET_PUBLIC_DATA);
     register_for_event(ON_SET_PUBLIC_DATA);
     register_for_event(ON_MAIN_LOOP);
+    register_for_event(ON_CONFIG_CACHE_CLEARED);
 
     this->probing_cycle = NONE;
 
@@ -191,7 +192,7 @@ void ZProbe::config_load()
 
 }
 
-void ZProbe::after_config_cache_clear()
+void ZProbe::on_config_cache_cleared(void *argument)
 {
     for(auto ls : strategies) {
         ls->after_config_cache_clear();

@@ -23,6 +23,7 @@ public:
     void on_halt(void *argument);
     int get_active_tool() const { return active_tool; }
     void on_config_reload(void *argument);
+    void on_config_cache_cleared(void *argument);
 
 
 private:
