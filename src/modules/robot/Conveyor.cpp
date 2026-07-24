@@ -82,7 +82,12 @@ void Conveyor::on_module_loaded()
 void Conveyor::start(uint8_t n)
 {
     Block::init(n); // set the number of motors which determines how big the tick info vector is
-    queue.resize(queue_size);
+    if(!queue.resize(queue_size)) {
+        // Without a planner queue no move can ever be queued. Say so instead
+        // of booting into a machine that silently refuses to move.
+        THEKERNEL->streams->printf("FATAL: planner queue allocation failed (%u blocks) - machine cannot queue motion, check planner_queue_size\n",
+            (unsigned int)queue_size);
+    }
     running = true;
 }
 
