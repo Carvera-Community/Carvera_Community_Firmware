@@ -1,4 +1,5 @@
 [unreleased]
+- Enhancement: Add SD card file integrity check. M576/M576.1 walks all files with stored MD5 hashes. M576.2 checks a single file or recursively checks a directory
 - Enhancement: AnalogSpindleControl now supports optional RPM feedback and Alarm pin functionality, same as PWMSpindleControl. Same configuration keys (spindle.feedback_pin, spindle.pulses_per_rev, spindle.acc_ratio, and spindle.control_smoothing, spindle.alarm_pin)
 - Enhancement: Suspend/resume saves spindle state, stops the spindle on pause, and restores speed only if it was running. This functionality is enabled by default, but can be disabled via config key spindle_suspend_restore_enable.
 - Enhancement: `debugmode` shell command to turn on/off firmware diagnostic tools that are continiously running 
