@@ -11,6 +11,7 @@
 #include "libs/StreamOutputPool.h"
 #include "utils.h"
 #include <stdlib.h>
+#include <cstring>
 #include <algorithm>
 
 
@@ -22,11 +23,40 @@
 #include "SpindlePublicAccess.h"
 #include "StepperMotor.h"
 
+// Copy the command text into a buffer this Gcode owns.
+//
+// This replaces strdup, whose NULL return was never checked at any of the four
+// places it was called - and roughly twenty uses of `command` below dereference
+// it without a guard, so heap exhaustion turned a G-code line into a null
+// dereference and a hard fault.
+//
+// operator new[] cannot return NULL on this target: it tail-calls operator new,
+// which calls abort() when there is no new-handler (verified in the linked
+// image - _Znaj branches to _Znwj, which does `bl abort`). That is already the
+// policy the Gcode object itself is allocated under, since every caller does
+// `new Gcode(...)`; the old code was inconsistent with itself, aborting if the
+// object could not be allocated but silently returning NULL if its text could
+// not. Now both fail the same way, and `command` is never NULL.
+//
+// Deliberately not std::string: the expression parser writes into this buffer
+// through const_cast (see parse_factor), which is well defined for a char array
+// and undefined for the pointer std::string::c_str() returns. A std::string
+// member would also add 20 bytes to every Gcode, including the one built on the
+// stack in evaluate_standalone_expression, against a 4 KB stack with no
+// overflow detection.
+static char *dup_command(const char *s)
+{
+    size_t n= strlen(s) + 1;
+    char *p= new char[n];
+    memcpy(p, s, n);
+    return p;
+}
+
 // This is a gcode object. It represents a GCode string/command, and caches some important values about that command for the sake of performance.
 // It gets passed around in events, and attached to the queue ( that'll change )
 Gcode::Gcode(const string &command, StreamOutput *stream, bool strip, unsigned int line)
 {
-    this->command= strdup(command.c_str());
+    this->command= dup_command(command.c_str());
     this->m= 0;
     this->g= 0;
     this->subcode= 0;
@@ -40,15 +70,13 @@ Gcode::Gcode(const string &command, StreamOutput *stream, bool strip, unsigned i
 
 Gcode::~Gcode()
 {
-    if(command != nullptr) {
-        // TODO we can reference count this so we share copies, may save more ram than the extra count we need to store
-        free(command);
-    }
+    // TODO we can reference count this so we share copies, may save more ram than the extra count we need to store
+    delete[] command;   // deleting nullptr is a no-op, so no guard needed
 }
 
 Gcode::Gcode(const Gcode &to_copy)
 {
-    this->command               = strdup(to_copy.command); // TODO we can reference count this so we share copies, may save more ram than the extra count we need to store
+    this->command               = dup_command(to_copy.command);
     this->has_m                 = to_copy.has_m;
     this->has_g                 = to_copy.has_g;
     this->m                     = to_copy.m;
@@ -56,6 +84,8 @@ Gcode::Gcode(const Gcode &to_copy)
     this->subcode               = to_copy.subcode;
     this->add_nl                = to_copy.add_nl;
     this->is_error              = to_copy.is_error;
+    this->stripped              = to_copy.stripped;   // was left indeterminate
+    this->line                  = to_copy.line;       // was left indeterminate
     this->stream                = to_copy.stream;
     this->txt_after_ok.assign( to_copy.txt_after_ok );
 }
@@ -63,7 +93,8 @@ Gcode::Gcode(const Gcode &to_copy)
 Gcode &Gcode::operator= (const Gcode &to_copy)
 {
     if( this != &to_copy ) {
-        this->command               = strdup(to_copy.command); // TODO we can reference count this so we share copies, may save more ram than the extra count we need to store
+        delete[] this->command;                       // was leaked before
+        this->command               = dup_command(to_copy.command);
         this->has_m                 = to_copy.has_m;
         this->has_g                 = to_copy.has_g;
         this->m                     = to_copy.m;
@@ -71,6 +102,8 @@ Gcode &Gcode::operator= (const Gcode &to_copy)
         this->subcode               = to_copy.subcode;
         this->add_nl                = to_copy.add_nl;
         this->is_error              = to_copy.is_error;
+        this->stripped              = to_copy.stripped;   // was not copied
+        this->line                  = to_copy.line;       // was not copied
         this->stream                = to_copy.stream;
         this->txt_after_ok.assign( to_copy.txt_after_ok );
     }
@@ -752,8 +785,8 @@ void Gcode::prepare_cached_values(bool strip)
 
     // remove the Gxxx or Mxxx from string
     if (p != nullptr) {
-        char *n= strdup(p); // create new string starting at end of the numeric value
-        free(command);
+        char *n= dup_command(p); // create new string starting at end of the numeric value
+        delete[] command;
         command= n;
     }
 }
@@ -785,8 +818,8 @@ void Gcode::strip_parameters()
         //newcmd.erase(std::remove_if(newcmd.begin(), newcmd.end(), ::isspace), newcmd.end());
 
         // release the old one
-        free(command);
+        delete[] command;
         // copy the new shortened one
-        command= strdup(newcmd.c_str());
+        command= dup_command(newcmd.c_str());
     }
 }
