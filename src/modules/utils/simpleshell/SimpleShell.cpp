@@ -524,13 +524,13 @@ void SimpleShell::ls_command( string parameters, StreamOutput *stream )
         	    get_fftime(p->d_date, p->d_time, &timeinfo);
         		// name size date
                 memset(dirTmp, 0, sizeof(dirTmp));
-                sprintf(dirTmp, "%s%s %d %04d%02d%02d%02d%02d%02d\r\n", string(p->d_name).c_str(),  p->d_isdir ? "/" : "",
+                snprintf(dirTmp, sizeof(dirTmp), "%s%s %d %04d%02d%02d%02d%02d%02d\r\n", string(p->d_name).c_str(),  p->d_isdir ? "/" : "",
                 		p->d_isdir ? 0 : p->d_fsize, timeinfo.tm_year + 1980, timeinfo.tm_mon, timeinfo.tm_mday,
                 				timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec);
         	} else {
         		// only name
                 memset(dirTmp, 0, sizeof(dirTmp));
-                sprintf(dirTmp, "%s%s\r\n", string(p->d_name).c_str(), p->d_isdir ? "/" : "");
+                snprintf(dirTmp, sizeof(dirTmp), "%s%s\r\n", string(p->d_name).c_str(), p->d_isdir ? "/" : "");
         	}
         	memcpy(&xbuff[npos], dirTmp, strlen(dirTmp));
         	npos += strlen(dirTmp);
