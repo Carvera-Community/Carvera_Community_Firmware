@@ -791,35 +791,3 @@ void Gcode::prepare_cached_values(bool strip)
     }
 }
 
-// strip off X Y Z I J K parameters if G0/1/2/3
-void Gcode::strip_parameters()
-{
-    if(has_g && g < 4){
-        // strip the command of the XYZIJK parameters
-        string newcmd;
-        char *cn= command;
-        // find the start of each parameter
-        char *pch= strpbrk(cn, "XYZIJK");
-        while (pch != nullptr) {
-            if(pch > cn) {
-                // copy non parameters to new string
-                newcmd.append(cn, pch-cn);
-            }
-            // find the end of the parameter and its value
-            char *eos;
-            strtof(pch+1, &eos);
-            cn= eos; // point to end of last parameter
-            pch= strpbrk(cn, "XYZIJK"); // find next parameter
-        }
-        // append anything left on the line
-        newcmd.append(cn);
-
-        // strip whitespace to save even more, this causes problems so don't do it
-        //newcmd.erase(std::remove_if(newcmd.begin(), newcmd.end(), ::isspace), newcmd.end());
-
-        // release the old one
-        delete[] command;
-        // copy the new shortened one
-        command= dup_command(newcmd.c_str());
-    }
-}

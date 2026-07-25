@@ -51,7 +51,6 @@ class Gcode {
         int get_num_args() const;
         std::map<char,float> get_args() const;
         std::map<char,int> get_args_int() const;
-        void strip_parameters();
 
         // FIXME these should be private
         unsigned int m;
