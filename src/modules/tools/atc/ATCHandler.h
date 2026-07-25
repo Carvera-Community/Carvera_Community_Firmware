@@ -154,6 +154,7 @@ private:
     bool atc_homing;
     bool detecting;
     bool disable_toolsensor;
+    bool enable_3dtoolsetter;
 
     bool playing_file;
     bool g28_triggered;
