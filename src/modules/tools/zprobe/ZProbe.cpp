@@ -1203,7 +1203,7 @@ bool ZProbe::fast_slow_probe_sequence(int axis, int direction){
 
     // do positive probe
     memset(&this->buff, 0 , sizeof(this->buff));
-    std::sprintf(this->buff, "G38.%i X%.3f Y%.3f Z%.3f F%.3f", 2 + param.probe_g38_subcode, THEROBOT->from_millimeters(x), THEROBOT->from_millimeters(y), THEROBOT->from_millimeters(z), param.feed_rate);
+    snprintf(this->buff, sizeof(this->buff), "G38.%i X%.3f Y%.3f Z%.3f F%.3f", 2 + param.probe_g38_subcode, THEROBOT->from_millimeters(x), THEROBOT->from_millimeters(y), THEROBOT->from_millimeters(z), param.feed_rate);
     this->gcodeBuffer = new Gcode(this->buff, &StreamOutput::NullStream);
     probe_XYZ(this->gcodeBuffer);
     delete gcodeBuffer;
@@ -1214,7 +1214,7 @@ bool ZProbe::fast_slow_probe_sequence(int axis, int direction){
     THEROBOT->delta_move(moveBuffer, param.feed_rate, 3);
     //slow probe
     memset(&this->buff, 0 , sizeof(this->buff));
-    std::sprintf(this->buff, "G38.%i X%.3f Y%.3f Z%.3f", 2 + param.probe_g38_subcode,THEROBOT->from_millimeters(x), THEROBOT->from_millimeters(y), THEROBOT->from_millimeters(z));
+    snprintf(this->buff, sizeof(this->buff), "G38.%i X%.3f Y%.3f Z%.3f", 2 + param.probe_g38_subcode,THEROBOT->from_millimeters(x), THEROBOT->from_millimeters(y), THEROBOT->from_millimeters(z));
     this->gcodeBuffer = new Gcode(this->buff, &StreamOutput::NullStream);
     probe_XYZ(this->gcodeBuffer);
     delete gcodeBuffer;
@@ -1265,7 +1265,7 @@ int ZProbe::xy_probe_move_alarm_when_hit(int direction, int probe_g38_subcode, f
     // do positive x probe
     //probe no hit alarm x_positive - G38.3, alarm if true
     memset(&this->buff, 0 , sizeof(this->buff));
-    std::sprintf(this->buff, "G38.%i X%.3f Y%.3f F%.3f", 3+probe_g38_subcode,THEROBOT->from_millimeters(direction * x), THEROBOT->from_millimeters(direction * y), feed_rate);
+    snprintf(this->buff, sizeof(this->buff), "G38.%i X%.3f Y%.3f F%.3f", 3+probe_g38_subcode,THEROBOT->from_millimeters(direction * x), THEROBOT->from_millimeters(direction * y), feed_rate);
     this->gcodeBuffer = new Gcode(this->buff, &StreamOutput::NullStream);
     if (probe_XYZ(this->gcodeBuffer)){
         THEKERNEL->streams->printf("ERROR: Probe hit wall when moving to outer position\n");
@@ -1284,7 +1284,7 @@ void ZProbe::z_probe_move_with_retract(int probe_g38_subcode, float z, float cle
     // do z probe with slow speed
     THEKERNEL->streams->printf("Probing Z with a distance of %.3f\n", z);
     memset(&this->buff, 0 , sizeof(this->buff));
-    std::sprintf(this->buff, "G38.%i Z%.3f F%.3f", 3 + probe_g38_subcode, THEROBOT->from_millimeters(z), feed_rate);
+    snprintf(this->buff, sizeof(this->buff), "G38.%i Z%.3f F%.3f", 3 + probe_g38_subcode, THEROBOT->from_millimeters(z), feed_rate);
     this->gcodeBuffer = new Gcode(this->buff, &StreamOutput::NullStream);
     if (probe_XYZ(this->gcodeBuffer)){ //probe down, if bottom surface reached, retract slightly
         THEKERNEL->streams->printf("Probed surface hit");
