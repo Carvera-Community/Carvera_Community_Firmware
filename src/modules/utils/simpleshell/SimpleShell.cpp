@@ -975,7 +975,10 @@ void SimpleShell::net_command( string parameters, StreamOutput *stream)
 void SimpleShell::ap_command( string parameters, StreamOutput *stream)
 {
 	uint8_t channel;
-	char buff[32];
+	// Sized for the longest credential accepted below: a 63 character WPA2
+	// passphrase plus its terminator. The receiving end in WifiProvider treats
+	// this as a NUL terminated string (see ap_set_ssid/ap_set_password).
+	char buff[64];
 	memset(buff, 0, sizeof(buff));
     if (!parameters.empty() ) {
     	string s = shift_parameter( parameters );
@@ -993,17 +996,19 @@ void SimpleShell::ap_command( string parameters, StreamOutput *stream)
     	    	if (parameters.length() > 32) {
     	    		stream->printf("WiFi AP SSID length should between 1 to 32\n");
     	    	} else {
-    	    		strcpy(buff, parameters.c_str());
+    	    		// bounded copy: never write past buff regardless of the check above
+    	    		snprintf(buff, sizeof(buff), "%s", parameters.c_str());
     	            PublicData::set_value( wlan_checksum, ap_set_ssid_checksum, buff );
     	    	}
     		}
     	} else if (s == "password") {
     		if (!parameters.empty()) {
-    	    	if (parameters.length() < 8) {
-    	    		stream->printf("WiFi AP password length should more than 7\n");
+    	    	if (parameters.length() < 8 || parameters.length() > 63) {
+    	    		stream->printf("WiFi AP password length should be between 8 and 63\n");
     	    		return;
     	    	} else {
-    	    		strcpy(buff, parameters.c_str());
+    	    		// bounded copy: never write past buff regardless of the check above
+    	    		snprintf(buff, sizeof(buff), "%s", parameters.c_str());
     	    	}
     		}
 	        PublicData::set_value( wlan_checksum, ap_set_password_checksum, buff );
