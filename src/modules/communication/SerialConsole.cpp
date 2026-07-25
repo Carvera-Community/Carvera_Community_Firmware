@@ -6,6 +6,7 @@
 */
 
 #include <string>
+#include <string.h>
 #include <stdarg.h>
 using std::string;
 #include "mbed.h" // for us_ticker_read()
@@ -30,6 +31,13 @@ using std::string;
 extern unsigned char xbuff[XBUFF_LENGTH];
 alignas(4) static unsigned char serial_protocol_buffer[544];
 
+// Queue lives in main RAM (SerialConsole itself is AHB-allocated)
+enum { MAKERA_CMD_QUEUE_DEPTH = 4, MAKERA_CMD_MAX_LEN = 256 };
+static char makera_cmd_payloads[MAKERA_CMD_QUEUE_DEPTH][MAKERA_CMD_MAX_LEN];
+static uint16_t makera_cmd_lengths[MAKERA_CMD_QUEUE_DEPTH];
+static volatile uint8_t makera_cmd_head;
+static volatile uint8_t makera_cmd_tail;
+
 // Serial reading module
 // Treats every received line as a command and passes it ( via event call ) to the command dispatcher.
 // The command dispatcher will then ask other modules if they can do something with it
@@ -41,7 +49,7 @@ SerialConsole::SerialConsole( PinName tx_pin, PinName rx_pin, int baud_rate ){
     this->default_baud_rate = baud_rate;
     this->temp_baud_rate = 0;
     this->last_activity_ms = 0;
-    this->makera_command_pending = false;
+    this->makera_cmd_queue_clear();
     this->reset_makera_command_parser();
     this->reset_file_parser();
 }
@@ -113,11 +121,9 @@ void SerialConsole::on_serial_char_received() {
 		}
 
         if (communication_protocol == PROTOCOL_MAKERA) {
+            // Keep RX IRQ enabled and queue completed commands. Disabling IRQ while a
+            // command is pending drops back-to-back host traffic (e.g. buffer then play).
             process_makera_byte(static_cast<uint8_t>(received));
-            if (makera_command_pending) {
-                attach_irq(false);
-                return;
-            }
             continue;
         }
 		
@@ -223,25 +229,16 @@ void SerialConsole::on_idle(void * argument)
 // Actual event calling must happen in the main loop because if it happens in the interrupt we will loose data
 void SerialConsole::on_main_loop(void * argument){
     if (communication_protocol == PROTOCOL_MAKERA) {
-        if (makera_command_pending) {
-            if (makera_data_length < 3) {
-                makera_command_pending = false;
-                reset_makera_command_parser();
-                attach_irq(true);
-                return;
-            }
-
-            uint16_t payload_length = makera_data_length - 3;
+        if (!makera_cmd_queue_empty()) {
+            uint8_t idx = makera_cmd_head;
+            uint16_t payload_length = makera_cmd_lengths[idx];
             struct SerialMessage message;
-            message.message.assign(reinterpret_cast<char *>(&serial_protocol_buffer[5]), payload_length);
+            message.message.assign(makera_cmd_payloads[idx], payload_length);
             message.stream = this;
             message.line = 0;
 
-            makera_command_pending = false;
-            reset_makera_command_parser();
+            makera_cmd_head = (idx + 1) % MAKERA_CMD_QUEUE_DEPTH;
             THEKERNEL->call_event(ON_CONSOLE_LINE_RECEIVED, &message);
-            attach_irq(false);
-            if (!makera_command_pending) attach_irq(true);
         }
         return;
     }
@@ -342,6 +339,34 @@ void SerialConsole::reset_makera_command_parser()
     makera_data_length = 0;
 }
 
+bool SerialConsole::makera_cmd_queue_empty() const
+{
+    return makera_cmd_head == makera_cmd_tail;
+}
+
+void SerialConsole::makera_cmd_queue_clear()
+{
+    makera_cmd_head = 0;
+    makera_cmd_tail = 0;
+}
+
+bool SerialConsole::makera_cmd_queue_push(const char *data, uint16_t len)
+{
+    if (data == nullptr || len == 0 || len > MAKERA_CMD_MAX_LEN) {
+        return false;
+    }
+
+    uint8_t next = (makera_cmd_tail + 1) % MAKERA_CMD_QUEUE_DEPTH;
+    if (next == makera_cmd_head) {
+        return false; // queue full — drop
+    }
+
+    memcpy(makera_cmd_payloads[makera_cmd_tail], data, len);
+    makera_cmd_lengths[makera_cmd_tail] = len;
+    makera_cmd_tail = next;
+    return true;
+}
+
 void SerialConsole::process_makera_byte(uint8_t received)
 {
     if (makera_received < 2) {
@@ -401,7 +426,10 @@ void SerialConsole::process_makera_byte(uint8_t received)
             }
         }
     } else if (command == PTYPE_CTRL_MULTI || command == PTYPE_FILE_START) {
-        makera_command_pending = true;
+        // Copy payload now so the parser can accept the next frame immediately
+        uint16_t payload_len = makera_data_length - 3;
+        makera_cmd_queue_push(reinterpret_cast<char *>(&serial_protocol_buffer[5]), payload_len);
+        reset_makera_command_parser();
         return;
     }
 
@@ -455,7 +483,7 @@ void SerialConsole::on_protocol_changed()
     query_flag = false;
     halt_flag = false;
     diagnose_flag = false;
-    makera_command_pending = false;
+    makera_cmd_queue_clear();
     reset_makera_command_parser();
     reset_file_parser();
 }
