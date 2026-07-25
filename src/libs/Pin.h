@@ -5,7 +5,14 @@
 #include <stdio.h>
 #include <string>
 
-#include "libs/LPC17xx/sLPC17xx.h" // smoothed mbed.h lib
+// The device header. Must be the mbed one, not src/libs/LPC17xx/sLPC17xx.h:
+// both declare the same peripheral types under the same include guard
+// (__LPC17xx_H__), so whichever a translation unit reaches first silently wins
+// and the other is preprocessed away. They do not agree - sLPC17xx.h puts the
+// USB OTG I2C registers 4 bytes too high and sizes LPC_UART0_TypeDef at 456
+// bytes instead of 92 - so which one a file happened to see decided its
+// register layout. See the commit that unified this.
+#include "LPC17xx.h"
 #include "PinNames.h"
 
 namespace mbed {
