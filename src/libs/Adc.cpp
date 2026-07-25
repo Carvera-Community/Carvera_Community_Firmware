@@ -8,6 +8,7 @@
 #include "Adc.h"
 #include "libs/nuts_bolts.h"
 #include "libs/Kernel.h"
+#include "libs/StreamOutputPool.h"
 #include "libs/Pin.h"
 #include "libs/ADC/adc.h"
 #include "libs/Pin.h"
@@ -137,7 +138,12 @@ PinName Adc::_pin_to_pinname(Pin *pin)
     } else if( pin->port == LPC_GPIO1 && pin->pin == 31 ) {
         return p20;
     } else {
-        //TODO: Error
+        // Not an ADC-capable pin. _pin_to_channel maps NC through its default
+        // case to channel 0, so without this the misconfigured input silently
+        // samples whatever is on the first ADC pin and returns plausible
+        // readings.
+        THEKERNEL->streams->printf("ERROR: pin %d.%d is not ADC capable - readings from it are meaningless\n",
+            (int)pin->port_number, (int)pin->pin);
         return NC;
     }
 }
