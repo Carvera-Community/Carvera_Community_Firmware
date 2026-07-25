@@ -2,17 +2,29 @@
 
 #include <stdarg.h>
 
+#include "libs/utils.h"
+
 extern "C" int mkdir(const char *path, int mode);
 
 namespace fwfs {
 
+// Every path entering the filesystem is length-gated first; see
+// path_too_long_for_fatfs() in utils.cpp for why, and why the real fix
+// belongs upstream in ChaNFS rather than here.
+static inline bool path_too_long(const char *path)
+{
+    return path_too_long_for_fatfs(path);
+}
+
 FILE *fopen(const char *path, const char *mode)
 {
+    if (path_too_long(path)) return NULL;
     return ::fopen(path, mode);
 }
 
 FILE *freopen(const char *path, const char *mode, FILE *stream)
 {
+    if (path_too_long(path)) return NULL;
     return ::freopen(path, mode, stream);
 }
 
@@ -87,21 +99,25 @@ int feof(FILE *stream)
 
 int remove(const char *path)
 {
+    if (path_too_long(path)) return -1;
     return ::remove(path);
 }
 
 int rename(const char *old_path, const char *new_path)
 {
+    if (path_too_long(old_path) || path_too_long(new_path)) return -1;
     return ::rename(old_path, new_path);
 }
 
 DIR *opendir(const char *path)
 {
+    if (path_too_long(path)) return NULL;
     return ::opendir(path);
 }
 
 int mkdir(const char *path, int mode)
 {
+    if (path_too_long(path)) return -1;
     return ::mkdir(path, mode);
 }
 

@@ -6,6 +6,7 @@
 */
 
 #include "libs/Kernel.h"
+#include "libs/StreamOutputPool.h"
 #include "libs/FirmwareFileSystem.h"
 #include "libs/utils.h"
 #include "system_LPC17xx.h"
@@ -250,6 +251,57 @@ void system_reset( bool dfu )
 }
 
 // Convert a path indication ( absolute or relative ) into a path ( absolute )
+// Path length gate.
+//
+// FATFileSystem::open() and ::opendir() in the vendored ChaNFS layer format
+// the path into a fixed char[64] with an UNBOUNDED sprintf:
+//
+//     char n[64];
+//     sprintf(n, "%d:/%s", _fsid, name);
+//
+// where name is what mbed's FilePath leaves after stripping the mount point
+// (see mbed/src/cpp/FilePath.cpp). Two digits of _fsid plus ":/" plus the
+// terminator leaves 59 bytes for that remainder. n sits at the top of the
+// frame, so a longer path runs into the saved registers and, at around 78
+// characters, the return address. Every file command (ls, cd, cat, rm, mv,
+// play, upload) reaches it with a host-supplied path.
+//
+// THIS IS THE WRONG PLACE TO FIX IT. The real fix is one word in
+// FATFileSystem.cpp - snprintf instead of sprintf - and belongs upstream in
+// ChaNFS. This fork does not patch vendored code, so the length is gated in
+// our own fwfs wrapper instead, which every file access already routes
+// through. If the upstream sprintf is ever bounded, this gate becomes
+// redundant and should be deleted rather than raised.
+#define MAX_FS_RELATIVE_PATH 59
+
+// The part of the path that reaches the fixed buffer, mirroring how mbed's
+// FilePath splits "/mount/rest" into mount and rest.
+static const char *fs_relative_part(const char *path)
+{
+    const char *rest = path;
+    if (rest[0] == '/') {
+        rest++;                                        // skip the leading '/'
+        while (*rest != '\0' && *rest != '/') rest++;   // skip the mount name
+        if (*rest == '/') rest++;                       // and its trailing '/'
+    }
+    return rest;
+}
+
+bool path_too_long_for_fatfs(const char *path)
+{
+    if (path == NULL) return false;
+
+    size_t len = strlen(fs_relative_part(path));
+    if (len <= MAX_FS_RELATIVE_PATH) return false;
+
+    if (THEKERNEL != NULL && THEKERNEL->streams != NULL) {
+        // The echo is truncated: the offending path is by definition over-long.
+        THEKERNEL->streams->printf("ERROR: path too long, %u chars after the mount point (max %u): '%.48s...'\n",
+            (unsigned)len, (unsigned)MAX_FS_RELATIVE_PATH, path);
+    }
+    return true;
+}
+
 std::string absolute_from_relative( std::string path )
 {
     string cwd = THEKERNEL->current_path;

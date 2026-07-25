@@ -5,6 +5,10 @@
 #include <vector>
 #include "time.h"
 
+// True if this path is too long to reach the filesystem safely; reports the
+// reason on the console when it is. See the definition in utils.cpp.
+bool path_too_long_for_fatfs(const char *path);
+
 std::string lc(const std::string& str);
 
 bool is_alpha( int );
