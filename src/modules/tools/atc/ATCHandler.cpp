@@ -12,7 +12,6 @@
 #include "libs/Kernel.h"
 #include "libs/BootCounter.h"
 #include "libs/gpio.h"
-#include "ATCHandler.h"
 #include "SlowTicker.h"
 #include "Tool.h"
 #include "PublicDataRequest.h"
