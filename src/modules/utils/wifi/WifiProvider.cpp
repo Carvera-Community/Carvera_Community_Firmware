@@ -1415,7 +1415,8 @@ void WifiProvider::on_set_public_data(void *argument)
 					char sta_address[16];
 					char ap_address[16];
 					M8266WIFI_SPI_Get_STA_IP_Addr(sta_address, &status);
-					memcpy(s->ip_address,sta_address,16);
+					memcpy(s->ip_address, sta_address, sizeof(s->ip_address));
+					s->ip_address[sizeof(s->ip_address) - 1] = '\0';
 					
 					if( M8266WIFI_SPI_Query_AP_Param(AP_PARAM_TYPE_IP_ADDR, (u8 *)ap_address, &param_len, &status) )
 					{

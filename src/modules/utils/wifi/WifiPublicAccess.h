@@ -13,7 +13,7 @@
 struct ap_conn_info {
     char ssid[33];
     char password[64];
-    char ip_address[15];
+    char ip_address[16];   // "255.255.255.255" is 15 chars, plus the terminator
     bool has_error;
     char error_info[64];
     bool disconnect;
