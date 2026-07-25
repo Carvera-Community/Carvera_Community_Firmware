@@ -163,6 +163,7 @@ private:
     bool tool_0_3axis;
     float dwell_before_probing;
     bool is_3dprobe_active;
+    bool enable_3dtoolsetter;
 
     Gcode* gcodeBuffer;
     char buff[100];

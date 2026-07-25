@@ -49,6 +49,7 @@
 #define probe_height_checksum    CHECKSUM("probe_height")
 #define probe_tip_diameter_checksum CHECKSUM("probe_tip_diameter")
 #define probe_calibration_safety_margin_checksum CHECKSUM("calibration_safety_margin")
+#define three_d_toolsetter_checksum CHECKSUM("3dtoolsetter")
 #define toolZeroIs3Axis_checksum  CHECKSUM("tool_zero_is_3axis")
 #define gamma_max_checksum       CHECKSUM("gamma_max")
 #define max_z_checksum           CHECKSUM("max_z")
@@ -184,6 +185,7 @@ void ZProbe::config_load()
     this->max_z         = THEKERNEL->config->value(zprobe_checksum, max_z_checksum)->as_number(NAN); // maximum zprobe distance
     THEKERNEL->probe_tip_diameter = THEKERNEL->config->value(zprobe_checksum, probe_tip_diameter_checksum)->as_number(2); // probe tip diameter
     this->tool_0_3axis  = THEKERNEL->config->value(zprobe_checksum, toolZeroIs3Axis_checksum)->as_bool(false);
+    this->enable_3dtoolsetter = THEKERNEL->config->value(zprobe_checksum, three_d_toolsetter_checksum)->as_bool(false);
     if(isnan(this->max_z)){
         this->max_z = THEKERNEL->config->value(gamma_max_checksum)->as_number(200); // maximum zprobe distance
     }
@@ -315,6 +317,14 @@ uint32_t ZProbe::read_probe(uint32_t dummy)
             if (!probe_detected) {
                 probe_detected = true;
                 probe_pin_position = STEPPER[Z_AXIS]->get_current_position();
+                // In 3dtoolsetter mode, for 3D probe tools, probe trigger alone completes calibration.
+                if (calibrating && this->enable_3dtoolsetter && check_probe_tool() == 2) {
+                    calibrate_detected = true;
+                    calibrate_pin_position = probe_pin_position;
+                    for (auto &a : THEROBOT->actuators) a->stop_moving();
+                    debounce = 0;
+                    cali_debounce = 0;
+                }
             // if we are calibrating, the stop to the actuators comes from the read_calibrate method
             } else if (!calibrating) {
                 // we signal the motors to stop, which will preempt any moves on that axis
@@ -335,8 +345,8 @@ uint32_t ZProbe::read_calibrate(uint32_t dummy)
 {
     if (!calibrating) return 0;
 
-    // just check z Axis move
-    if (STEPPER[Z_AXIS]->is_moving()) {
+    // check all axes in case calibration movement includes X/Y components
+    if (STEPPER[X_AXIS]->is_moving() || STEPPER[Y_AXIS]->is_moving() || STEPPER[Z_AXIS]->is_moving()) {
         // if it is moving then we check the probe, and debounce it
         if (this->calibrate_pin.get()) {
             if (cali_debounce < debounce_ms) {
@@ -931,13 +941,24 @@ void ZProbe::on_set_public_data(void* argument) {
 // just probe / calibrate Z using calibrate pin
 void ZProbe::calibrate_Z(Gcode *gcode)
 {
-    float z= 0;
+    float x = 0;
+    float y = 0;
+    float z = 0;
+
+    if(gcode->has_letter('X')) {
+        x= gcode->get_value('X');
+    }
+
+    if(gcode->has_letter('Y')) {
+        y= gcode->get_value('Y');
+    }
+
     if(gcode->has_letter('Z')) {
         z= gcode->get_value('Z');
     }
 
-    if(z == 0) {
-        gcode->stream->printf("error: Z must be specified, and be > or < 0\n");
+    if(x == 0 && y == 0 && z == 0) {
+        gcode->stream->printf("error: at least one of X, Y, or Z must be specified, and be > or < 0\n");
         return;
     }
 
@@ -967,10 +988,10 @@ void ZProbe::calibrate_Z(Gcode *gcode)
     }
 
     // do a delta move which will stop as soon as the probe is triggered, or the distance is reached
-    float delta[3]= {0, 0, z};
+    float delta[3]= {x, y, z};
     THEKERNEL->set_zprobing(true);
     if(!THEROBOT->delta_move(delta, rate, 3)) {
-        gcode->stream->printf("ERROR: Probing move too small,  %1.3f\n", z);
+        gcode->stream->printf("ERROR: Probing move too small, X: %1.3f, Y: %1.3f, Z: %1.3f\n", x, y, z);
         THEKERNEL->set_halt_reason(PROBE_FAIL);
         THEKERNEL->call_event(ON_HALT, nullptr);
         calibrating = false;
@@ -1018,7 +1039,8 @@ void ZProbe::calibrate_Z(Gcode *gcode)
                              calibrate_pin_position);
     }
     
-    uint8_t calibrateok = calibrate_detected ? 1 : 0;
+    bool probe_only_calibration = this->enable_3dtoolsetter && (check_probe_tool() == 2);
+    uint8_t calibrateok = (calibrate_detected || (probe_only_calibration && probe_detected)) ? 1 : 0;
 
     // print results using the GRBL format
     gcode->stream->printf("[PRB:%1.3f,%1.3f,%1.3f:%d]\n", 

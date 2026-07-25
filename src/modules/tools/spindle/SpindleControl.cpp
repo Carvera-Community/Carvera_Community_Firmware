@@ -10,15 +10,21 @@
 #include "Gcode.h"
 #include "Conveyor.h"
 #include "SpindleControl.h"
+#include "Config.h"
+#include "ConfigValue.h"
 #include "libs/StreamOutputPool.h"
 #include "libs/PublicData.h"
 #include "SwitchPublicAccess.h"
 #include "ATCHandlerPublicAccess.h"
 
+#define spindle_checksum CHECKSUM("spindle")
+#define three_d_toolsetter_checksum CHECKSUM("3dtoolsetter")
+
 void SpindleControl::on_gcode_received(void *argument) 
 {
     
     Gcode *gcode = static_cast<Gcode *>(argument);
+    bool enable_3dtoolsetter = THEKERNEL->config->value(spindle_checksum, three_d_toolsetter_checksum)->as_bool(false);
         
     if (gcode->has_m)
     {
@@ -41,7 +47,7 @@ void SpindleControl::on_gcode_received(void *argument)
             report_settings();
           
         }
-        else if (gcode->m == 3)
+        else if (gcode->m == 3 || (enable_3dtoolsetter && gcode->m == 4))
         {
         	if(THEKERNEL->is_halted()) return; // if in halted state ignore any commands
         	if (!THEKERNEL->get_laser_mode()) {
@@ -61,12 +67,12 @@ void SpindleControl::on_gcode_received(void *argument)
 
                 THECONVEYOR->wait_for_idle();
 
-                // M3 with S value provided: set speed
+                // M3/M4 with S value provided: set speed
                 if (gcode->has_letter('S'))
                 {
                     set_speed(gcode->get_value('S'));
                 }
-                // M3: Spindle on
+                // M3/M4: Spindle on
                 if (!spindle_on) {
                     turn_on();
                 }
@@ -79,16 +85,20 @@ void SpindleControl::on_gcode_received(void *argument)
         		bool b = true;
         		PublicData::set_value( switch_checksum, vacuum_checksum, state_checksum, &b );
         	}
-            // open extout if set
+            // Set extout behavior.
+            // Default behavior keeps extout on for M3 only.
+            // 3dtoolsetter mode maps M3/M4 to opposite EXT direction states.
         	if (THEKERNEL->get_extout_mode()) {
-        		// open extout
-        		bool b = true;
+                bool b = true;
         		struct pad_switch pad;
 			    bool ok = false;
+                if (enable_3dtoolsetter) {
+                    b = (gcode->m == 3);
+                }
             	PublicData::set_value( switch_checksum, extendout_checksum, state_checksum, &b );
-			    ok = PublicData::get_value(switch_checksum, vacuum_checksum, 0, &pad);
-			    if (ok) {
-			    	pad.state = true;
+                ok = PublicData::get_value(switch_checksum, enable_3dtoolsetter ? extendout_checksum : vacuum_checksum, 0, &pad);
+                if (ok) {
+                    	pad.state = enable_3dtoolsetter ? b : true;
 			    	pad.value = pad.defaultvalue;
 			    	PublicData::set_value( switch_checksum, extendout_checksum, state_value_checksum, &pad );
 			    }

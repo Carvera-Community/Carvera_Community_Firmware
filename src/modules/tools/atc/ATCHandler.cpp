@@ -97,6 +97,7 @@
 #define probe_mcs_z_checksum		CHECKSUM("probe_mcs_z")
 #define reference_tool_mz_checksum	CHECKSUM("reference_tool_mz")
 #define three_axis_probe_tlo_correction_checksum CHECKSUM("three_axis_probe_tlo_correction")
+#define three_d_toolsetter_checksum CHECKSUM("3dtoolsetter")
 
 ATCHandler::ATCHandler()
 {
@@ -133,6 +134,7 @@ ATCHandler::ATCHandler()
     probe_oneoff_y = 0.0;
     probe_oneoff_z = 0.0;
     probe_oneoff_configured = false;
+	enable_3dtoolsetter = false;
 	target_collet_type = UNDEFINED;
 	a_axis_cor.phase = 0;
 	a_axis_cor.pass = 0;
@@ -1406,6 +1408,25 @@ void ATCHandler::fill_cali_scripts(bool is_probe, bool clear_z, int repeat_count
 			// save new tool offset
 			snprintf(buff, sizeof(buff), "M493.1 R%d", i);
 			this->script_queue.push(buff);
+
+			if(this->enable_3dtoolsetter && !is_probe) {
+				// Diameter touch-off sequence for non-probe tools uses reverse spindle direction.
+				snprintf(buff, sizeof(buff), "G91 G0 Z2");
+				this->script_queue.push(buff);
+				snprintf(buff, sizeof(buff), "G91 G0 X-10.5");
+				this->script_queue.push(buff);
+				snprintf(buff, sizeof(buff), "G91 G1 Z-3.5 F100");
+				this->script_queue.push(buff);
+				snprintf(buff, sizeof(buff), "M4 S2000");
+				this->script_queue.push(buff);
+				snprintf(buff, sizeof(buff), "G38.6 X3.5 F30");
+				this->script_queue.push(buff);
+				snprintf(buff, sizeof(buff), "G91 G0 X-0.5");
+				this->script_queue.push(buff);
+				snprintf(buff, sizeof(buff), "M5");
+				this->script_queue.push(buff);
+			}
+
 			// lift z to safe position with fast speed
 			snprintf(buff, sizeof(buff), "G53 G0 Z%.3f", THEROBOT->from_millimeters(this->clearance_z));
 			this->script_queue.push(buff);
@@ -1761,6 +1782,7 @@ void ATCHandler::on_config_reload(void *argument)
 	this->probe_slow_rate = THEKERNEL->config->value(atc_checksum, probe_checksum, slow_rate_mm_m_checksum)->as_number(60   );
 	this->probe_retract_mm = THEKERNEL->config->value(atc_checksum, probe_checksum, retract_mm_checksum)->as_number(2   );
 	this->probe_height_mm = THEKERNEL->config->value(atc_checksum, probe_checksum, probe_height_mm_checksum)->as_number(0   );
+	this->enable_3dtoolsetter = THEKERNEL->config->value(atc_checksum, three_d_toolsetter_checksum)->as_bool(false);
 	
 	this->anchor_width = THEKERNEL->config->value(coordinate_checksum, anchor_width_checksum)->as_number(15  );
 	this->anchor1_x = THEKERNEL->config->value(coordinate_checksum, anchor1_x_checksum)->as_number(-359  );
