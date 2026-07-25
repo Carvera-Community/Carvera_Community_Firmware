@@ -44,7 +44,7 @@ void StreamOutput::PacketMessage(char cmd, const char* s, int size)
 
 int StreamOutput::printf(const char *format, ...)
 {
-    char b[256];
+    char b[64];
     char *buffer;
     // Make the message
     va_list args;
@@ -52,55 +52,47 @@ int StreamOutput::printf(const char *format, ...)
     va_list args_copy;
     va_copy(args_copy, args);
 
-    int len = vsnprintf(b, sizeof(b), format, args);
-    va_end(args);
+    int size = vsnprintf(b, 64, format, args) + 1; // we add one to take into account space for the terminating \0
 
-    if (len < 0) {
-        va_end(args_copy);
-        return -1;
-    } else if ((size_t)len < sizeof(b)) {
-        va_end(args_copy);
+    if (size < 64) {
         buffer = b;
     } else {
-        buffer = new char[len + 1];
-        vsnprintf(buffer, len + 1, format, args_copy);
-        va_end(args_copy);
+        buffer = new char[size];
+        vsnprintf(buffer, size, format, args_copy);
     }
+    va_end(args_copy);
+    va_end(args);
 
     if (communication_protocol == PROTOCOL_SMOOTHIE || !frames_protocol_output()) {
         puts(buffer, strlen(buffer));
     } else {
         PacketMessage(PTYPE_NORMAL_INFO, buffer, strlen(buffer));
     }
+    
 
     if (buffer != b)
         delete[] buffer;
 
-    return len;
+    return size - 1;
 }
 
 int StreamOutput::printfcmd(const char cmd, const char *format, ...)
 {
-    char b[256];
+    char b[64];
     char *buffer;
     va_list args;
     va_start(args, format);
-    va_list args_copy;
-    va_copy(args_copy, args);
 
-    int len = vsnprintf(b, sizeof(b), format, args);
+    int size = vsnprintf(b, sizeof(b), format, args) + 1;
     va_end(args);
 
-    if (len < 0) {
-        va_end(args_copy);
-        return -1;
-    } else if ((size_t)len < sizeof(b)) {
-        va_end(args_copy);
+    if (size < static_cast<int>(sizeof(b))) {
         buffer = b;
     } else {
-        buffer = new char[len + 1];
-        vsnprintf(buffer, len + 1, format, args_copy);
-        va_end(args_copy);
+        buffer = new char[size];
+        va_start(args, format);
+        vsnprintf(buffer, size, format, args);
+        va_end(args);
     }
 
     if (communication_protocol == PROTOCOL_SMOOTHIE || !frames_protocol_output()) {
@@ -110,5 +102,5 @@ int StreamOutput::printfcmd(const char cmd, const char *format, ...)
     }
 
     if (buffer != b) delete[] buffer;
-    return len;
+    return size - 1;
 }

@@ -225,12 +225,13 @@ string get_arguments( const string& possible_command )
 // Returns true if the file exists
 bool file_exists( const string file_name )
 {
+    bool exists = false;
     FILE *lp = fwfs::fopen(file_name.c_str(), "r");
-    if (lp == NULL) {
-        return false;
+    if(lp) {
+        exists = true;
     }
     fwfs::fclose(lp);
-    return true;
+    return exists;
 }
 
 // Prepares and executes a watchdog reset for dfu or reboot
