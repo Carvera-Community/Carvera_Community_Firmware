@@ -8,7 +8,6 @@
 - Enhancement: Added a new 4th axis self-calibration routine M469.6. This routine calibrates the 4th axis centreline in both Y and Z axis by probing a round object (such as chuck body) from multiple directions. This routine find the true zero point without being affected by runout or surface imperfections.
 - Enhancement: Added improved PID Spindle control that increases performance of carvera C1 spindles. Setup requires following the guide on the documentation page
 - Enhancement: Add endstops repeatability test (M575)
-- Enhancement: Add SD card file integrity check. M576/M576.1 walks all files with stored MD5 hashes. M576.2 checks a single file or recursively checks a directory
 - Fixed: Corrected the Shrink A command G92.4 A0 S0. Now instead of compressing machine coordinates it compresses work coordinates. Backported from Makera firmware
 - Enhancement: Add option to auto-disable on-board wifi AP once machine is connected to external wifi (STA). By default this is turned on, to turn off type config-set sd wifi.ap_auto_disable false into the MDI
 - Fixed: Prevent incorrect current line reporting after a tool change
