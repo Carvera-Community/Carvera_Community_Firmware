@@ -222,9 +222,9 @@ class Kernel {
         void read_Factory_data();
         void write_Factory_data();
         void erase_Factory_data();
-        void read_Factroy_SD();
+        void read_Factory_SD();
         bool Check_Factory_Data(unsigned char *data, unsigned int len);
-        bool Factroy_readLine(std::string& line, int lineno, FILE *fp);
+        bool Factory_readLine(std::string& line, int lineno, FILE *fp);
         bool process_line(const std::string &buffer, uint16_t *check_sum, unsigned char *value);
         unsigned int crc16_ccitt(unsigned char *data, unsigned int len);
 

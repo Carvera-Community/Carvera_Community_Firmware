@@ -130,7 +130,7 @@ Kernel::Kernel()
     // read Factory setting data from eeprom
     this->read_Factory_data();
     // read Factory settings data from sd
-    this->read_Factroy_SD();
+    this->read_Factory_SD();
 
 
     // Config next, but does not load cache yet
@@ -1034,7 +1034,7 @@ void Kernel::erase_Factory_data()
 #define ATC_enable_checksum             		CHECKSUM("Atc_enable")
 #define CE1_Expand								CHECKSUM("CE1_Expand")
 
-void Kernel::read_Factroy_SD()
+void Kernel::read_Factory_SD()
 {
 	string file_name = "/sd/factory.ini";
 	FILE *lp = fwfs::fopen(file_name.c_str(), "r");
@@ -1044,7 +1044,7 @@ void Kernel::read_Factroy_SD()
         // For each line
     	while(!fwfs::feof(lp)) {
         	string line;
-        	if(Factroy_readLine(line, ln++, lp)) 
+        	if(Factory_readLine(line, ln++, lp)) 
         	{ 
         		uint16_t keychecksum;
         		unsigned char value;
@@ -1115,7 +1115,7 @@ void Kernel::read_Factroy_SD()
     	system_reset(false);
     }
 }
-bool Kernel::Factroy_readLine(string& line, int lineno, FILE *fp)
+bool Kernel::Factory_readLine(string& line, int lineno, FILE *fp)
 {
     char buf[132];
     char *l= fwfs::fgets(buf, sizeof(buf)-1, fp);
