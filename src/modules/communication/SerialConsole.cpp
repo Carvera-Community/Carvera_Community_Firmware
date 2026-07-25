@@ -357,7 +357,7 @@ void SerialConsole::process_makera_byte(uint8_t received)
     serial_protocol_buffer[makera_received++] = received;
     if (makera_received == 4) {
         makera_data_length = (serial_protocol_buffer[2] << 8) | serial_protocol_buffer[3];
-        if (makera_data_length < 3 || makera_data_length + 6 > sizeof(serial_protocol_buffer)) {
+        if (makera_data_length < 3 || (size_t)makera_data_length + 6 > sizeof(serial_protocol_buffer)) {
             reset_makera_command_parser();
         }
         return;

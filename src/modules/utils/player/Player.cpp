@@ -1626,10 +1626,8 @@ void Player::upload_command( string parameters, StreamOutput *stream )
     int cmdType = 0;
     int tatalretry = 0;
     uint32_t total_packet = 0;
-    uint16_t packet_size = 0;
     uint16_t data_len = 0;
     uint32_t sequence = 0;
-    uint32_t starttime;
     uint32_t seq;
     char buf[] = "ok\r\n";
     // open file
@@ -1710,7 +1708,6 @@ void Player::upload_command( string parameters, StreamOutput *stream )
 	NVIC_DisableIRQ(TIMER0_IRQn);
 	NVIC_DisableIRQ(TIMER1_IRQn);
     if (communication_protocol == PROTOCOL_MAKERA) {
-        starttime = us_ticker_read();
         stream->reset();
     }
 
@@ -1821,9 +1818,8 @@ void Player::upload_command( string parameters, StreamOutput *stream )
             }
         } else { //Makera protocol
             cmdType = inbytes(stream, &recv_buff, 0, TIMEOUT_MS);
-            if (cmdType > 0) 
+            if (cmdType > 0)
             {
-                starttime = us_ticker_read();
                 if ( cmdType == PTYPE_FILE_CAN )
                 {
                     FileRcvState = WAIT_MD5;
@@ -1861,8 +1857,8 @@ void Player::upload_command( string parameters, StreamOutput *stream )
                         if (cmdType == PTYPE_FILE_VIEW)
                         {
                             total_packet = (recv_buff[3]<<24) | (recv_buff[4]<<16) | (recv_buff[5]<<8) | recv_buff[6];
-                            packet_size = (recv_buff[7]<<8) | recv_buff[8];
-                            sequence = 1;   
+                            // bytes 7-8 hold the packet size; nothing here uses it
+                            sequence = 1;
                             xbuff[0] = (HEADER>>8)&0xFF;
                             xbuff[1] = HEADER&0xFF;
                             char len = 4 + 3;
