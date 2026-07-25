@@ -5,13 +5,14 @@
 #include <stdio.h>
 #include <string>
 
-// The device header. Must be the mbed one, not src/libs/LPC17xx/sLPC17xx.h:
-// both declare the same peripheral types under the same include guard
-// (__LPC17xx_H__), so whichever a translation unit reaches first silently wins
-// and the other is preprocessed away. They do not agree - sLPC17xx.h puts the
-// USB OTG I2C registers 4 bytes too high and sizes LPC_UART0_TypeDef at 456
-// bytes instead of 92 - so which one a file happened to see decided its
-// register layout. See the commit that unified this.
+// The device header, and the only one on the include path. A second copy used
+// to sit in src/libs/LPC17xx/ declaring the same peripheral types under the same
+// include guard (__LPC17xx_H__), so whichever a translation unit reached first
+// silently won and the other was preprocessed away - which register layout a
+// file compiled against depended on include order. The two disagreed: that copy
+// put the USB OTG I2C registers 4 bytes too high and sized LPC_UART0_TypeDef at
+// 456 bytes instead of 92. It has been retired. Do not add another LPC17xx.h to
+// the include path.
 #include "LPC17xx.h"
 #include "PinNames.h"
 
