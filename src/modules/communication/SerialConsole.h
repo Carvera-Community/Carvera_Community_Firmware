@@ -55,10 +55,13 @@ class SerialConsole : public Module, public StreamOutput {
         int default_baud_rate;
         int temp_baud_rate;                       // non-zero = temporary baud active
         uint32_t last_activity_ms;                // for 15s timeout revert
-        volatile bool makera_command_pending;
         uint16_t makera_header;
         uint16_t makera_received;
         uint16_t makera_data_length;
+
+        bool makera_cmd_queue_push(const char *data, uint16_t len);
+        void makera_cmd_queue_clear();
+        bool makera_cmd_queue_empty() const;
 
         enum FileParseState {
             FILE_WAIT_HEADER,
