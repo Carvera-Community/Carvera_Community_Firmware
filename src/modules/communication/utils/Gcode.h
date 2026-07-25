@@ -35,6 +35,11 @@ class Gcode {
         float set_variable_value() const;
 
         float evaluate_expression(const char * expr, char ** endptr) const;
+        // NOTE expr must point at a WRITABLE buffer. The number parser
+        // terminates the token it is reading in place and restores the byte
+        // afterwards (see parse_factor), so a string literal or any other
+        // .rodata pointer is undefined behaviour - and on this target it puts a
+        // store on a flash address. Pass &some_string[0], never "".
         static float evaluate_standalone_expression(char* expr, char** endptr, StreamOutput* stream);
 
         // int  index_of_letter( char letter, int start = 0) const;
