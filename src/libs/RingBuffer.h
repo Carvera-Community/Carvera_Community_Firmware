@@ -31,7 +31,7 @@ template<class kind, int length> class RingBuffer {
         volatile int          head;
 };
 
-#include "sLPC17xx.h"
+#include "LPC17xx.h"   // for __disable_irq/__enable_irq via the CMSIS core header
 
 template<class kind, int length> RingBuffer<kind, length>::RingBuffer(){
     this->tail = this->head = 0;
