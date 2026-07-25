@@ -1361,7 +1361,10 @@ void SimpleShell::model_command( string parameters, StreamOutput *stream )
             }
             break;
 		default:			
-			stream->printf("model = %s, %d, %d, %d\n", "C1", THEKERNEL->factory_set->MachineModel, THEKERNEL->factory_set->FuncSetting, THEKERNEL->probe_addr);
+			// Do not masquerade as a C1: an unset or corrupt factory record
+			// would make the host apply the wrong machine profile. Report the
+			// raw value and let the host decide.
+			stream->printf("model = %s, %d, %d, %d\n", "UNKNOWN", THEKERNEL->factory_set->MachineModel, THEKERNEL->factory_set->FuncSetting, THEKERNEL->probe_addr);
 			break;
 	}
     if(THEKERNEL->is_config_load_error()) {
