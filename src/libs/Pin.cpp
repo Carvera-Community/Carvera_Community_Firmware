@@ -1,5 +1,7 @@
 #include "Pin.h"
 #include "utils.h"
+#include "libs/Kernel.h"
+#include "libs/StreamOutputPool.h"
 
 // mbed libraries for hardware pwm
 #include "PwmOut.h"
@@ -85,7 +87,14 @@ Pin* Pin::from_string(std::string value){
         }
     }
 
-    // from_string failed. TODO: some sort of error
+    // from_string failed. Say so: an unparsable pin silently became a pin that
+    // never reads as triggered, so a typo in an endstop or probe pin turned into
+    // a machine that drives into the stop instead of homing.
+    // THEKERNEL may not exist yet if a Pin is configured from a static
+    // initialiser, hence the guard.
+    if(THEKERNEL != nullptr && THEKERNEL->streams != nullptr) {
+        THEKERNEL->streams->printf("ERROR: invalid pin '%s' - this pin will never read as triggered\n", value.c_str());
+    }
     valid= false;
     port_number = 0;
     port = gpios[0];
