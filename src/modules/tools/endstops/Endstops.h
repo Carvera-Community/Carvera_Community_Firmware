@@ -39,9 +39,9 @@ class Endstops : public Module{
         void on_idle(void *argument);
         bool debounced_get(Pin *pin);
         void process_home_command(Gcode* gcode);
+        void handle_park_g28();
         void set_homing_offset(Gcode* gcode);
         uint32_t read_endstops(uint32_t dummy);
-        void handle_park_g28();
         bool slow_approach_axis(int axis_index, float feed_rate_mm_s, float &result_mm, float approach_retract_multiplier = 2.0F);
         void ensure_z_clearance_for_xy_test();
         void test_endstop_repeatability(Gcode* gcode);
