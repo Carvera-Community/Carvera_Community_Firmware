@@ -13,6 +13,13 @@
 #define FFSDEBUG_ENABLED 0
 #endif
 
+// Drive-qualified path buffer for open/opendir ("0:/" + relative path).
+// FAT32 LFN allows 255 chars per path component; full path limit is MAX_PATH (260),
+// which includes the terminating NUL (same as Windows FAT32 path limit).
+#ifndef FATFS_PATH_MAX
+#define FATFS_PATH_MAX 260
+#endif
+
 #if FFSDEBUG_ENABLED
 #define FFSDEBUG(FMT, ...) printf(FMT, ##__VA_ARGS__)
 #else

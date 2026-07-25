@@ -30,13 +30,15 @@ static const char *FR_ERRORS[] = {
 };
 #endif
 
-FATFileHandle::FATFileHandle(FIL_t fh) {
+FATFileHandle::FATFileHandle(FIL_t *fh) {
     _fh = fh;
 }
     
 int FATFileHandle::close() {
     FFSDEBUG("close\n");
-    int retval = f_close(&_fh);
+    int retval = f_close(_fh);
+    delete _fh;
+    _fh = NULL;
     delete this;
     return retval;
 }
@@ -44,7 +46,7 @@ int FATFileHandle::close() {
 ssize_t FATFileHandle::write(const void* buffer, size_t length) {
     FFSDEBUG("write(%d)\n", length);
     UINT n;
-    FRESULT res = f_write(&_fh, buffer, length, &n);
+    FRESULT res = f_write(_fh, buffer, length, &n);
     if(res) {
         FFSDEBUG("f_write() failed (%d, %s)", res, FR_ERRORS[res]);
         return -1;
@@ -55,7 +57,7 @@ ssize_t FATFileHandle::write(const void* buffer, size_t length) {
 ssize_t FATFileHandle::read(void* buffer, size_t length) {
     FFSDEBUG("read(%d)\n", length);
     UINT n;
-    FRESULT res = f_read(&_fh, buffer, length, &n);
+    FRESULT res = f_read(_fh, buffer, length, &n);
     if(res) {
         FFSDEBUG("f_read() failed (%d, %s)\n", res, FR_ERRORS[res]);
         return -1;
@@ -70,23 +72,23 @@ int FATFileHandle::isatty() {
 off_t FATFileHandle::lseek(off_t position, int whence) {
     FFSDEBUG("lseek(%i,%i)\n",position,whence);
     if(whence == SEEK_END) {
-        position += _fh.fsize;
+        position += _fh->fsize;
     } else if(whence==SEEK_CUR) {
-        position += _fh.fptr;
+        position += _fh->fptr;
     }
-    FRESULT res = f_lseek(&_fh, position);
+    FRESULT res = f_lseek(_fh, position);
     if(res) {
         FFSDEBUG("lseek failed (%d, %s)\n", res, FR_ERRORS[res]);
         return -1;
     } else {
-        FFSDEBUG("lseek OK, returning %i\n", _fh.fptr);
-        return _fh.fptr;
+        FFSDEBUG("lseek OK, returning %i\n", _fh->fptr);
+        return _fh->fptr;
     }
 }
         
 int FATFileHandle::fsync() {
     FFSDEBUG("fsync()\n");
-    FRESULT res = f_sync(&_fh);
+    FRESULT res = f_sync(_fh);
     if (res) {
         FFSDEBUG("f_sync() failed (%d, %s)\n", res, FR_ERRORS[res]);
         return -1;
@@ -96,7 +98,7 @@ int FATFileHandle::fsync() {
 
 off_t FATFileHandle::flen() {
     FFSDEBUG("flen\n");
-    return _fh.fsize;
+    return _fh->fsize;
 }
 
 } // namespace mbed
