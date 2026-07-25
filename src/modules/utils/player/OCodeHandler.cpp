@@ -156,7 +156,18 @@ bool OCodeHandler::parse_ocode(const char* line, int& num, string& keyword, stri
 
 float OCodeHandler::eval_expr(string& expr, StreamOutput* stream) const
 {
-    char* buf = expr.empty() ? const_cast<char*>("") : &expr[0];
+    if(expr.empty()) {
+        // An empty expression used to be handed to the parser as a pointer to
+        // the string literal "". The number parser terminates the token it is
+        // reading in place and restores the byte afterwards (Gcode::parse_factor),
+        // so that was a store through a .rodata pointer - on this target, a
+        // store to a flash address, and undefined behaviour regardless. The
+        // parser then reported "Invalid number in expression" and halted, with
+        // the offending character printed as a NUL byte. Report it directly.
+        halt_error(stream, "empty expression");
+        return NAN;
+    }
+    char* buf = &expr[0];
     char* endptr = NULL;
     return Gcode::evaluate_standalone_expression(buf, &endptr, stream);
 }
@@ -374,14 +385,21 @@ bool OCodeHandler::process_line(const char* line, FILE* fh, StreamOutput* stream
 
         // Parse bracketed arguments [a1] [a2] ... (pass full [expr] so the
         // expression parser consumes the closing bracket, same as if/while).
-        char* rp = rest.empty() ? const_cast<char*>("") : &rest[0];
-        for(int p = 0; p < 30; p++) {
-            rp = const_cast<char*>(ltrim_cstr(rp));
-            if(*rp != '[') break;
-            char* endp = NULL;
-            float val = Gcode::evaluate_standalone_expression(rp, &endp, stream);
-            THEKERNEL->local_params[p] = val;
-            rp = endp ? endp : rp + 1;
+        // No arguments if there is no text: do not manufacture a pointer to a
+        // string literal here, because evaluate_standalone_expression writes
+        // into the buffer it is given (see the note on its declaration). The
+        // loop below happens to break before the first call when the text is
+        // empty, but the pointer should never be constructed in the first place.
+        if(!rest.empty()) {
+            char* rp = &rest[0];
+            for(int p = 0; p < 30; p++) {
+                rp = const_cast<char*>(ltrim_cstr(rp));
+                if(*rp != '[') break;
+                char* endp = NULL;
+                float val = Gcode::evaluate_standalone_expression(rp, &endp, stream);
+                THEKERNEL->local_params[p] = val;
+                rp = endp ? endp : rp + 1;
+            }
         }
 
         tolerant_after_jump_ = false;
