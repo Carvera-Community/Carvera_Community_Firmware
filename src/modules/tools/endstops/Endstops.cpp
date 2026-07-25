@@ -1514,20 +1514,21 @@ void Endstops::set_homing_offset(Gcode *gcode)
     gcode->stream->printf("Homing Offset: X %5.3f Y %5.3f Z %5.3f will take effect next home\n", homing_axis[X_AXIS].home_offset, homing_axis[Y_AXIS].home_offset, homing_axis[Z_AXIS].home_offset);
 }
 
+// "Park" has no implementation on this machine.
+//
+// Upstream Smoothieware would rapid to the position stored by G28.1 here. The
+// Carvera has a clearance position instead, which G28 reaches through
+// ATCHandler (the g28_triggered path in its on_gcode_received/on_main_loop)
+// and which M496 and M496.1 reach directly.
+//
+// Two callers have no other behaviour to fall back on: move_to_origin() when
+// endstops.park_after_home is set, and G28.2 outside grbl mode. Both used to
+// return silently, which made an enabled park_after_home look like a machine
+// that ignores its own config - it performs neither the park nor the
+// move-to-origin it replaces. Say so instead of doing nothing quietly.
 void Endstops::handle_park_g28()
 {
-    // TODO: spec says if XYZ specified move to them first then move to MCS of specifed axis
-    // THEROBOT->push_state();
-    // THEROBOT->absolute_mode = true;
-	// snprintf(buf, sizeof(buf), "G53 G0 X%f Y%f", THEROBOT->from_millimeters(g28_position[X_AXIS]), THEROBOT->from_millimeters(g28_position[Y_AXIS])); // must use machine coordinates in case G92 or WCS is in effect
-    // snprintf(buf, sizeof(buf), "M496"); // Got clearance position instead
-//    struct SerialMessage message;
-//    message.message = "M496";
-//    message.stream = &(StreamOutput::NullStream);
-//    THEKERNEL->call_event(ON_CONSOLE_LINE_RECEIVED, &message );
-    // Wait for above to finish
-    // THECONVEYOR->wait_for_idle();
-    // THEROBOT->pop_state();
+    THEKERNEL->streams->printf("WARNING: park is not implemented - use M496 to go to the clearance position\n");
 }
 
 // parse gcodes
@@ -1536,15 +1537,24 @@ void Endstops::on_gcode_received(void *argument)
     Gcode *gcode = static_cast<Gcode *>(argument);
     if ( gcode->has_g && gcode->g == 28) {
         switch(gcode->subcode) {
-            case 0: // G28 in grbl mode will do a rapid to the predefined position otherwise it is home command
-                if(THEKERNEL->is_grbl_mode()){
-                    handle_park_g28();
-                }else{
+            case 0: // G28 homes in RepRap mode. In grbl mode - the default for
+                    // CNC builds - G28 means "go to clearance position" on the
+                    // Carvera, which is not the Smoothieware or RS274NGC
+                    // meaning (rapid to the G28.1 position) and is deliberately
+                    // implemented elsewhere: see the g28_triggered path in
+                    // ATCHandler::on_gcode_received and ::on_main_loop, which
+                    // moves to coordinate.clearance_x/y/z. Nothing to do here.
+                if(!THEKERNEL->is_grbl_mode()){
                     process_home_command(gcode);
                 }
                 break;
 
             case 1: // G28.1 set pre defined park position
+                // NOTE nothing moves to g28_position on this machine: G28 goes
+                // to the clearance position instead (see case 0), so the value
+                // stored here is only echoed back by the config-override dump
+                // below. It is a leftover of the upstream Smoothieware park
+                // semantics, kept so an existing config-override still parses.
                 // saves current position in absolute machine coordinates
                 THEROBOT->get_axis_position(g28_position); // Only XY are used
                 // Note the following is only meant to be used for recovering a saved position from config-override
