@@ -7,7 +7,6 @@
 
 #include "WifiProvider.h"
 
-#include <cstdarg>
 #include "brd_cfg.h"
 #include "M8266HostIf.h"
 
@@ -712,76 +711,65 @@ void WifiProvider::PacketMessage(char cmd, const char* s, int size)
 
 int WifiProvider::printfcmd(const char cmd, const char *format, ...)
 {
-	char b[256];
+	char b[64];
     char *buffer;
+    // Make the message
     va_list args;
     va_start(args, format);
-    va_list args_copy;
-    va_copy(args_copy, args);
 
-    int len = vsnprintf(b, sizeof(b), format, args);
-    va_end(args);
+    int size = vsnprintf(b, 64, format, args) + 1; // we add one to take into account space for the terminating \0
 
-    if (len < 0) {
-        va_end(args_copy);
-        return -1;
-    } else if ((size_t)len < sizeof(b)) {
-        va_end(args_copy);
+    if (size < 64) {
         buffer = b;
     } else {
-        buffer = new char[len + 1];
-        vsnprintf(buffer, len + 1, format, args_copy);
-        va_end(args_copy);
+        buffer = new char[size];
+        vsnprintf(buffer, size, format, args);
     }
+    va_end(args);
 
 	if (communication_protocol == PROTOCOL_SMOOTHIE) {
 		puts(buffer, strlen(buffer));
 	} else {
-		PacketMessage(cmd, buffer, strlen(buffer));
+		PacketMessage(PTYPE_DIAG_RES, buffer, strlen(buffer));
 	}
+//    puts(buffer, strlen(buffer));
+	
 
     if (buffer != b)
         delete[] buffer;
 
-    return len;
+    return size - 1;
 }
 
 int WifiProvider::printf(const char *format, ...)
 {
-	char b[256];
+	char b[64];
     char *buffer;
+    // Make the message
     va_list args;
     va_start(args, format);
-    va_list args_copy;
-    va_copy(args_copy, args);
 
-    int len = vsnprintf(b, sizeof(b), format, args);
-    va_end(args);
+    int size = vsnprintf(b, 64, format, args) + 1; // we add one to take into account space for the terminating \0
 
-    if (len < 0) {
-        va_end(args_copy);
-        return -1;
-    } else if ((size_t)len < sizeof(b)) {
-        va_end(args_copy);
+    if (size < 64) {
         buffer = b;
     } else {
-        buffer = new char[len + 1];
-        vsnprintf(buffer, len + 1, format, args_copy);
-        va_end(args_copy);
+        buffer = new char[size];
+        vsnprintf(buffer, size, format, args);
     }
+    va_end(args);
+
 
 	if (communication_protocol == PROTOCOL_SMOOTHIE) {
 		puts(buffer, strlen(buffer));
 	} else {
-		// Match StreamOutput: NORMAL_INFO (not DIAG_RES). Controllers treat
-		// console/info lines as NORMAL_INFO; DIAG_RES is for diagnose payloads.
-		PacketMessage(PTYPE_NORMAL_INFO, buffer, strlen(buffer));
+		PacketMessage(PTYPE_DIAG_RES, buffer, strlen(buffer));
 	}
 
     if (buffer != b)
         delete[] buffer;
 
-    return len;
+    return size - 1;
 }
 
 int WifiProvider::puts(const char* s, int size)
