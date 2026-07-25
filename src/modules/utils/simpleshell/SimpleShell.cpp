@@ -46,6 +46,7 @@
 #include "platform_memory.h"
 #include "SwitchPublicAccess.h"
 #include "SDFAT.h"
+#include "FATFileSystem.h"
 #include "Thermistor.h"
 #include "md5.h"
 #include "utils.h"
@@ -2093,28 +2094,7 @@ void SimpleShell::md5sum_command( string parameters, StreamOutput *stream )
 
 }
 
-// Map an MD5 sidecar path back to the data file path (in-place into out buffer).
-// md5_path: /sd/gcodes/.md5/...  ->  out: /sd/gcodes/...
-// Returns false if the path is not under the MD5 tree or will not fit.
-static bool data_path_from_md5_path(const char *md5_path, char *out, size_t out_size)
-{
-    static const char prefix[] = "/sd/gcodes/.md5/";
-    static const size_t prefix_len = sizeof(prefix) - 1;
-    if (strncmp(md5_path, prefix, prefix_len) != 0) {
-        return false;
-    }
-    const char *rel = md5_path + prefix_len;
-    // "/sd/gcodes/" + rel + NUL
-    if (11 + strlen(rel) + 1 > out_size) {
-        return false;
-    }
-    strcpy(out, "/sd/gcodes/");
-    strcat(out, rel);
-    return true;
-}
-
-// FatFs open() builds paths in a 64-byte stack buffer ("0:/" + path-relative-to-mount).
-// Opening a longer path overruns that buffer and crashes. Detect and skip safely.
+// FatFs open/opendir build paths in a FATFS_PATH_MAX buffer ("0:/" + path-relative-to-mount).
 static bool fatfs_path_too_long(const char *abspath)
 {
     const char *rel = abspath;
@@ -2123,13 +2103,39 @@ static bool fatfs_path_too_long(const char *abspath)
     } else if (abspath[0] == '/') {
         rel = abspath + 1;
     }
-    // "0:/" (3) + rel + NUL (1) must fit in 64
-    return (3 + strlen(rel) + 1) > 64;
+    return (3 + strlen(rel) + 1) > FATFS_PATH_MAX;
 }
 
-// Stream file through MD5 in small chunks. Uses a small stack buffer because
-// FatFs fopen() already puts a ~512-byte FIL on the stack (copied by value).
-// Writes 32 hex chars + NUL into hex_out. Returns false on failure/halt.
+// Build MD5 sidecar path from a data file path without mkdir/opendir side effects.
+static bool md5_path_from_data_path(const char *data_path, char *out, size_t out_size)
+{
+    static const char prefix[] = "/sd/gcodes/";
+    static const size_t prefix_len = sizeof(prefix) - 1;
+    if (strncmp(data_path, prefix, prefix_len) != 0) {
+        return false;
+    }
+    const char *rel = data_path + prefix_len;
+    if (17 + strlen(rel) + 1 > out_size) {
+        return false;
+    }
+    strcpy(out, "/sd/gcodes/.md5/");
+    strcat(out, rel);
+    return true;
+}
+
+static void md5_hex_from_digest(const MD5& md5, char *hex_out)
+{
+    uint8_t digest[16];
+    md5.bindigest(digest, 16);
+    for (int i = 0; i < 16; i++) {
+        static const char hexdigits[] = "0123456789abcdef";
+        hex_out[i * 2] = hexdigits[digest[i] >> 4];
+        hex_out[i * 2 + 1] = hexdigits[digest[i] & 0x0f];
+    }
+    hex_out[32] = '\0';
+}
+
+// Stream file through MD5 using stdio fopen (FIL_t is heap-allocated in FatFs open).
 static bool compute_file_md5(const char *filepath, char *hex_out)
 {
     hex_out[0] = '\0';
@@ -2143,24 +2149,24 @@ static bool compute_file_md5(const char *filepath, char *hex_out)
     }
 
     MD5 md5;
-    uint8_t buf[64];
+    uint8_t buf[128];
     size_t n;
+    unsigned idle_ctr = 0;
     while ((n = fwfs::fread(buf, 1, sizeof(buf), lp)) > 0) {
         md5.update(buf, static_cast<MD5::size_type>(n));
-        THEKERNEL->call_event(ON_IDLE);
-        if (THEKERNEL->is_halted()) {
-            fwfs::fclose(lp);
-            return false;
+        // ~every 4KB; never call ON_IDLE while a DIR is open
+        if ((++idle_ctr & 0x1f) == 0) {
+            THEKERNEL->call_event(ON_IDLE);
+            if (THEKERNEL->is_halted()) {
+                fwfs::fclose(lp);
+                return false;
+            }
         }
     }
     fwfs::fclose(lp);
 
-    string hex = md5.finalize().hexdigest();
-    if (hex.size() < 32) {
-        return false;
-    }
-    memcpy(hex_out, hex.c_str(), 32);
-    hex_out[32] = '\0';
+    md5.finalize();
+    md5_hex_from_digest(md5, hex_out);
     return true;
 }
 
@@ -2188,7 +2194,6 @@ static bool read_stored_md5(const char *md5_path, char *hex_out)
     return true;
 }
 
-// Compare data file against an already-known MD5 sidecar path (no mkdir/opendir).
 static bool file_matches_md5_sidecar(const char *md5_path, const char *data_path)
 {
     char stored[33];
@@ -2202,61 +2207,102 @@ static bool file_matches_md5_sidecar(const char *md5_path, const char *data_path
     return strncasecmp(computed, stored, 32) == 0;
 }
 
-// Working path buffer for the directory walk (absolute paths under /sd/...).
-// FatFs open() separately limits relative paths to fit in 64 bytes; we check that too.
-static const size_t MD5_CHECK_PATH_MAX = 96;
+// Working path buffer size for the directory walk (absolute paths under /sd/...).
+static const size_t MD5_CHECK_PATH_MAX = FATFS_PATH_MAX;
 
-// Recursively count MD5 sidecar files. Mutates `path` in place (must be writable).
-// Only stores short basenames of subdirs -- not full path lists -- to limit heap use.
-static unsigned int count_md5_sidecars(char *path)
+static bool path_is_directory(const char *path)
 {
     DIR *d = fwfs::opendir(path);
+    if (d == NULL) {
+        return false;
+    }
+    closedir(d);
+    return true;
+}
+
+// True if this gcodes data file has a matching MD5 sidecar.
+static bool sidecar_exists_for_data(const char *data_path, char *md5_path)
+{
+    if (!md5_path_from_data_path(data_path, md5_path, MD5_CHECK_PATH_MAX)) {
+        return false;
+    }
+    if (fatfs_path_too_long(md5_path)) {
+        return false;
+    }
+    return file_exists(md5_path);
+}
+
+// Count data files that have a matching MD5 sidecar (same criteria as verify).
+// Do NOT call ON_IDLE while a DIR is open (_USE_LFN == 1 is not reentrant).
+static unsigned int count_hashed_data_files(char *data_path, char *md5_path)
+{
+    DIR *d = fwfs::opendir(data_path);
     if (d == NULL) {
         return 0;
     }
 
     unsigned int count = 0;
     std::vector<string> subdirs;
+    std::vector<string> files;
     struct dirent *p;
     while ((p = readdir(d)) != NULL) {
         if (p->d_name[0] == '.') {
             continue;
         }
+        if (p->d_isdir && (strcmp(p->d_name, ".md5") == 0 || strcmp(p->d_name, ".lz") == 0)) {
+            continue;
+        }
         if (p->d_isdir) {
             subdirs.push_back(p->d_name);
         } else {
-            count++;
+            files.push_back(p->d_name);
         }
     }
     closedir(d);
 
-    size_t baselen = strlen(path);
-    for (size_t i = 0; i < subdirs.size(); i++) {
-        if (baselen + 1 + subdirs[i].size() + 1 > MD5_CHECK_PATH_MAX) {
+    size_t baselen = strlen(data_path);
+    for (size_t i = 0; i < files.size(); i++) {
+        if (baselen + 1 + files[i].size() + 1 > MD5_CHECK_PATH_MAX) {
             continue;
         }
-        path[baselen] = '/';
-        strcpy(path + baselen + 1, subdirs[i].c_str());
-        count += count_md5_sidecars(path);
-        path[baselen] = '\0';
-        THEKERNEL->call_event(ON_IDLE);
+        data_path[baselen] = '/';
+        strcpy(data_path + baselen + 1, files[i].c_str());
+        if (sidecar_exists_for_data(data_path, md5_path)) {
+            count++;
+        }
+        data_path[baselen] = '\0';
+    }
+    files.clear();
+
+    for (size_t i = 0; i < subdirs.size(); i++) {
         if (THEKERNEL->is_halted()) {
             break;
         }
+        if (baselen + 1 + subdirs[i].size() + 1 > MD5_CHECK_PATH_MAX) {
+            continue;
+        }
+        data_path[baselen] = '/';
+        strcpy(data_path + baselen + 1, subdirs[i].c_str());
+        count += count_hashed_data_files(data_path, md5_path);
+        data_path[baselen] = '\0';
+        THEKERNEL->call_event(ON_IDLE);
     }
     return count;
 }
 
-// Recursively verify files. Mutates `md5_path` in place. Checks each file as it is
-// found (no list of full paths held across hashing).
-static void verify_md5_sidecars(char *md5_path, unsigned int& current, unsigned int total, StreamOutput *stream, bool& aborted)
+// Verify by walking data LFNs (full names). Skip files with no sidecar.
+// Do NOT call ON_IDLE while a DIR is open.
+static void verify_hashed_data_files(char *data_path, char *md5_path,
+                                     unsigned int& current, unsigned int total,
+                                     unsigned int& intact_count, unsigned int& corrupt_count,
+                                     StreamOutput *stream, bool& aborted)
 {
     if (aborted || THEKERNEL->is_halted()) {
         aborted = true;
         return;
     }
 
-    DIR *d = fwfs::opendir(md5_path);
+    DIR *d = fwfs::opendir(data_path);
     if (d == NULL) {
         return;
     }
@@ -2268,6 +2314,9 @@ static void verify_md5_sidecars(char *md5_path, unsigned int& current, unsigned 
         if (p->d_name[0] == '.') {
             continue;
         }
+        if (p->d_isdir && (strcmp(p->d_name, ".md5") == 0 || strcmp(p->d_name, ".lz") == 0)) {
+            continue;
+        }
         if (p->d_isdir) {
             subdirs.push_back(p->d_name);
         } else {
@@ -2276,8 +2325,7 @@ static void verify_md5_sidecars(char *md5_path, unsigned int& current, unsigned 
     }
     closedir(d);
 
-    size_t baselen = strlen(md5_path);
-    char data_path[MD5_CHECK_PATH_MAX];
+    size_t baselen = strlen(data_path);
 
     for (size_t i = 0; i < files.size(); i++) {
         if (THEKERNEL->is_halted()) {
@@ -2286,35 +2334,37 @@ static void verify_md5_sidecars(char *md5_path, unsigned int& current, unsigned 
         }
 
         if (baselen + 1 + files[i].size() + 1 > MD5_CHECK_PATH_MAX) {
-            current++;
-            stream->printf("[%u/%u] - (path too long)\n", current, total);
-            stream->printf("Corrupt\n");
             continue;
         }
 
-        md5_path[baselen] = '/';
-        strcpy(md5_path + baselen + 1, files[i].c_str());
+        data_path[baselen] = '/';
+        strcpy(data_path + baselen + 1, files[i].c_str());
+
+        if (!sidecar_exists_for_data(data_path, md5_path)) {
+            data_path[baselen] = '\0';
+            continue;
+        }
 
         current++;
-        if (!data_path_from_md5_path(md5_path, data_path, sizeof(data_path))) {
-            stream->printf("[%u/%u] - %s\n", current, total, md5_path);
-            stream->printf("Corrupt\n");
-            md5_path[baselen] = '\0';
-            continue;
-        }
-
         stream->printf("[%u/%u] - %s\n", current, total, data_path);
 
-        if (fatfs_path_too_long(md5_path) || fatfs_path_too_long(data_path)) {
-            stream->printf("Corrupt\n");
+        bool intact = false;
+        if (!fatfs_path_too_long(data_path) && !fatfs_path_too_long(md5_path)) {
+            intact = file_matches_md5_sidecar(md5_path, data_path);
+        }
+        if (intact) {
+            intact_count++;
+            stream->printf("Intact\n");
         } else {
-            bool intact = file_matches_md5_sidecar(md5_path, data_path);
-            stream->printf("%s\n", intact ? "Intact" : "Corrupt");
+            corrupt_count++;
+            stream->printf("Corrupt\n");
         }
 
-        md5_path[baselen] = '\0';
+        data_path[baselen] = '\0';
         THEKERNEL->call_event(ON_IDLE);
     }
+
+    files.clear();
 
     for (size_t i = 0; i < subdirs.size(); i++) {
         if (aborted || THEKERNEL->is_halted()) {
@@ -2324,58 +2374,76 @@ static void verify_md5_sidecars(char *md5_path, unsigned int& current, unsigned 
         if (baselen + 1 + subdirs[i].size() + 1 > MD5_CHECK_PATH_MAX) {
             continue;
         }
-        md5_path[baselen] = '/';
-        strcpy(md5_path + baselen + 1, subdirs[i].c_str());
-        verify_md5_sidecars(md5_path, current, total, stream, aborted);
-        md5_path[baselen] = '\0';
+        data_path[baselen] = '/';
+        strcpy(data_path + baselen + 1, subdirs[i].c_str());
+        verify_hashed_data_files(data_path, md5_path, current, total,
+                                 intact_count, corrupt_count, stream, aborted);
+        data_path[baselen] = '\0';
+        THEKERNEL->call_event(ON_IDLE);
     }
 }
 
-// Run count + verify walk starting at an MD5 sidecar directory root.
-static void run_md5_check_walk(const char *md5_root, StreamOutput *stream)
+// Run count + verify. data_root is a /sd/gcodes/... directory.
+static void run_md5_check_walk(const char *data_root, StreamOutput *stream)
 {
-    if (strlen(md5_root) >= MD5_CHECK_PATH_MAX) {
-        stream->printf("ERROR: Path too long\n");
+    // Heap-allocate walk buffers (not BSS -- LPC main RAM is tight).
+    char *data_path = new char[MD5_CHECK_PATH_MAX];
+    char *md5_path = new char[MD5_CHECK_PATH_MAX];
+    if (data_path == NULL || md5_path == NULL) {
+        delete[] data_path;
+        delete[] md5_path;
+        stream->printf("ERROR: Out of memory\n");
         return;
     }
 
-    char md5_path[MD5_CHECK_PATH_MAX];
-    strncpy(md5_path, md5_root, sizeof(md5_path) - 1);
-    md5_path[sizeof(md5_path) - 1] = '\0';
+    if (strlen(data_root) >= MD5_CHECK_PATH_MAX) {
+        stream->printf("ERROR: Path too long\n");
+        delete[] data_path;
+        delete[] md5_path;
+        return;
+    }
+    strcpy(data_path, data_root);
 
-    unsigned int total = count_md5_sidecars(md5_path);
+    stream->printf("Scanning for files with MD5 hashes...\n");
 
-    // Restore root after count walk
-    strncpy(md5_path, md5_root, sizeof(md5_path) - 1);
-    md5_path[sizeof(md5_path) - 1] = '\0';
+    // Same walk criteria as verify: data LFN + matching sidecar (not raw .md5
+    // entries — those can include orphan truncated names from older firmware).
+    unsigned int total = count_hashed_data_files(data_path, md5_path);
+
+    strcpy(data_path, data_root);
 
     if (THEKERNEL->is_halted()) {
         stream->printf("ERROR: File integrity check aborted\n");
+        delete[] data_path;
+        delete[] md5_path;
         return;
     }
 
     if (total == 0) {
         stream->printf("No files with stored MD5 hashes found\n");
+        delete[] data_path;
+        delete[] md5_path;
         return;
     }
 
+    stream->printf("Checking %u file(s)...\n", total);
+
     unsigned int current = 0;
+    unsigned int intact_count = 0;
+    unsigned int corrupt_count = 0;
     bool aborted = false;
-    verify_md5_sidecars(md5_path, current, total, stream, aborted);
+    verify_hashed_data_files(data_path, md5_path, current, total,
+                             intact_count, corrupt_count, stream, aborted);
 
     if (aborted || THEKERNEL->is_halted()) {
         stream->printf("ERROR: File integrity check aborted\n");
+    } else {
+        stream->printf("File integrity check complete: %u intact, %u corrupt\n",
+                       intact_count, corrupt_count);
     }
-}
 
-static bool path_is_directory(const char *path)
-{
-    DIR *d = fwfs::opendir(path);
-    if (d == NULL) {
-        return false;
-    }
-    closedir(d);
-    return true;
+    delete[] data_path;
+    delete[] md5_path;
 }
 
 // Strip trailing slashes (except root "/")
@@ -2396,7 +2464,7 @@ void SimpleShell::md5check_command( string parameters, StreamOutput *stream )
         return;
     }
 
-    run_md5_check_walk("/sd/gcodes/.md5", stream);
+    run_md5_check_walk("/sd/gcodes", stream);
 }
 
 // M576.2 -- check a single file, or recursively check a directory
@@ -2428,41 +2496,36 @@ void SimpleShell::md5check_file_command( string parameters, StreamOutput *stream
         return;
     }
 
-    // Directory: walk the matching MD5 sidecar tree for this folder and children
+    // Directory: recursively check this folder and children
     if (path_is_directory(filename.c_str())) {
-        string md5_root;
-        if (filename == "/sd/gcodes") {
-            md5_root = "/sd/gcodes/.md5";
-        } else {
-            md5_root = change_to_md5_path(filename);
-        }
-
-        // change_to_md5_path may leave a trailing slash-less path; ensure it exists as a dir
-        if (!path_is_directory(md5_root.c_str())) {
-            stream->printf("No files with stored MD5 hashes found\n");
-            return;
-        }
-
-        run_md5_check_walk(md5_root.c_str(), stream);
+        run_md5_check_walk(filename.c_str(), stream);
         return;
     }
 
     // Single file
     if (fatfs_path_too_long(filename.c_str())) {
-        stream->printf("ERROR: Path too long for SD open: %s\n", filename.c_str());
+        stream->printf("ERROR: Path too long for SD open\n");
         return;
     }
 
-    string md5_path = change_to_md5_path(filename);
+    char md5_path[MD5_CHECK_PATH_MAX];
+    if (!md5_path_from_data_path(filename.c_str(), md5_path, sizeof(md5_path))) {
+        stream->printf("ERROR: Path must be under /sd/gcodes/\n");
+        return;
+    }
+
     char stored[33];
-    if (!read_stored_md5(md5_path.c_str(), stored)) {
-        stream->printf("ERROR: No MD5 hash found for %s\n", filename.c_str());
+    if (!read_stored_md5(md5_path, stored)) {
+        stream->printf("ERROR: No MD5 hash found for ");
+        stream->printf("%s\n", filename.c_str());
         return;
     }
 
     stream->printf("[1/1] - %s\n", filename.c_str());
-    bool intact = file_matches_md5_sidecar(md5_path.c_str(), filename.c_str());
+    bool intact = file_matches_md5_sidecar(md5_path, filename.c_str());
     stream->printf("%s\n", intact ? "Intact" : "Corrupt");
+    stream->printf("File integrity check complete: %u intact, %u corrupt\n",
+                   intact ? 1u : 0u, intact ? 0u : 1u);
 }
 
 // runs several types of test on the mechanisms
