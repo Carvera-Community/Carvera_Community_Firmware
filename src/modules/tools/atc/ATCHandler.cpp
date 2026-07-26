@@ -1057,8 +1057,10 @@ void ATCHandler::calibrate_a_axis_cor_step()
 
 			this->rotation_offset_y = new_rot_y;
 			this->rotation_offset_z = new_rot_z;
-			THEKERNEL->streams->printf("These values have been temporarily set.\nTo make them permanent run:\nconfig-set sd coordinate.rotation_offset_y %.3f\nconfig-set sd coordinate.rotation_offset_z %.3f\n",
-				new_rot_y, new_rot_z);
+			THEKERNEL->streams->printf("These values have been temporarily set.\n");
+			THEKERNEL->streams->printf("To make them permanent run:\n");
+			THEKERNEL->streams->printf("config-set sd coordinate.rotation_offset_y %.3f\n", new_rot_y);
+			THEKERNEL->streams->printf("config-set sd coordinate.rotation_offset_z %.3f\n", new_rot_z);
 
 			a_axis_cor.phase = COR_IDLE;
 			a_axis_cor.pass = 0;
