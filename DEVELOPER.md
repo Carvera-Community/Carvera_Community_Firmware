@@ -430,9 +430,6 @@ main firmware build (map + ELF required).
 Build first so `LPC1768/main.map` and `LPC1768/main.elf` exist, then:
 
 ```bash
-# Ensure arm-none-eabi-gdb is on PATH (DWARF sizeof); gcc.sh --env does this
-eval "$(./build/gcc.sh --gcc 14.2 --env)"
-
 ./build/check-ahb-budget.py \
   --map LPC1768/main.map \
   --elf LPC1768/main.elf \
@@ -440,7 +437,12 @@ eval "$(./build/gcc.sh --gcc 14.2 --env)"
 ```
 
 Optional: `--margin N` (default `512`) for required free bytes on both budgets;
-`--gdb /path/to/arm-none-eabi-gdb` if the toolchain is not on `PATH`.
+`--gdb /path/to/gdb` to force a specific binary.
+
+DWARF `sizeof` needs a **runnable** gdb that can load the ELF. On macOS the
+Arm toolchain `arm-none-eabi-gdb` usually works. On Ubuntu 24.04+, that binary
+often fails (`libncurses.so.5` missing) — install host `gdb-multiarch` (or
+`gdb`) instead; the checker prefers the first candidate that actually starts.
 
 Exit `0` = every fixture fits. Exit `1` = at least one fixture exceeds a budget
 (or the ELF/gdb sizeof probe failed).
@@ -455,9 +457,9 @@ Exit `0` = every fixture fits. Exit `1` = at least one fixture exceeds a budget
 Config merge order matches firmware: code defaults → firm default
 (`Config/config.default` vs `config2.default` by machine) → SD `config.txt`.
 
-Sizes come from `arm-none-eabi-gdb` DWARF `sizeof` against `main.elf` when
-`--elf` is set (CI always passes `--elf`). A weak or missing probe is treated as
-an error so the check cannot false-pass on hardcoded fallbacks alone.
+Sizes come from gdb DWARF `sizeof` against `main.elf` when `--elf` is set (CI
+always passes `--elf` and uses `gdb-multiarch`). A weak or missing probe is
+treated as an error so the check cannot false-pass on hardcoded fallbacks alone.
 
 `flex_compensation_always_active` also charges a **FlexAutoloadPeak** on the
 main heap (`FIL_t` sector buffer ≈ 548B + `FILE` + handle + bind/printf
