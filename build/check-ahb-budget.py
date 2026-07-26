@@ -321,28 +321,71 @@ def parse_main_ram_layout(map_path: Path) -> Tuple[int, int, int]:
     return bss_end, stack_limit, stack_top
 
 
+def _gdb_runs(gdb: Path) -> bool:
+    """True if gdb starts (filters out ARM toolchain gdb missing libncurses.so.5)."""
+    try:
+        proc = subprocess.run(
+            [str(gdb), "--version"],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=15,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    text = (proc.stdout or "") + (proc.stderr or "")
+    if proc.returncode != 0:
+        return False
+    if "error while loading shared libraries" in text:
+        return False
+    return "gdb" in text.lower()
+
+
 def find_gdb(explicit: Optional[Path] = None) -> Optional[Path]:
-    if explicit and explicit.exists():
-        return explicit
+    """
+    Pick a gdb that can load the firmware ELF and evaluate sizeof().
+
+    Prefer a working binary: Arm's gdb often fails on Ubuntu 24.04+ (needs
+    libncurses.so.5). Host `gdb-multiarch` / `gdb` are fine for DWARF sizeof.
+    """
+    candidates: List[Path] = []
+
+    def add(path: Optional[Path]) -> None:
+        if path is None:
+            return
+        path = Path(path)
+        if path.exists() and path not in candidates:
+            candidates.append(path)
+
+    if explicit:
+        # Honor --gdb strictly: caller asked for this binary.
+        return Path(explicit) if Path(explicit).exists() else None
+
     env = os.environ.get("ARM_GDB") or os.environ.get("GDB")
-    if env and Path(env).exists():
-        return Path(env)
-    which = shutil.which("arm-none-eabi-gdb")
-    if which:
-        return Path(which)
+    if env:
+        add(Path(env))
+    # Prefer host multiarch gdb on Linux (Arm toolchain gdb often needs
+    # libncurses.so.5, removed on Ubuntu 24.04+).
+    for name in ("gdb-multiarch", "arm-none-eabi-gdb", "gdb"):
+        which = shutil.which(name)
+        if which:
+            add(Path(which))
+
     root = repo_root()
-    candidates = [
-        root / "gcc-arm-none-eabi-14.2" / "bin" / "arm-none-eabi-gdb",
-        root / "toolchain" / "14.2" / "bin" / "arm-none-eabi-gdb",
-    ]
-    # CI / build/gcc.sh uses TOOLCHAIN_DIR=.../toolchain/<version>
     toolchain_dir = os.environ.get("TOOLCHAIN_DIR")
     if toolchain_dir:
-        candidates.insert(0, Path(toolchain_dir) / "bin" / "arm-none-eabi-gdb")
+        td = Path(toolchain_dir)
+        add(td / "bin" / "arm-none-eabi-gdb")
+        add(td / "gcc-arm-none-eabi-14.2" / "bin" / "arm-none-eabi-gdb")
+    add(root / "gcc-arm-none-eabi-14.2" / "bin" / "arm-none-eabi-gdb")
+    add(root / "toolchain" / "14.2" / "bin" / "arm-none-eabi-gdb")
+    add(root / "toolchain" / "14.2" / "gcc-arm-none-eabi-14.2" / "bin" / "arm-none-eabi-gdb")
+
     for candidate in candidates:
-        if candidate.exists():
+        if _gdb_runs(candidate):
             return candidate
-    return None
+    # Last resort: return first existing path so the probe error is informative.
+    return candidates[0] if candidates else None
 
 
 def strip_cpp_line_comment(line: str) -> str:
@@ -472,7 +515,19 @@ def resolve_sizes(
 
     gdb = find_gdb(gdb_path)
     if gdb is None:
-        msg = "arm-none-eabi-gdb not found (needed for DWARF sizeof against --elf)"
+        msg = (
+            "no usable gdb found (need gdb-multiarch, gdb, or a runnable "
+            "arm-none-eabi-gdb for DWARF sizeof against --elf)"
+        )
+        if require_dwarf:
+            raise RuntimeError(msg)
+        return sizes, f"fallback ({msg})"
+
+    if not _gdb_runs(gdb):
+        msg = (
+            f"{gdb} does not start (often missing libncurses.so.5 on Ubuntu 24.04+). "
+            f"Install gdb-multiarch or pass --gdb /path/to/working/gdb"
+        )
         if require_dwarf:
             raise RuntimeError(msg)
         return sizes, f"fallback ({msg})"

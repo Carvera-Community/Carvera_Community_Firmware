@@ -152,8 +152,10 @@ jobs:
 
       - name: Check AHB memory budget for known configs
         run: |
-          # Put toolchain bin on PATH so DWARF sizeof() can use arm-none-eabi-gdb.
-          eval "$(./build/gcc.sh --gcc ${{ env.GCC_VERSION }} --env)"
+          # Arm's gdb needs libncurses.so.5 (gone on Ubuntu 24.04). Host
+          # gdb-multiarch is enough for DWARF sizeof() against the ELF.
+          sudo apt-get update
+          sudo apt-get install -y gdb-multiarch
           python3 build/check-ahb-budget.py \
             --map LPC1768/main.map \
             --elf LPC1768/main.elf \
