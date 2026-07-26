@@ -73,10 +73,8 @@ private:
     void PacketMessage(char cmd, const char* s, int size);
 
     mbed::InterruptIn *wifi_interrupt_pin; // Interrupt pin for measuring speed
-    float probe_slow_rate;
 
     RingBuffer<char, 256> buffer; // Receive buffer
-    string test_buffer;
 
 	u8 WifiData[WIFI_DATA_MAX_SIZE];
 
