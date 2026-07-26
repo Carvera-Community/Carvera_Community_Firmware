@@ -37,10 +37,6 @@ After a firmware build (needs `LPC1768/main.map`, ideally also `main.elf`):
 Exit status `0` means every fixture fits both budgets with the default 512-byte
 margin.
 
-**CI note:** `configs/1` (flex always-active) is expected to fail on current
-firmware. Merging this check will keep the main build job red until that
-boot path has enough headroom (or the fixture is temporarily removed).
-
 ## Notes
 
 - Flex buffer AHB cost is paid whenever rectangular-grid is enabled;
@@ -57,5 +53,4 @@ boot path has enough headroom (or the fixture is temporarily removed).
   (`switch.*.enable`, `temperature_control.*.enable`, spindle type, cart grid)
   are counted from the merged config.
 - `BOOT_HEAP_UNACCOUNTED` covers unmodeled boot heap (strings, vectors,
-  transient SD opens, etc.). Calibrated so `configs/1` (always_active) fails
-  and `configs/2` (stock) passes; refine with on-device `mem -v`.
+  transient SD opens, etc.). Refine with on-device `mem -v`.
