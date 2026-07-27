@@ -48,3 +48,4 @@ gcc-arm-none-eabi*
 .analzyer
 .analyzer/**
 .cursor
+__pycache__/
