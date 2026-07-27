@@ -36,6 +36,7 @@
 #include "libs/StreamOutput.h"
 
 #include "platform_memory.h" // Needed for AHB allocator
+#include "libs/compiler.h"
 
 #include "port_api.h"
 #include "InterruptIn.h"
@@ -59,7 +60,7 @@
 #define XBUFF_LENGTH	8208
 extern unsigned char xbuff[XBUFF_LENGTH];
 extern unsigned char fbuff[4096];
-__attribute__((section("AHBSRAM1"), aligned(4))) char WifiSerialbuff[544];
+char WifiSerialbuff[544] LOCATED_IN_AHBSRAM;
 
 
 
@@ -1059,9 +1060,6 @@ void WifiProvider::on_gcode_received(void *argument)
 				gcode->stream->printf("broadcast: %s\n", broadcast);
 			} else if (gcode->subcode == 7) {
 				gcode->stream->printf("aaaaaaa\n");
-				if (communication_protocol == PROTOCOL_SMOOTHIE) {
-					gcode->stream->printf("test buffer: %s\n", test_buffer.c_str());
-				}
 			}
 
 		} else if (gcode->m == 482) {

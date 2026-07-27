@@ -13,7 +13,6 @@
 
 #include <stdio.h>
 #include <string>
-#include <map>
 #include <vector>
 #include <queue>
 #include <cstdint>
@@ -117,7 +116,6 @@ class Player : public Module {
         bool saved_spindle_on;
         bool last_spindle_on;
         bool last_spindle_ccw;
-        std::map<uint16_t, float> saved_temperatures;
         bool skip_ocodes_prescan = false;
 
         struct {
