@@ -85,7 +85,7 @@ private:
 	int udp_recv_port;
 	int tcp_timeout_s;
 	int connection_fail_count;
-	int sta_stable_seconds;
+	int sta_down_seconds;
 	char machine_name[64]; // Fixed-size buffer to avoid std::string heap allocation
 	char ap_address[16];
 	char ap_netmask[16];
