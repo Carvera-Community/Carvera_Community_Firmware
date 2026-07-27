@@ -128,6 +128,8 @@ bool fit_line(const PwmRpmSample *samples, int begin, int end, float &slope, flo
 
 void AnalogSpindleControl::on_module_loaded()
 {
+    this->load_3dtoolsetter_config();
+
     spindle_on = false;
     target_rpm = 0;
     current_rpm = 0;
