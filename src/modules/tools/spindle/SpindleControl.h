@@ -18,6 +18,8 @@ class SpindleControl: public Module {
 
     protected:
         bool spindle_on;
+        bool enable_3dtoolsetter{false};
+        void load_3dtoolsetter_config();
 
     private:
         void on_gcode_received(void *argument);

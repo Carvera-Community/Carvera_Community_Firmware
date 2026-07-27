@@ -20,11 +20,24 @@
 #define spindle_checksum CHECKSUM("spindle")
 #define three_d_toolsetter_checksum CHECKSUM("3dtoolsetter")
 
+namespace {
+void send_internal_command(const char *cmd)
+{
+    string g(cmd);
+    Gcode gc(g, &(StreamOutput::NullStream));
+    THEKERNEL->call_event(ON_GCODE_RECEIVED, &gc);
+}
+}
+
+void SpindleControl::load_3dtoolsetter_config()
+{
+    this->enable_3dtoolsetter = THEKERNEL->config->value(spindle_checksum, three_d_toolsetter_checksum)->as_bool(false);
+}
+
 void SpindleControl::on_gcode_received(void *argument) 
 {
     
     Gcode *gcode = static_cast<Gcode *>(argument);
-    bool enable_3dtoolsetter = THEKERNEL->config->value(spindle_checksum, three_d_toolsetter_checksum)->as_bool(false);
         
     if (gcode->has_m)
     {
@@ -47,9 +60,29 @@ void SpindleControl::on_gcode_received(void *argument)
             report_settings();
           
         }
-        else if (gcode->m == 3 || (enable_3dtoolsetter && gcode->m == 4))
+        else if (gcode->m == 4 && !this->enable_3dtoolsetter)
         {
-        	if(THEKERNEL->is_halted()) return; // if in halted state ignore any commands
+            THEKERNEL->streams->printf("ERROR: M4 is disabled unless spindle.3dtoolsetter is true\n");
+            return;
+        }
+        else if (gcode->m == 3 || gcode->m == 4)
+        {
+            if(THEKERNEL->is_halted()) {
+                THEKERNEL->streams->printf("ERROR: Cannot start spindle while machine is halted\n");
+                return;
+            }
+
+            // Only in 3dtoolsetter mode do we force EXT spindle direction.
+            // Hardware behavior verified on Carvera: HIGH=forward, LOW=reverse.
+            // M3 => HIGH/forward, M4 => LOW/reverse.
+            if (this->enable_3dtoolsetter) {
+                if (gcode->m == 3) {
+                    send_internal_command("M851 S100");
+                } else {
+                    send_internal_command("M852");
+                }
+            }
+
         	if (!THEKERNEL->get_laser_mode()) {
                 // current tool number and tool offset
                 struct tool_status tool;
@@ -85,24 +118,6 @@ void SpindleControl::on_gcode_received(void *argument)
         		bool b = true;
         		PublicData::set_value( switch_checksum, vacuum_checksum, state_checksum, &b );
         	}
-            // Set extout behavior.
-            // Default behavior keeps extout on for M3 only.
-            // 3dtoolsetter mode maps M3/M4 to opposite EXT direction states.
-        	if (THEKERNEL->get_extout_mode()) {
-                bool b = true;
-        		struct pad_switch pad;
-			    bool ok = false;
-                if (enable_3dtoolsetter) {
-                    b = (gcode->m == 3);
-                }
-            	PublicData::set_value( switch_checksum, extendout_checksum, state_checksum, &b );
-                ok = PublicData::get_value(switch_checksum, enable_3dtoolsetter ? extendout_checksum : vacuum_checksum, 0, &pad);
-                if (ok) {
-                    	pad.state = enable_3dtoolsetter ? b : true;
-			    	pad.value = pad.defaultvalue;
-			    	PublicData::set_value( switch_checksum, extendout_checksum, state_value_checksum, &pad );
-			    }
-        	}
         }
         else if (gcode->m == 5)
         {
@@ -121,11 +136,9 @@ void SpindleControl::on_gcode_received(void *argument)
                 PublicData::set_value( switch_checksum, vacuum_checksum, state_checksum, &b );
         	}
             // close extout if set
-        	if (THEKERNEL->get_extout_mode()) {
-        		// close extout
-        		bool b = false;
-                PublicData::set_value( switch_checksum, extendout_checksum, state_checksum, &b );
-        	}
+            if (this->enable_3dtoolsetter) {
+                send_internal_command("M852");
+            }
         }
         else if (gcode->m == 223)
         {	// M222 - rpm override percentage

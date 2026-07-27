@@ -1419,11 +1419,13 @@ void ATCHandler::fill_cali_scripts(bool is_probe, bool clear_z, int repeat_count
 				this->script_queue.push(buff);
 				snprintf(buff, sizeof(buff), "M4 S2000");
 				this->script_queue.push(buff);
-				snprintf(buff, sizeof(buff), "G38.6 X3.5 F30");
+				snprintf(buff, sizeof(buff), "G38.6 X5.5 F30");
 				this->script_queue.push(buff);
 				snprintf(buff, sizeof(buff), "G91 G0 X-0.5");
 				this->script_queue.push(buff);
 				snprintf(buff, sizeof(buff), "M5");
+				this->script_queue.push(buff);
+				snprintf(buff, sizeof(buff), "M491.4");
 				this->script_queue.push(buff);
 			}
 

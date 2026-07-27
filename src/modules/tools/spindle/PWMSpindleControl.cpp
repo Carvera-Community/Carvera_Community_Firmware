@@ -53,6 +53,8 @@ PWMSpindleControl::PWMSpindleControl()
 
 void PWMSpindleControl::on_module_loaded()
 {
+    this->load_3dtoolsetter_config();
+
     last_time = 0;
     last_edge = 0;
     current_rpm = 0;
