@@ -54,7 +54,7 @@
 #define tcp_timeout_s_checksum			  CHECKSUM("tcp_timeout_s")
 #define ap_auto_disable_checksum          CHECKSUM("ap_auto_disable")
 
-#define WIFI_AP_OFF_DELAY_S          3
+#define WIFI_AP_ON_DELAY_S           5
 
 #define XBUFF_LENGTH	8208
 extern unsigned char xbuff[XBUFF_LENGTH];
@@ -107,7 +107,7 @@ WifiProvider::WifiProvider()
 	makera_command_pending = false;
 	makera_pending_payload_len = 0;
 	connection_fail_count = 0;
-	sta_stable_seconds = 0;
+	sta_down_seconds = 0;
 	ap_auto_disable = true;
 	ap_currently_on = true;
 	ap_off_by_auto_toggle = false;
@@ -139,6 +139,16 @@ void WifiProvider::on_module_loaded()
         u16 op_status = 0;
         M8266WIFI_SPI_Get_Opmode(&boot_op_mode, &op_status);
         this->ap_currently_on = (boot_op_mode != 1);
+    }
+
+    // Disable AP before STA auto-reconnect to avoid address conflicts with the onboard AP
+    if (this->ap_auto_disable && this->ap_currently_on) {
+        u16 op_status = 0;
+        if (M8266WIFI_SPI_Set_Opmode(1, 0, &op_status)) {
+            this->ap_currently_on = false;
+            this->ap_off_by_auto_toggle = true;
+            this->sta_down_seconds = 0;
+        }
     }
 
     // Add interrupt for WIFI data receving
@@ -509,13 +519,12 @@ void WifiProvider::on_second_tick(void *)
 			connection_fail_count = 0;
 		}
 
-		// AP off when STA is up, AP back on when STA drops. saved=0 to avoid flash wear.
+		// Keep AP off while STA is connecting/connected; restore AP after STA is down
+		// for WIFI_AP_ON_DELAY_S to avoid address conflicts. saved=0 to avoid flash wear.
 		if (this->ap_auto_disable) {
-			if (connection_status == 5) {
-				if (this->sta_stable_seconds < WIFI_AP_OFF_DELAY_S) {
-					this->sta_stable_seconds++;
-				}
-				if (this->sta_stable_seconds >= WIFI_AP_OFF_DELAY_S && this->ap_currently_on) {
+			if (connection_status == 1 || connection_status == 5) {
+				this->sta_down_seconds = 0;
+				if (this->ap_currently_on) {
 					u16 op_status = 0;
 					if (M8266WIFI_SPI_Set_Opmode(1, 0, &op_status)) {
 						this->ap_currently_on = false;
@@ -523,9 +532,11 @@ void WifiProvider::on_second_tick(void *)
 					}
 				}
 			} else {
-				this->sta_stable_seconds = 0;
+				if (this->sta_down_seconds < WIFI_AP_ON_DELAY_S) {
+					this->sta_down_seconds++;
+				}
 				// only re-enable if we were the ones who turned it off; ap disable stays off
-				if (!this->ap_currently_on && this->ap_off_by_auto_toggle) {
+				if (this->sta_down_seconds >= WIFI_AP_ON_DELAY_S && !this->ap_currently_on && this->ap_off_by_auto_toggle) {
 					u16 op_status = 0;
 					if (M8266WIFI_SPI_Set_Opmode(3, 0, &op_status)) {
 						this->ap_currently_on = true;
@@ -1399,6 +1410,16 @@ void WifiProvider::on_set_public_data(void *argument)
     			snprintf(s->error_info, sizeof(s->error_info), "Disconnect error!");
     		}
     	} else {
+    	    // Disable AP before STA connect to avoid network address conflicts
+    	    if (this->ap_auto_disable && this->ap_currently_on) {
+    	        u16 op_status = 0;
+    	        if (M8266WIFI_SPI_Set_Opmode(1, 0, &op_status)) {
+    	            this->ap_currently_on = false;
+    	            this->ap_off_by_auto_toggle = true;
+    	        }
+    	    }
+    	    this->sta_down_seconds = 0;
+
     	    // u8 M8266WIFI_SPI_STA_Connect_Ap(u8 ssid[32], u8 password[64], u8 saved, u8 timeout_in_s, u16* status);
     	    M8266WIFI_SPI_STA_Connect_Ap((u8 *)s->ssid, (u8 *)s->password, 1, 0, &status);
 
@@ -1516,7 +1537,7 @@ void WifiProvider::on_set_public_data(void *argument)
     	if (*enable_op) {
         	set_wifi_op_mode(3);
         	this->ap_currently_on = true;
-        	this->sta_stable_seconds = 0;
+        	this->sta_down_seconds = 0;
         	this->ap_off_by_auto_toggle = false;
     	} else {
         	set_wifi_op_mode(1);
