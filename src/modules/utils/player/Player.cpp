@@ -9,6 +9,7 @@
 #include "libs/FirmwareFileSystem.h"
 
 #include "libs/Kernel.h"
+#include "libs/CRC16.h"
 #include "Robot.h"
 #include "libs/nuts_bolts.h"
 #include "libs/utils.h"
@@ -71,8 +72,6 @@ unsigned char fbuff[4096] LOCATED_IN_AHBSRAM;
 
 char error_msg[64] LOCATED_IN_AHBSRAM;
 char md5buf[64] LOCATED_IN_AHBSRAM;
-extern const unsigned short crc_table[256];
-
 // used for XMODEM 
 #define WAIT_MD5  0x01
 #define WAIT_FILE_VIEW  0x02
@@ -1424,23 +1423,10 @@ void Player::resume_command(string parameters, StreamOutput *stream )
 	stream->printf("Playing file resumed\n");
 }
 
-unsigned int Player::crc16_ccitt(unsigned char *data, unsigned int len)
-{
-	unsigned char tmp;
-	unsigned short crc = 0;
-
-	for (unsigned int i = 0; i < len; i ++) {
-        tmp = ((crc >> 8) ^ data[i]) & 0xff;
-        crc = ((crc << 8) ^ crc_table[tmp]) & 0xffff;
-	}
-
-	return crc & 0xffff;
-}
-
 int Player::check_crc(int crc, unsigned char *data, unsigned int len)
 {
     if (crc) {
-        unsigned short crc = crc16_ccitt(data, len);
+        unsigned short crc = crc16::ccitt(data, len);
         unsigned short tcrc = (data[len] << 8) + data[len+1];
         if (crc == tcrc)
             return 1;
@@ -1873,7 +1859,7 @@ void Player::upload_command( string parameters, StreamOutput *stream )
                             xbuff[6] = (sequence>>16)&0xff;
                             xbuff[7] = (sequence>>8)&0xff;
                             xbuff[8] = sequence&0xff;
-                            crc = crc16_ccitt(&xbuff[2], len);
+                            crc = crc16::ccitt(&xbuff[2], len);
                             xbuff[len+2] = (crc>>8)&0xFF;
                             xbuff[len+3] = crc&0xFF;
                             xbuff[len+4] = (FOOTER>>8)&0xFF;
@@ -1933,7 +1919,7 @@ void Player::upload_command( string parameters, StreamOutput *stream )
                                 xbuff[6] = (sequence>>16)&0xff;
                                 xbuff[7] = (sequence>>8)&0xff;
                                 xbuff[8] = sequence&0xff;
-                                crc = crc16_ccitt(&xbuff[2], len);
+                                crc = crc16::ccitt(&xbuff[2], len);
                                 xbuff[len+2] = (crc>>8)&0xFF;
                                 xbuff[len+3] = crc&0xFF;
                                 xbuff[len+4] = (FOOTER>>8)&0xFF;
@@ -1965,7 +1951,7 @@ void Player::upload_command( string parameters, StreamOutput *stream )
                                 xbuff[6] = (sequence>>16)&0xff;
                                 xbuff[7] = (sequence>>8)&0xff;
                                 xbuff[8] = sequence&0xff;
-                                crc = crc16_ccitt(&xbuff[2], len);
+                                crc = crc16::ccitt(&xbuff[2], len);
                                 xbuff[len+2] = (crc>>8)&0xFF;
                                 xbuff[len+3] = crc&0xFF;
                                 xbuff[len+4] = (FOOTER>>8)&0xFF;
@@ -2282,7 +2268,7 @@ void Player::download_command( string parameters, StreamOutput *stream )
                 }
 
                 if (crc) {
-                    unsigned short ccrc = crc16_ccitt(&xbuff[3], bufsz + 1 + is_stx);
+                    unsigned short ccrc = crc16::ccitt(&xbuff[3], bufsz + 1 + is_stx);
                     xbuff[bufsz + 4 + is_stx] = (ccrc >> 8) & 0xFF;
                     xbuff[bufsz + 5 + is_stx] = ccrc & 0xFF;
                 } else {
@@ -2362,7 +2348,7 @@ void Player::download_command( string parameters, StreamOutput *stream )
                         xbuff[8] = packetno&0xff;
                         xbuff[9] = (bufsz>>8)&0xff;
                         xbuff[10] = bufsz&0xff;
-                        crc = crc16_ccitt(&xbuff[2], len);
+                        crc = crc16::ccitt(&xbuff[2], len);
                         xbuff[6+5] = (crc>>8)&0xFF;
                         xbuff[6+6] = crc&0xFF;
                         xbuff[6+7] = (FOOTER>>8)&0xFF;
@@ -2391,7 +2377,7 @@ void Player::download_command( string parameters, StreamOutput *stream )
                         len = c + 7;
                         xbuff[2] = (len>>8)&0xFF;
                         xbuff[3] = len&0xFF;
-                        crc = crc16_ccitt(&xbuff[2], len);
+                        crc = crc16::ccitt(&xbuff[2], len);
                         xbuff[c+9] = (crc>>8)&0xFF;
                         xbuff[c+10] = crc&0xFF;
                         xbuff[c+11] = (FOOTER>>8)&0xFF;
@@ -2479,7 +2465,7 @@ void Player::SendMessage(char cmd, char* s, int size , StreamOutput *stream)
 	len = total_length + 3;
 	xbuff[2] = (len>>8)&0xFF;
 	xbuff[3] = len&0xFF;
-	crc = crc16_ccitt(&xbuff[2], len);
+	crc = crc16::ccitt(&xbuff[2], len);
 	xbuff[total_length+5] = (crc>>8)&0xFF;
 	xbuff[total_length+6] = crc&0xFF;
 	xbuff[total_length+7] = (FOOTER>>8)&0xFF;

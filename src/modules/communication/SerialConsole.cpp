@@ -12,6 +12,7 @@ using std::string;
 #include "mbed.h" // for us_ticker_read()
 #include "libs/Module.h"
 #include "libs/Kernel.h"
+#include "libs/CRC16.h"
 #include "libs/nuts_bolts.h"
 #include "SerialConsole.h"
 #include "libs/RingBuffer.h"
@@ -394,7 +395,7 @@ void SerialConsole::process_makera_byte(uint8_t received)
                     | serial_protocol_buffer[makera_received - 1];
     uint16_t received_crc = (serial_protocol_buffer[makera_received - 4] << 8)
                           | serial_protocol_buffer[makera_received - 3];
-    uint16_t calculated_crc = crc16_ccitt(&serial_protocol_buffer[2], makera_data_length);
+    uint16_t calculated_crc = crc16::ccitt(&serial_protocol_buffer[2], makera_data_length);
     if (footer != FOOTER || received_crc != calculated_crc) {
         reset_makera_command_parser();
         return;
@@ -449,7 +450,7 @@ int SerialConsole::check_file_packet(char **buf)
 {
     if (file_frame_index < 5) return 0;
 
-    uint16_t calculated_crc = crc16_ccitt(xbuff, file_frame_index - 2);
+    uint16_t calculated_crc = crc16::ccitt(xbuff, file_frame_index - 2);
     uint16_t received_crc = (xbuff[file_frame_index - 2] << 8) | xbuff[file_frame_index - 1];
     if (calculated_crc != received_crc) return 0;
 
