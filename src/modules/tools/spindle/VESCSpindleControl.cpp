@@ -69,6 +69,7 @@
  */
 
 #include "VESCSpindleControl.h"
+#include "libs/CRC16.h"
 
 #include <cstdio>
 #include <cstdlib>
@@ -655,28 +656,13 @@ void VESCSpindleControl::on_set_public_data(void *argument) {
   }
 }
 
-// CRC-16/CCITT (poly 0x1021, init 0x0000), VESC packet protocol.
-uint16_t VESCSpindleControl::vesc_crc16(const uint8_t *buf, const uint16_t len) {
-  uint16_t crc = 0;
-  for (uint16_t i = 0; i < len; i++) {
-    crc ^= static_cast<uint16_t>(buf[i]) << 8;
-    for (uint8_t bit = 0; bit < 8; bit++) {
-      if (crc & 0x8000)
-        crc = (crc << 1) ^ 0x1021;
-      else
-        crc <<= 1;
-    }
-  }
-  return crc;
-}
-
 // VESC short packet (payload <= 256 B):  0x02  len(1)  payload  crc16(2)  0x03
 uint16_t VESCSpindleControl::vesc_build_packet(uint8_t *out, const uint8_t *payload, const uint16_t plen) {
   uint16_t idx = 0;
   out[idx++] = 0x02;
   out[idx++] = static_cast<uint8_t>(plen);
   for (uint16_t i = 0; i < plen; i++) out[idx++] = payload[i];
-  wbe16(&out[idx], vesc_crc16(payload, plen));
+  wbe16(&out[idx], crc16::ccitt(payload, plen));
   idx += 2;
   out[idx++] = 0x03;
   return idx;
@@ -696,7 +682,7 @@ bool VESCSpindleControl::extract_vesc_payload(const uint8_t *frame, const uint16
   const uint8_t *payload_start = &frame[2];
 
   const uint8_t crc_bytes[2] = {frame[2 + plen], frame[2 + plen + 1]};
-  if (be16(crc_bytes) != vesc_crc16(payload_start, plen)) return false;
+  if (be16(crc_bytes) != crc16::ccitt(payload_start, plen)) return false;
 
   if (payload) *payload = payload_start;
   if (payload_len) *payload_len = plen;

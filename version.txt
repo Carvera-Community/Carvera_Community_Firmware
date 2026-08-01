@@ -1,3 +1,6 @@
+[unreleased]
+- Changed: Build as C++17 and use one CRC-16/CCITT implementation for active protocols.
+
 [2.2.0c-RC1]
 - Enhancement: AnalogSpindleControl now supports optional RPM feedback and Alarm pin functionality, same as PWMSpindleControl. Same configuration keys (spindle.feedback_pin, spindle.pulses_per_rev, spindle.acc_ratio, and spindle.control_smoothing, spindle.alarm_pin)
 - Enhancement: Suspend/resume saves spindle state, stops the spindle on pause, and restores speed only if it was running. This functionality is enabled by default, but can be disabled via config key spindle_suspend_restore_enable.
