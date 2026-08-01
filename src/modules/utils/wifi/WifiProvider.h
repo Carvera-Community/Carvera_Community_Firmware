@@ -68,7 +68,6 @@ private:
 
     void on_pin_rise();
     void receive_wifi_data();
-    unsigned int crc16_ccitt(unsigned char *data, unsigned int len);
     int CheckFilePacket(char** buf);
 
     void PacketMessage(char cmd, const char* s, int size);
