@@ -1,0 +1,44 @@
+{
+  "version": 2,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 20,
+    "patch": 0
+  },
+  "configurePresets": [
+    {
+      "name": "firmware-base",
+      "hidden": true,
+      "generator": "Ninja",
+      "cacheVariables": {
+        "CMAKE_TOOLCHAIN_FILE": "${sourceDir}/cmake/arm-none-eabi-toolchain.cmake",
+        "CARVERA_TOOLCHAIN_ROOT": "${sourceDir}/gcc-arm-none-eabi-14.2",
+        "AXIS": "5",
+        "PAXIS": "3",
+        "NO_MODBUS_SPINDLE": true,
+        "NO_VESC_SPINDLE": false,
+        "STACK_SIZE": "4096"
+      }
+    },
+    {
+      "name": "firmware-release",
+      "displayName": "Firmware Release",
+      "inherits": "firmware-base",
+      "binaryDir": "${sourceDir}/build/cmake/gcc-14.2/Release",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "OPTIMIZATION": "s"
+      }
+    },
+    {
+      "name": "firmware-debug",
+      "displayName": "Firmware Debug",
+      "inherits": "firmware-base",
+      "binaryDir": "${sourceDir}/build/cmake/gcc-14.2/Debug",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "OPTIMIZATION": "g"
+      }
+    }
+  ]
+}
