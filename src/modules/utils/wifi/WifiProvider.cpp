@@ -108,9 +108,10 @@ WifiProvider::WifiProvider()
 	makera_pending_payload_len = 0;
 	connection_fail_count = 0;
 	sta_down_seconds = 0;
+	last_sta_connection_status = 0xff;
 	ap_auto_disable = true;
 	ap_currently_on = true;
-	ap_off_by_auto_toggle = false;
+	ap_manually_disabled = false;
 }
 
 void WifiProvider::on_module_loaded()
@@ -142,12 +143,18 @@ void WifiProvider::on_module_loaded()
     }
 
     // Disable AP before STA auto-reconnect to avoid address conflicts with the onboard AP
-    if (this->ap_auto_disable && this->ap_currently_on) {
-        u16 op_status = 0;
-        if (M8266WIFI_SPI_Set_Opmode(1, 0, &op_status)) {
-            this->ap_currently_on = false;
-            this->ap_off_by_auto_toggle = true;
-            this->sta_down_seconds = 0;
+    if (this->ap_auto_disable && !this->ap_manually_disabled) {
+        if (this->ap_currently_on) {
+            u16 op_status = 0;
+            if (M8266WIFI_SPI_Set_Opmode(1, 0, &op_status)) {
+                this->ap_currently_on = false;
+                this->sta_down_seconds = 0;
+                THEKERNEL->streams->printf("WIFI: AP auto-disabled at boot (opmode STA-only)\n");
+            } else {
+                THEKERNEL->streams->printf("WIFI: AP auto-disable at boot FAILED, status:%u\n", op_status);
+            }
+        } else {
+            THEKERNEL->streams->printf("WIFI: AP already off at boot (will restore if STA stays down)\n");
         }
     }
 
@@ -519,32 +526,7 @@ void WifiProvider::on_second_tick(void *)
 			connection_fail_count = 0;
 		}
 
-		// Keep AP off while STA is connecting/connected; restore AP after STA is down
-		// for WIFI_AP_ON_DELAY_S to avoid address conflicts. saved=0 to avoid flash wear.
-		if (this->ap_auto_disable) {
-			if (connection_status == 1 || connection_status == 5) {
-				this->sta_down_seconds = 0;
-				if (this->ap_currently_on) {
-					u16 op_status = 0;
-					if (M8266WIFI_SPI_Set_Opmode(1, 0, &op_status)) {
-						this->ap_currently_on = false;
-						this->ap_off_by_auto_toggle = true;
-					}
-				}
-			} else {
-				if (this->sta_down_seconds < WIFI_AP_ON_DELAY_S) {
-					this->sta_down_seconds++;
-				}
-				// only re-enable if we were the ones who turned it off; ap disable stays off
-				if (this->sta_down_seconds >= WIFI_AP_ON_DELAY_S && !this->ap_currently_on && this->ap_off_by_auto_toggle) {
-					u16 op_status = 0;
-					if (M8266WIFI_SPI_Set_Opmode(3, 0, &op_status)) {
-						this->ap_currently_on = true;
-						this->ap_off_by_auto_toggle = false;
-					}
-				}
-			}
-		}
+		update_ap_auto_disable(connection_status);
 
 		// send ap info through UDP
 		if (!this->ap_currently_on) return;
@@ -578,43 +560,45 @@ void WifiProvider::on_second_tick(void *)
 
 		if (!wifi_init_ok || THEKERNEL->is_uploading()) return;
 
-		if (M8266WIFI_SPI_List_Clients_On_A_TCP_Server(tcp_link_no, &client_num, RemoteClients, &status)) {
+		M8266WIFI_SPI_List_Clients_On_A_TCP_Server(tcp_link_no, &client_num, RemoteClients, &status);
 
-			if (M8266WIFI_SPI_Get_STA_Connection_Status(&connection_status, &status)) {
-				if (connection_status == 5) {
-					// get ip and netmask
-					M8266WIFI_SPI_Query_STA_Param(STA_PARAM_TYPE_IP_ADDR, (u8 *)this->sta_address, &param_len, &status);
-					M8266WIFI_SPI_Query_STA_Param(STA_PARAM_TYPE_NETMASK_ADDR, (u8 *)this->sta_netmask, &param_len, &status);
-					// send data to sta broadcast address
-					get_broadcast_from_ip_and_netmask(address, this->sta_address, this->sta_netmask);
-					snprintf(udp_buff, sizeof(udp_buff), "%s,%s,%d,%d", this->machine_name, this->sta_address, this->tcp_port, client_num > 0 ? 1 : 0);
-					if (M8266WIFI_SPI_Send_Udp_Data((u8 *)udp_buff, strlen(udp_buff), udp_link_no, address, this->udp_send_port, &status) < strlen(udp_buff)) {
-						// THEKERNEL->streams->printf("Send UDP through STA ERROR, status: %d, high: %d, low: %d!\n", status, int(status >> 8), int(status & 0xff));
-					} else {
-						// THEKERNEL->streams->printf("Send UDP through STA Success!\n");
-					}
-					connection_fail_count = 0;
-				} else if (connection_status == 2 || connection_status == 3 || connection_status == 4) {
-					// wrong password or can not find STA or fail to connect
-					connection_fail_count ++;
-					if (connection_fail_count > 30) {
-						// disconnect Wifi
-						if (M8266WIFI_SPI_STA_DisConnect_Ap(&status)) {
-							THEKERNEL->streams->printf("STA connection timeout, disconnected!\n");
-						}
-						connection_fail_count = 0;
-					}
-				} else {
-					connection_fail_count = 0;
-				}
-			
-				// send ap info through UDP
-				memset(udp_buff, 0, sizeof(udp_buff));
-				get_broadcast_from_ip_and_netmask(address, this->ap_address, this->ap_netmask);
-				snprintf(udp_buff, sizeof(udp_buff), "%s,%s,%d,%d", this->machine_name, this->ap_address, this->tcp_port, client_num > 0 ? 1 : 0);
+		if (M8266WIFI_SPI_Get_STA_Connection_Status(&connection_status, &status)) {
+			if (connection_status == 5) {
+				// get ip and netmask
+				M8266WIFI_SPI_Query_STA_Param(STA_PARAM_TYPE_IP_ADDR, (u8 *)this->sta_address, &param_len, &status);
+				M8266WIFI_SPI_Query_STA_Param(STA_PARAM_TYPE_NETMASK_ADDR, (u8 *)this->sta_netmask, &param_len, &status);
+				// send data to sta broadcast address
+				get_broadcast_from_ip_and_netmask(address, this->sta_address, this->sta_netmask);
+				snprintf(udp_buff, sizeof(udp_buff), "%s,%s,%d,%d", this->machine_name, this->sta_address, this->tcp_port, client_num > 0 ? 1 : 0);
 				if (M8266WIFI_SPI_Send_Udp_Data((u8 *)udp_buff, strlen(udp_buff), udp_link_no, address, this->udp_send_port, &status) < strlen(udp_buff)) {
-					// THEKERNEL->streams->printf("Send UDP through AP ERROR, status: %d, high: %d, low: %d!\n", status, int(status >> 8), int(status & 0xff));
+					// THEKERNEL->streams->printf("Send UDP through STA ERROR, status: %d, high: %d, low: %d!\n", status, int(status >> 8), int(status & 0xff));
+				} else {
+					// THEKERNEL->streams->printf("Send UDP through STA Success!\n");
 				}
+				connection_fail_count = 0;
+			} else if (connection_status == 2 || connection_status == 3 || connection_status == 4) {
+				// wrong password or can not find STA or fail to connect
+				connection_fail_count ++;
+				if (connection_fail_count > 30) {
+					// disconnect Wifi
+					if (M8266WIFI_SPI_STA_DisConnect_Ap(&status)) {
+						THEKERNEL->streams->printf("STA connection timeout, disconnected!\n");
+					}
+					connection_fail_count = 0;
+				}
+			} else {
+				connection_fail_count = 0;
+			}
+
+			update_ap_auto_disable(connection_status);
+
+			// send ap info through UDP
+			if (!this->ap_currently_on) return;
+			memset(udp_buff, 0, sizeof(udp_buff));
+			get_broadcast_from_ip_and_netmask(address, this->ap_address, this->ap_netmask);
+			snprintf(udp_buff, sizeof(udp_buff), "%s,%s,%d,%d", this->machine_name, this->ap_address, this->tcp_port, client_num > 0 ? 1 : 0);
+			if (M8266WIFI_SPI_Send_Udp_Data((u8 *)udp_buff, strlen(udp_buff), udp_link_no, address, this->udp_send_port, &status) < strlen(udp_buff)) {
+				// THEKERNEL->streams->printf("Send UDP through AP ERROR, status: %d, high: %d, low: %d!\n", status, int(status >> 8), int(status & 0xff));
 			}
 		}
 	}
@@ -1198,6 +1182,60 @@ void WifiProvider::set_wifi_op_mode(u8 op_mode) {
 	}
 }
 
+// Keep AP off while STA has an IP; restore AP after WIFI_AP_ON_DELAY_S of not being
+// connected. Status 1 (connecting/reconnecting) counts as down so a dead router that
+// leaves the module in a reconnect loop still brings the onboard AP back.
+// saved=0 to avoid flash wear. Manual `ap disable` sets ap_manually_disabled and blocks restore.
+void WifiProvider::update_ap_auto_disable(u8 connection_status)
+{
+	if (!this->ap_auto_disable || this->ap_manually_disabled) return;
+
+	if (connection_status != this->last_sta_connection_status) {
+		THEKERNEL->streams->printf(
+			"WIFI: STA status %u -> %u (down=%d AP=%s)\n",
+			this->last_sta_connection_status,
+			connection_status,
+			this->sta_down_seconds,
+			this->ap_currently_on ? "on" : "off");
+		this->last_sta_connection_status = connection_status;
+	}
+
+	if (connection_status == 5) {
+		this->sta_down_seconds = 0;
+		if (this->ap_currently_on) {
+			u16 op_status = 0;
+			if (M8266WIFI_SPI_Set_Opmode(1, 0, &op_status)) {
+				this->ap_currently_on = false;
+				THEKERNEL->streams->printf("WIFI: AP auto-disabled (STA connected)\n");
+			} else {
+				THEKERNEL->streams->printf("WIFI: AP auto-disable FAILED, status:%u\n", op_status);
+			}
+		}
+		return;
+	}
+
+	if (this->sta_down_seconds < WIFI_AP_ON_DELAY_S) {
+		this->sta_down_seconds++;
+	}
+
+	if (this->sta_down_seconds >= WIFI_AP_ON_DELAY_S && !this->ap_currently_on) {
+		u16 op_status = 0;
+		if (M8266WIFI_SPI_Set_Opmode(3, 0, &op_status)) {
+			this->ap_currently_on = true;
+			// SoftAP just came back; refresh cached AP addressing used for UDP beacon
+			u8 param_len = 0;
+			u16 qstatus = 0;
+			M8266WIFI_SPI_Query_AP_Param(AP_PARAM_TYPE_IP_ADDR, (u8 *)this->ap_address, &param_len, &qstatus);
+			M8266WIFI_SPI_Query_AP_Param(AP_PARAM_TYPE_NETMASK_ADDR, (u8 *)this->ap_netmask, &param_len, &qstatus);
+			THEKERNEL->streams->printf(
+				"WIFI: AP auto-enabled (STA down >= %ds) ip=%s\n",
+				WIFI_AP_ON_DELAY_S, this->ap_address);
+		} else {
+			THEKERNEL->streams->printf("WIFI: AP auto-enable FAILED, status:%u\n", op_status);
+		}
+	}
+}
+
 void WifiProvider::on_get_public_data(void* argument) {
 	if (communication_protocol == PROTOCOL_SMOOTHIE) { //smoothie can be cleaned up and merged
 		PublicDataRequest* pdr = static_cast<PublicDataRequest*>(argument);
@@ -1411,11 +1449,13 @@ void WifiProvider::on_set_public_data(void *argument)
     		}
     	} else {
     	    // Disable AP before STA connect to avoid network address conflicts
-    	    if (this->ap_auto_disable && this->ap_currently_on) {
+    	    if (this->ap_auto_disable && !this->ap_manually_disabled && this->ap_currently_on) {
     	        u16 op_status = 0;
     	        if (M8266WIFI_SPI_Set_Opmode(1, 0, &op_status)) {
     	            this->ap_currently_on = false;
-    	            this->ap_off_by_auto_toggle = true;
+    	            THEKERNEL->streams->printf("WIFI: AP auto-disabled before STA connect\n");
+    	        } else {
+    	            THEKERNEL->streams->printf("WIFI: AP auto-disable before STA connect FAILED, status:%u\n", op_status);
     	        }
     	    }
     	    this->sta_down_seconds = 0;
@@ -1538,11 +1578,11 @@ void WifiProvider::on_set_public_data(void *argument)
         	set_wifi_op_mode(3);
         	this->ap_currently_on = true;
         	this->sta_down_seconds = 0;
-        	this->ap_off_by_auto_toggle = false;
+        	this->ap_manually_disabled = false;
     	} else {
         	set_wifi_op_mode(1);
         	this->ap_currently_on = false;
-        	this->ap_off_by_auto_toggle = false;
+        	this->ap_manually_disabled = true;
     	}
     }
 	pdr->set_taken();
