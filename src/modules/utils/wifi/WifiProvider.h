@@ -60,6 +60,7 @@ private:
 
     void init_wifi_module(bool reset);
     void query_wifi_status();
+    void update_ap_auto_disable(u8 connection_status);
 
     uint32_t ip_to_int(const char* ip_addr);
     void int_to_ip(uint32_t i_ip, char *ip_addr);
@@ -86,6 +87,7 @@ private:
 	int tcp_timeout_s;
 	int connection_fail_count;
 	int sta_down_seconds;
+	u8 last_sta_connection_status;
 	char machine_name[64]; // Fixed-size buffer to avoid std::string heap allocation
 	char ap_address[16];
 	char ap_netmask[16];
@@ -98,7 +100,7 @@ private:
     	bool wifi_init_ok:1;
     	bool ap_auto_disable:1;
     	bool ap_currently_on:1;
-    	bool ap_off_by_auto_toggle:1;
+    	bool ap_manually_disabled:1; // sticky from `ap disable` until `ap enable`
     	volatile bool halt_flag:1;
     	volatile bool query_flag:1;
     	volatile bool diagnose_flag:1;
