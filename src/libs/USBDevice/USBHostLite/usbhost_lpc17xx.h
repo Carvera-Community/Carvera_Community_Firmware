@@ -51,8 +51,52 @@
 **************************************************************************************************************
 */
 
-#define  DESC_LENGTH(x)  x[0]
-#define  DESC_TYPE(x)    x[1]
+#define  USB_DESCRIPTOR_LENGTH_OFFSET                   0
+#define  USB_DESCRIPTOR_TYPE_OFFSET                     1
+
+#define  USB_CONFIGURATION_TOTAL_LENGTH_OFFSET          2
+
+#define  USB_DEVICE_MAX_PACKET_SIZE0_OFFSET             7
+
+#define  USB_INTERFACE_NUMBER_OFFSET                    2
+#define  USB_INTERFACE_CLASS_OFFSET                     5
+
+#define  USB_ENDPOINT_ADDRESS_OFFSET                    2
+#define  USB_ENDPOINT_ATTRIBUTES_OFFSET                 3
+#define  USB_ENDPOINT_MAX_PACKET_SIZE_OFFSET            4
+#define  USB_ENDPOINT_DIRECTION_IN                      0x80
+#define  USB_ENDPOINT_NUMBER_MASK                       0x7F
+#define  USB_ENDPOINT_TRANSFER_TYPE_MASK                0x03
+#define  USB_ENDPOINT_TRANSFER_TYPE_BULK                0x02
+
+#define  USB_DEVICE_ADDRESS                             1
+#define  USB_CONFIGURATION_VALUE                        1
+#define  USB_SET_CONFIGURATION_SETTLE_MS                100
+#define  USB_ENDPOINT_ZERO_INITIAL_DESCRIPTOR_BYTES      8
+#define  USB_SETUP_PACKET_SIZE                          8
+#define  USB_CONFIGURATION_DESCRIPTOR_HEADER_SIZE        9
+#define  USB_SETUP_BM_REQUEST_TYPE_OFFSET               0
+#define  USB_SETUP_B_REQUEST_OFFSET                     1
+#define  USB_SETUP_W_VALUE_OFFSET                       2
+#define  USB_SETUP_W_INDEX_OFFSET                       4
+#define  USB_SETUP_W_LENGTH_OFFSET                      6
+
+#define  DESC_LENGTH(x)                                 (x)[USB_DESCRIPTOR_LENGTH_OFFSET]
+#define  DESC_TYPE(x)                                   (x)[USB_DESCRIPTOR_TYPE_OFFSET]
+
+#define  OHCI_ED_FUNCTION_ADDRESS(address)              ((USB_INT32U)(address))
+#define  OHCI_ED_ENDPOINT_NUMBER(endpoint_address)      (((USB_INT32U)((endpoint_address) & USB_ENDPOINT_NUMBER_MASK)) << 7)
+#define  OHCI_ED_DIRECTION(direction)                   ((USB_INT32U)(direction) << 11)
+#define  OHCI_ED_SKIP                                   (1UL << 14)
+#define  OHCI_ED_MAX_PACKET_SIZE(max_packet)            ((USB_INT32U)(max_packet) << 16)
+#define  OHCI_ED_DIR_OUT                                1
+#define  OHCI_ED_DIR_IN                                 2
+#define  OHCI_ED_HEAD_TOGGLE_CARRY                      0x00000002
+#define  OHCI_ED_BULK_ENDPOINT_CONTROL(device_address, endpoint_address, direction, max_packet) \
+         (OHCI_ED_FUNCTION_ADDRESS(device_address) |                                            \
+          OHCI_ED_ENDPOINT_NUMBER(endpoint_address) |                                           \
+          OHCI_ED_DIRECTION(direction) |                                                        \
+          OHCI_ED_MAX_PACKET_SIZE(max_packet))
 
 
 #define  HOST_GET_DESCRIPTOR(descType, descIndex, data, length)                      \
@@ -126,6 +170,8 @@
 #define  TD_TOGGLE_0        (USB_INT32U)(0x02000000)         /* Toggle 0                                    */
 #define  TD_TOGGLE_1        (USB_INT32U)(0x03000000)         /* Toggle 1                                    */
 #define  TD_CC              (USB_INT32U)(0xF0000000)         /* Completion Code                             */
+#define  TD_CC_SHIFT        28
+#define  TD_CC_MASK         0x0F
 
 /*
 **************************************************************************************************************
@@ -189,6 +235,12 @@ extern  volatile  HCTD        *TDHead;          /* Head transfer descriptor stru
 extern  volatile  HCTD        *TDTail;          /* Tail transfer descriptor structure                       */
 extern  volatile  USB_INT08U  *TDBuffer;        /* Current Buffer Pointer of transfer descriptor            */
 
+typedef struct hostPortResetStatus {
+    USB_INT32U waited_ms;
+    USB_INT32U port_status;
+    USB_INT32U interrupt_status;
+} HostPortResetStatus;
+
 /*
 **************************************************************************************************************
 *                                       FUNCTION PROTOTYPES
@@ -199,11 +251,15 @@ void        Host_Init     (void);
 
 // extern "C" void USB_IRQHandler (void) __irq;
 
-USB_INT32S  Host_EnumDev  (void);
+USB_INT32S  Host_WaitForDevice(USB_INT32U timeout_ms);
+USB_INT32S  Host_ResetRootPort(USB_INT32U timeout_ms, HostPortResetStatus *status);
+USB_INT32S  Host_ReadDeviceDescriptor(void);
+USB_INT32S  Host_SetDeviceAddress(USB_INT08U address);
+USB_INT32S  Host_ReadConfigurationDescriptor(USB_INT16U max_len, USB_INT16U *fetched_len);
 
 USB_INT32S  Host_ProcessTD(volatile  HCED       *ed,
                            volatile  USB_INT32U  token,
-                           volatile  USB_INT08U *buffer,
+                     const volatile  USB_INT08U *buffer,
                                      USB_INT32U  buffer_len);
 
 void        Host_DelayUS  (          USB_INT32U    delay);
@@ -226,7 +282,7 @@ USB_INT32S  Host_CtrlSend (          USB_INT08U   bm_request_type,
                                      USB_INT16U   w_value,
                                      USB_INT16U   w_index,
                                      USB_INT16U   w_length,
-                           volatile  USB_INT08U  *buffer);
+                     const volatile  USB_INT08U  *buffer);
 
 void        Host_FillSetup(          USB_INT08U   bm_request_type,
                                      USB_INT08U   b_request,

@@ -32,15 +32,18 @@ struct dirent *FATDirHandle::readdir() {
         return NULL;
     } else {
         char* fn;
-        int stringSize = 0;
 #if _USE_LFN
         fn = *finfo.lfname ? finfo.lfname : finfo.fname;
-        stringSize = *finfo.lfname ? finfo.lfsize : sizeof(finfo.fname);
 #else
-        fn = fno.fname;
-        stringSize =  sizeof(finfo.fname);
+        fn = finfo.fname;
 #endif
-        memcpy(cur_entry.d_name, fn, stringSize);
+        // Copy by strlen so we never rely on lfsize (buffer capacity) and always NUL-terminate
+        size_t namelen = strlen(fn);
+        if (namelen > NAME_MAX) {
+            namelen = NAME_MAX;
+        }
+        memcpy(cur_entry.d_name, fn, namelen);
+        cur_entry.d_name[namelen] = '\0';
         cur_entry.d_isdir= (finfo.fattrib & AM_DIR);
         cur_entry.d_fsize= finfo.fsize;
         cur_entry.d_date = finfo.fdate;

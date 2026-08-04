@@ -6,14 +6,19 @@
 */
 
 #include "libs/Kernel.h"
+#include "libs/FirmwareFileSystem.h"
 
 #include "modules/tools/laser/Laser.h"
 #include "modules/tools/spindle/SpindleMaker.h"
 #include "modules/tools/temperaturecontrol/TemperatureControlPool.h"
 #include "modules/tools/endstops/Endstops.h"
 #include "modules/tools/zprobe/ZProbe.h"
+#ifndef NO_TOOLS_SCARACAL
 #include "modules/tools/scaracal/SCARAcal.h"
+#endif
+#ifndef NO_TOOLS_ROTARYDELTACALIBRATION
 #include "RotaryDeltaCalibration.h"
+#endif
 #include "modules/tools/switch/SwitchPool.h"
 #include "modules/tools/temperatureswitch/TemperatureSwitch.h"
 #include "modules/tools/drillingcycles/Drillingcycles.h"
@@ -46,9 +51,9 @@
 // #include "libs/USBDevice/DFU.h"
 #include "libs/SDFAT.h"
 #include "StreamOutputPool.h"
-#include "ToolManager.h"
 
 #include "libs/Watchdog.h"
+#include "libs/compiler.h"
 
 #include "version.h"
 #include "system_LPC17xx.h"
@@ -61,11 +66,13 @@
 #define second_usb_serial_enable_checksum  CHECKSUM("second_usb_serial_enable")
 // #define disable_msd_checksum  CHECKSUM("msd_disable")
 // #define dfu_enable_checksum  CHECKSUM("dfu_enable")
+#define usb_msc_checksum       CHECKSUM("usb_msc")
+#define enable_checksum        CHECKSUM("enable")
 #define watchdog_timeout_checksum  CHECKSUM("watchdog_timeout")
 
 // USB Stuff
 //SDCard sd  __attribute__ ((section ("AHBSRAM"))) (P0_18, P0_17, P0_15, P0_16);      // this selects SPI1 as the sdcard as it is on Smoothieboard
-SDFileSystem sd __attribute__ ((section ("AHBSRAM"))) (P0_18, P0_17, P0_15, P0_16, 12000000);
+SDFileSystem sd LOCATED_IN_AHBSRAM (P0_18, P0_17, P0_15, P0_16, 12000000);
 //SDCard sd(P0_18, P0_17, P0_15, P0_16);  // this selects SPI0 as the sdcard
 //SDCard sd(P0_18, P0_17, P0_15, P2_8);  // this selects SPI0 as the sdcard witrh a different sd select
 
@@ -80,7 +87,7 @@ USBMSD *msc= NULL;
 #endif
 */
 
-SDFAT mounter __attribute__ ((section ("AHBSRAM"))) ("sd", &sd);
+SDFAT mounter LOCATED_IN_AHBSRAM ("sd", &sd);
 
 GPIO leds[4] = {
     GPIO(P4_29),
@@ -101,6 +108,15 @@ void init() {
     GPIO beep = GPIO(P1_14);
     beep.output();
     beep = 0;
+    GPIO extout = GPIO(P0_29);
+    extout.output();
+    extout = 0;
+    extout = GPIO(P0_30);
+    extout.output();
+    extout = 0;
+    extout = GPIO(P1_19);
+    extout.output();
+    extout = 0;
 
     // open 12V
     // GPIO v12 = GPIO(P0_11);
@@ -137,7 +153,7 @@ void init() {
 
 	/*
     // attempt to be able to disable msd in config
-    if(sdok && !kernel->config->value( disable_msd_checksum )->by_default(true)->as_bool()){
+    if(sdok && !kernel->config->value( disable_msd_checksum )->as_bool(true)){
         // HACK to zero the memory USBMSD uses as it and its objects seem to not initialize properly in the ctor
         size_t n= sizeof(USBMSD);
         void *v = AHB.alloc(n);
@@ -151,21 +167,25 @@ void init() {
 #endif
 
     // Create and add main modules
-    kernel->add_module( new(AHB) Player() );
+    kernel->add_module( new Player() );
 
     // ATC Handler
-    kernel->add_module( new(AHB) ATCHandler() );
+    kernel->add_module( new ATCHandler() );
 
-    // MSC File System Handler
-    kernel->add_module( new(AHB) MSCFileSystem("ud") );
+    // This module owns the USB host controller while enabled.
+    if (kernel->config->value(usb_msc_checksum, enable_checksum)->as_bool(true)) {
+        kernel->add_module( new MSCFileSystem("ud") );
+    } else {
+        kernel->streams->printf("NOTE: USB mass storage host is disabled\n");
+    }
 
     // Serial Console handles IO with the wireless probe
-    kernel->add_module( new(AHB) SerialConsole2() );
+    kernel->add_module( new(AHB) SerialConsole2() ); // must stay in AHB: UART RxIrq writes RingBuffer
 
-    kernel->add_module( new(AHB) MainButton() );
+    kernel->add_module( new MainButton() );
 
     // Wifi Provider
-    kernel->add_module( new(AHB) WifiProvider);
+    kernel->add_module( new WifiProvider);
 
     // these modules can be completely disabled in the Makefile by adding to EXCLUDE_MODULES
     #ifndef NO_TOOLS_SWITCH
@@ -183,20 +203,20 @@ void init() {
 
     // #ifndef NO_TOOLS_TEMPERATURECONTROL
     // Note order is important here must be after extruder so Tn as a parameter will get executed first
-    TemperatureControlPool *tp= new(AHB) TemperatureControlPool();
+    TemperatureControlPool *tp= new TemperatureControlPool();
     tp->load_tools();
     delete tp;
 
     // #endif
     #ifndef NO_TOOLS_ENDSTOPS
-    kernel->add_module( new(AHB) Endstops() );
+    kernel->add_module( new Endstops() );
     #endif
     #ifndef NO_TOOLS_LASER
-    kernel->add_module( new(AHB) Laser() );
+    kernel->add_module( new Laser() );
     #endif
 
     #ifndef NO_TOOLS_SPINDLE
-    SpindleMaker *sm = new(AHB) SpindleMaker();
+    SpindleMaker *sm = new SpindleMaker();
     sm->load_spindle();
     delete sm;
     //kernel->add_module( new(AHB) Spindle() );
@@ -205,23 +225,24 @@ void init() {
     // kernel->add_module( new(AHB) Panel() );
     #endif
     #ifndef NO_TOOLS_ZPROBE
-    kernel->add_module( new(AHB) ZProbe() );
+    ZProbe *zprobe = new ZProbe();
+    kernel->add_module( zprobe );
     #endif
     #ifndef NO_TOOLS_SCARACAL
-    kernel->add_module( new(AHB) SCARAcal() );
+    kernel->add_module( new SCARAcal() );
     #endif
     #ifndef NO_TOOLS_ROTARYDELTACALIBRATION
-    kernel->add_module( new(AHB) RotaryDeltaCalibration() );
+    kernel->add_module( new RotaryDeltaCalibration() );
     #endif
 //    #ifndef NONETWORK
 //    kernel->add_module( new Network() );
 //    #endif
     #ifndef NO_TOOLS_TEMPERATURESWITCH
     // Must be loaded after TemperatureControl
-    kernel->add_module( new(AHB) TemperatureSwitch() );
+    kernel->add_module( new TemperatureSwitch() );
     #endif
     #ifndef NO_TOOLS_DRILLINGCYCLES
-    kernel->add_module( new(AHB) Drillingcycles() );
+    kernel->add_module( new Drillingcycles() );
     #endif
     // Create and initialize USB stuff
     // u.init();
@@ -232,7 +253,7 @@ void init() {
         kernel->add_module( msc );
     }
 #else
-    if (!kernel->config->value( disable_msd_checksum )->by_default(false)->as_bool()) {
+    if (!kernel->config->value( disable_msd_checksum )->as_bool(false)) {
         kernel->add_module( &msc );
     }
 #endif
@@ -240,12 +261,12 @@ void init() {
 
     /* disable USB module
     kernel->add_module( &usbserial );
-    if( kernel->config->value( second_usb_serial_enable_checksum )->by_default(false)->as_bool() ){
-        kernel->add_module( new(AHB) USBSerial(&u) );
+    if( kernel->config->value( second_usb_serial_enable_checksum )->as_bool(false) ){
+        kernel->add_module( new USBSerial(&u) );
     }
     */
 
-    // if( kernel->config->value( dfu_enable_checksum )->by_default(false)->as_bool() ){
+    // if( kernel->config->value( dfu_enable_checksum )->as_bool(false) ){
     //     kernel->add_module( new(AHB) DFU(&u));
     // }
 
@@ -253,10 +274,10 @@ void init() {
 
     // LUKE : DISABLED
 
-    float t= kernel->config->value( watchdog_timeout_checksum )->by_default(10.0F)->as_number();
+    float t= kernel->config->value( watchdog_timeout_checksum )->as_number(10.0F);
     if(t > 0.1F) {
         // NOTE setting WDT_RESET with the current bootloader would leave it in DFU mode which would be suboptimal
-        kernel->add_module( new(AHB) Watchdog(t * 1000000, WDT_RESET )); // WDT_RESET));
+        kernel->add_module( new Watchdog(t * 1000000, WDT_RESET )); // WDT_RESET));
         kernel->streams->printf("Watchdog enabled for %1.3f seconds\n", t);
     }else{
         kernel->streams->printf("WARNING Watchdog is disabled\n");
@@ -270,6 +291,12 @@ void init() {
     // clear up the config cache to save some memory
     kernel->config->config_cache_clear();
 
+    #ifndef NO_TOOLS_ZPROBE
+    // Flex compensation autoload (and anything else that needs main-heap room)
+    // must run only after the config cache is released.
+    zprobe->after_config_cache_clear();
+    #endif
+
     if(kernel->is_using_leds()) {
         // set some leds to indicate status... led0 init done, led1 mainloop running, led2 idle loop running, led3 sdcard ok
         leds[0]= 1; // indicate we are done with init
@@ -279,18 +306,18 @@ void init() {
     if(sdok) {
         // load config override file if present
         // NOTE only Mxxx commands that set values should be put in this file. The file is generated by M500
-        FILE *fp= fopen(kernel->config_override_filename(), "r");
+        FILE *fp= fwfs::fopen(kernel->config_override_filename(), "r");
         if(fp != NULL) {
             char buf[132];
             kernel->streams->printf("Loading config override file: %s...\n", kernel->config_override_filename());
-            while(fgets(buf, sizeof buf, fp) != NULL) {
+            while(fwfs::fgets(buf, sizeof buf, fp) != NULL) {
                 kernel->streams->printf("  %s", buf);
                 if(buf[0] == ';') continue; // skip the comments
                 struct SerialMessage message= {&(StreamOutput::NullStream), buf, 0};
                 kernel->call_event(ON_CONSOLE_LINE_RECEIVED, &message);
             }
             kernel->streams->printf("config override file executed\n");
-            fclose(fp);
+            fwfs::fclose(fp);
         }
     }
 

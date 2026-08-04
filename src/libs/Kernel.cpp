@@ -6,11 +6,13 @@
 */
 
 #include "libs/Kernel.h"
+#include "libs/FirmwareFileSystem.h"
 #include "libs/Module.h"
 #include "libs/Config.h"
 #include "libs/nuts_bolts.h"
 #include "libs/SlowTicker.h"
 #include "libs/Adc.h"
+#include "libs/compiler.h"
 #include "libs/StreamOutputPool.h"
 #include <mri.h>
 #include "checksumm.h"
@@ -18,6 +20,7 @@
 
 #include "libs/StepTicker.h"
 #include "libs/PublicData.h"
+#include "us_ticker_api.h"
 #include "modules/communication/SerialConsole.h"
 #include "modules/communication/GcodeDispatch.h"
 #include "modules/robot/Planner.h"
@@ -38,6 +41,7 @@
 #include "MainButtonPublicAccess.h"
 #include "mbed.h"
 #include "utils.h"
+#include "WifiPublicAccess.h"
 
 #ifndef NO_TOOLS_LASER
 #include "Laser.h"
@@ -45,7 +49,6 @@
 
 #include "platform_memory.h"
 
-#include <malloc.h>
 #include <array>
 #include <string>
 
@@ -61,7 +64,11 @@
 #define ok_per_line_checksum                        CHECKSUM("ok_per_line")
 #define disable_serial_console_checksum             CHECKSUM("disable_serial_console")
 #define halt_on_error_debug_checksum                CHECKSUM("halt_on_error_debug")
+#define protocol_checksum                           CHECKSUM("protocol")
 Kernel* Kernel::instance;
+
+static float ahb_local_vars[20] LOCATED_IN_AHBSRAM;
+static float ahb_local_params[30] LOCATED_IN_AHBSRAM;
 
 #define	EEP_MAX_PAGE_SIZE	32
 #define EEPROM_DATA_STARTPAGE	1
@@ -77,6 +84,7 @@ Kernel::Kernel()
     uploading = false;
     laser_mode = false;
     vacuum_mode = false;
+    extout_mode = false;
     optional_stop_mode = false;
     line_by_line_exec_mode = false;
     sleeping = false;
@@ -90,18 +98,35 @@ Kernel::Kernel()
     probe_addr = 0;
     checkled = false;
     spindleon = false;
+    debug_flags = {};
     cachewait = false;
     disable_serial_console = false;
     keep_alive_request = false;
     flex_compensation_load_error = false;
+    config_load_error = false;
 
-    instance = this; // setup the Singleton instance of the kernel    
-    
+    // Point the variable arrays at their AHBSRAM-backed storage
+    local_vars   = ahb_local_vars;
+    local_params = ahb_local_params;
+
+    // Initialize user defined variables and subroutine call parameters.
+    for(int i = 0; i < 20; ++i) local_vars[i]   = -1.0e6f;
+    for(int i = 0; i < 30; ++i) local_params[i] = 0.0f;
+
+    instance = this; // setup the Singleton instance of the kernel
+
     // init I2C
     this->i2c = new mbed::I2C(P0_27, P0_28);
     this->i2c->frequency(200000);
-    
-    this->factory_set = new(AHB) FACTORY_SET();
+
+    // Bring up streams + serial console first so factory and config parser
+    // errors are visible on the host link. Baud is hard-coded here and gets
+    // re-applied from config later in SerialConsole::on_module_loaded().
+    this->streams = new StreamOutputPool();
+    this->serial  = new(AHB) SerialConsole(P2_8, P2_9, 115200);
+    this->streams->append_stream(this->serial);
+
+    this->factory_set = new FACTORY_SET();
     // read Factory setting data from eeprom
     this->read_Factory_data();
     // read Factory settings data from sd
@@ -109,41 +134,45 @@ Kernel::Kernel()
 
 
     // Config next, but does not load cache yet
-    this->config = new(AHB) Config();
+    this->config = new Config();
 
     // Pre-load the config cache
     this->config->config_cache_load();
-
-    this->streams = new(AHB) StreamOutputPool();
 
     this->current_path   = "/";
 
     NVIC_SetPriorityGrouping(0);
     //some boards don't have leds.. TOO BAD!
-    this->use_leds = !this->config->value( disable_leds_checksum )->by_default(false)->as_bool();
+    this->use_leds = !this->config->value( disable_leds_checksum )->as_bool(false);
 
 #ifdef CNC
-    this->grbl_mode = this->config->value( grbl_mode_checksum )->by_default(true)->as_bool();
+    this->grbl_mode = this->config->value( grbl_mode_checksum )->as_bool(true);
 #else
-    this->grbl_mode = this->config->value( grbl_mode_checksum )->by_default(false)->as_bool();
+    this->grbl_mode = this->config->value( grbl_mode_checksum )->as_bool(false);
 #endif
 
-    this->enable_feed_hold = this->config->value( feed_hold_enable_checksum )->by_default(this->grbl_mode)->as_bool();
+    this->enable_feed_hold = this->config->value( feed_hold_enable_checksum )->as_bool(this->grbl_mode);
 
     // we expect ok per line now not per G code, setting this to false will return to the old (incorrect) way of ok per G code
-    this->ok_per_line = this->config->value( ok_per_line_checksum )->by_default(true)->as_bool();
+    this->ok_per_line = this->config->value( ok_per_line_checksum )->as_bool(true);
 
     // Option to disable serial console. Useful primarily if MRI is enabled and
     // you want to keep the serial port dedicated for such traffic. Or you want
     // to save some memory?
-    this->disable_serial_console = this->config->value( disable_serial_console_checksum )->by_default(false)->as_bool();
+    this->disable_serial_console = this->config->value( disable_serial_console_checksum )->as_bool(false);
     
     // Check if we should break into the debugger on halt
-    this->halt_on_error_debug = this->config->value( halt_on_error_debug_checksum )->by_default(false)->as_bool();
+    this->halt_on_error_debug = this->config->value( halt_on_error_debug_checksum )->as_bool(false);
 
-    if (!this->disable_serial_console) {
-        int uart_baud = this->config->value(uart_checksum, baud_rate_setting_checksum)->by_default(115200)->as_number();
-        this->serial = new(AHB) SerialConsole(P2_8, P2_9, uart_baud);
+    this->protocol_from_name(this->config->value( protocol_checksum )->as_string("smoothie"), communication_protocol);
+
+    if (this->disable_serial_console) {
+        this->streams->remove_stream(this->serial);
+        delete this->serial;
+        this->serial = nullptr;
+    } else {
+        // add_module() runs SerialConsole::on_module_loaded() which re-reads
+        // uart.baud_rate from config and applies it to the hardware.
         this->add_module( this->serial );
     }
 
@@ -151,7 +180,7 @@ Kernel::Kernel()
     add_module( this->slow_ticker = new(AHB) SlowTicker());
 
     this->step_ticker = new(AHB) StepTicker();
-    this->adc = new(AHB) Adc();
+    this->adc = new Adc();
 
     // TODO : These should go into platform-specific files
     // LPC17xx-specific
@@ -180,27 +209,42 @@ Kernel::Kernel()
     }
 
     // Configure the step ticker
-    this->base_stepping_frequency = this->config->value(base_stepping_frequency_checksum)->by_default(100000)->as_number();
-    float microseconds_per_step_pulse = this->config->value(microseconds_per_step_pulse_checksum)->by_default(1)->as_number();
+    this->base_stepping_frequency = this->config->value(base_stepping_frequency_checksum)->as_number(100000);
+    float microseconds_per_step_pulse = this->config->value(microseconds_per_step_pulse_checksum)->as_number(1);
 
     // Configure the step ticker
     this->step_ticker->set_frequency( this->base_stepping_frequency );
     this->step_ticker->set_unstep_time( microseconds_per_step_pulse );
 
-    this->eeprom_data = new(AHB) EEPROM_data();
+    this->eeprom_data = new EEPROM_data();
     // read eeprom data
     this->read_eeprom_data();
     // check eeprom data
     this->check_eeprom_data();
 
     // Core modules
-    this->add_module( this->simpleshell    = new(AHB) SimpleShell()   );
-    this->add_module( this->conveyor       = new(AHB) Conveyor()      );
-    this->add_module( this->gcode_dispatch = new(AHB) GcodeDispatch() );
-    this->add_module( this->robot          = new(AHB) Robot()         );
+    this->add_module( this->simpleshell    = new SimpleShell()   );
+    this->add_module( this->conveyor       = new(AHB) Conveyor()      ); // must stay in AHB: shares volatile queue indices with step ISR
+    this->add_module( this->gcode_dispatch = new GcodeDispatch() );
+    this->add_module( this->robot          = new Robot()         );
 
-    this->planner = new(AHB) Planner();
-    this->configurator = new(AHB) Configurator();
+    this->planner = new Planner();
+    this->configurator = new Configurator();
+}
+
+void Kernel::protocol_from_name(const std::string& name, ProtocolMode& protocol)
+{
+    if (name == "smoothie") {
+        protocol = PROTOCOL_SMOOTHIE;
+        return;
+    }
+
+    if (name == "makera") {
+        protocol = PROTOCOL_MAKERA;
+        return;
+    }
+    protocol = PROTOCOL_MAKERA;
+    return;
 }
 
 // get current state
@@ -372,11 +416,14 @@ std::string Kernel::get_query_string()
 	
     // get power temperature
     ok = PublicData::get_value( temperature_control_checksum, current_temperature_checksum, power_temperature_checksum, &temp );
-	if (ok) {
-        n= snprintf(buf, sizeof(buf), ",%1.1f", temp.current_temperature);
-        if(n > sizeof(buf)) n= sizeof(buf);
-        str.append(buf, n);
-	}
+	if (!ok) temp.current_temperature = 0;
+    n= snprintf(buf, sizeof(buf), ",%1.1f", temp.current_temperature);
+    if(n > sizeof(buf)) n= sizeof(buf);
+    str.append(buf, n);
+	// get extout_mode 
+	n= snprintf(buf, sizeof(buf), ",%d,%d,%d", 0, 0, int(this->get_extout_mode()));
+    if(n > sizeof(buf)) n= sizeof(buf);
+    str.append(buf, n);
 
     // current tool number and tool offset
     struct tool_status tool;
@@ -528,21 +575,18 @@ std::string Kernel::get_diagnose_string()
         if(n > sizeof(buf)) n = sizeof(buf);
         str.append(buf, n);
     }
-    if(CARVERA_AIR == THEKERNEL->factory_set->MachineModel)
-	{	
-    	bool ok2 = false;
-    	bool ok3 = false;
-    	struct pad_switch pad2,pad3;
-	    ok = PublicData::get_value(switch_checksum, get_checksum("beep"), 0, &pad);
-	    ok2 = PublicData::get_value(switch_checksum, get_checksum("extendin"), 0, &pad2);
-	   	ok3 = PublicData::get_value(switch_checksum, get_checksum("extendout"), 0, &pad3);
-	    if (ok&&ok2&&ok3) {
-	        n = snprintf(buf, sizeof(buf), ",%d,%d,%d,%d", (int)pad.state, (int)pad2.state, (int)pad3.state, (int)pad3.value);
-	        if(n > sizeof(buf)) n = sizeof(buf);
-	        str.append(buf, n);
-	    }
-	    
-	}
+    bool ok2 = false;
+	bool ok3 = false;
+	struct pad_switch pad2,pad3;
+    ok = PublicData::get_value(switch_checksum, get_checksum("beep"), 0, &pad);
+    ok2 = PublicData::get_value(switch_checksum, get_checksum("extendin"), 0, &pad2);
+   	ok3 = PublicData::get_value(switch_checksum, get_checksum("extendout"), 0, &pad3);
+    if(!ok) pad.state = false;
+    if(!ok2) pad2.state = false;
+    if(!ok3) { pad3.state = false; pad3.value = 0; }
+    n = snprintf(buf, sizeof(buf), ",%d,%d,%d,%d", (int)pad.state, (int)pad2.state, (int)pad3.state, (int)pad3.value);
+    if(n > sizeof(buf)) n = sizeof(buf);
+    str.append(buf, n);
     ok = PublicData::get_value(switch_checksum, get_checksum("toolsensor"), 0, &pad);
     if (ok) {
         n = snprintf(buf, sizeof(buf), "|T:%d", (int)pad.state);
@@ -606,6 +650,14 @@ std::string Kernel::get_diagnose_string()
         if(n > sizeof(buf)) n = sizeof(buf);
         str.append(buf, n);
     }
+    // get wifi rssi
+    signed char rssidata;
+    ok = PublicData::get_value(wlan_checksum, get_rssi_checksum, 0, &rssidata);
+    if (ok) {
+        n = snprintf(buf, sizeof(buf), "|RSSI:%d", rssidata);
+        if(n > sizeof(buf)) n = sizeof(buf);
+        str.append(buf, n);
+    }
 
     str.append("}\n");
     return str;
@@ -640,16 +692,26 @@ void Kernel::call_event(_EVENT_ENUM id_event, void * argument)
     }
 
     // send to all registered modules
-    for (auto m : hooks[id_event]) {
-        (m->*kernel_callback_functions[id_event])(argument);
+    if (id_event == ON_IDLE && debug_flags.cpu_load) {
+        uint32_t t0 = us_ticker_read();
+        for (auto m : hooks[id_event]) {
+            (m->*kernel_callback_functions[id_event])(argument);
+        }
+        slow_ticker->idle_us_accum += us_ticker_read() - t0;
+    } else {
+        for (auto m : hooks[id_event]) {
+            (m->*kernel_callback_functions[id_event])(argument);
+        }
     }
 
     if(id_event == ON_HALT) {
         // If we just entered a halt state AND the debug flag is enabled, break into the debugger.
         // This happens after ON_HALT handlers have run, presumably stopping motion planners etc.
+#if MRI_ENABLE
         if (this->halted && this->halt_on_error_debug) {
              __debugbreak(); // Enter debugger
         }
+#endif
 
         if(!this->halted || !was_idle) {
             // if we were running and this is a HALT
@@ -738,7 +800,7 @@ void Kernel::write_eeprom_data()
 		}
 	}
 	if (result != 0) {
-		this->streams->printf("ALARM: EEPROM data write error:%d\n",pagenum);
+		this->streams->printf("ERROR: EEPROM data write error:%d\n",pagenum);
 	} else {
 //		this->streams->printf("EEPROM data write finished.\n");
 	}
@@ -776,7 +838,7 @@ void Kernel::erase_eeprom_data()
 		}
 	}
 	if (result != 0) {
-		this->streams->printf("ALARM: EEPROM data erase error.\n");
+		this->streams->printf("ERROR: EEPROM data erase error.\n");
 	} else {
 		this->streams->printf("EEPROM data erase finished.\n");
 	}
@@ -920,7 +982,7 @@ void Kernel::write_Factory_data()
 		}
 	}
 	if (result != 0) {
-		this->streams->printf("ALARM: FACTORY setting data write error:%d\n",pagenum);
+		this->streams->printf("ERROR: FACTORY setting data write error:%d\n",pagenum);
 	} 
 }
 
@@ -956,7 +1018,7 @@ void Kernel::erase_Factory_data()
 		}
 	}
 	if (result != 0) {
-		this->streams->printf("ALARM: FACTORY setting data erase error.\n");
+		this->streams->printf("ERROR: FACTORY setting data erase error.\n");
 	}
 }
 
@@ -969,12 +1031,12 @@ void Kernel::erase_Factory_data()
 void Kernel::read_Factroy_SD()
 {
 	string file_name = "/sd/factory.ini";
-	FILE *lp = fopen(file_name.c_str(), "r");
+	FILE *lp = fwfs::fopen(file_name.c_str(), "r");
 	bool bneedwrite = false;
     int ln= 1;
     if(lp) {
         // For each line
-    	while(!feof(lp)) {
+    	while(!fwfs::feof(lp)) {
         	string line;
         	if(Factroy_readLine(line, ln++, lp)) 
         	{ 
@@ -1042,26 +1104,26 @@ void Kernel::read_Factroy_SD()
     		write_Factory_data();	
     	}
     	
-    	fclose(lp);
-    	remove("/sd/factory.ini");
+    	fwfs::fclose(lp);
+    	fwfs::remove("/sd/factory.ini");
     	system_reset(false);
     }
 }
 bool Kernel::Factroy_readLine(string& line, int lineno, FILE *fp)
 {
     char buf[132];
-    char *l= fgets(buf, sizeof(buf)-1, fp);
+    char *l= fwfs::fgets(buf, sizeof(buf)-1, fp);
     if(l != NULL) {
         if(buf[strlen(l)-1] != '\n') {
             // truncate long lines
             if(lineno != 0) {
                 // report if it is not truncating a comment
                 if(strchr(buf, '#') == NULL)
-                    printf("Truncated long line %d in: %s\n", lineno, "Factory file");
+                    THEKERNEL->streams->printf("Truncated long line %d in: %s\n", lineno, "Factory file");
             }
             // read until the next \n or eof
             int c;
-            while((c=fgetc(fp)) != '\n' && c != EOF) /* discard */;
+            while((c=fwfs::fgetc(fp)) != '\n' && c != EOF) /* discard */;
         }
         line.assign(buf);
         return true;
@@ -1084,13 +1146,13 @@ bool Kernel::process_line(const string &buffer, uint16_t *check_sum, unsigned ch
     
     size_t end_key = buffer.find_first_of(" \t", begin_key);
     if(end_key == string::npos) {
-        printf("ERROR: factory file line %s is invalid, no key value pair found\r\n", buffer.c_str());
+        THEKERNEL->streams->printf("ERROR: factory file line %s is invalid, no key value pair found\r\n", buffer.c_str());
         return false;
     }
 
     size_t begin_value = buffer.find_first_not_of(" \t", end_key);
     if(begin_value == string::npos || buffer[begin_value] == '#') {
-        printf("ERROR: factory file line %s has no value\r\n", buffer.c_str());
+        THEKERNEL->streams->printf("ERROR: factory file line %s has no value\r\n", buffer.c_str());
         return false;
     }
     
@@ -1227,4 +1289,3 @@ void Kernel::set_tool_waiting(bool f) {
 		}
 	}
 }
-

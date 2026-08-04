@@ -4,6 +4,8 @@
  */
 #include "mbed.h"
 #include "adc.h"
+#include "libs/Kernel.h"
+#include "libs/StreamOutputPool.h"
 
 using namespace mbed;
 
@@ -40,9 +42,9 @@ ADC::ADC(int sample_rate, int cclk_div)
             LPC_SC->PCLKSEL0 |= 0x3 << 24;
             break;
         default:
-            printf("ADC Warning: ADC CCLK clock divider must be 1, 2, 4 or 8. %u supplied.\n",
+            THEKERNEL->streams->printf("ADC Warning: ADC CCLK clock divider must be 1, 2, 4 or 8. %u supplied.\n",
                 cclk_div);
-            printf("Defaulting to 1.\n");
+            THEKERNEL->streams->printf("Defaulting to 1.\n");
             LPC_SC->PCLKSEL0 |= 0x1 << 24;
             break;
     }
@@ -50,20 +52,20 @@ ADC::ADC(int sample_rate, int cclk_div)
     clock_div=pclk / adc_clk_freq;
 
     if (clock_div > 0xFF) {
-        printf("ADC Warning: Clock division is %u which is above 255 limit. Re-Setting at limit.\n", clock_div);
+        THEKERNEL->streams->printf("ADC Warning: Clock division is %u which is above 255 limit. Re-Setting at limit.\n", clock_div);
         clock_div=0xFF;
     }
     if (clock_div == 0) {
-        printf("ADC Warning: Clock division is 0. Re-Setting to 1.\n");
+        THEKERNEL->streams->printf("ADC Warning: Clock division is 0. Re-Setting to 1.\n");
         clock_div=1;
     }
 
     _adc_clk_freq=pclk / clock_div;
     if (_adc_clk_freq > MAX_ADC_CLOCK) {
-        printf("ADC Warning: Actual ADC sample rate of %u which is above %u limit\n",
+        THEKERNEL->streams->printf("ADC Warning: Actual ADC sample rate of %u which is above %u limit\n",
             _adc_clk_freq / CLKS_PER_SAMPLE, MAX_ADC_CLOCK / CLKS_PER_SAMPLE);
         while ((pclk / max_div) > MAX_ADC_CLOCK) max_div++;
-        printf("ADC Warning: Maximum recommended sample rate is %u\n", (pclk / max_div) / CLKS_PER_SAMPLE);
+        THEKERNEL->streams->printf("ADC Warning: Maximum recommended sample rate is %u\n", (pclk / max_div) / CLKS_PER_SAMPLE);
     }
 
     LPC_ADC->ADCR =

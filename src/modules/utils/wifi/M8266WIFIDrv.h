@@ -1,15 +1,15 @@
-/********************************************************************
- * M8266WIFIDrv.h                                                   *
- * .Description                                                     *
- *     Header file of M8266WIFI Dirver Layer                        *
- * .Copyright(c) Anylinkin Technology 2015.5-                       *
- *     IoT@anylinkin.com                                            *
- *     http://www.anylinkin.com                                     *
- *     http://anylinkin.taobao.com                                  *
- * .Author:  IOT(iot@anylinkin.com, 1521340710@qq.com)              *
- * .History                                                         *
- *     - 20190608 V1.1.8-Z                                          *
- ********************************************************************/
+/***********************************************************************************
+ * M8266WIFIDrv.h                                                                  *
+ * .Description                                                                    *
+ *     Header file of M8266WIFI Dirver Layer                                       *
+ * .Copyright(c) Anylinkin Technology 2015.5-                                      *
+ *     IoT@anylinkin.com                                                           *
+ *     http://www.anylinkin.com                                                    *
+ *     http://anylinkin.taobao.com                                                 *
+ * .Author: IOT(iot@anylinkin.com, 1521340710@qq.com)                              *
+ * .History                                                                        *
+ *     - 20190808 V1.2.0-6                                                         *
+ ***********************************************************************************/
 #ifndef _M8266WIFI_DRV_H_
 #define _M8266WIFI_DRV_H_
 
@@ -18,25 +18,33 @@
 
 //// TI's MSP430x1xx, MSP430x552x, TMS320F28335, which use usigned long for 32-bit
 //// C8051 Serials, which use usigned long for 32-bit
-//typedef unsigned char         uint8_t;
-//typedef unsigned int          uint16_t;
-//typedef unsigned long         uint32_t;
-//typedef   signed char         sint8_t;
+//typedef unsigned char       uint8_t;
+//typedef unsigned int        uint16_t;
+//typedef unsigned long       uint32_t;
+//typedef   signed char       sint8_t;
+//typedef   signed int        sint16_t;
+//typedef   signed long       sint32_t;
 
 //Others which use unsigned int for 32-bit
 typedef unsigned char         uint8_t;
 typedef unsigned short int    uint16_t;
-// typedef unsigned int          uint32_t;
-typedef   signed char         sint8_t;
+//typedef unsigned int          uint32_t;
+typedef signed char           sint8_t;
+typedef signed short int      sint16_t;
+typedef signed int            sint32_t;
 
 typedef uint32_t              u32;
 typedef uint16_t              u16;
 typedef uint8_t               u8;
 typedef sint8_t               s8;
+typedef sint16_t              s16;
+typedef sint32_t              s32;
 
 #ifdef __cplusplus
 extern "C"{
 #endif
+
+u8 M8266WIFI_SPI_Module_OTA(u8 timeout_in_s, u16* status);
 ////////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////////
 //   1. APIs releated to SPI Host I/F Function Configuration and Performance Test //
@@ -51,7 +59,6 @@ extern "C"{
  * Description                                                                     *
  *  1.To specify the SPI used by providing the base address of SPI used            *
  *  2.Called when Initial M8266WIFI Module before perform SPI read/write           *
- *  For more details, please refer to the API document per this function           *
  * Parameter(s):                                                                   *
  *  1. spi_base_addr: the base address of used                                     *
  *     you may use M8266WIFI_INTERFACE_SPI defined in brd_cfg.h as example         *
@@ -73,7 +80,6 @@ extern "C"{
  *     is stablly OK under the clock and interconnection                           *
  *  2. Called during the initialization of M8266WIFI Module                        *
  *     DONOT CALL IT AFTER MODULE HAS STARTED THE NORMAL OPERATION                 *
- *  For more details, please refer to the API document per this function           *
  * Parameter(s):                                                                   *
  *  1. byte:  a pointer to the byte read out during test                           *
  *     - normally the data should be 0x41 during test.                             *
@@ -86,7 +92,7 @@ extern "C"{
  *   1. success                                                                    *
  *   0. failure                                                                    *
  ***********************************************************************************/
-u8 M8266WIFI_SPI_Interface_Communication_OK(u8* byte);	
+ u8 M8266WIFI_SPI_Interface_Communication_OK(u8* byte);
 
 /***********************************************************************************
  * M8266WIFI_SPI_Interface_Communication_Stress_Test                               *
@@ -98,7 +104,6 @@ u8 M8266WIFI_SPI_Interface_Communication_OK(u8* byte);
  *     DONOT CALL IT AFTER MODULE HAS STARTED THE NORMAL OPERATION                 *
  *  3. You may call it in your debug code for speed stablility test                *
  *     during your stress performance test to your produc                          *
- *  For more detail, please refer to the API document per this function            *
  * Parameter(s):                                                                   *
  *  1. max_times:  the max write-read times used for the stress test               *
  *     - And the test data to be written will be nimber byte of data               *
@@ -126,32 +131,36 @@ u8 M8266WIFI_SPI_Interface_Communication_OK(u8* byte);
 //                                                                                //
 //       - M8266WIFI_SPI_STA_ScanSignals                                 4.2.11   //
 //       - M8266WIFI_SPI_STA_Fetch_Last_Scanned_Signals                  4.2.12   //
-//       - M8266WIFI_SPI_STA_ScanSignalsBySsid                           4.2.13   //
-//       - M8266WIFI_SPI_STA_ScanSignalsByBssid                          4.2.14   //
+//       - M8266WIFI_SPI_STA_ScanSignals_Ex                              4.2.13   //
+//       - M8266WIFI_SPI_STA_Fetch_Last_Scanned_Signals_Ex               4.2.14   //
+//       - M8266WIFI_SPI_STA_ScanSignalsBySsid                           4.2.15   //
+//       - M8266WIFI_SPI_STA_ScanSignalsByBssid                          4.2.16   //
 //                                                                                //
-//       - M8266WIFI_SPI_Set_STA_Hostname                                4.2.15   //
-//       - M8266WIFI_SPI_Get_STA_Hostname                                4.2.16   //
-//       - M8266WIFI_SPI_Query_STA_Param                                 4.2.17   //
+//       - M8266WIFI_SPI_Get_STA_Hostname                                4.2.17   //
+//       - M8266WIFI_SPI_Set_STA_Hostname                                4.2.18   //
+//       - M8266WIFI_SPI_Query_STA_Param                                 4.2.19   //
 //                                                                                //
-//       - M8266WIFI_SPI_Query_STA_MaxApsStored                          4.2.18   //
-//       - M8266WIFI_SPI_Config_STA_MaxApsStored                         4.2.19   //
-//       - M8266WIFI_SPI_Query_STA_ApsStorage                            4.2.20   //
-//       - M8266WIFI_SPI_Query_STA_AutoConnectParams                     4.2.21   //
-//       - M8266WIFI_SPI_Config_STA_AutoConnect_Mode                     4.2.22   //
-//       - M8266WIFI_SPI_Config_STA_AutoConnect_StopCycles               4.2.23   //
-//       - M8266WIFI_SPI_Config_STA_AutoConnect_IntervalPtimes           4.2.24   //
-//       - M8266WIFI_SPI_Config_STA_AutoConnect_IntervalDuration         4.2.25   //
+//       - M8266WIFI_SPI_Query_STA_MaxApsStored                          4.2.20   //
+//       - M8266WIFI_SPI_Config_STA_MaxApsStored                         4.2.21   //
+//       - M8266WIFI_SPI_Query_STA_ApsStorage                            4.2.22   //
+//       - M8266WIFI_SPI_Query_STA_AutoConnectParams                     4.2.23   //
+//       - M8266WIFI_SPI_Config_STA_AutoConnect_Mode                     4.2.24   //
+//       - M8266WIFI_SPI_Config_STA_AutoConnect_StopCycles               4.2.25   //
+//       - M8266WIFI_SPI_Config_STA_AutoConnect_IntervalPtimes           4.2.26   //
+//       - M8266WIFI_SPI_Config_STA_AutoConnect_IntervalDuration         4.2.27   //
+//       - M8266WIFI_SPI_Module_Query_STA_Connection_KeepAlive           4.2.28   //
+//       - M8266WIFI_SPI_Module_Config_STA_Connection_KeepAlive          4.2.29   //
 //                                                                                //
-//       - M8266WIFI_SPI_Config_AP                                       4.2.26   //
-//       - M8266WIFI_SPI_Query_AP_Param                                  4.2.27   //
-//       - M8266WIFI_SPI_Config_AP_Param                                 4.2.28   //
-//       - M8266WIFI_SPI_AP_List_STAs_Info                               4.2.29   //
-//       - M8266WIFI_SPI_AP_Permit_Block_A_STA                           4.2.30   //
-//       - M8266WIFI_SPI_AP_Config_PermitBlock_List                      4.2.31   //
-//       - M8266WIFI_SPI_AP_Query_PermitBlock_List                       4.2.32   //
+//       - M8266WIFI_SPI_Config_AP                                       4.2.30   //
+//       - M8266WIFI_SPI_Query_AP_Param                                  4.2.31   //
+//       - M8266WIFI_SPI_Config_AP_Param                                 4.2.32   //
+//       - M8266WIFI_SPI_AP_List_STAs_Info                               4.2.33   //
+//       - M8266WIFI_SPI_AP_Permit_Block_A_STA                           4.2.34   //
+//       - M8266WIFI_SPI_AP_Config_PermitBlock_List                      4.2.35   //
+//       - M8266WIFI_SPI_AP_Query_PermitBlock_List                       4.2.36   //
 //                                                                                //
-//       - M8266WIFI_SPI_OptSel_Local_Ap_Channel                         4.2.33   //
-//       - M8266WIFI_SPI_Recommend_Optimal_channel_for_target_Ap         4.2.34   //
+//       - M8266WIFI_SPI_OptSel_Local_Ap_Channel                         4.2.37   //
+//       - M8266WIFI_SPI_Recommend_Optimal_channel_for_target_Ap         4.2.38   //
 ////////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////////
 
@@ -159,12 +168,11 @@ u8 M8266WIFI_SPI_Interface_Communication_OK(u8* byte);
  * M8266WIFI_SPI_Get_Opmode                                                        *
  * .Description:                                                                   *
  *     To get the op_mode(STA, AP, or STA+AP) of M8266WIFI module via SPI          *
- *     For more details, please refer to the API document per this function        *
  * .Parameter(s)                                                                   *
- *     1. op_mode : pointer to return the op_mode returned                         *
- *                  =1,  STA mode                                                  *
- *                  =2,  AP mode                                                   *
- *                  =3,  STA+AP mode                                               *
+ *     1. op_mode : pointer to the op_mode returned                                *
+ *        =1, STA mode                                                             *
+ *        =2, AP mode                                                              *
+ *        =3, STA+AP mode                                                          *
  *     2. status  : pointer to return errcode(LSB) and status(MSB) upon failures   *
  *                  Use NULL if you don't expect it returned                       *
  * .Return value:                                                                  *
@@ -177,13 +185,12 @@ u8 M8266WIFI_SPI_Interface_Communication_OK(u8* byte);
  * M8266WIFI_SPI_Set_Opmode                                                        *
  * .Description:                                                                   *
  *     To set op_mode(STA, AP, or STA+AP) of M8266WIFI module via SPI              *
- *     For more details, please refer to the API document per this function        *
  * .Parameter(s)                                                                   *
  *     1. op_mode : the op_mode to set                                             *
- *                  =1,      set to STA mode                                       *
- *                  =2,      set to AP mode                                        *
- *                  =3,      set to STA+AP mode                                    *
- *                  =others, set to STA+AP mode                                    *
+ *        =1, STA mode                                                             *
+ *        =2, AP mode                                                              *
+ *        =3, STA+AP mode                                                          *
+ *        =others, set to STA+AP mode                                              *
  *     2. saved   : to save into flash the opmode or not                           *
  *        =0,       not saved, i.e. after reboot setting will restore to previous  *
  *        =others,  saved, i.e. after reboot, the saved setting will be loaded     *
@@ -202,7 +209,6 @@ u8 M8266WIFI_SPI_Interface_Communication_OK(u8* byte);
  * M8266WIFI_SPI_STA_Connect_Ap                                                    *
  * .Description:                                                                   *
  *     To connect the M8266WIFI STA to an AP or router via SPI                     *
- *     For more details, please refer to the API document per this function        *
  * .Parameter(s)                                                                   *
  *     1. ssid    : the ssid of AP connected to. Max len = 32 Bytes                *
  *                  use NULL if use last connected ssid(without reboot)            *
@@ -218,11 +224,11 @@ u8 M8266WIFI_SPI_Interface_Communication_OK(u8* byte);
  *     5. status  : pointer to return errcode(LSB) and status(MSB) upon failures   *
  *                  Use NULL if you don't expect it returned                       *
  *                  errcode(LSB)                                                   *
- *                    = 0x32, if connect timeout                                   *
- *                    = 0x4A, if SSID not found or not present                     *
- *                    = 0x4B, if SSID found but authentication failed,wrong password*
- *                    = 0x4C, if module in AP Only mode                            *
- *                    = 0x4D, if failed due to other reasons                       *
+ *                   = 0x32, if connect timeout                                    *
+ *                   = 0x4A, if SSID not found or not present                      *
+ *                   = 0x4B, if SSID found but password wrong                      *
+ *                   = 0x4C, if module in AP Only mode                             *
+ *                   = 0x4D, if failed due to other reasons                        *
  * .Return value:                                                                  *
  *     =1, success                                                                 *
  *     =0, has error(s)                                                            *
@@ -233,10 +239,9 @@ u8 M8266WIFI_SPI_Interface_Communication_OK(u8* byte);
  * M8266WIFI_SPI_STA_DisConnect_Ap                                                 *
  * .Description:                                                                   *
  *     To DisConnect the M8266WIFI STA from an AP or router via SPI                *
- *     For more details, please refer to the API document per this function        *
  * .Parameter(s)                                                                   *
  *     1. status  : pointer to return errcode(LSB) and status(MSB) upon failures   *
- *                  Use NULL if you don't expect it returned                       *
+ *                        Use NULL if you don't expect it returned                 *
  * .Return value:                                                                  *
  *     =1, success                                                                 *
  *     =0, has error(s)                                                            *
@@ -247,7 +252,6 @@ u8 M8266WIFI_SPI_Interface_Communication_OK(u8* byte);
  * M8266WIFI_SPI_Config_STA_StaticIpAddr                                           *
  * .Description:                                                                   *
  *     To config ip addresses of the module STA via SPI                            *
- *     For more details, please refer to the API document per this function        *
  * .Parameter(s)                                                                   *
  *     1. ip_addr : the ip address to set                                          *
  *                  - SHOULD be string like "192.168.1.103"                        *
@@ -259,10 +263,9 @@ u8 M8266WIFI_SPI_Interface_Communication_OK(u8* byte);
  *                  - SHOULD be string like "255.255.255.0"                        *
  *                  - USE NULL if don't expect to set it                           *
  *     4  saved                                                                    *
- *             = 0,      config not saved, only this time valid                    *
- *             = others, config be saved, and valid upon next boot                 *
- *               if saved,  module bootup with dhcp diabled using stored           *
- *                          ip address                                             *
+ *        = 0,      config not saved, only this time valid                         *
+ *        = others, config be saved, and valid upon next boot                      *
+ *        if saved,  module bootup with dhcp diabled using stored ip address       *
  *                  PLEASE DO NOT CALL IT EACH TIME OF BOOTUP WITH SAVED != 0      *
  *                  OR, THE FLASH ON MODULE MIGHT GO TO FAILURE DUE TO LIFT CYCLE  *
  *                  OF WRITE                                                       *
@@ -275,6 +278,7 @@ u8 M8266WIFI_SPI_Interface_Communication_OK(u8* byte);
  *     Call this API will disable the dhcpc                                        *
  ***********************************************************************************/
  u8 M8266WIFI_SPI_Config_STA_StaticIpAddr(char* ip_addr, char* gw_addr, char* netmask, u8 saved, u16* status);
+
  //below macro used to keep compatible with previous API
  #define M8266WIFI_SPI_Config_STA_Static_IP_Addr(ip_addr, gw_addr, netmask, status)  M8266WIFI_SPI_Config_STA_StaticIpAddr(ip_addr,gw_addr,netmask,0,status)
 
@@ -282,11 +286,10 @@ u8 M8266WIFI_SPI_Interface_Communication_OK(u8* byte);
  * M8266WIFI_SPI_Query_STA_Dhcpc                                                   *
  * .Description:                                                                   *
  *     To query whether the dhcpc enabled or not of the module STA via SPI         *
- *     For more details, please refer to the API document per this function        *
  * .Parameter(s)                                                                   *
  *     1. enable: pointer to return whether diabled or not                         *
- *             = 0, dhcpc disabled                                                 *
- *             = 1, dhcpc enabled                                                  *
+ *                = 0, dhcpc disabled                                              *
+ *                = 1, dhcpc enabled                                               *
  *     2. status  : pointer to return errcode(LSB) and status(MSB) upon failures   *
  *                  Use NULL if you don't expect it returned                       *
  * .Return value:                                                                  *
@@ -299,7 +302,6 @@ u8 M8266WIFI_SPI_Query_STA_Dhcpc(u8* enabled, u16* status);
  * M8266WIFI_SPI_Enable_STA_Dhcpc                                                  *
  * .Description:                                                                   *
  *     To enable or diable the dhcpc of the module STA via SPI                     *
- *     For more details, please refer to the API document per this function        *
  * .Parameter(s)                                                                   *
  *     1. enable                                                                   *
  *             = 0,      disable the dhcpc, and module uses static ip address      *
@@ -328,7 +330,6 @@ u8 M8266WIFI_SPI_Query_STA_Dhcpc(u8* enabled, u16* status);
  * M8266WIFI_SPI_Get_STA_Connection_Status                                         *
  * .Description:                                                                   *
  *     To get the connecting status of M8266WIFI STA to AP or routers via SPI      *
- *     For more details, please refer to the API document per this function        *
  * .Parameter(s)                                                                   *
  *     1. connection_status :  the connection status returned                      *
  *          =0, if station is in idle                                              *
@@ -344,21 +345,20 @@ u8 M8266WIFI_SPI_Query_STA_Dhcpc(u8* enabled, u16* status);
  *     =1, success                                                                 *
  *     =0, has error(s)                                                            *
  ***********************************************************************************/
-u8 M8266WIFI_SPI_Get_STA_Connection_Status(u8* connection_status, u16* status);
-typedef enum{
-     STA_AP_STATUS_IDLE       = 0,
-     STA_AP_STATUS_CONNECTING = 1,
-     STA_AP_STATUS_PASSWORD   = 2,
-     STA_AP_STATUS_FOUND      = 3,
-     STA_AP_STATUS_FAILED     = 4,
-     STA_AP_STATUS_CONNECTED  = 5,
-}STA_AP_STATUS;
+ u8 M8266WIFI_SPI_Get_STA_Connection_Status(u8* connection_status, u16* status);
+ typedef enum{
+        STA_CONNECTION_STATUS_IDLE            = 0,
+        STA_CONNECTION_STATUS_CONNECTING      = 1,
+        STA_CONNECTION_STATUS_PASSWORD        = 2,
+        STA_CONNECTION_STATUS_FOUND           = 3,
+        STA_CONNECTION_STATUS_FAILED          = 4,
+        STA_CONNECTION_STATUS_CONNECTED       = 5,
+ }STA_AP_STATUS;
 
 /***********************************************************************************
  * M8266WIFI_SPI_Get_STA_IP_Addr                                                   *
  * .Description:                                                                   *
  *     To get ip address of M8266WIFI STA via SPI                                  *
- *     For more details, please refer to the API document per this function        *
  * .Parameter(s)                                                                   *
  *     1. sta_ip :  the sta ip address returned if successful                      *
  *                  "0.0.0.0" returned if in AP-only mode or ip not achieved       *
@@ -368,13 +368,12 @@ typedef enum{
  *     =1, success                                                                 *
  *     =0, has error(s)                                                            *
  ***********************************************************************************/
-u8 M8266WIFI_SPI_Get_STA_IP_Addr(char* sta_ip , u16* status);
+ u8 M8266WIFI_SPI_Get_STA_IP_Addr(char* sta_ip , u16* status);
 
 /***********************************************************************************
  * M8266WIFI_SPI_STA_Query_Current_SSID_And_RSSI                                   *
  * .Description:                                                                   *
  *     To get current AP info (SSID and RSSI) M8266WIFI STA connected to           *
- *     For more details, please refer to the API document per this function        *
  * .Parameter(s)                                                                   *
  *     1. ssid    : the current SSID returned which m8266wifi sta connected to     *
  *     2. rssi    : the rssi of current connected ssid. 31 if error                *
@@ -384,13 +383,12 @@ u8 M8266WIFI_SPI_Get_STA_IP_Addr(char* sta_ip , u16* status);
  *     =1, success                                                                 *
  *     =0, has error(s)                                                            *
  ***********************************************************************************/
-u8 M8266WIFI_SPI_STA_Query_Current_SSID_And_RSSI(char* ssid, s8* rssi, u16* status);
+ u8 M8266WIFI_SPI_STA_Query_Current_SSID_And_RSSI(u8 ssid[32], s8* rssi, u16* status);
 
 /***********************************************************************************
  * M8266WIFI_SPI_STA_ScanSignals                                                   *
  * .Description:                                                                   *
  *     To perform a scanning procedure, the scanned signals sorted by rssi         *
- *     For more details, please refer to the API document per this function        *
  * .Parameter(s)                                                                   *
  *     1. scanned_signals : the return signals after scanning                      *
  *     2. max_signals     : max counts of signals to scan                          *
@@ -429,22 +427,22 @@ u8 M8266WIFI_SPI_STA_Query_Current_SSID_And_RSSI(char* ssid, s8* rssi, u16* stat
  *     =0, has error(s)                                                            *
  ***********************************************************************************/
  struct ScannedSigs{
-        char ssid[32];
-        u8   channel;
-        u8   authmode;
-        s8   rssi;
+	char   ssid[32];
+	u8   channel;
+	u8   authmode;
+	s8   rssi;
  };
 
-u8 M8266WIFI_SPI_STA_ScanSignals(struct ScannedSigs scanned_signals[], u8 max_signals, u8 channel, u8 show_hidden, u8 passive_not_active_scan, u32 channel_scan_time_ms_max, u32 channel_scan_time_ms_min, u8 timeout_in_s, u16* status);
+ u8 M8266WIFI_SPI_STA_ScanSignals(struct ScannedSigs scanned_signals[], u8 max_signals, u8 channel, u8 show_hidden, u8 passive_not_active_scan, u32 channel_scan_time_ms_max, u32 channel_scan_time_ms_min, u8 timeout_in_s, u16* status);
+
 //Below macro is used to be compatible with code with lagacy APIs before 1.1.8-Q. Recommended to Use M8266WIFI_SPI_STA_ScanSignals other than M8266WIFI_SPI_STA_Scan_Signals.
-#define M8266WIFI_SPI_STA_Scan_Signals(scanned_signals, max_signals, channel, timeout_in_s, status) \
-          M8266WIFI_SPI_STA_ScanSignals(scanned_signals,  max_signals , channel, 0, 0, 0, 0, timeout_in_s, status)
+ #define M8266WIFI_SPI_STA_Scan_Signals(scanned_signals, max_signals, channel, timeout_in_s, status) \
+         M8266WIFI_SPI_STA_ScanSignals(scanned_signals,  max_signals , channel, 0, 0, 0, 0, timeout_in_s, status)
 
 /***********************************************************************************
  * M8266WIFI_SPI_STA_Fetch_Last_Scanned_Signals                                    *
  * .Description:                                                                   *
  *     To Fetch the signals last scanned if not fetched before                     *
- *     For more details, please refer to the API document per this function        *
  * .Parameter(s)                                                                   *
  *     1. scanned_signals : the return signals after scanning                      *
  *     2. max_signals     : max counts of signals to scan                          *
@@ -460,13 +458,96 @@ u8 M8266WIFI_SPI_STA_ScanSignals(struct ScannedSigs scanned_signals[], u8 max_si
  *     =0, has error(s)                                                            *
  ***********************************************************************************/
  u8 M8266WIFI_SPI_STA_Fetch_Last_Scanned_Signals(struct ScannedSigs scanned_signals[], u8 max_signals, u16* status);
+ 
+ 
+/***********************************************************************************
+ * M8266WIFI_SPI_STA_ScanSignals_Ex                                                *
+ * .Description:                                                                   *
+ *     To perform a scanning procedure, the scanned signals sorted by rssi         *
+ * .Parameter(s)                                                                   *
+ *     1. scanned_signals_ex : the return signals after scanning                   *
+ *     2. max_signals     : max counts of signals to scan                          *
+ *     3. channel         : channel to scan.                                       *
+ *                          - 0xFF, to scan all channles with default parameters   *
+ *                            i.e. with below parameters overrided                 *
+ *                             . show_hidden = 1, show hidden signals              *
+ *                             . passive_not_active_scan = 0, active scan          *
+ *                             . channel_scan_time_ms_max= 120                     *
+ *                             . channel_scan_time_ms_min=  60                     *
+ *                          - 0x00, to scan all channles with paramters specified  *
+ *                               by this function                                  *
+ *                          - others, to scan a channel with paramters specified   *
+ *                               by this function                                  *
+ *     4. show_hidden     : scan hidden signals or not                             *
+ *                          = 1,      scan hidden signals                          *
+ *                          = others, not scan hidden signals                      *
+ *     5. passive_not_active_scan                                                  *
+ *                        : passive or active scan                                 *
+ *                          = 1,      passive scan                                 *
+ *                          = others, active  scan                                 *
+ *     6. channel_scan_time_ms_max: max time in miliseconds for each channel scan  *
+ *                          - if =0, 120ms will be used                            *
+ *     7. channel_scan_time_ms_min: min time in miliseconds for each channel scan  *
+ *                                                                                 *
+ *     8. timeout_in_s    : time out in seconds                                    *
+ *     9. status  : pointer to return errcode(LSB) and status(MSB) upon failures   *
+ *                  Use NULL if you don't expect it returned                       *
+ *                  Upon failure with status!=NULL:                                *
+ *                  errcode(LSB)=0x3E, if start scan failed                        *
+ *                              =0x27, if last scan result has failure             *
+ *                              =0x28, if scan timeout                             *
+ *                              =0x29, other failure                               *
+ * .Return value:                                                                  *
+ *    !=0, signal numbers scanned succesfully                                      *
+ *     =0, has error(s)                                                            *
+ ***********************************************************************************/
+struct ScannedSigsEx{
+    u8  ssid_len; 
+    u8  ssid[32];
+    u8  channel;
+    u8  authmode;
+    s8  rssi;
+    u8  bssid[6];
+    u8  is_hidden;
+    u8  phy_bgn;
+    s16 freq_offset;
+    s16 freqcal_val;
+    u8  pairwise_cipher;
+    u8  group_cipher;
+    u8  wps;
+    u8  reserved;
+ };	
+ u8 M8266WIFI_SPI_STA_ScanSignals_Ex(struct ScannedSigsEx scanned_signals_ex[], u8 max_signals, u8 channel, u8 show_hidden, u8 passive_not_active_scan, u32 channel_scan_time_ms_max, u32 channel_scan_time_ms_min, u8 timeout_in_s, u16* status);
+
+//Below macro is used to be compatible with code with lagacy APIs before 1.1.8-Q. Recommended to Use M8266WIFI_SPI_STA_ScanSignals other than M8266WIFI_SPI_STA_Scan_Signals.
+ #define M8266WIFI_SPI_STA_Scan_Signals_Ex(scanned_signals_ex, max_signals, channel, timeout_in_s, status) \
+         M8266WIFI_SPI_STA_ScanSignals_Ex(scanned_signals_ex,  max_signals , channel, 0, 0, 0, 0, timeout_in_s, status)
+
+/***********************************************************************************
+ * M8266WIFI_SPI_STA_Fetch_Last_Scanned_Signals_Ex                                 *
+ * .Description:                                                                   *
+ *     To Fetch the signals last scanned if not fetched before                     *
+ * .Parameter(s)                                                                   *
+ *     1. scanned_signals : the return signals after scanning                      *
+ *     2. max_signals     : max counts of signals to scan                          *
+ *     3. status  : pointer to return errcode(LSB) and status(MSB) upon failures   *
+ *                  Use NULL if you don't expect it returned                       *
+ *                  Upon failure with status!=NULL:                                *
+ *                  errcode(LSB)=0x25, if not start scan before                    *
+ *                              =0x26, if currently module is scanning             *
+ *                              =0x27, if last scan result has failure             *
+ *                              =0x29, other failure                               *
+ * .Return value:                                                                  *
+ *    !=0, signal numbers fetched succesfully                                      *
+ *     =0, has error(s)                                                            *
+ ***********************************************************************************/
+ u8 M8266WIFI_SPI_STA_Fetch_Last_Scanned_Signals_Ex(struct ScannedSigsEx scanned_signals_ex[], u8 max_signals, u16* status);
 
 /***********************************************************************************
  * u8 M8266WIFI_SPI_STA_ScanSignalsBySsid                                          *
  * .Description:                                                                   *
  *     To fast scan the signal strength of s specified SSID,                       *
  *     with rssi returned to faclitates applications of distance measurement       *
- *     For more details, please refer to the API document per this function        *
  * .Parameter(s)                                                                   *
  *     1. target_ssid  :  ssid to scan, e.g. "Anylinkin"                           *
  *                        max length of ssid string supported is 27                *
@@ -482,14 +563,13 @@ u8 M8266WIFI_SPI_STA_ScanSignals(struct ScannedSigs scanned_signals[], u8 max_si
  *    !=0, signal numbers scanned succesfully                                      *
  *     =0, has error(s)                                                            *
  ***********************************************************************************/
- u8 M8266WIFI_SPI_STA_ScanSignalsBySsid(char target_ssid[27+1], u8 channel, s8* rssi, u16* status);
+ u8 M8266WIFI_SPI_STA_ScanSignalsBySsid(u8 target_ssid[32], u8 channel, s8* rssi, u16* status);
 
 /***********************************************************************************
  * u8 M8266WIFI_SPI_STA_ScanSignalsByBssid                                         *
  * .Description:                                                                   *
  *     To fast scan the signal strength of s specified BSSID Strng,                *
  *     with rssi returned to faclitates applications of distance measurement       *
- *     For more details, please refer to the API document per this function        *
  * .Parameter(s)                                                                   *
  *     1. target_bssid :  bssid string to scan, e.g. "EE:C7:00:8A:1A:0C"           *
  *                        valid length of bssid string should be 17                *
@@ -505,22 +585,21 @@ u8 M8266WIFI_SPI_STA_ScanSignals(struct ScannedSigs scanned_signals[], u8 max_si
  *    !=0, signal numbers scanned succesfully                                      *
  *     =0, has error(s)                                                            *
  ***********************************************************************************/
- u8 M8266WIFI_SPI_STA_ScanSignalsByBssid(char target_bssid[17+1], u8 channel, s8* rssi, u16* status);
+ u8 M8266WIFI_SPI_STA_ScanSignalsByBssid(u8 target_bssid[17+1], u8 channel, s8* rssi, u16* status);
 
 /***********************************************************************************
  * M8266WIFI_SPI_Get_STA_Hostname                                                  *
  * .Description:                                                                   *
  *     To get the hostname of the STA via SPI                                      *
  *     Note: Will return failure if module in AP-Only Mode                         *
- *     For more details, please refer to the API document per this function        *
  * .Parameter(s)                                                                   *
- *        1. hostbame      : the hostame to get                                    *
- *        2. status        : pointer to the status upon failure                    *
- *                         Use NULL if you don't expect it returned                *
+ *     1. hostbame  : the hostame to get                                           *
+ *     2. status    : pointer to the status upon failure                           *
+ *                    Use NULL if you don't expect it returned                     *
  * .Return value:                                                                  *
  *     =1, success                                                                 *
  *     =0, has error(s)                                                            *
- **********************************************************************************/
+ ***********************************************************************************/
  u8 M8266WIFI_SPI_Get_STA_Hostname(char hostname[28+1], u16* status);
 
 /***********************************************************************************
@@ -528,36 +607,34 @@ u8 M8266WIFI_SPI_STA_ScanSignals(struct ScannedSigs scanned_signals[], u8 max_si
  * .Description:                                                                   *
  *     To set up the hostname of the STA via SPI                                   *
  *     Note: Will return failure if module in AP-Only Mode                         *
- *     For more details, please refer to the API document per this function        *
  * .Parameter(s)                                                                   *
- *        1. hostbame    : the hostame to setup                                    *
- *        2. status      : pointer to the status upon failure                      *
- *                         Use NULL if you don't expect it returned                *
+ *     1. hostbame   : the hostame to setup                                        *
+ *     2. status     : pointer to the status upon failure                          *
+ *                     Use NULL if you don't expect it returned                    *
  * .Return value:                                                                  *
  *     =1, success                                                                 *
  *     =0, has error(s)                                                            *
- **********************************************************************************/
+ ***********************************************************************************/
  u8 M8266WIFI_SPI_Set_STA_Hostname(char hostname[28+1], u16* status);
 
 /***********************************************************************************
  * M8266WIFI_SPI_Query_STA_Param                                                   *
  * .Description:                                                                   *
  *     To query a parameter of the module STA via SPI                              *
- *     For more details, please refer to the API document per this function        *
  * .Parameter(s)                                                                   *
  *     1. param_type : the parame type to set, enum of STA_PARAM_TYPE              *
- *                     STA_PARAM_TYPE_SSID                = 0,                     *
- *                     STA_PARAM_TYPE_PASSWORD            = 1,                     *
- *                     STA_PARAM_TYPE_CHANNEL             = 2,                     *
- *                     STA_PARAM_TYPE_HOSTNAME            = 3,                     *
- *                     STA_PARAM_TYPE_USE_BSSID           = 4,                     *
- *                     STA_PARAM_TYPE_BSSID               = 5,                     *
- *                     STA_PARAM_TYPE_RSSI                = 6,                     *
- *                     STA_PARAM_TYPE_IP_ADDR             = 7,                     *
- *                     STA_PARAM_TYPE_GATEWAY_ADDR        = 8,                     *
- *                     STA_PARAM_TYPE_NETMASK_ADDR        = 9,                     *
- *                     STA_PARAM_TYPE_DHCPC               = 10,                    *
- *                     STA_PARAM_TYPE_MAC                 = 11,                    *
+ *          STA_PARAM_TYPE_SSID              = 0,                                  *
+ *          STA_PARAM_TYPE_PASSWORD          = 1,                                  *
+ *          STA_PARAM_TYPE_CHANNEL           = 2,                                  *
+ *          STA_PARAM_TYPE_HOSTNAME          = 3,                                  *
+ *          STA_PARAM_TYPE_USE_BSSID         = 4,                                  *
+ *          STA_PARAM_TYPE_BSSID             = 5,                                  *
+ *          STA_PARAM_TYPE_RSSI              = 6,                                  *
+ *          STA_PARAM_TYPE_IP_ADDR           = 7,                                  *
+ *          STA_PARAM_TYPE_GATEWAY_ADDR      = 8,                                  *
+ *          STA_PARAM_TYPE_NETMASK_ADDR      = 9,                                  *
+ *          STA_PARAM_TYPE_DHCPC             = 10,                                 *
+ *          STA_PARAM_TYPE_MAC               = 11,                                 *
  *     2. param      : pointer to the param value returned                         *
  *     3. param_len  : pointer to length the param, unit in bytes                  *
  *     4. status     : pointer to return errcode(LSB) and status(MSB) upon failures*
@@ -567,26 +644,27 @@ u8 M8266WIFI_SPI_STA_ScanSignals(struct ScannedSigs scanned_signals[], u8 max_si
  *     =0, has error(s)                                                            *
  ***********************************************************************************/
  typedef enum{
-    STA_PARAM_TYPE_SSID                = 0,
-    STA_PARAM_TYPE_PASSWORD            = 1,
-    STA_PARAM_TYPE_CHANNEL             = 2,
-    STA_PARAM_TYPE_HOSTNAME            = 3,
-    STA_PARAM_TYPE_USE_BSSID           = 4,
-    STA_PARAM_TYPE_BSSID               = 5,
-    STA_PARAM_TYPE_RSSI                = 6,
-    STA_PARAM_TYPE_IP_ADDR             = 7,
-    STA_PARAM_TYPE_GATEWAY_ADDR        = 8,
-    STA_PARAM_TYPE_NETMASK_ADDR        = 9,
-    STA_PARAM_TYPE_DHCPC               = 10,
-    STA_PARAM_TYPE_MAC                 = 11,
+	       STA_PARAM_TYPE_SSID           = 0,
+	       STA_PARAM_TYPE_PASSWORD       = 1,
+	       STA_PARAM_TYPE_CHANNEL        = 2,
+	       STA_PARAM_TYPE_HOSTNAME       = 3,
+	       STA_PARAM_TYPE_USE_BSSID      = 4,
+	       STA_PARAM_TYPE_BSSID          = 5,
+	       STA_PARAM_TYPE_RSSI           = 6,
+	       STA_PARAM_TYPE_IP_ADDR        = 7,
+	       STA_PARAM_TYPE_GATEWAY_ADDR   = 8,
+	       STA_PARAM_TYPE_NETMASK_ADDR   = 9,
+	       STA_PARAM_TYPE_DHCPC          = 10,
+	       STA_PARAM_TYPE_MAC            = 11,
  }STA_PARAM_TYPE;
+
  u8 M8266WIFI_SPI_Query_STA_Param(STA_PARAM_TYPE param_type, u8* param, u8* param_len, u16* status);
 
 /***********************************************************************************
  * M8266WIFI_SPI_Query_STA_MaxApsStored                                            *
  * .Description:                                                                   *
  *     To query max APs that could be stored for the module STA via SPI            *
- *     For more details, please refer to the API document per this function        *
+ *     For more detail, please refer to the API document for this function         *
  * .Parameter(s)                                                                   *
  *     1. max_aps : pointer to return the number of max aps, value 1-5             *
  *                  Default 1.                                                     *
@@ -603,7 +681,7 @@ u8 M8266WIFI_SPI_STA_ScanSignals(struct ScannedSigs scanned_signals[], u8 max_si
  * M8266WIFI_SPI_Config_STA_MaxApsStored                                           *
  * .Description:                                                                   *
  *     To config max APs that could be stored for the module STA via SPI           *
- *     For more details, please refer to the API document per this function        *
+ *     For more detail, please refer to the API document for this function         *
  * .Parameter(s)                                                                   *
  *     1. max_aps : the number of max aps, range 1-5                               *
  *                  =0, 1 to be set                                                *
@@ -627,10 +705,10 @@ u8 M8266WIFI_SPI_STA_ScanSignals(struct ScannedSigs scanned_signals[], u8 max_si
  * M8266WIFI_SPI_Query_STA_ApsStorage                                              *
  * .Description:                                                                   *
  *     To query APs info stored in the module STA via SPI                          *
- *     For more details, please refer to the API document per this function        *
+ *     For more detail, please refer to the API document for this function         *
  * .Parameter(s)                                                                   *
  *     1. max_aps : pointer to return the number of max aps, value 1-5             *
- *                  Default 1.                                                     *
+ *                  Factory Default 1.                                             *
  *                  Use NULL if you don't expect it returned                       *
  *     2. current_ap_id : pointer to return the current ap index, value 0-4        *
  *                  Use NULL if you don't expect it returned                       *
@@ -645,10 +723,10 @@ u8 M8266WIFI_SPI_STA_ScanSignals(struct ScannedSigs scanned_signals[], u8 max_si
  *     =0, has error(s)                                                            *
  ***********************************************************************************/
  struct StaStorageAps{
-         char ssid[32];
-         char password[64];
-         u8   bssid_set;
-         u8   bssid[6];
+	 u8   ssid[32];
+	 u8   password[64];
+	 u8   bssid_set;
+	 u8   bssid[6];
  };
  u8 M8266WIFI_SPI_Query_STA_ApsStorage(u8* max_aps, u8* current_ap_id, u8* aps_stored, struct StaStorageAps stored_aps[], u16* status);
  
@@ -656,7 +734,7 @@ u8 M8266WIFI_SPI_STA_ScanSignals(struct ScannedSigs scanned_signals[], u8 max_si
  * M8266WIFI_SPI_Query_STA_AutoConnectParams                                       *
  * .Description:                                                                   *
  *     To query auto connection configuration of the module STA via SPI            *
- *     For more details, please refer to the API document per this function        *
+ *     For more detail, please refer to the API document for this function         *
  * .Parameter(s)                                                                   *
  *     1. mode : pointer to return the auto-reconnect mode                         *
  *               = 1, auto-reconnect uses ssid last-stored                         *
@@ -695,7 +773,7 @@ u8 M8266WIFI_SPI_STA_ScanSignals(struct ScannedSigs scanned_signals[], u8 max_si
  * M8266WIFI_SPI_Config_STA_AutoConnect_Mode                                       *
  * .Description:                                                                   *
  *     To config the auto connection mode of the module STA via SPI                *
- *     For more details, please refer to the API document per this function        *
+ *     For more detail, please refer to the API document for this function         *
  * .Parameter(s)                                                                   *
  *     1. auto_reconnect_mode : the auto-reconnect mode                            *
  *               = 1, auto-reconnect uses ssid last-stored                         *
@@ -717,20 +795,21 @@ u8 M8266WIFI_SPI_STA_ScanSignals(struct ScannedSigs scanned_signals[], u8 max_si
  *     =0, has error(s)                                                            *
  ***********************************************************************************/
  typedef enum{
-    STA_AUTO_RECONNECT_MODE_KEEP_CURRENT                  = 0,
-    STA_AUTO_RECONNECT_MODE_SELECT_LAST                   = 1,
-    STA_AUTO_RECONNECT_MODE_SELECT_STRONGEST_SIGNAL       = 2,
-    STA_AUTO_RECONNECT_MODE_SELECT_STRONGEST_THEN_LAST    = 3,
+          STA_AUTO_RECONNECT_MODE_KEEP_CURRENT                  = 0,
+          STA_AUTO_RECONNECT_MODE_SELECT_LAST                   = 1,
+          STA_AUTO_RECONNECT_MODE_SELECT_STRONGEST_SIGNAL       = 2,
+          STA_AUTO_RECONNECT_MODE_SELECT_STRONGEST_THEN_LAST    = 3,
  } STA_AUTO_RECONNECT_MODE;
+
  u8 M8266WIFI_SPI_Config_STA_AutoConnect_Mode(u8 mode, u8 saved, u16* status);
  
 /***********************************************************************************
  * M8266WIFI_SPI_Config_STA_AutoConnect_StopCycles                                 *
  * .Description:                                                                   *
  *     To config the auto connection stop cycles of the module STA via SPI         *
- *     For more details, please refer to the API document per this function        *
+ *     For more detail, please refer to the API document for this function         *
  * .Parameter(s)                                                                   *
- *     1. stop_cycles : the max cycles of auto-reconnect  	                       *
+ *     1. stop_cycles : the max cycles of auto-reconnect                           *
  *               After max cycles, if still not connected, auto-reconnect stops    *
  *               < 20, auto-reconnect never stops                                  *
  *               = others, auto-reconnect stopps after the times of reconnect      *
@@ -753,7 +832,7 @@ u8 M8266WIFI_SPI_STA_ScanSignals(struct ScannedSigs scanned_signals[], u8 max_si
  * M8266WIFI_SPI_Config_STA_AutoConnect_IntervalPtimes                             *
  * .Description:                                                                   *
  *     To config the auto connection interval ptimes of the module STA via SPI     *
- *     For more details, please refer to the API document per this function        *
+ *     For more details, please refer to the API document for this function        *
  * .Parameter(s)                                                                   *
  *     1. interval_ptimes : the auto-reconnect interval ptimes, the times of       *
  *               auto-reconnect repeated before an interval inserted               *
@@ -766,13 +845,13 @@ u8 M8266WIFI_SPI_STA_ScanSignals(struct ScannedSigs scanned_signals[], u8 max_si
  *     =1, success                                                                 *
  *     =0, has error(s)                                                            *
  ***********************************************************************************/
-u8 M8266WIFI_SPI_Config_STA_AutoConnect_IntervalPtimes(u8 interval_ptimes, u8 saved, u16* status);
+ u8 M8266WIFI_SPI_Config_STA_AutoConnect_IntervalPtimes(u8 interval_ptimes, u8 saved, u16* status);
 
 /***********************************************************************************
  * M8266WIFI_SPI_Config_STA_AutoConnect_IntervalDuration                           *
  * .Description:                                                                   *
  *     To config the auto connection interval duration of the module STA via SPI   *
- *     For more details, please refer to the API document per this function        *
+ *     For more details, please refer to the API document for this function        *
  * .Parameter(s)                                                                   *
  *     1. interval_duration: the auto-reconnect interval duration                  *
  *               the interval to halt the auto-reconnect for the moment            *
@@ -793,15 +872,65 @@ u8 M8266WIFI_SPI_Config_STA_AutoConnect_IntervalPtimes(u8 interval_ptimes, u8 sa
  *     =0, has error(s)                                                            *
  ***********************************************************************************/
  u8 M8266WIFI_SPI_Config_STA_AutoConnect_IntervalDuration(u8 interval_duration, u8 saved, u16* status);
+ 
+/***********************************************************************************
+ * M8266WIFI_SPI_Module_Query_STA_Connection_KeepAlive                             *
+ * .Description:                                                                   *
+ *     To query whether the module sta is enabled w/ keepalive via the SPI comand  *
+ * .Parameter(s)                                                                   *
+ *     1. current_enabled : return whether current sta keep-alive is enabled       *
+ *        = 0 :  disabled. Default                                                 *
+ *        = 1 :  enabled                                                           *
+ *               Use NULL if you don't expect it returned                          *
+ *     2. current_KeepAlive_interval_in_s : return current sta keep-alive interval *
+ *               with unit in seconds, default 150 seconds                         *
+ *               Use NULL if you don't expect it returned                          *
+ *     3. default_enabled : return whether sta keep-alive is enabled on bootup     *
+ *        = 0 :  disabled                                                          *
+ *        = 1 :  enabled                                                           *
+ *               Use NULL if you don't expect it returned                          *
+ *     4. default_KeepAlive_interval_in_s : return default sta keep-alive interval *
+ *               with unit in seconds                                              *
+ *               Use NULL if you don't expect it returned                          *
+ *     5. status  : pointer to return errcode(LSB) and status(MSB) upon error      *
+ *                  Use NULL if you don't expect it returned                       *
+ * .Return value:                                                                  *
+ *     =1, success                                                                 *
+ *     =0, has error(s)                                                            *
+ ***********************************************************************************/
+ u8 M8266WIFI_SPI_Module_Query_STA_Connection_KeepAlive(u8* current_enabled, u16* current_KeepAlive_interval_in_s, u8* default_enabled, u16* default_KeepAlive_interval_in_s, u16* status);
+
+/***********************************************************************************
+ * M8266WIFI_SPI_Module_Config_STA_Connection_KeepAlive                            *
+ * .Description:                                                                   *
+ *     To config if the module sta keepalive paramters via the SPI comand          *
+ *     Configure it only when necessary                                            *
+ * .Parameter(s)                                                                   *
+ *     1. enabled :                                                                *
+ *        = 0 :  disabled                                                          *
+ *        = 1 :  enabled                                                           *
+ *     2. KeepAlive_interval_in_s :                                                *
+ *        Keep alive interval in seconds                                           *
+ *        if this value is larger than 1800s or smaller than 1s, 150s will be set  * 
+ *     3. saved :                                                                  *
+ *        = 0 :  not saved                                                         *
+ *        = 1 :  saved                                                             *
+ *        if saved==1, then the param will be valid as well upon next bootup       *
+ *     4. status  : pointer to return errcode(LSB) and status(MSB) upon error      *
+ *                  Use NULL if you don't expect them returned                     *
+ * .Return value:                                                                  *
+ *     =1, success                                                                 *
+ *     =0, has error(s)                                                            *
+ ***********************************************************************************/
+ u8 M8266WIFI_SPI_Module_Config_STA_Connection_KeepAlive(u8 enabled, u16 KeepAlive_interval_in_s, u8 saved, u16 *status);
 
 /***********************************************************************************
  * M8266WIFI_SPI_Config_AP                                                         *
  * .Description:                                                                   *
  *     To config the module AP via SPI                                             *
- *     For more details, please refer to the API document per this function        *
  * .Parameter(s)                                                                   *
- *     1. ssid    : the ssid string of AP, Max Size=27 Bytes                       *
- *     2. password: the passowrd string of AP, Max Size=27 Bytes                   *
+ *     1. ssid    : the ssid string of AP, Max Size=32-1 Bytes                     *
+ *     2. password: the passowrd string of AP, Max Size=64-1 Bytes                 *
  *     3. enc     : authorisation mode, valid value is 0~4                         *
  *                  = 0, OPEN                                                      *
  *                  = 1, WEP                                                       *
@@ -823,41 +952,41 @@ u8 M8266WIFI_SPI_Config_STA_AutoConnect_IntervalPtimes(u8 interval_ptimes, u8 sa
  *     =1, success                                                                 *
  *     =0, has error(s)                                                            *
  ***********************************************************************************/
- u8 M8266WIFI_SPI_Config_AP(u8 ssid[27+1], u8 password[27+1], u8 enc, u8 channel, u8 saved, u16* status);
+ u8 M8266WIFI_SPI_Config_AP(u8 ssid[32], u8 password[64], u8 enc, u8 channel, u8 saved, u16* status);
 
  typedef enum{
-    AP_PARAM_TYPE_SSID            = 0,
-    AP_PARAM_TYPE_PASSWORD        = 1,
-    AP_PARAM_TYPE_CHANNEL         = 2,
-    AP_PARAM_TYPE_AUTHMODE        = 3,
-    AP_PARAM_TYPE_SSID_HIDDEN     = 4,
-    AP_PARAM_TYPE_MAX_CONNECT     = 5,
-    AP_PARAM_TYPE_BEACON_INTERVAL = 6,
-    AP_PARAM_TYPE_IP_ADDR         = 7,
-    AP_PARAM_TYPE_GATEWAY_ADDR    = 8,
-    AP_PARAM_TYPE_NETMASK_ADDR    = 9,
-    AP_PARAM_TYPE_PHY_MODE        = 10,
-    AP_PARAM_TYPE_MAC             = 11
+               AP_PARAM_TYPE_SSID                = 0,
+               AP_PARAM_TYPE_PASSWORD            = 1,
+               AP_PARAM_TYPE_CHANNEL             = 2,
+               AP_PARAM_TYPE_AUTHMODE            = 3,
+               AP_PARAM_TYPE_SSID_HIDDEN         = 4,
+               AP_PARAM_TYPE_MAX_CONNECT         = 5,
+               AP_PARAM_TYPE_BEACON_INTERVAL     = 6,
+               AP_PARAM_TYPE_IP_ADDR             = 7,
+               AP_PARAM_TYPE_GATEWAY_ADDR        = 8,
+               AP_PARAM_TYPE_NETMASK_ADDR        = 9,
+               AP_PARAM_TYPE_PHY_MODE            = 10,
+               AP_PARAM_TYPE_MAC                 = 11
  }AP_PARAM_TYPE; 
+
 /***********************************************************************************
  * M8266WIFI_SPI_Query_AP_Param                                                    *
  * .Description:                                                                   *
  *     To query a parameter of the module AP via SPI                               *
- *     For more details, please refer to the API document per this function        *
  * .Parameter(s)                                                                   *
- *     1. param_type : the parame type to set, enum of AP_PARAM_TYPE               *
- *                      AP_PARAM_TYPE_SSID             = 0,                        *
- *                      AP_PARAM_TYPE_PASSWORD         = 1,                        *
- *                      AP_PARAM_TYPE_CHANNEL          = 2,                        *
- *                      AP_PARAM_TYPE_AUTHMODE         = 3,                        *
- *                      AP_PARAM_TYPE_SSID_HIDDEN      = 4,                        *
- *                      AP_PARAM_TYPE_MAX_CONNECT      = 5,                        *
- *                      AP_PARAM_TYPE_BEACON_INTERVA   = 6,                        *
- *                      AP_PARAM_TYPE_IP_ADDR          = 7,                        *
- *                      AP_PARAM_TYPE_GATEWAY_ADDR     = 8,                        *
- *                      AP_PARAM_TYPE_NETMASK_ADDR     = 9,                        *
- *                      AP_PARAM_TYPE_PHY_MODE         = 10,                       *
- *                      AP_PARAM_TYPE_MAC              = 11                        *
+ *     1. param_type : the parame type to query, enum of AP_PARAM_TYPE             *
+ *                      AP_PARAM_TYPE_SSID               = 0,                      *
+ *                      AP_PARAM_TYPE_PASSWORD           = 1,                      *
+ *                      AP_PARAM_TYPE_CHANNEL            = 2,                      *
+ *                      AP_PARAM_TYPE_AUTHMODE           = 3,                      *
+ *                      AP_PARAM_TYPE_SSID_HIDDEN        = 4,                      *
+ *                      AP_PARAM_TYPE_MAX_CONNECT        = 5,                      *
+ *                      AP_PARAM_TYPE_BEACON_INTERVAL    = 6,                      *
+ *                      AP_PARAM_TYPE_IP_ADDR            = 7,                      *
+ *                      AP_PARAM_TYPE_GATEWAY_ADDR       = 8,                      *
+ *                      AP_PARAM_TYPE_NETMASK_ADDR       = 9,                      *
+ *                      AP_PARAM_TYPE_PHY_MODE           = 10,                     *
+ *                      AP_PARAM_TYPE_MAC                = 11                      *
  *     2. param      : pointer to the param value returned                         *
  *     3. param_len  : pointer to length the param, unit in bytes                  *
  *     4. status     : pointer to return errcode(LSB) and status(MSB) upon failures*
@@ -872,23 +1001,23 @@ u8 M8266WIFI_SPI_Config_STA_AutoConnect_IntervalPtimes(u8 interval_ptimes, u8 sa
  * M8266WIFI_SPI_Config_AP_Param                                                   *
  * .Description:                                                                   *
  *     To config a parameter of the module AP via SPI                              *
- *     For more details, please refer to the API document per this function        *
  * .Parameter(s)                                                                   *
- *     1. param_type : the parame type to set, enum of AP_PARAM_TYPE               *
- *                      AP_PARAM_TYPE_SSID             = 0,                        *
- *                      AP_PARAM_TYPE_PASSWORD         = 1,                        *
- *                      AP_PARAM_TYPE_CHANNEL          = 2,                        *
- *                      AP_PARAM_TYPE_AUTHMODE         = 3,                        *
- *                      AP_PARAM_TYPE_SSID_HIDDEN      = 4,                        *
- *                      AP_PARAM_TYPE_MAX_CONNECT      = 5,                        *
- *                      AP_PARAM_TYPE_BEACON_INTERVA   = 6,                        *
- *                      AP_PARAM_TYPE_IP_ADDR          = 7,                        *
- *                      AP_PARAM_TYPE_GATEWAY_ADDR     = 8,                        *
- *                      AP_PARAM_TYPE_NETMASK_ADDR     = 9,                        *
- *                      AP_PARAM_TYPE_PHY_MODE         = 10,                       *
+ *     1. param_type : the parame type to config, enum of AP_PARAM_TYPE            *
+ *                      AP_PARAM_TYPE_SSID               = 0,                      *
+ *                      AP_PARAM_TYPE_PASSWORD           = 1,                      *
+ *                      AP_PARAM_TYPE_CHANNEL            = 2,                      *
+ *                      AP_PARAM_TYPE_AUTHMODE           = 3,                      *
+ *                      AP_PARAM_TYPE_SSID_HIDDEN        = 4,                      *
+ *                      AP_PARAM_TYPE_MAX_CONNECT        = 5,                      *
+ *                      AP_PARAM_TYPE_BEACON_INTERVAl    = 6,                      *
+ *                      AP_PARAM_TYPE_IP_ADDR            = 7,                      *
+ *                      AP_PARAM_TYPE_GATEWAY_ADDR       = 8,                      *
+ *                      AP_PARAM_TYPE_NETMASK_ADDR       = 9,                      *
+ *                      AP_PARAM_TYPE_PHY_MODE           = 10,                     *
+ *                      AP_PARAM_TYPE_MAC                = 11                      *
  *     2. param      : pointer to the param value                                  *
  *     3. param_len  : length the param, unit in bytes                             *
- *     4. saved   : to save the param into flash or not                            *
+ *     4. saved   : to save the param into flash or notA                           *
  *        =0,       not saved, i.e. after reboot setting will restore to previous  *
  *        =others,  saved, i.e. after reboot, the saved setting will be loaded     *
  *                  PLEASE DO NOT CALL IT EACH TIME OF BOOTUP WITH SAVED != 0      *
@@ -906,7 +1035,6 @@ u8 M8266WIFI_SPI_Config_STA_AutoConnect_IntervalPtimes(u8 interval_ptimes, u8 sa
  * M8266WIFI_SPI_AP_List_STAs_Info                                                 *
  * .Description:                                                                   *
  *     To list the STAs connected to the moduel AP                                 *
- *     For more details, please refer to the API document per this function        *
  * .Parameter(s)                                                                   *
  *     1. sta_list   : the array of struct CONNECTED_STATION_INFO                  *
  *                     which will store the returned station infos                 *
@@ -924,13 +1052,13 @@ u8 M8266WIFI_SPI_Config_STA_AutoConnect_IntervalPtimes(u8 interval_ptimes, u8 sa
 	u8 bssid[6];
 	u8 ipaddr[4];
  };
+
  u8 M8266WIFI_SPI_AP_List_STAs_Info(struct CONNECTED_STATION_INFO sta_list[], u8* stas, u8 max_stas, u16* status);
  
 /***********************************************************************************
  * M8266WIFI_SPI_AP_Permit_Block_A_STA                                             *
  * .Description:                                                                   *
  *     To permit or block the connection of a STA by STA's BSSID/MAC               *
- *     For more details, please refer to the API document per this function        *
  * .Parameter(s)                                                                   *
  *     1. block_not_permit: permit or block the conecttion of the sta              *
  *                  = 0, if to permit                                              *
@@ -945,16 +1073,15 @@ u8 M8266WIFI_SPI_Config_STA_AutoConnect_IntervalPtimes(u8 interval_ptimes, u8 sa
  u8 M8266WIFI_SPI_AP_Permit_Block_A_STA(u8 block_not_enable, u8 bssid[6], u16* status);
 
  typedef enum{
-    AP_MAC_LIST_PERIMIT_BLOCK_TYPE_NONE    = 0,
-    AP_MAC_LIST_PERIMIT_BLOCK_TYPE_PERMIT  = 1,	
-    AP_MAC_LIST_PERIMIT_BLOCK_TYPE_BLOCK   = 2,	
+               AP_MAC_LIST_PERIMIT_BLOCK_TYPE_NONE      = 0,
+               AP_MAC_LIST_PERIMIT_BLOCK_TYPE_PERMIT    = 1,	
+               AP_MAC_LIST_PERIMIT_BLOCK_TYPE_BLOCK     = 2,	
  }AP_MAC_LIST_PERIMIT_BLOCK_TYPE;
  
 /***********************************************************************************
  * M8266WIFI_SPI_AP_Config_PermitBlock_List                                        *
  * .Description:                                                                   *
  *     To config the Permitted or Blcoked MAC list to the AP                       *
- *     For more details, please refer to the API document per this function        *
  * .Parameter(s)                                                                   *
  *     1. block_permit_type   : the list type                                      *
  *               = 1,  the list is permitted list                                  *
@@ -974,7 +1101,6 @@ u8 M8266WIFI_SPI_Config_STA_AutoConnect_IntervalPtimes(u8 interval_ptimes, u8 sa
  * M8266WIFI_SPI_AP_Query_PermitBlock_List                                         *
  * .Description:                                                                   *
  *     To config the Permitted or Blcoked MAC list to the AP                       *
- *     For more details, please refer to the API document per this function        *
  * .Parameter(s)                                                                   *
  *     1. block_permit_type   : pointer to the list type                           *
  *               = 1,  the list is permitted list                                  *
@@ -995,7 +1121,6 @@ u8 M8266WIFI_SPI_Config_STA_AutoConnect_IntervalPtimes(u8 interval_ptimes, u8 sa
  * .Description:                                                                   *
  *     To Find and then set to an optimal channel for the local AP                 *
  *     according to signals nearby                                                 *
- *     For more details, please refer to the API document per this function        *
  * .Parameter(s)                                                                   *
  *     1. opt_channel: optimal channel returned.                                   *
  *                     Use NULL if you don't expect it returned                    *
@@ -1027,7 +1152,8 @@ u8 M8266WIFI_SPI_Config_STA_AutoConnect_IntervalPtimes(u8 interval_ptimes, u8 sa
  *     =0, has error(s)                                                            *
  * .Note: the API will use up a temp stack memory space of around 1.2+ KBytes      *
  ***********************************************************************************/
- u8 M8266WIFI_SPI_Recommend_Optimal_channel_for_target_Ap(char target_ap_ssid[32+1], u8* opt_channel, u16* status);
+ u8 M8266WIFI_SPI_Recommend_Optimal_channel_for_target_Ap(u8 target_ap_ssid[32], u8* opt_channel, u16* status);
+
  
 ////////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////////
@@ -1051,8 +1177,12 @@ u8 M8266WIFI_SPI_Config_STA_AutoConnect_IntervalPtimes(u8 interval_ptimes, u8 sa
 //       - M8266WIFI_SPI_Query_Tcp_Mss                                   4.3.14   //
 //       - M8266WIFI_SPI_Query_Tcp_Window_num                            4.3.15   //
 //       - M8266WIFI_SPI_Config_Tcp_Window_num                           4.3.16   //
+//       - M8266WIFI_SPI_Tcp_Query_Option_QuickAck                       4.3.17   //
+//       - M8266WIFI_SPI_Tcp_Enable_Option_QuickAck                      4.3.18   //
+//       - M8266WIFI_SPI_TcpCliet_Query_KeepAlive                        4.3.19   //
+//       - M8266WIFI_SPI_TcpCliet_Enbale_KeepAlive                       4.3.20   //
 //                                                                                //
-//       - SPI_STA_Get_HostIP_by_HostName                                4.3.17   //
+//       - SPI_STA_Get_HostIP_by_HostName                                4.3.21   //
 //
 ////////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////////
@@ -1060,7 +1190,6 @@ u8 M8266WIFI_SPI_Config_STA_AutoConnect_IntervalPtimes(u8 interval_ptimes, u8 sa
  * M8266WIFI_SPI_Setup_Connection                                                  *
  * .Description:                                                                   *
  *     To setup a UDP connection or an TCP client connection via SPI               *
- *     For more details, please refer to the API document per this function        *
  * .Parameter(s)                                                                   *
  *     1. tcp_udp      : connection type                                           *
  *                       =0, udp                                                   *
@@ -1079,20 +1208,19 @@ u8 M8266WIFI_SPI_Config_STA_AutoConnect_IntervalPtimes(u8 interval_ptimes, u8 sa
  *     =1, success                                                                 *
  *     =0, has error(s)                                                            *
  ***********************************************************************************/
- #define SOCKET_TYPE_UDP                                         0
- #define SOCKET_TYPE_TCP_CLIENT                                  1
- #define SOCKET_TYPE_TCP_SERVER                                  2
- #define SOCKET_TCP_CLIENT_BITMAP_SSL                            0x40
- #define SOCKET_TCP_CLIENT_BITMAP_CLIENT_CERT_REQUEST_EN         0x20
- #define SOCKET_TCP_CLIENT_BITMAP_CA_CERT_EN                     0x10
+ #define SOCKET_TYPE_UDP                                        0
+ #define SOCKET_TYPE_TCP_CLIENT                                 1
+ #define SOCKET_TYPE_TCP_SERVER                                 2
+ #define SOCKET_TCP_CLIENT_BITMAP_SSL                        0x40
+ #define SOCKET_TCP_CLIENT_BITMAP_CLIENT_CERT_REQUEST_EN     0x20
+ #define SOCKET_TCP_CLIENT_BITMAP_CA_CERT_EN                 0x10
 
  u8 M8266WIFI_SPI_Setup_Connection(u8 tcp_udp, u16 local_port, char* remote_addr, u16 remote_port, u8 link_no, u8 timeout_in_s, u16* status);
-																	
+
 /***********************************************************************************
  * M8266WIFI_SPI_Disconnect_Connection                                             *
  * .Description:                                                                   *
  *     To disconnect the connections on M8266WIFI TCP server via SPI               *
- *     For more details, please refer to the API document per this function        *
  * .Parameter(s)                                                                   *
  *     1. link_no : the number of link to be deleted/disconnected                  *
  *     2. status  : pointer to the status upon failure                             *
@@ -1110,13 +1238,12 @@ u8 M8266WIFI_SPI_Config_STA_AutoConnect_IntervalPtimes(u8 interval_ptimes, u8 sa
  *     =1, success                                                                 *
  *     =0, has error(s)                                                            *
  ***********************************************************************************/
-u8 M8266WIFI_SPI_Disconnect_Connection(u8 link_no, u16* status);
+ u8 M8266WIFI_SPI_Disconnect_Connection(u8 link_no, u16* status);
 
 /***********************************************************************************
  * M8266WIFI_SPI_Delete_Connection                                                 *
  * .Description:                                                                   *
  *     To disconnect and delete a client connection on M8266WIFI via SPI           *
- *     For more details, please refer to the API document per this function        *
  * .Parameter(s)                                                                   *
  *     1. link_no : the number of link to be deleted/disconnected                  *
  *     2. status  : pointer to the status upon failure                             *
@@ -1137,10 +1264,9 @@ u8 M8266WIFI_SPI_Disconnect_Connection(u8 link_no, u16* status);
  * .Description:                                                                   *
  *     To Query the information about a connection on M8266WIFI via SPI            *
  *     including connection type, state, local port, remote_ip and port, etc       *
- *     For more details, please refer to the API document per this function        *
  * .Parameter(s)                                                                   *
- *     1. link_no                                                                  *
- *     2. connection_type  :pointer to the connection type returned                *
+ *     1. link_no         : the number of link to query                            *
+ *     2. connection_type : pointer to the connection type returned                *
  *                          If you don't expected this value returned, use NULL    *
  *                          = 0, udp                                               *
  *                          = 1, tcp Client                                        *
@@ -1171,15 +1297,16 @@ u8 M8266WIFI_SPI_Disconnect_Connection(u8 link_no, u16* status);
  *     =0, has error(s)                                                            *
  ***********************************************************************************/
  u8 M8266WIFI_SPI_Query_Connection(u8 link_no, u8* connection_type, u8* connection_state, u16* local_port, u8* remote_ip, u16* remote_port, u16* status);
-typedef enum{
-   ANYLINKIN_WIFI_LINK_CONNECTION_STATE_INVALID   =  0,
-   ANYLINKIN_WIFI_LINK_CONNECTION_STATE_WAIT      =  1,
-   ANYLINKIN_WIFI_LINK_CONNECTION_STATE_LISTEN    =  2,
-   ANYLINKIN_WIFI_LINK_CONNECTION_STATE_CONNECT   =  3,
-   ANYLINKIN_WIFI_LINK_CONNECTION_STATE_WRITE     =  4,
-   ANYLINKIN_WIFI_LINK_CONNECTION_STATE_READ      =  5,
-   ANYLINKIN_WIFI_LINK_CONNECTION_STATE_CLOSE     =  6
-} ANYLINKIN_WIFI_LINK_CONNECTION_STATES;
+
+ typedef enum{
+               ANYLINKIN_WIFI_LINK_CONNECTION_STATE_INVALID  = 0,
+               ANYLINKIN_WIFI_LINK_CONNECTION_STATE_WAIT     = 1,
+               ANYLINKIN_WIFI_LINK_CONNECTION_STATE_LISTEN   = 2,
+               ANYLINKIN_WIFI_LINK_CONNECTION_STATE_CONNECT  = 3,
+               ANYLINKIN_WIFI_LINK_CONNECTION_STATE_WRITE    = 4,
+               ANYLINKIN_WIFI_LINK_CONNECTION_STATE_READ     = 5,
+               ANYLINKIN_WIFI_LINK_CONNECTION_STATE_CLOSE    = 6
+ }ANYLINKIN_WIFI_LINK_CONNECTION_STATES;
 
 /***********************************************************************************
  * M8266WIFI_SPI_Op_Multicuast_Group                                               *
@@ -1187,13 +1314,12 @@ typedef enum{
  *     To join or leave a multicuast groupo AP via SPI                             *
  *     The module should be in STA or STA+AP mode and have connected               *
  *     to a routers before call this API                                           *
- *     For more details, please refer to the API document per this function        *
  * .Parameter(s)                                                                   *
- *     1. join_not_leave : join or leave the multicuast group                      *
- *        =1, join                                                                 *
- *        =0, leave                                                                *
+ *     1. join_not_leave : join or leave the multicuast groud                      *
+ *                         =1, join                                                *
+ *                         =0, leave                                               *
  *     2. multicust_group_ip : the ip address of a multicuast group                *
- *        e.g. "224.6.6.6".                                                        *
+ *                             e.g. "224.6.6.6".                                   *
  *     3. status  : pointer to return errcode(LSB) and status(MSB) upon failures   *
  *                  Use NULL if you don't expect it returned                       *
  * .Return value:                                                                  *
@@ -1202,61 +1328,71 @@ typedef enum{
  ***********************************************************************************/
  u8 M8266WIFI_SPI_Op_Multicuast_Group(u8 join_not_leave, char multicust_group_ip[15+1], u16* status);
 
-/***********************************************************************************
- * M8266WIFI_SPI_Set_TcpServer_Auto_Discon_Timeout                                 *
- * .Description:                                                                   *
- *     To set up the tcp server's auto-disconnection timeout time                  *
- *     when no communication from clients via SPI                                  *
- *     For more details, please refer to the API document per this function        *
- * .Parameter(s)                                                                   *
- *     1. link_no     : the number of link to setup                                *
- *     2. timeout_in_s: the timeout in seconds the tcp server will automatic       *
- *                      disconnect the connection when no communication            *
- *                      with client(s).                                            *
- *     2. status      : pointer to the status upon failure                         *
- * .Return value:                                                                  *
- *     =1, success                                                                 *
- *     =0, has error(s)                                                            *
- ***********************************************************************************/
+/**********************************************************************************
+ * M8266WIFI_SPI_Set_TcpServer_Auto_Discon_Timeout                                *
+ * .Description:                                                                  *
+ *     To set up the tcp server's auto-disconnection timeout time                 *
+ *     when no communication from clients via SPI                                 *
+ * .Parameter(s)                                                                  *
+ *     1. link_no     : the number of link to setup                               *
+ *     2. timeout_in_s: the timeout in seconds the tcp server will auto           *
+ *                      disconnect the connection when no communication           *
+ *                      from clients                                              *
+ *     2. status      : pointer to the status upon failure                        *
+ *                      Use NULL if you don't expect it returned                  *
+ * .Return value:                                                                 *
+ *     =1, success                                                                *
+ *     =0, has error(s)                                                           *
+ **********************************************************************************/
  u8 M8266WIFI_SPI_Set_TcpServer_Auto_Discon_Timeout(u8 link_no, u16 timeout_in_s, u16* status);
 
-/***********************************************************************************
- * M8266WIFI_SPI_Query_Max_Clients_Allowed_To_A_Tcp_Server                         *
- * .Description:                                                                   *
- *     To query the max tcp clients could be accepted simutenoeously to            *
- *     this tcp server                                                             *
- *     For more details, please refer to the API document per this function        *
- * .Parameter(s)                                                                   *
- *     1. server_link_no: the number of tcp server link to query                   *
- *     2. max_allowed   : pointer to return max clients allowed                    *
- *     3. status        : pointer to return the status upon failure                *
- * .Return value:                                                                  *
- *     =1, success                                                                 *
- *     =0, has error(s)                                                            *
- ***********************************************************************************/
+/**********************************************************************************
+ * M8266WIFI_SPI_Query_Max_Clients_Allowed_To_A_Tcp_Server                        *
+ * .Description:                                                                  *
+ *     To query the max tcp clients could be accepted simutenoeously to           *
+ *     this tcp server                                                            *
+ * .Parameter(s)                                                                  *
+ *     1. server_link_no: the number of tcp server link to query                  *
+ *     2. max_allowed   : pointer to max allowed                                  *
+ *     3. status        : pointer to the status upon failure                      *
+ *                        Use NULL if you don't expect it returned                *
+ * .Return value:                                                                 *
+ *     =1, success                                                                *
+ *     =0, has error(s)                                                           *
+ **********************************************************************************/
  u8 M8266WIFI_SPI_Query_Max_Clients_Allowed_To_A_Tcp_Server(u8 server_link_no, u8* max_allowed, u16* status);
  
-/***********************************************************************************
- * M8266WIFI_SPI_Config_Max_Clients_Allowed_To_A_Tcp_Server                        *
- * .Description:                                                                   *
- *     To Config the max tcp clients could be accepted simutenoeously to           *
- *     this tcp server                                                             *
- *     For more details, please refer to the API document per this function        *
- * .Parameter(s)                                                                   *
- *     1. server_link_no: the number of tcp server link to config                  *
- *     2. max_allowed   : max allowed, range 1~15                                  *
- *     3. status        : pointer to the status upon failure                       *
- * .Return value:                                                                  *
- *     =1, success                                                                 *
- *     =0, has error(s)                                                            *
- ***********************************************************************************/
+/**********************************************************************************
+ * M8266WIFI_SPI_Config_Max_Clients_Allowed_To_A_Tcp_Server                       *
+ * .Description:                                                                  *
+ *     To Config the max tcp clients could be accepted simutenoeously to          *
+ *     this tcp server                                                            *
+ * .Parameter(s)                                                                  *
+ *     1. server_link_no: the number of tcp server link to config                 *
+ *     2. max_allowed   : max allowed, range 1~15                                 *
+ *     3. status        : pointer to the status upon failure                      *
+ *                        Use NULL if you don't expect it returned                *
+ * .Return value:                                                                 *
+ *     =1, success                                                                *
+ *     =0, has error(s)                                                           *
+ **********************************************************************************/
  u8 M8266WIFI_SPI_Config_Max_Clients_Allowed_To_A_Tcp_Server(u8 server_link_no, u8 max_allowed, u16* status);
+
+ typedef struct {
+                  u8  connection_state;
+                  u8  remote_ip[4];
+                  u16 remote_port;
+ }ClientInfo;
+ 
+ typedef struct {
+                  u8  remote_ip[4];
+                  u16 remote_port;
+ }RemoteInfo;
 
 /***********************************************************************************
  * M8266WIFI_SPI_List_Clients_On_A_TCP_Server                                      *
  * .Description:                                                                   *
  *     To Query the information of clients on a link of tcp server of M8266WIFI    *
- *     For more details, please refer to the API document per this function        *
  * .Parameter(s)                                                                   *
  *     1. server_link_no  : the link number of a tcp server to query               *
  *     2. clients         : pointer to sum of clients listed                       *
@@ -1269,19 +1405,12 @@ typedef enum{
  *     =1, success                                                                 *
  *     =0, has error(s)                                                            *
  ***********************************************************************************/
- typedef struct {
-	  u8  connection_state;
-	  u8  remote_ip[4];
-	  u16 remote_port;
- }ClientInfo;
-
  u8 M8266WIFI_SPI_List_Clients_On_A_TCP_Server(u8 server_link_no, u8* clients, ClientInfo RemoteClients[], u16* status);
 
 /***********************************************************************************
  * M8266WIFI_SPI_Disconnect_TcpClient                                              *
  * .Description:                                                                   *
  *     To disconnect a client connections on M8266WIFI TCP server via SPI          *
- *     For more details, please refer to the API document per this function        *
  * .Parameter(s)                                                                   *
  *     1. link_no     : the number of link to be deleted/disconnected              *
  *     2. client_info : pointer to the remote tcp client info to disconnect        *
@@ -1300,161 +1429,237 @@ typedef enum{
  *     =1, success                                                                 *
  *     =0, has error(s)                                                            *
  ***********************************************************************************/
-u8 M8266WIFI_SPI_Disconnect_TcpClient(u8 link_no, ClientInfo *client_info, u16* status);
+ u8 M8266WIFI_SPI_Disconnect_TcpClient(u8 link_no, ClientInfo *client_info, u16* status);
  
 
-/***********************************************************************************
- * M8266WIFI_SPI_Query_Last_Tcp_Disconnect_Cause                                   *
- * .Description:                                                                   *
- *     To query the cause of last tcp disconnect                                   *
- *     For more details, please refer to the API document per this function        *
- * .Parameter(s)                                                                   *
- *     1. link_no       : the number of link to query                              *
- *     2. discon_cause  : pointer to the last disconnect cause                     *
- *                        -3, if sending timeout                                   *
- *                        -9, if reset request by remote peer reset                *
- *                        -20,if disconnected by remote peer                       *
- *                        -21,if diconnected by the local                          *
- *                        -22,if deleted by the local                              *
- *     3. status        : pointer to the status upon failure                       *
- * .Return value:                                                                  *
- *     =1, success                                                                 *
- *     =0, has error(s)                                                            *
- ***********************************************************************************/
+/**********************************************************************************
+ * M8266WIFI_SPI_Query_Last_Tcp_Disconnect_Cause                                  *
+ * .Description:                                                                  *
+ *     To query the cause of last tcp disconnect                                  *
+ * .Parameter(s)                                                                  *
+ *     1. link_no       : the number of link to query                             *
+ *     2. discon_cause  : pointer to the last disconnect cause                    *
+ *                        -3, if sending timeout                                  *
+ *                        -9, if reset request by remote peer reset               *
+ *                        -20,if disconnected by remote peer                      *
+ *                        -21,if diconnected by the local                         *
+ *                        -22,if deleted by the local                             *
+ *     3. status        : pointer to the status upon failure                      *
+ *                        Use NULL if you don't expect it returned                *
+ * .Return value:                                                                 *
+ *     =1, success                                                                *
+ *     =0, has error(s)                                                           *
+ **********************************************************************************/
  u8 M8266WIFI_SPI_Query_Last_Tcp_Disconnect_Cause(u8 link_no, s8* disconnect_cause, u16* status);
 
 
-/***********************************************************************************
- * M8266WIFI_SPI_Disconnect_TcpClient                                              *
- * .Description:                                                                   *
- *     To disconnect a client connections on M8266WIFI TCP server via SPI          *
- *     For more details, please refer to the API document per this function        *
- * .Parameter(s)                                                                   *
- *     1. link_no     : the number of link to be deleted/disconnected              *
- *     2. client_info : pointer to the remote tcp client info to disconnect        *
- *                      use NULL to disconnect all the remote clients if any       *
- *     3. status      : pointer to return errcode(LSB) and status(MSB) upon error  *
- *                      Use NULL if you don't expect them returned                 *
- *                      errcode(LSB)                                               *
- *                      = 0x54, disconnect a tcp client socket not present         *
- *                      = 0x55, disconnect a TCP socket when busy in receiving     *
- *                      = 0x56, disconnect a TCP socket when busy in reading       *
- *                      = 0x57, no need to disconnect the sockets since it is      *
- *                            - UDP, use M8266WIFI_SPI_Delete_Connection. OR       *
- *                            - TCP Server without clients connecting to. OR       *
- *                            - TCP Client already disconnected                    *
- * .Return value:                                                                  *
- *     =1, success                                                                 *
- *     =0, has error(s)                                                            *
- ***********************************************************************************/
-
-/***********************************************************************************
- * M8266WIFI_SPI_Query_Tcp_Retran_Max                                              *
- * .Description:                                                                   *
- *     To query the tcp max retransmission                                         *
- *     For more details, please refer to the API document per this function        *
- * .Parameter(s)                                                                   *
- *     1. link_no       : the number of link to query                              *
- *     2. max_retran    : pointer to max retransimision                            *
- *     3. status        : pointer to the status upon failure                       *
- *                        Use NULL if you don't expect it returned                 *
- * .Return value:                                                                  *
- *     =1, success                                                                 *
- *     =0, has error(s)	                                                           *
- ***********************************************************************************/
+/**********************************************************************************
+ * M8266WIFI_SPI_Query_Tcp_Retran_Max                                             *
+ * .Description:                                                                  *
+ *     To query the tcp max retransmission                                        *
+ * .Parameter(s)                                                                  *
+ *     1. link_no       : the number of link to query                             *
+ *     2. max_retran    : pointer to max retransimision                           *
+ *     3. status        : pointer to the status upon failure                      *
+ *                        Use NULL if you don't expect it returned                *
+ * .Return value:                                                                 *
+ *     =1, success                                                                *
+ *     =0, has error(s)                                                           *
+ **********************************************************************************/
  u8 M8266WIFI_SPI_Query_Tcp_Retran_Max(u8 link_no, u8* max_retran, u16* status);
  
-/***********************************************************************************
- * M8266WIFI_SPI_Config_Tcp_Retran_Max                                             *
- * .Description:                                                                   *
- *     To config the tcp max retransmission                                        *
- *     For more details, please refer to the API document per this function        *
- * .Parameter(s)                                                                   *
- *     1. link_no       : the number of link to query                              *
- *     2. max_retran    : value of max retransimision, range 1-12                  *
- *                        if <1,  then use 1                                       *
- *                        if >12, then use 12                                      *
- *     3. status        : pointer to the status upon failure                       *
- *                        Use NULL if you don't expect it returned                 *
- * .Return value:                                                                  *
- *     =1, success                                                                 *
- *     =0, has error(s)                                                            *
- ***********************************************************************************/
+/**********************************************************************************
+ * M8266WIFI_SPI_Config_Tcp_Retran_Max                                            *
+ * .Description:                                                                  *
+ *     To config the tcp max retransmission                                       *
+ * .Parameter(s)                                                                  *
+ *     1. link_no       : the number of link to config                            *
+ *     2. max_retran    : value of max retransimision, range 1-12                 *
+ *                        if <1,  then use 1                                      *
+ *                        if >12, then use 12                                     *
+ *     3. status        : pointer to the status upon failure                      *
+ *                        Use NULL if you don't expect it returned                *
+ * .Return value:                                                                 *
+ *     =1, success                                                                *
+ *     =0, has error(s)                                                           *
+ **********************************************************************************/
  u8 M8266WIFI_SPI_Config_Tcp_Retran_Max(u8 link_no, u8 max_retran, u16* status);
  
-/***********************************************************************************
- * M8266WIFI_SPI_Query_Tcp_Mss                                                     *
- * .Description:                                                                   *
- *     To query the tcp mss value                                                  *
- *     For more details, please refer to the API document per this function        *
- * .Parameter(s)                                                                   *
- *     1. link_no       : the number of link to query                              *
- *     2. remote_ip     : remote_ip like "192.168.1.101" to differentiate multiple *
- *                        remote e.g. multiple clients.                            *
- *                        USE NULL if only one remote(e.g. wifi module is a tcp    *
- *                        Client) or check current access remote                   *
- *     3. remote_port   : remote_ip like 4321 if remote_ip!=NULL*                  *
- *     4. tcp_mss       : pointer to returned mss                                  *
- *     5. status        : pointer to the status upon failure                       *
- *                        Use NULL if you don't expect it returned                 *
- * .Return value:                                                                  *
- *     =1, success                                                                 *
- *     =0, has error(s)                                                            *
- ***********************************************************************************/
+/**********************************************************************************
+ * M8266WIFI_SPI_Query_Tcp_Mss                                                    *
+ * .Description:                                                                  *
+ *     To query the tcp mss value                                                 *
+ * .Parameter(s)                                                                  *
+ *     1. link_no       : the number of link to query                             *
+ *     2. remote_ip     : remote_ip like "192.168.1.101" to differentiate multiple*
+ *                        remote e.g. multiple clients.                           *
+ *                        USE NULL if only one remote(e.g. wifi module is a tcp   *
+ *                        Client) or check current access remote                  *
+ *     3. remote_port   : remote_ip like 4321 if remote_ip!=NULL*                 *
+ *     4. tcp_mss       : pointer to returned mss                                 *
+ *     5. status        : pointer to the status upon failure                      *
+ *                        Use NULL if you don't expect it returned                *
+ * .Return value:                                                                 *
+ *     =1, success                                                                *
+ *     =0, has error(s)                                                           *
+ **********************************************************************************/
  u8 M8266WIFI_SPI_Query_Tcp_Mss(u8 link_no, char* remote_ip, u16 remote_port, u16* tcp_mss, u16* status);
 
-/***********************************************************************************
- * M8266WIFI_SPI_Query_Tcp_Window_num                                              *
- * .Description:                                                                   *
- *     To query the tcp window num                                                 *
- *     For more details, please refer to the API document per this function        *
- * .Parameter(s)                                                                   *
- *     1. link_no                                                                  *
- *     2. tcp_wnd_num   : number of tcp windows                                    *
- *     3. status        : pointer to the status upon failure                       *
- *                        Use NULL if you don't expect it returned                 *
- * .Return value:                                                                  *
- *     =1, success                                                                 *
- *     =0, has error(s)                                                            *
- ***********************************************************************************/
+/**********************************************************************************
+ * M8266WIFI_SPI_Query_Tcp_Window_num                                             *
+ * .Description:                                                                  *
+ *     To query the tcp window num                                                *
+ * .Parameter(s)                                                                  *
+ *     1. link_no       : the number of link to query                             *
+ *     2. tcp_wnd_num   : number of tcp windows                                   *
+ *     3. status        : pointer to the status upon failure                      *
+ *                        Use NULL if you don't expect it returned                *
+ * .Return value:                                                                 *
+ *     =1, success                                                                *
+ *     =0, has error(s)                                                           *
+ **********************************************************************************/
  u8 M8266WIFI_SPI_Query_Tcp_Window_num(u8 link_no, u8* tcp_wnd_num, u16* status);
  
-/***********************************************************************************
- * M8266WIFI_SPI_Config_Tcp_Window_num                                             *
- * .Description:                                                                   *
- *     To config the tcp window num                                                *
- *     For more details, please refer to the API document per this function        *
- * .Parameter(s)                                                                   *
- *     1. link_no       : the number of link to Config                             *
- *     2. tcp_wnd_num   : number of tcp windows, range 1-15                        *
- *                        if <1,  then use 1                                       *
- *                        if >15, then use 15                                      *
- *     3. status        : pointer to the status upon failure                       *
- *                        Use NULL if you don't expect it returned                 *
- * .Return value:                                                                  *
- *     =1, success                                                                 *
- *     =0, has error(s)                                                            *
- ***********************************************************************************/
+/**********************************************************************************
+ * M8266WIFI_SPI_Config_Tcp_Window_num                                            *
+ * .Description:                                                                  *
+ *     To config the tcp window num                                               *
+ * .Parameter(s)                                                                  *
+ *     1. link_no       : the number of link to Config                            *
+ *     2. tcp_wnd_num   : number of tcp windows, range 1-15                       *
+ *                        if <1,  then use 1                                      *
+ *                        if >15, then use 15                                     *
+ *     3. status        : pointer to the status upon failure                      *
+ *                        Use NULL if you don't expect it returned                *
+ * .Return value:                                                                 *
+ *     =1, success                                                                *
+ *     =0, has error(s)                                                           *
+ **********************************************************************************/
  u8 M8266WIFI_SPI_Config_Tcp_Window_num(u8 link_no, u8 tcp_wnd_num, u16* status);
+ 
+/**********************************************************************************
+ * M8266WIFI_SPI_Tcp_Query_Option_Nodelay                                         *
+ * .Description:                                                                  *
+ *     To Query the tcp no_delay option is enabled or disabled                    *
+ * .Parameter(s)                                                                  *
+ *     1. link_no         : the number of link to query                           *
+ *     2. nodelay_enabled : pointer to no_delay enabled or not                    *
+ *     3. status          : pointer to the status upon failure                    *
+ * .Return value:                                                                 *
+ *     =1, success                                                                *
+ *     =0, has error(s)                                                           *
+ **********************************************************************************/
+ u8 M8266WIFI_SPI_Tcp_Query_Option_Nodelay(u8 link_no, u8* nodelay_enabled, u16* status);
+ 
+ /**********************************************************************************
+ * M8266WIFI_SPI_Tcp_Enable_Option_Nodelay                                        *
+ * .Description:                                                                  *
+ *     To Enable or disable the tcp no_delay option                               *
+ *     This function should call before setupconnection                           *
+ *     Default value is Nodelay Enabled if not call this API                      *
+ * .Parameter(s)                                                                  *
+ *     1. link_no         : the number of link to query                           *
+ *     2. nodelay_enabled : no_delay enabled or not                               *
+ *     3. status          : pointer to the status upon failure                    *
+ * .Return value:                                                                 *
+ *     =1, success                                                                *
+ *     =0, has error(s)                                                           *
+ **********************************************************************************/
+ u8 M8266WIFI_SPI_Tcp_Enable_Option_Nodelay(u8 link_no, u8 nodelay_enabled, u16* status);
+
+/**********************************************************************************
+ * M8266WIFI_SPI_Tcp_Query_Option_QuickAck                                        *
+ * .Description:                                                                  *
+ *     To Query the tcp QuickAck option is enabled or disabled                    *
+ * .Parameter(s)                                                                  *
+ *     1. link_no         : the number of link to query                           *
+ *     2. QuickAck_enabled: pointer to QuickAck enabled or not                    *
+ *     3. status          : pointer to the status upon failure                    *
+ * .Return value:                                                                 *
+ *     =1, success                                                                *
+ *     =0, has error(s)                                                           *
+ **********************************************************************************/
+ u8 M8266WIFI_SPI_Tcp_Query_Option_QuickAck(u8 link_no, u8* QuickAck_enabled, u16* status);
+ 
+/**********************************************************************************
+ * M8266WIFI_SPI_Tcp_Enable_Option_QuickAck                                       *
+ * .Description:                                                                  *
+ *     To Enable or disable the tcp QuickAck option                               *
+ *     This function should call before setupconnection                           *
+ *     Default value is QuickAck Disabled if not call this API                    * 
+ * .Parameter(s)                                                                  *
+ *     1. link_no         : the number of link to query                           *
+ *     2. QuickAck_enabled: QuickAck enabled or not                               *
+ *          =0, not enabled                                                       *
+ *          =others, enabled                                                      *
+ *     3. status          : pointer to the status upon failure                    *
+ * .Return value:                                                                 *
+ *     =1, success                                                                *
+ *     =0, has error(s)                                                           *
+ **********************************************************************************/
+ u8 M8266WIFI_SPI_Tcp_Enable_Option_QuickAck(u8 link_no, u8 QuickAck_enabled, u16* status);
+
+/**********************************************************************************
+ * M8266WIFI_SPI_TcpCliet_Query_KeepAlive                                         *
+ * .Description:                                                                  *
+ *     To Query the tcp keep alive Param as TCP Client Client                     *
+ *     This function should call after setupconnection                            *
+ *     and only supported for when used as a TCP Client and KeepAlive enabled     *
+ * .Parameter(s)                                                                  *
+ *     1. link_no       : the number of link to query                             *
+ *     2. idle          : pointer to the idle, unit in seconds                    *
+ *     3. interval      : pointer to the interval, unit in seconds                *
+ *     3. repteat_times : pointer to the repeated times                           *
+ *     4. status        : pointer to the status upon failure                      *
+ *                      :  LSB = 0x0B, if this is not a TCP client                *
+ *                      :      = 0x40, if connection closed or keepalive unenable *
+ * .Return value:                                                                 *
+ *     =1, success                                                                *
+ *     =0, has error(s)                                                           *
+ **********************************************************************************/
+ u8 M8266WIFI_SPI_TcpCliet_Query_KeepAlive(u8 link_no, u32* idle, u32* interval, u32* repteat_times, u16* status);
+
+/**********************************************************************************
+ * M8266WIFI_SPI_Enbale_Tcp_KeepAlive                                             *
+ * .Description:                                                                  *
+ *     To config the tcp keep alive param                                         *
+ *     This function should call after setupconnection,                           *
+ *     and only supported for when used as a TCP Client                           *
+ * .Parameter(s)                                                                  *
+ *     1. link_no       : the number of link to query                             *
+ *     2. idle          : pointer to the idle, unit in seconds                    *
+ *     3. interval      : pointer to the interval, unit in seconds                *
+ *     3. repteat_times : pointer to the repeated times                           *
+ *     4. status        : pointer to the status upon failure                      *
+ *                      :  LSB = 0x0B, if this is not a TCP client                *
+ *                      :      = 0x41, if connection closed or keepalive unenable *
+ * .Return value:                                                                 *
+ *     =1, success                                                                *
+ *     =0, has error(s)                                                           *
+ **********************************************************************************/
+ u8 M8266WIFI_SPI_TcpCliet_Enbale_KeepAlive(u8 link_no, u32 idle, u32 interval, u32 repteat_times, u16* status);
+ 
 
 /***********************************************************************************
  * M8266WIFI_SPI_STA_Get_HostIP_by_HostName                                        *
  * .Description:                                                                   *
  *     To get the host ip_addr by hostName                                         *
- *     For more details, please refer to the API document per this function        *
  * .Parameter(s)                                                                   *
  *     1. hostIp      : the host ip_addr returned                                  *
  *     2. hostName    : the host name to get ip, max 255 Bytes                     *
  *     3. timeout_in_s: timeout in seconds                                         *
  *     4. status      : pointer to return errcode(LSB) and status(MSB) upon error  *
- *                        Use NULL if you don't expect it returned                 *
+ *                      Use NULL if you don't expect it returned                   *
  * .Return value:                                                                  *
  *     =1, success                                                                 *
  *     =0, has error(s)                                                            *
  ***********************************************************************************/
  u8 M8266WIFI_SPI_STA_Get_HostIP_by_HostName(char* hostIp, char* hostName, u8 timeout_in_s, u16* status);
- //Macro for the compaibility with previous versions
+
+//Below macro is used to be compaibile with previous versions
  #define SPI_STA_Get_HostIP_by_HostName(hostIp,hostName,timeout_in_s,status) M8266WIFI_SPI_STA_Get_HostIP_by_HostName(hostIp,hostName,timeout_in_s,status) 
+
+
 
 ////////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////////
@@ -1474,7 +1679,6 @@ u8 M8266WIFI_SPI_Disconnect_TcpClient(u8 link_no, ClientInfo *client_info, u16* 
  * M8266WIFI_SPI_Send_Data                                                         *
  * .Description:                                                                   *
  *     To send Data to WIFI via M8266 module SPI                                   *
- *     For more details, please refer to the API document per this function        *
  * .Parameters                                                                     *
  *     1. Data   : the pointer to the Data buffer to be sent                       *
  *     2. len    : the length the Data buffer to be sent                           *
@@ -1503,34 +1707,34 @@ u8 M8266WIFI_SPI_Disconnect_TcpClient(u8 link_no, ClientInfo *client_info, u16* 
  * M8266WIFI_SPI_Send_BlockData                                                    *
  * .Description:                                                                   *
  *     To send Block Data to WIFI via M8266 module SPI                             *
- *     For more details, please refer to the API document per this function        *
  * .Parameters                                                                     *
- *     1. Data        : the pointer to the Data buffer to be sent                  *
- *     2. Data_len    : the length the Data buffer to be sent                      *
- *     3. link_no     : the wifi service link number sent to                       *
- *     4. max_loops   : max loops to repeate send if blocked or failed during      *
- *                      transimission to avoid dead-loops, use 1000 as default     *
- *     4. max_loops   : max loops to repeate send if blocked or failed during      *
- *     5. remote_ip   : remote_ip like "192.168.1.101" to differentiate            *
- *                      multiple remote e.g. multiple clients.                     *
- *                      USE NULL if only one remote(e.g. wifi module is a tcp      *
- *                      Client) or send to latest access/connected remote          *
- *     6. remote_port : remote_ip like 4321 if remote_ip!=NULL                     *
- *                      use 0 if remote_ip==NULL                                   *
+ *     1. Data            : the pointer to the Data buffer to be sent              *
+ *     2. Data_len        : the length the Data buffer to be sent                  *
+ *     3. link_no         : the wifi service link number sent to                   *
+ *     4. max_loops       : max loops to repeate send if blocked or failed during  *
+ *                          transimission to avoid dead-loops, use 1000 as default *
+ *     4. max_loops       : max loops to repeate send if blocked or failed during  *
+ *     5. remote_ip       : remote_ip like "192.168.1.101" to differentiate        *
+ *                          multiple remote e.g. multiple clients.                 *
+ *                          USE NULL if only one remote(e.g. wifi module is a tcp  *
+ *                          Client) or send to latest access/connected remote      *
+ *     6. remote_port     : remote_ip like 4321 if remote_ip!=NULL                 *
+ *                          use 0 if remote_ip==NULL                               *
  *     7. pointer to return errcode(LSB) and status(MSB) when error encountered    *
  *        use NULL if you don't expect errcode and status                          *
  *        errcode:                                                                 *
- *              = 0x13: Wrong link_no used                                         *
- *              = 0x14: connection by link_no not present                          *
- *              = 0x15: connection by link_no closed                               *
- *              = 0x18: No clients connecting to this TCP server                   *
- *              = 0x1E: too many errors ecountered during sending can not fixed    *
- *              = 0x1F: Other errors                                               *
+ *            = 0x13: Wrong link_no used                                           *
+ *            = 0x14: connection by link_no not present                            *
+ *            = 0x15: connection by link_no closed                                 *
+ *            = 0x18: No clients connecting to this TCP server                     *
+ *            = 0x1E: too many errors ecountered during sending can not fixed      *
+ *            = 0x1F: Other errors                                                 *
  * .Return value:                                                                  *
  *     Actually length that has been sent successfuuly                             *
  ***********************************************************************************/
  u32 M8266WIFI_SPI_Send_BlockData(u8 Data[], u32 Data_len, u16 max_loops, u8 link_no, char* remote_ip, u16 remote_port, u16* status);
- //Below macro is used to be compatible with code with lagacy APIs. Recommended to Use M8266WIFI_SPI_Send_BlockData other than M8266WIFI_SPI_Send_Data_Block.
+
+//Below macro is used to be compatible with code with lagacy APIs. Recommended to Use M8266WIFI_SPI_Send_BlockData other than M8266WIFI_SPI_Send_Data_Block.
  #define M8266WIFI_SPI_Send_Data_Block(Data, Data_len, tcp_packet_size, link_no, status)  M8266WIFI_SPI_Send_BlockData(Data[], Data_len, 10000, link_no, NULL, 0, status)
 
 /***********************************************************************************
@@ -1540,7 +1744,6 @@ u8 M8266WIFI_SPI_Disconnect_TcpClient(u8 link_no, ClientInfo *client_info, u16* 
  *      those UDP transmission requiring frequently changing destination           *
  *     .If the UDP transission does not need update dest, please use               *
  *       M8266WIFI_SPI_Send_Data above for better efficiency                       *
- *     For more details, please refer to the API document per this function        *
  * .Parameters                                                                     *
  *     1. Data   : the pointer to the Data buffer to be sent                       *
  *     2. len    : the length the Data buffer to be sent                           *
@@ -1574,7 +1777,6 @@ u8 M8266WIFI_SPI_Disconnect_TcpClient(u8 link_no, ClientInfo *client_info, u16* 
  *       especially suitable for scenarios of multiple clients for                 *
  *     .If the tcp server has only one client, please use                          *
  *       M8266WIFI_SPI_Send_Data above for better efficiency                       *
- *     For more details, please refer to the API document per this function        *
  * .Parameters                                                                     *
  *     1. Data   : the pointer to the Data buffer to be sent                       *
  *     2. len    : the length the Data buffer to be sent                           *
@@ -1608,7 +1810,6 @@ u8 M8266WIFI_SPI_Disconnect_TcpClient(u8 link_no, ClientInfo *client_info, u16* 
  * .Description:                                                                   *
  *     To check whether the M8266WIFI module has received data awaiting master     *
  *     to fetch away                                                               *
- *     For more details, please refer to the API document per this function        *
  * .Parameters                                                                     *
  *     None                                                                        *
  * .Return value:                                                                  *
@@ -1621,7 +1822,6 @@ u8 M8266WIFI_SPI_Disconnect_TcpClient(u8 link_no, ClientInfo *client_info, u16* 
  * M8266WIFI_SPI_RcvData                                                           *
  * .Description:                                                                   *
  *     To receive the wifi data from M8266WIFI                                     *
- *     For more details, please refer to the API document per this function        *
  * .Parameters                                                                     *
  *     1. Data           - the buffer to contained the received Data               *
  *     2. max_len        - the max length of Data to fetech                        *
@@ -1654,7 +1854,6 @@ u8 M8266WIFI_SPI_Disconnect_TcpClient(u8 link_no, ClientInfo *client_info, u16* 
  *     To receive the wifi data from M8266WIFI, extended                           *
  *     Compared with M8266WIFI_SPI_RcvData(), this function also return the        *
  *     source remote_ip and remote_port meanwhile                                  *
- *     For more details, please refer to the API document per this function        *
  * .Parameters                                                                     *
  *     1. Data           - the buffer to contained the received Data               *
  *     2. max_len        - the max length of Data to fetech                        *
@@ -1701,7 +1900,6 @@ u8 M8266WIFI_SPI_Disconnect_TcpClient(u8 link_no, ClientInfo *client_info, u16* 
  * M8266WIFI_SPI_DoModuleSmartConfig                                               *
  * .Description:                                                                   *
  *     To perform an SmartConfig procedure to wifi module via SPI                  *
- *     For more details, please refer to the API document per this function        *
  * .Parameter(s)                                                                   *
  *     1. timeout_in_s  : timeout for an smartconfig procedure                     *
  *     2. saved   : to save ssid/passowrd or not after configuration with en=1     *
@@ -1735,8 +1933,8 @@ u8 M8266WIFI_SPI_Disconnect_TcpClient(u8 link_no, ClientInfo *client_info, u16* 
  ***********************************************************************************/
  u8 M8266WIFI_SPI_DoModuleSmartConfig(u8 timeout_in_s, u8 saved, u8* smartconfig_type, char smartconfig_phone_ip[15+1], u16* status);
 
-//Macro for Compatibility with those MCU codes using previous version of API which will save SSID and passwords
-#define M8266WIFI_SPI_Module_SmartConfig(timeout_in_s,smartconfig_type,smartconfig_phone_ip,status) M8266WIFI_SPI_DoModuleSmartConfig(timeout_in_s,1,smartconfig_type,smartconfig_phone_ip,status)
+//Below macro is used to be compatible with those MCU codes using previous version of API which will save SSID and passwords
+ #define M8266WIFI_SPI_Module_SmartConfig(timeout_in_s,smartconfig_type,smartconfig_phone_ip,status) M8266WIFI_SPI_DoModuleSmartConfig(timeout_in_s,1,smartconfig_type,smartconfig_phone_ip,status)
 
 /***********************************************************************************
  * M8266WIFI_SPI_StartModuleSmartConfig                                            *
@@ -1744,7 +1942,6 @@ u8 M8266WIFI_SPI_Disconnect_TcpClient(u8 link_no, ClientInfo *client_info, u16* 
  *     To start/stop smart config of M8266WIFI via SPI                             *
  *     Once enter the smartconfig mode, either smartlinkin or airkiss be adapted   *
  *     After perform a start operation, the M8266WIFI will be set in STA mode      *
- *     For more details, please refer to the API document per this function        *
  * .Parameter(s)                                                                   *
  *     1. en      : to start or stop                                               *
  *                  =0, to stop                                                    *
@@ -1760,8 +1957,26 @@ u8 M8266WIFI_SPI_Disconnect_TcpClient(u8 link_no, ClientInfo *client_info, u16* 
  ***********************************************************************************/
  u8 M8266WIFI_SPI_StartModuleSmartConfig(u8 en, u8 saved, u16* status);
 
-//Macro for Compatibility with those MCU codes using previous version of API which will save SSID and passwords
+//Below macro is used to be compatible with those MCU codes using previous version of API which will save SSID and passwords
  #define M8266WIFI_SPI_StartSmartConfig(en,status) M8266WIFI_SPI_StartModuleSmartConfig(en,1,status)
+
+/***********************************************************************************
+ * M8266WIFI_SPI_StartWpsConfig                                                    *
+ * .Description:                                                                   *
+ *     To start/stop wps config of M8266WIFI via SPI                               *
+ *     After perform a start operation, the M8266WIFI will be set in STA mode      *
+ * .Parameter(s)                                                                   *
+ *     1. en      : to start or stop                                               *
+ *                  =0, to stop                                                    *
+ *                  others, to start                                               *
+ *     2. status  : pointer to return errcode(LSB) and status(MSB) upon failures   *
+ *                  Use NULL if you don't expect it returned                       *
+ * .Return value:                                                                  *
+ *     =1, success                                                                 *
+ *     =0, has error(s)                                                            *
+ ***********************************************************************************/
+ u8 M8266WIFI_SPI_StartWpsConfig(u8 en, u16* status);
+
 
 ////////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////////
@@ -1775,11 +1990,10 @@ u8 M8266WIFI_SPI_Disconnect_TcpClient(u8 link_no, ClientInfo *client_info, u16* 
  * M8266WIFI_SPI_Query_WebServer                                                   *
  * .Description:                                                                   *
  *     To query the web server info via SPI                                        *
- *     For more details, please refer to the API document per this function        *
  * .Parameter(s)                                                                   *
  *     1. start_on_boot   : pointer to return whether start on boot                *
  *        use NULL if you don't expect it                                          *
- *     2. current_running : pointer to return whether dns is now running           *
+ *     2. current_running : pointer to return whether web server is now running    *
  *        use NULL if you don't expect it                                          *
  *     3. default_port    : pointer to return default port on bootup               *
  *        use NULL if you don't expect it                                          *
@@ -1797,7 +2011,6 @@ u8 M8266WIFI_SPI_Disconnect_TcpClient(u8 link_no, ClientInfo *client_info, u16* 
  * M8266WIFI_SPI_Set_WebServer                                                     *
  * .Description:                                                                   *
  *     To set the web server via SPI, with option save or not                      *
- *     For more details, please refer to the API document per this function        *
  * .Parameter(s)                                                                   *
  *     1. open_not_shutdown  : to start or shutdown the local web server           *
  *            =0,      to shutdown the webserver if it is running                  *
@@ -1826,13 +2039,11 @@ u8 M8266WIFI_SPI_Disconnect_TcpClient(u8 link_no, ClientInfo *client_info, u16* 
  ***********************************************************************************/
  u8 M8266WIFI_SPI_Set_WebServer(u8 open_not_shutdown, u16 server_port, u8 saved, u16* status);
 
- //u8 M8266WIFI_SPI_Set_Web_Server(u8 open_not_shutdown, u16 server_port, u16* status);
- //below macro used to keep compatible with previous API
+ //Below macro is used to be compatible with previous API
  #define SPI_Set_Web_Server(open_not_shutdown, server_port, status)  M8266WIFI_SPI_Set_WebServer(open_not_shutdown, server_port, 0, status)
 
 /***********************************************************************************
  * M8266WIFI_SPI_QueryDns                                                          *
- *     For more details, please refer to the API document per this function        *
  * .Description:                                                                   *
  *     To query the dns server info via SPI                                        *
  * .Parameter(s)                                                                   *
@@ -1852,7 +2063,6 @@ u8 M8266WIFI_SPI_Disconnect_TcpClient(u8 link_no, ClientInfo *client_info, u16* 
  * M8266WIFI_SPI_StartDns                                                          *
  * .Description:                                                                   *
  *     To start or shutdonw the local DNS on module                                *
- *     For more details, please refer to the API document per this function        *
  * .Parameter(s)                                                                   *
  *     1. start_not_shutdown  : to start or shutdown the local dns server          *
  *            =0,      to shutdown the webserver if it is running                  *
@@ -1882,15 +2092,16 @@ u8 M8266WIFI_SPI_Disconnect_TcpClient(u8 link_no, ClientInfo *client_info, u16* 
 ////////////////////////////////////////////////////////////////////////////////////
 //   7. APIs releated to module low power operations via SPI                      //
 //       - M8266WIFI_SPI_Set_Tx_Max_Power                                4.7.1    //
-//       - M8266WIFI_SPI_Sleep_Module                                    4.7.2    //
+//       - M8266WIFI_SPI_Disable_RF                                      4.7.2    //
+//       - M8266WIFI_SPI_Restore_RF                                      4.7.3    //
+//       - M8266WIFI_SPI_Sleep_Module                                    4.7.4    //
 ////////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////////
 
 /***********************************************************************************
  * M8266WIFI_SPI_Set_Tx_Max_Power                                                  *
  * .Description:                                                                   *
- *     To set the RF Tx Max Power via SPI comannd                                  *
- *     For more details, please refer to the API document per this function        *
+ *     To set the RF Tx Max Power via SPI comand                                  *
  * .Parameter(s)                                                                   *
  *     1. tx_max_power : the max tx power in 0.25 dBm.                             *
  *                       range = 0~82, i.e. 0~20.5dBm, or 1mW~112mW                *
@@ -1914,18 +2125,48 @@ u8 M8266WIFI_SPI_Disconnect_TcpClient(u8 link_no, ClientInfo *client_info, u16* 
  ***********************************************************************************/
  u8 M8266WIFI_SPI_Set_Tx_Max_Power(u8 tx_max_power, u16 *status);
 
+ /**********************************************************************************
+ * M8266WIFI_SPI_Disable_RF                                                        *
+ * .Description:                                                                   *
+ *     To diable the RF functionality of the module                                *
+ * .Parameter(s)                                                                   *
+ *     1. status  : pointer to return errcode(LSB) and status(MSB) upon error      *
+ *                  Use NULL if you don't expect them returned                     *
+ * .Return value:                                                                  *
+ *     =1, success                                                                 *
+ *     =0, has error(s)                                                            *
+ ***********************************************************************************/
+ u8 M8266WIFI_SPI_Disable_RF(u16 *status);
+
+ /**********************************************************************************
+ * M8266WIFI_SPI_Restore_RF                                                        *
+ * .Description:                                                                   *
+ *     To restore the RF functionality of the module                               *
+ * .Parameter(s)                                                                   *
+ *     1. opmode  : opmode to set upon restore of rf                               *
+ *                  = 1, STA Only, and will re-connect ap automatically            *
+ *                  = 2, AP Only                                                   *
+ *                  = 3, STA+AP, and will re-connect ap automatically              *
+ *                  = others, same to 3                                            *
+ *     2. status  : pointer to return errcode(LSB) and status(MSB) upon error      *
+ *                  Use NULL if you don't expect them returned                     *
+ * .Return value:                                                                  *
+ *     =1, success                                                                 *
+ *     =0, has error(s)                                                            *
+ ***********************************************************************************/
+ u8 M8266WIFI_SPI_Restore_RF(u8 opmode, u16 *status);
+
 /**********************************************************************************
  * M8266WIFI_SPI_Sleep_Module                                                      *
  * .Description:                                                                   *
- *     To bring the M8266WIFI module into sleep mode via SPI comannd               *
- *     For more details, please refer to the API document per this function        *
+ *     To bring the M8266WIFI module into sleep mode via SPI comand                *
  * .Parameter(s)                                                                   *
  *     1. sleep_type : the type of sleep                                           *
- *        = 0      :  reserved                                                     *
- *        = 1      :  reserved                                                     *
- *        = 2      :  reserved                                                     *
- *        = 3      :  deep sleep                                                   *
- *        = others :  reserved                                                     *
+ *                     = 0      :  reserved                                        *
+ *                     = 1      :  reserved                                        *
+ *                     = 2      :  reserved                                        *
+ *                     = 3      :  deep sleep                                      *
+ *                     = others :  reserved                                        *
  *     2. time_to_wakeup_in_ms : time to wakeup from sleep, unit in ms             *
  *        - max value 4294967 ms (about 1.19hour).                                 *
  *          if a value exceed this provided, then 4294967ms will be used           *
@@ -1947,8 +2188,7 @@ u8 M8266WIFI_SPI_Disconnect_TcpClient(u8 link_no, ClientInfo *client_info, u16* 
 /***********************************************************************************
  * M8266WIFI_SPI_Reset_Module                                                      *
  * .Description:                                                                   *
- *     To reset the M8266WIFI module at once via SPI comannd                       *
- *     For more details, please refer to the API document per this function        *
+ *     To reset the M8266WIFI module at once via SPI comand                        *
  * .Parameter(s)                                                                   *
  *     1. reset_type : the type of reset                                           *
  *        = 0 :  to perform a software reset to the module,                        *
@@ -1969,10 +2209,9 @@ u8 M8266WIFI_SPI_Disconnect_TcpClient(u8 link_no, ClientInfo *client_info, u16* 
  * M8266WIFI_SPI_Restore_Module_to_Default                                         *
  * .Description:                                                                   *
  *     To restore the ALK8266WIFI module to factory default and then reboot module *
- *     via SPI comannd.                                                            *
+ *     via SPI comand.                                                             *
  *     After calling this API, all the saved paramters will be restored to         *
  *     manufacture default and module will be in AP+STA mode                       *
- *     For more details, please refer to the API document per this function        *
  * .Parameter(s)                                                                   *
  *     1. status  : pointer to return errcode(LSB) and status(MSB) upon failures   *
  *                  Use NULL if you don't expect it returned                       *
@@ -1982,6 +2221,7 @@ u8 M8266WIFI_SPI_Disconnect_TcpClient(u8 link_no, ClientInfo *client_info, u16* 
  ***********************************************************************************/
  u8 M8266WIFI_SPI_Restore_Module_to_Default(u16* status);
 
+
 ////////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////////
 //   8. APIs releated to module resources operations via SPI                      //
@@ -1990,27 +2230,28 @@ u8 M8266WIFI_SPI_Disconnect_TcpClient(u8 link_no, ClientInfo *client_info, u16* 
 //       - M8266WIFI_SPI_Read_Module_Gpio                                4.8.3    //
 //       - M8266WIFI_SPI_Write_Module_Gpio                               4.8.4    //
 //       - M8266WIFI_SPI_Read_Module_Adc                                 4.8.5    //
-//       - M8266WIFI_SPI_Module_Query_LedFlashOnBoot                     4.8.6    //
-//       - M8266WIFI_SPI_Module_Config_LedFlashOnBoot                    4.8.7    //
-//       - M8266WIFI_SPI_Module_Query_Wifi_Inidcator                     4.8.8    //
-//       - M8266WIFI_SPI_Module_Confoig_Wifi_Inidcator                   4.8.9    //
-//       - M8266WIFI_SPI_Module_Query_Wifi_Rxd_Interrupt_Trigger         4.8.10   //
-//       - M8266WIFI_SPI_Module_Config_Wifi_Rxd_Interrupt_Trigger        4.8.11   //
+//       - M8266WIFI_SPI_Read_Module_Power_Supply_Estimate               4.8.6    //
+//       - M8266WIFI_SPI_Module_Query_LedFlashOnBoot                     4.8.7    //
+//       - M8266WIFI_SPI_Module_Config_LedFlashOnBoot                    4.8.8    //
+//       - M8266WIFI_SPI_Module_Query_Wifi_Inidcator                     4.8.9    //
+//       - M8266WIFI_SPI_Module_Confoig_Wifi_Inidcator                   4.8.10   //
+//       - M8266WIFI_SPI_Module_Query_Wifi_Rx_Interrupt_Trigger          4.8.11   //
+//       - M8266WIFI_SPI_Module_Config_Wifi_Rx_Interrupt_Trigger         4.8.12   //
 ////////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////////
-typedef enum{
-	 M8266WIFI_MODULE_GPIO_MODES_INPUT_NOPULL       = 0,
-	 M8266WIFI_MODULE_GPIO_MODES_INPUT_PULLUP       = 1,
-	 M8266WIFI_MODULE_GPIO_MODES_OUTPUT_NORMAL      = 2,
-	 M8266WIFI_MODULE_GPIO_MODES_OUTPUT_OD          = 3,
-	 M8266WIFI_MODULE_GPIO_MODES_ALTERNATIIVE       = 4,
+
+ typedef enum{
+	 M8266WIFI_MODULE_GPIO_MODES_INPUT_NOPULL      = 0,
+	 M8266WIFI_MODULE_GPIO_MODES_INPUT_PULLUP      = 1,
+	 M8266WIFI_MODULE_GPIO_MODES_OUTPUT_NORMAL     = 2,
+	 M8266WIFI_MODULE_GPIO_MODES_OUTPUT_OD         = 3,
+	 M8266WIFI_MODULE_GPIO_MODES_ALTERNATIIVE      = 4,
  }M8266WIFI_MODULE_GPIO_MODES;
  
-/***********************************************************************************
+ /**********************************************************************************
  * M8266WIFI_SPI_Query_Module_Gpio_Mode                                            *
  * .Description:                                                                   *
  *     To query the on-module gpios whether as input or output                     *
- *     For more details, please refer to the API document per this function        *
  * .Parameter(s)                                                                   *
  *     1. io_no        : the number of on-module GPIO                              *
  *     2. io_mode      : mode to get                                               *
@@ -2026,11 +2267,10 @@ typedef enum{
  ***********************************************************************************/
  u8 M8266WIFI_SPI_Query_Module_Gpio_Mode(u8 io_no, M8266WIFI_MODULE_GPIO_MODES *io_mode, u16* status);
 
-/***********************************************************************************
+ /**********************************************************************************
  * M8266WIFI_SPI_Config_Module_Gpio_Mode                                           *
  * .Description:                                                                   *
  *     To config the on-module gpios as input or output                            *
- *     For more details, please refer to the API document per this function        *
  * .Parameter(s)                                                                   *
  *     1. io_no        : the number of on-module GPIO                              *
  *     2. io_mode      : mode to set                                               *
@@ -2046,11 +2286,10 @@ typedef enum{
  ***********************************************************************************/
  u8 M8266WIFI_SPI_Config_Module_Gpio_Mode(u8 io_no, M8266WIFI_MODULE_GPIO_MODES io_mode, u16* status);
  
-/***********************************************************************************
+ /**********************************************************************************
  * M8266WIFI_SPI_Read_Module_Gpio                                                  *
  * .Description:                                                                   *
  *     To read the gpios level                                                     *
- *     For more details, please refer to the API document per this function        *
  * .Parameter(s)                                                                   *
  *     1. io_no        : the number of on-module GPIO                              *
  *     2. level        : pointer of the level read back                            *
@@ -2066,7 +2305,6 @@ typedef enum{
  * M8266WIFI_SPI_Write_Module_Gpio                                                 *
  * .Description:                                                                   *
  *     To write the on-module gpios as output                                      *
- *     For more details, please refer to the API document per this function        *
  * .Parameter(s)                                                                   *
  *     1. io_no        : the number of on-module GPIO                              *
  *     2. level        : pointer of the level read back                            *
@@ -2078,11 +2316,10 @@ typedef enum{
  ***********************************************************************************/
  u8 M8266WIFI_SPI_Write_Module_Gpio(u8 io_no, u8 level, u16* status);
 
-/***********************************************************************************
+ /**********************************************************************************
  * M8266WIFI_SPI_Read_Module_Adc                                                   *
  * .Description:                                                                   *
- *     To write on-module gpios as output                                          *
- *     For more details, please refer to the API document per this function        *
+ *     To read the ADC value from the ADC pin                                      *
  * .Parameter(s)                                                                   *
  *     1. adc          : pointer to the adc value                                  *
  *     2. status       : pointer to return errcode(LSB) and status(MSB) upon error *
@@ -2093,11 +2330,25 @@ typedef enum{
  ***********************************************************************************/
  u8 M8266WIFI_SPI_Read_Module_Adc(u16* adc, u16* status);
  
-/***********************************************************************************
+ /**********************************************************************************
+ * M8266WIFI_SPI_Read_Module_Power_Supply_Estimate                                 *
+ * .Description:                                                                   *
+ *     To Read the power supply estimate                                           *
+ * .Parameter(s)                                                                   *
+ *     1. power_supply_estimate                                                    *
+ *                     : pointer to the power_supply_estimate value, unit in mV    *
+ *     2. status       : pointer to return errcode(LSB) and status(MSB) upon error *
+ *                       Use NULL if you don't expect them returned                *
+ * .Return value:                                                                  *
+ *     =1, success                                                                 *
+ *     =0, has error(s)                                                            *
+ ***********************************************************************************/
+ u8 M8266WIFI_SPI_Read_Module_Power_Supply_Estimate(u16* power_supply_estimate, u16* status);
+ 
+ /**********************************************************************************
  * M8266WIFI_SPI_Module_Query_LedsFlashOnBoot                                      *
  * .Description:                                                                   *
  *     To query whether the two module Leds would flash on Boot via the SPI API    *
- *     For more details, please refer to the API document per this function        *
  * .Parameter(s)                                                                   *
  *     1. leds_flash_on_boot:  store the values return                             *
  *        = 0 :  LEDs not flash but off during module boot up                      *
@@ -2110,11 +2361,10 @@ typedef enum{
  ***********************************************************************************/
  u8 M8266WIFI_SPI_Module_Query_LedsFlashOnBoot(u8* leds_flash_on_boot, u16 *status);
 
-/***********************************************************************************
+ /**********************************************************************************
  * M8266WIFI_SPI_Module_Config_LedsFlashOnBoot                                     *
  * .Description:                                                                   *
  *     To config whether the two module Leds would flash on Boot via the SPI API   *
- *     For more details, please refer to the API document per this function        *
  * .Parameter(s)                                                                   *
  *     1. leds_flash_on_boot :  store the values to config                         *
  *        = 0 :  LEDs not flash but off during module boot up                      *
@@ -2127,11 +2377,10 @@ typedef enum{
  ***********************************************************************************/
  u8 M8266WIFI_SPI_Module_Config_LedsFlashOnBoot(u8 leds_flash_on_boot, u16 *status);
  
-/***********************************************************************************
+ /**********************************************************************************
  * M8266WIFI_SPI_Module_Query_Wifi_Inidcator                                       *
  * .Description:                                                                   *
  *     To query Led/pin usage for wifi indicatorvia the SPI API                    *
- *     For more details, please refer to the API document per this function        *
  * .Parameter(s)                                                                   *
  *     1. default_not_current:  query the default or current config                *
  *        = 0 :  query current config for wifi indicator                           *
@@ -2154,11 +2403,10 @@ typedef enum{
  ***********************************************************************************/
  u8 M8266WIFI_SPI_Module_Query_Wifi_Inidcator(u8 default_not_current, u8* Wifi_Inidcator_en, u8* Wifi_Inidcator_io_pin, u16 *status);
 
-/***********************************************************************************
+ /**********************************************************************************
  * M8266WIFI_SPI_Module_Config_Wifi_Inidcator                                      *
  * .Description:                                                                   *
  *     To config Led/pin usage for wifi indictor led via the SPI API               *
- *     For more details, please refer to the API document per this function        *
  * .Parameter(s)                                                                   *
  *     1. Wifi_Inidcator_en :  enable or disable wifi indicator                    *
  *        = 0 :  wifi indicator will be disabled and light off                     *
@@ -2186,11 +2434,10 @@ typedef enum{
  ***********************************************************************************/
  u8 M8266WIFI_SPI_Module_Config_Wifi_Inidcator(u8 Wifi_Inidcator_en, u8 Wifi_Inidcator_io_pin, u8 saved, u16 *status);
 
-/***********************************************************************************
+ /**********************************************************************************
  * M8266WIFI_SPI_Module_Query_Wifi_Rx_Interrupt_Trigger                            *
  * .Description:                                                                   *
  *     To query Led/pin usage for wifi rxd interrupt trigger via the SPI API       *
- *     For more details, please refer to the API document per this function        *
  * .Parameter(s)                                                                   *
  *     1. default_not_current:  query the default or current config                *
  *        = 0 :  query current config for wifi indicator                           *
@@ -2213,13 +2460,14 @@ typedef enum{
  *     =1, success                                                                 *
  *     =0, has error(s)                                                            *
  ***********************************************************************************/
- u8 M8266WIFI_SPI_Module_Query_Wifi_Rxd_Interrupt_Trigger(u8 default_not_current, u8* Wifi_Rx_Interrupt_Trigger_en, u8* Wifi_Rx_Interrupt_Trigger_io_pin, u8* Wifi_Rx_Continous_trigger_delay_us, u16 *status);
+ u8 M8266WIFI_SPI_Module_Query_Wifi_Rx_Interrupt_Trigger(u8 default_not_current, u8* Wifi_Rx_Interrupt_Trigger_en, u8* Wifi_Rx_Interrupt_Trigger_io_pin, u8* Wifi_Rx_Continous_trigger_delay_us, u16 *status);
+ #define M8266WIFI_SPI_Module_Query_Wifi_Rxd_Interrupt_Trigger(default_not_current, Wifi_Rx_Interrupt_Trigger_en, Wifi_Rx_Interrupt_Trigger_io_pin, Wifi_Rx_Continous_trigger_delay_us, status) \
+			   M8266WIFI_SPI_Module_Query_Wifi_Rx_Interrupt_Trigger(default_not_current, Wifi_Rx_Interrupt_Trigger_en, Wifi_Rx_Interrupt_Trigger_io_pin, Wifi_Rx_Continous_trigger_delay_us, status)
 
-/***********************************************************************************
+ /**********************************************************************************
  * M8266WIFI_SPI_Module_Config_Wifi_Rx_Interrupt_Trigger                           *
  * .Description:                                                                   *
  *     To config Led/pin usage for wifi rxd interrupt trigger via the SPI API      *
- *     For more details, please refer to the API document per this function        *
  * .Parameter(s)                                                                   *
  *     1. Wifi_Inidcator_en :  enable or disable wifi indicator                    *
  *        = 0 :  wifi indicator will be disabled and light off                     *
@@ -2252,18 +2500,18 @@ typedef enum{
  ***********************************************************************************/
  u8 M8266WIFI_SPI_Module_Config_Wifi_Rx_Interrupt_Trigger(u8 Wifi_Rx_Interrupt_Trigger_en, u8 Wifi_Rx_Interrupt_Trigger_io_pin, u8 Wifi_Rx_Continous_trigger_delay_us, u8 saved, u16 *status);
 
- #define M8266WIFI_SPI_Module_Config_Leds_Off(onoff, saved, status)                                        \
-          {                                                                                                \
-               M8266WIFI_SPI_Module_Config_LedsFlashOnBoot(onoff, status);                                 \
-               M8266WIFI_SPI_Module_Config_Wifi_Inidcator(onoff,  0xFF, saved, status);                    \
-               M8266WIFI_SPI_Module_Config_Wifi_Rx_Interrupt_Trigger(onoff, 0xFF, 0xFF, saved, status);    \
-          }
+ #define M8266WIFI_SPI_Module_Config_Leds_Off(onoff, saved, status)                                   \
+         {                                                                                            \
+            M8266WIFI_SPI_Module_Config_LedsFlashOnBoot(onoff, status);                               \
+            M8266WIFI_SPI_Module_Config_Wifi_Inidcator(onoff,  0xFF, saved, status);                  \
+            M8266WIFI_SPI_Module_Config_Wifi_Rx_Interrupt_Trigger(onoff, 0xFF, 0xFF, saved, status);  \
+         }
 
- #define M8266WIFI_SPI_Module_Swap_Leds_pins(saved, status)                                                \
-          {                                                                                                \
-               M8266WIFI_SPI_Module_Config_Wifi_Inidcator(1,  0, saved, status);                           \
-               M8266WIFI_SPI_Module_Config_Wifi_Rx_Interrupt_Trigger(1, 2, 50, saved, status);             \
-          }
+ #define M8266WIFI_SPI_Module_Swap_Leds_pins(saved, status)                                           \
+         {                                                                                            \
+            M8266WIFI_SPI_Module_Config_Wifi_Inidcator(1,  0, saved, status);                         \
+            M8266WIFI_SPI_Module_Config_Wifi_Rx_Interrupt_Trigger(1, 2, 50, saved, status);           \
+         }
 
 
 ////////////////////////////////////////////////////////////////////////////////////
@@ -2279,7 +2527,6 @@ typedef enum{
  * .Description:                                                                   *
  *     To get the M8266WIFI module information, such as module_id,                 *
  *     Flash Size, Firmware Version                                                *
- *     For more details, please refer to the API document per this function        *
  * .Parameter(s)                                                                   *
  *     1. module_id: the pointer to the returned module_id                         *
  *                    Use NULL if you don't expect it returned                     *
@@ -2307,7 +2554,6 @@ typedef enum{
  * M8266WIFI_SPI_Get_Driver_Info                                                   *
  * .Description:                                                                   *
  *     To get the M8266WIFI driver information                                     *
- *     For more details, please refer to the API document per this function        *
  * .Parameter(s)                                                                   *
  *     1. drv_info: the pointer to the returned driver information buffer.         *
  *                  buffer size should be no less than 64 Bytes                    *
@@ -2325,10 +2571,10 @@ typedef enum{
 //   Put here kust for purpose ofheader specification                             //
 ////////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////////
-void M8266HostIf_Set_nRESET_Pin(u8 level);
-void M8266HostIf_Set_SPI_nCS_Pin(u8 level);
-void M8266HostIf_delay_us(u8 nus);
-u8   M8266HostIf_SPI_ReadWriteByte(u8 byte); // Not required for most platforms.
+ void M8266HostIf_Set_nRESET_Pin(u8 level);
+ void M8266HostIf_Set_SPI_nCS_Pin(u8 level);
+ void M8266HostIf_delay_us(u8 nus);
+ u8   M8266HostIf_SPI_ReadWriteByte(u8 byte); // Not required for most platforms.
 #ifdef __cplusplus
 }
 #endif

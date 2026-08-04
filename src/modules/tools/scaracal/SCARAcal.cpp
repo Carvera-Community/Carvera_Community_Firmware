@@ -38,7 +38,7 @@
 void SCARAcal::on_module_loaded()
 {
     // if the module is disabled -> do nothing
-    if(!THEKERNEL->config->value( scaracal_checksum, enable_checksum )->by_default(false)->as_bool()) {
+    if(!THEKERNEL->config->value( scaracal_checksum, enable_checksum )->as_bool(false)) {
         // as this module is not needed free up the resource
         delete this;
         return;
@@ -52,8 +52,8 @@ void SCARAcal::on_module_loaded()
 
 void SCARAcal::on_config_reload(void *argument)
 {
-    this->slow_rate = THEKERNEL->config->value( scaracal_checksum, slow_feedrate_checksum )->by_default(5)->as_number(); // feedrate in mm/sec
-    this->z_move = THEKERNEL->config->value( scaracal_checksum, z_move_checksum )->by_default(0)->as_number(); // Optional movement of Z relative to the home position.
+    this->slow_rate = THEKERNEL->config->value( scaracal_checksum, slow_feedrate_checksum )->as_number(5); // feedrate in mm/sec
+    this->z_move = THEKERNEL->config->value( scaracal_checksum, z_move_checksum )->as_number(0); // Optional movement of Z relative to the home position.
                                                                                                   // positive values increase distance between nozzle and bed.
                                                                                                   // negative will decrease.  Useful when level code active to prevent collision
 

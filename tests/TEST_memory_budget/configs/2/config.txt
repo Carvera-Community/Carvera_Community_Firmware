@@ -1,0 +1,139 @@
+### Carvera settings which can be changed by user ###
+
+user_setting_start true				# Indicate user settings start
+
+## fixed Settings ##
+sd_ok true								# Indicate SD card is corrected read
+
+## Basic Settings ##
+# Vacuum
+switch.vacuum.default_on_value 80		# Default vacuum power when open (50 - 100)
+
+# Light
+switch.light.startup_state true ### Whether to turn on light by default
+light.turn_off_min 0.0					# Turn off the light when idle for these minutes (0 means never)
+
+# Safety
+stop_on_cover_open false 				# Stop when open the cover during machining
+
+# Power management
+power.auto_sleep false #			# Allow machine to enter sleep mode automatically
+power.auto_sleep_min 20.0 ## Enter sleep mode after these minutes (1 - 30)
+
+
+## Advanced Settings ##
+
+# Coordinates
+coordinate.anchor1_x -359.665 ## X Machine coordinates of anchor1
+coordinate.anchor1_y -234.480 ## Y Machine coordinates of anchor1
+
+coordinate.anchor2_offset_x 89.825 #Anchor2 X Offset relative to anchor1
+coordinate.anchor2_offset_y 45.065 # Anchor2 Y Offset relative to anchor1
+
+coordinate.toolrack_offset_x 354.7 ##ool 6 X Offset relative to anchor1
+coordinate.toolrack_offset_y 0.0 # #Tool 6 Y Offset relative to anchor1
+coordinate.toolrack_z -114.4 #	# ATC Z axis machine coordinates
+
+coordinate.rotation_offset_x 3.5 ##	# Rotation module X Offset relative to anchor1
+coordinate.rotation_offset_y 36.620 # Rotation module Y Offset relative to anchor1
+coordinate.rotation_offset_z 22.975 # Rotation module Z Offset relative to chuck center
+
+coordinate.anchor_width 15.0			# Width of two anchors
+coordinate.anchor_length 100.0			# Length of two anchors
+
+coordinate.worksize_x 340.0				# Width of work area
+coordinate.worksize_y 240.0				# Height of work area
+
+coordinate.clearance_x -75.0			# X Machine coordinates for clearance
+coordinate.clearance_y -3.0				# Y Machine coordinates for clearance
+coordinate.clearance_z -3.0				# Z Machine coordinates for clearance
+
+# Motion
+default_feed_rate 1000					# Feed rate when F parameter is not set (mm/min)
+default_seek_rate 5000.0 #	# Feed rate for G0 rapid mode (mm/min)
+
+alpha_max_rate 5500.0 #			# Max feed rate for X axis (mm/min)
+beta_max_rate 5500.0 #			# Max feed rate for Y axis (mm/min)
+gamma_max_rate 3000.0 #			# Max feed rate for Z axis (mm/min)
+delta_max_rate 2400 #0 					# Max rotation speed rate for A axis (degree/min)
+epsilon_max_rate 100.0 #		# Max feed rate for auto tool changer (mm/min)
+
+acceleration 150						# Acceleration for X/Y/Z axis (mm/second/second)
+delta_acceleration 360.0 				# Acceleration for rotation axis (degree/second/second)
+epsilon_acceleration 10.0				# Acceleration for auto tool changer (mm/second/second)
+
+# WIFI
+wifi.machine_name CARVERA_C1_SIM #   	# Machine name that is shown in the WiFi list
+
+# ATC Motion
+atc.homing_retract_mm 1.0 #			# Retract distance after homing (mm)
+atc.action_mm 1.4 ##		 	# Action distance when drop tool (mm)
+atc.detector.detect_rate_mm_s 50.0 #Tool detect speed (mm / second)	
+atc.detector.detect_travel_mm 7.0 #     # Tool detect back and forth distance (mm)
+
+atc.safe_z_mm -20.0						# Safety Z height when clamping tool
+atc.safe_z_empty_mm -50.0				# Safety Z height when not clamping tool
+atc.safe_z_offset_mm 25.0 #		# Z offset when slowing down ATC speed
+atc.fast_z_rate_mm_m 2000.0 ## Z axis fast speed When doing ATC			
+atc.slow_z_rate_mm_m 750.0 ## Z axis slow speed when doing ATC
+atc.margin_rate_mm_m 1000.0 			# X and Y speed when scaning margin
+
+atc.probe.fast_rate_mm_m 600.0 # Z axis fast speed when doing calibrate
+atc.probe.slow_rate_mm_m 150.0 # Z axis slow speed when doing calibrate
+atc.probe.retract_mm 2					# Retract distance when hitting probe
+
+# Laser
+laser_module_test_power 0.01            # Laser power when doing test(0 - 1)
+laser_module_maximum_power 1.0			# Max laser power (0 - 1)
+laser_module_minimum_power 0.0			# Min laser power (0 - 1)
+laser_module_offset_x 0.0 #33 ## Laser module X offset relative to spindle
+laser_module_offset_y 0.0 # ## Laser module Y offset relative to spindle
+laser_module_offset_z -45.0 #		# Laser module Z offset relative to spindle
+temperatureswitch.spindle.cooldown_power_laser 90.0 ## cooldown power for laser module
+
+# Z-probe
+zprobe.slow_feedrate 1.5				# Z probe slow speed (mm/s)
+zprobe.fast_feedrate 5					# Z probe fast speed (mm/s)
+zprobe.return_feedrate 20				# Z probe return speed (mm/s)
+zprobe.probe_height 2					# How much above bed to start probe
+zprobe.max_z 100						# Max action distance when doing z probe
+
+# Spindle
+spindle.default_rpm 10000				# Default RPM value in case no RPM is provided
+temperatureswitch.spindle.threshold_temp 35.0	# Temperature to turn on or off spindle fan
+temperatureswitch.spindle.cooldown_power_init  50.0			# Cooldown fan start power percentage (50 - 100) 
+temperatureswitch.spindle.cooldown_power_step  10.0			# Cooldown fan start power increase step per degree
+temperatureswitch.spindle.cooldown_delay       180			# Stop cooldown after these seconds
+temperature_control.spindle.max_temp 60.0 #	# Alarm and halt machine when overheated
+
+# wireless probe
+wp.min_voltage								3.6			# Wireless probe charge start voltage
+wp.max_voltage								4.1			# Wireless probe charge cut-off voltage
+
+
+# Other settings for future use
+
+
+soft_endstop.enable true ## true         # added
+
+soft_endstop.x_min -364 # #-371.5         # added
+
+soft_endstop.y_min         -250.0         # added
+
+soft_endstop.z_min         -135.0         # added
+
+laser_module_clustering         false         # added
+
+main_button_long_press_enable Repeat #None         # added
+
+delta_steps_per_mm 26.666667 ##66667 #666667         # added
+
+zprobe.tool_zero_is_3axis true ## true         # added
+
+zprobe.probe_tip_diameter 1.840 # 1.840         # added
+
+coordinate.anchor2_x         90.040         # added
+
+coordinate.anchor2_y         45.145         # added
+
+atc.skip_path_origin true ## true         # added

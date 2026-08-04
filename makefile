@@ -84,6 +84,15 @@ all:
 	@echo Building Smoothie
 	@ $(MAKE) -C src
 
+# Explicit build targets for release and debug profiles.
+# 'make build-release' is equivalent to the default 'make all'.
+# 'make build-debug' links the MRI debug monitor for GDB attach via serial.
+build-release:
+	@ $(MAKE) all BUILD_TYPE=Release
+
+build-debug:
+	@ $(MAKE) all BUILD_TYPE=Debug
+
 clean: $(DIRSCLEAN)
 
 $(DIRSCLEAN): %.clean:
@@ -108,7 +117,7 @@ debug:
 console:
 	@ $(MAKE) -C src console
 
-.PHONY: all $(DIRS) $(DIRSCLEAN) debug-store flash upload debug console dfu
+.PHONY: all build-release build-debug $(DIRS) $(DIRSCLEAN) debug-store flash upload debug console dfu
 
 # --- Debugging Target --- 
 # Prints the values of key toolchain variables as make sees them and exits.

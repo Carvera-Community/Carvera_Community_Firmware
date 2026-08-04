@@ -2,15 +2,16 @@
 #define _FILESTREAM_H_
 
 #include "StreamOutput.h"
+#include "libs/FirmwareFileSystem.h"
 #include <stdlib.h>
 #include <stdio.h>
 
 class FileStream : public StreamOutput {
     public:
-        FileStream(const char *filename) { fd= fopen(filename, "w"); }
+        FileStream(const char *filename) { fd= fwfs::fopen(filename, "w"); }
         virtual ~FileStream(){ close(); }
-        int puts(const char *str, int size = 0) { return (fd == NULL) ? 0 : fwrite(str, 1, strlen(str), fd); }
-        void close() { if(fd != NULL) fclose(fd); fd= NULL; }
+        int puts(const char *str, int size = 0) { return (fd == NULL) ? 0 : fwfs::fwrite(str, 1, strlen(str), fd); }
+        void close() { if(fd != NULL) fwfs::fclose(fd); fd= NULL; }
         bool is_open() { return fd != NULL; }
 
     private:

@@ -8,6 +8,8 @@
 #define get_progress_checksum     CHECKSUM("progress")
 #define inner_playing_checksum    CHECKSUM("inner_playing")
 #define restart_job_checksum    CHECKSUM("restart_job")
+#define suspend_play_checksum   CHECKSUM("suspend_play")
+#define resume_play_checksum    CHECKSUM("resume_play")
 
 struct pad_progress {
     unsigned int percent_complete;

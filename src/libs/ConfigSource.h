@@ -26,12 +26,12 @@ class ConfigSource {
         virtual bool remove( std::string setting ) { return false; }
 
     protected:
-        virtual ConfigValue* process_line_from_ascii_config(const std::string& line, ConfigCache* cache);
-        virtual std::string process_line_from_ascii_config(const std::string& line, uint16_t line_checksums[3]);
+        ConfigValue* process_line_from_ascii_config(const std::string& line, ConfigCache* cache);
+        std::string process_line_from_ascii_config(const std::string& line, uint16_t line_checksums[3]);
         uint16_t name_checksum;
 
     private:
-        ConfigValue* process_line(const std::string &buffer);
+        bool process_line(const std::string &buffer, ConfigValue &result);
 };
 
 

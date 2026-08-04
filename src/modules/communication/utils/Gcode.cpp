@@ -139,7 +139,11 @@ float Gcode::set_variable_value() const {
         }
 
         // Proceed to set the variable if it's valid
-        if (var_num >= 101 && var_num <= 120) {
+        if (var_num >= 1 && var_num <= 30) {
+            THEKERNEL->local_params[var_num - 1] = value;
+            this->stream->printf("Variable %d set %.4f \n", var_num, value);
+            return value;
+        } else if (var_num >= 101 && var_num <= 120) {
             THEKERNEL->local_vars[var_num - 101] = value; // Set local variable
             this->stream->printf("Variable %d set %.4f \n", var_num, value);
             return value;
@@ -162,14 +166,18 @@ float Gcode::set_variable_value() const {
             this->stream->printf("Variable %d set %.4f \n", var_num, value);
             return value;
         } else {
-            // If the variable number is out of the expected range, print an error
-            this->stream->printf("Variable not found \n");
-            return NAN; // Variable not found
+            // If the variable number is out of the expected range, print an error;
+            THEKERNEL->set_halt_reason(MANUAL);
+            THEKERNEL->streams->printf("ERROR: Variable %d out of range \n", var_num);
+            THEKERNEL->call_event(ON_HALT, nullptr);
+            return NAN;
         }
     }
 
     // If the input doesn't start with '#', print an error message
+    THEKERNEL->set_halt_reason(MANUAL);
     this->stream->printf("Variable not found \n");
+    THEKERNEL->call_event(ON_HALT, nullptr);
     return 0; // Default return value
 }
 
@@ -178,15 +186,18 @@ float Gcode::set_variable_value() const {
 float Gcode::get_variable_value(const char* expr, char** endptr) const{
     // Expecting a number after the `#` from 1-20, like #12
     if (*expr == '#') {
-        int var_num = strtol(expr + 1, endptr, 10);         
-        if (var_num >= 101 && var_num <= 120) {
+        int var_num = strtol(expr + 1, endptr, 10);
+        if (var_num >= 1 && var_num <= 30) {
+            return THEKERNEL->local_params[var_num - 1];
+        } else if (var_num >= 101 && var_num <= 120) {
             if (THEKERNEL->local_vars[var_num -101] > -100000)
             {
                 return THEKERNEL->local_vars[var_num -101];
             }
             THEKERNEL->set_halt_reason(MANUAL);
+            THEKERNEL->streams->printf("ERROR: Variable %d not set \n", var_num);
             THEKERNEL->call_event(ON_HALT, nullptr);
-            THEKERNEL->streams->printf("Variable %d not set \n", var_num);
+            
             return NAN;
         
         } else if(var_num == 150)
@@ -199,8 +210,8 @@ float Gcode::get_variable_value(const char* expr, char** endptr) const{
                 return THEKERNEL->probe_outputs[var_num - 151];
             }
             THEKERNEL->set_halt_reason(MANUAL);
+            THEKERNEL->streams->printf("ERROR: Variable %d not set \n", var_num);
             THEKERNEL->call_event(ON_HALT, nullptr);
-            THEKERNEL->streams->printf("Variable %d not set \n", var_num);
             return NAN;
 
         } else if(var_num >= 501 && var_num <= 520)
@@ -211,8 +222,8 @@ float Gcode::get_variable_value(const char* expr, char** endptr) const{
             }
             
             THEKERNEL->set_halt_reason(MANUAL);
+            THEKERNEL->streams->printf("ERROR: Variable %d not set \n", var_num);
             THEKERNEL->call_event(ON_HALT, nullptr);
-            THEKERNEL->streams->printf("Variable %d not set \n", var_num);
             return NAN;
         }else //system variables
         {
@@ -226,15 +237,14 @@ float Gcode::get_variable_value(const char* expr, char** endptr) const{
                 case 3026: //tool in spindle
                     return THEKERNEL->eeprom_data->TOOL;
                     break;
-                case 3027: //current spindle RPM
+                case 3027: { //current spindle RPM
                     struct spindle_status ss;
                     ok = PublicData::get_value(pwm_spindle_control_checksum, get_spindle_status_checksum, &ss);
                     if (ok) {
                         return ss.current_rpm;
-                        break;
                     }
                     return 0;
-                    break;
+                }
                 case 3033: //Op Stop Enabled
                     return THEKERNEL->get_optional_stop_mode();
                     break;
@@ -300,8 +310,9 @@ float Gcode::get_variable_value(const char* expr, char** endptr) const{
 
                 default:
                     THEKERNEL->set_halt_reason(MANUAL);
+                    THEKERNEL->streams->printf("ERROR: Variable %d not found \n", var_num);
                     THEKERNEL->call_event(ON_HALT, nullptr);
-                    THEKERNEL->streams->printf("Variable %d not found \n", var_num);
+                    
                     return NAN;
                     break;
             }
@@ -313,8 +324,8 @@ float Gcode::get_variable_value(const char* expr, char** endptr) const{
 float Gcode::parse_expression(const char*& expr) const {
     if (*expr == ']') {
         THEKERNEL->set_halt_reason(MANUAL);
+        THEKERNEL->streams->printf("ERROR: Mismatched closing bracket ']' without opening '['\n");
         THEKERNEL->call_event(ON_HALT, nullptr);
-        THEKERNEL->streams->printf("Mismatched closing bracket ']' without opening '['\n");
         return NAN;
     }
 
@@ -416,8 +427,9 @@ float Gcode::parse_term(const char*& expr) const {
                     result /= next_factor;
                 } else {
                     THEKERNEL->set_halt_reason(MANUAL);
+                    THEKERNEL->streams->printf("ERROR: Division by zero\n");
                     THEKERNEL->call_event(ON_HALT, nullptr);
-                    THEKERNEL->streams->printf("Division by zero\n");
+                    
                     return NAN;
                 }
             }
@@ -429,8 +441,9 @@ float Gcode::parse_term(const char*& expr) const {
                 result = fmod(result, next_factor);
             } else {
                 THEKERNEL->set_halt_reason(MANUAL);
+                THEKERNEL->streams->printf("ERROR: Modulo by zero\n");
                 THEKERNEL->call_event(ON_HALT, nullptr);
-                THEKERNEL->streams->printf("Modulo by zero\n");
+                
                 return NAN;
             }
         }
@@ -505,14 +518,14 @@ float Gcode::parse_factor(const char*& expr) const {
                 }
             } else {
                 THEKERNEL->set_halt_reason(MANUAL);
+                THEKERNEL->streams->printf("ERROR: Mismatched brackets in function argument\n");
                 THEKERNEL->call_event(ON_HALT, nullptr);
-                THEKERNEL->streams->printf("Mismatched brackets in function argument\n");
                 return NAN;
             }
         } else {
             THEKERNEL->set_halt_reason(MANUAL);
+            THEKERNEL->streams->printf("ERROR: Expected '[' after function name\n");
             THEKERNEL->call_event(ON_HALT, nullptr);
-            THEKERNEL->streams->printf("Expected '[' after function name\n");
             return NAN;
         }
     } else if (*expr == '[') {
@@ -522,8 +535,8 @@ float Gcode::parse_factor(const char*& expr) const {
             expr++; // Skip ']'
         } else {
             THEKERNEL->set_halt_reason(MANUAL);
+            THEKERNEL->streams->printf("ERROR: Mismatched brackets in expression\n");
             THEKERNEL->call_event(ON_HALT, nullptr);
-            THEKERNEL->streams->printf("Mismatched brackets in expression\n");
             return NAN;
         }
     } else if (*expr == '#') {
@@ -545,8 +558,8 @@ float Gcode::parse_factor(const char*& expr) const {
 
         if (end == original_expr) {
             THEKERNEL->set_halt_reason(MANUAL);
+            THEKERNEL->streams->printf("ERROR: Invalid number in expression, %c\n", *expr);
             THEKERNEL->call_event(ON_HALT, nullptr);
-            THEKERNEL->streams->printf("Invalid number in expression, %c\n", *expr);
             return NAN;
         }
         expr = end;
@@ -568,8 +581,8 @@ float Gcode::evaluate_expression(const char* expr, char** endptr) const {
     // Check for unexpected closing bracket at the beginning
     if (*expr == ']') {
         THEKERNEL->set_halt_reason(MANUAL);
+        THEKERNEL->streams->printf("ERROR: Mismatched closing bracket ']' without opening '['\n");
         THEKERNEL->call_event(ON_HALT, nullptr);
-        THEKERNEL->streams->printf("Mismatched closing bracket ']' without opening '['\n");
         return NAN;
     }
 
@@ -578,8 +591,8 @@ float Gcode::evaluate_expression(const char* expr, char** endptr) const {
     // Ensure any remaining unmatched brackets are caught
     if (*expr == ']') {
         THEKERNEL->set_halt_reason(MANUAL);
+        THEKERNEL->streams->printf("ERROR: Mismatched closing bracket at end of expression\n");
         THEKERNEL->call_event(ON_HALT, nullptr);
-        THEKERNEL->streams->printf("Mismatched closing bracket at end of expression\n");
         return NAN;
     }
 
@@ -587,6 +600,13 @@ float Gcode::evaluate_expression(const char* expr, char** endptr) const {
         *endptr = const_cast<char*>(expr); // Set endptr to the current position
     }
     return result;
+}
+
+// Evaluate an expression without a full Gcode context.
+float Gcode::evaluate_standalone_expression(char* expr, char** endptr, StreamOutput* stream)
+{
+    Gcode tmp("", stream, false, 0);
+    return tmp.evaluate_expression(expr, endptr);
 }
 
 // Retrieve the value for a given letter

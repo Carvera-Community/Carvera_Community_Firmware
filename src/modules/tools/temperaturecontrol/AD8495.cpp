@@ -40,7 +40,7 @@ void AD8495::UpdateConfig(uint16_t module_checksum, uint16_t name_checksum)
 {
     // Thermistor pin for ADC readings
     this->AD8495_pin.from_string(THEKERNEL->config->value(module_checksum, name_checksum, AD8495_pin_checksum)->required()->as_string());
-    this->AD8495_offset = THEKERNEL->config->value(module_checksum, name_checksum, AD8495_offset_checksum)->by_default(0)->as_number(); // Stated offset. For Adafruit board it is 250C. If pin 2(REF) of amplifier is connected to 0V then there is 0C offset.
+    this->AD8495_offset = THEKERNEL->config->value(module_checksum, name_checksum, AD8495_offset_checksum)->as_number(0); // Stated offset. For Adafruit board it is 250C. If pin 2(REF) of amplifier is connected to 0V then there is 0C offset.
 	
     THEKERNEL->adc->enable_pin(&AD8495_pin);
 }

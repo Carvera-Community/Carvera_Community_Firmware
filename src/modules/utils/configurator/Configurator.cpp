@@ -38,7 +38,7 @@ void Configurator::config_get_command( string parameters, StreamOutput *stream )
         get_checksums(setting_checksums, setting );
         THEKERNEL->config->config_cache_load(); // need to load config cache first as it is unloaded after booting
         ConfigValue *cv = THEKERNEL->config->value(setting_checksums);
-        if(cv != NULL && cv->found) {
+        if(cv != NULL && cv->found()) {
             string value = cv->as_string();
             stream->printf( "cached: %s is set to %s\r\n", setting.c_str(), value.c_str() );
         } else {
@@ -72,6 +72,11 @@ void Configurator::config_set_command( string parameters, StreamOutput *stream )
     string value = shift_parameter(parameters);
     if(source.empty() || setting.empty() || value.empty()) {
         stream->printf( "Usage: config-set source setting value # where source is sd, setting is the key and value is the new value\r\n" );
+        return;
+    }
+
+    if(value.size() >= CONFIGVALUE_MAX_LEN) {
+        stream->printf( "error: value too long (%d chars, max %d)\r\n", (int)value.size(), CONFIGVALUE_MAX_LEN - 1 );
         return;
     }
 
@@ -123,6 +128,10 @@ void Configurator::config_load_command( string parameters, StreamOutput *stream 
     string source = shift_parameter(parameters);
     if(source == "load") {
         THEKERNEL->config->config_cache_load();
+        if(!THEKERNEL->config->is_config_cache_loaded()) {
+            stream->printf( "ERROR: config cache failed to load\r\n");
+            return;
+        }
         stream->printf( "config cache loaded\r\n");
 
     } else if(source == "unload") {
@@ -131,6 +140,10 @@ void Configurator::config_load_command( string parameters, StreamOutput *stream 
 
     } else if(source == "dump") {
         THEKERNEL->config->config_cache_load();
+        if(!THEKERNEL->config->is_config_cache_loaded()) {
+            stream->printf( "ERROR: config cache failed to load\r\n");
+            return;
+        }
         THEKERNEL->config->config_cache->dump(stream);
         THEKERNEL->config->config_cache_clear();
 

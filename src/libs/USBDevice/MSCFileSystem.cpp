@@ -80,7 +80,7 @@ int MSCFileSystem::initialise_msc()
     //print_clock();
     Host_Init();               /* Initialize the  host controller                                    */
 
-    rc = Host_EnumDev();       /* Enumerate the device connected                                            */
+    rc = MS_Enumerate();       /* Enumerate the device connected                                            */
     if (rc != OK)
     {
         // fprintf(stderr, "Could not enumerate device: %d\n", rc) ;
@@ -116,7 +116,7 @@ int MSCFileSystem::disk_initialize()
 
 int MSCFileSystem::disk_write(const char *buffer, uint32_t block_number, uint32_t count)
 {
-    if ( OK == MS_BulkSend(block_number, 1, (USB_INT08U *)buffer) )
+    if ( OK == MS_BulkSend(block_number, 1, reinterpret_cast<const volatile USB_INT08U *>(buffer)) )
         return 0;
     return 1;
 }
@@ -136,13 +136,13 @@ int MSCFileSystem::disk_sectors() { return _numBlks; }
 void MSCFileSystem::on_module_loaded()
 {
     Pin *usb_en_pin = new Pin();
-    usb_en_pin->from_string(THEKERNEL->config->value( usb_en_pin_checksum )->by_default("1.19")->as_string());
+    usb_en_pin->from_string(THEKERNEL->config->value( usb_en_pin_checksum )->as_string("1.19"));
     usb_en_pin->as_output();
     usb_en_pin->set(0);
     delete usb_en_pin;
 
 //    Pin *usb_in_pin = new Pin();
-//    usb_in_pin->from_string(THEKERNEL->config->value( usb_in_pin_checksum )->by_default("1.22")->as_string());
+//    usb_in_pin->from_string(THEKERNEL->config->value( usb_in_pin_checksum )->as_string("1.22"));
 //    usb_in_pin->as_input();
 //    delete usb_in_pin;
 

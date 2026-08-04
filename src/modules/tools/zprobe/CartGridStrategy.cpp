@@ -85,6 +85,7 @@
 */
 
 #include "CartGridStrategy.h"
+#include "libs/FirmwareFileSystem.h"
 
 #include "Kernel.h"
 #include "Config.h"
@@ -155,24 +156,24 @@ CartGridStrategy::~CartGridStrategy()
 bool CartGridStrategy::handleConfig()
 {
 
-    uint8_t grid_size = THEKERNEL->config->value(leveling_strategy_checksum, cart_grid_leveling_strategy_checksum, grid_size_checksum)->by_default(7)->as_number();
-    this->current_grid_x_size = this->configured_grid_x_size = THEKERNEL->config->value(leveling_strategy_checksum, cart_grid_leveling_strategy_checksum, grid_x_size_checksum)->by_default(grid_size)->as_number();
-    this->current_grid_y_size = this->configured_grid_y_size = THEKERNEL->config->value(leveling_strategy_checksum, cart_grid_leveling_strategy_checksum, grid_y_size_checksum)->by_default(grid_size)->as_number();
+    uint8_t grid_size = THEKERNEL->config->value(leveling_strategy_checksum, cart_grid_leveling_strategy_checksum, grid_size_checksum)->as_number(7);
+    this->current_grid_x_size = this->configured_grid_x_size = THEKERNEL->config->value(leveling_strategy_checksum, cart_grid_leveling_strategy_checksum, grid_x_size_checksum)->as_number(grid_size);
+    this->current_grid_y_size = this->configured_grid_y_size = THEKERNEL->config->value(leveling_strategy_checksum, cart_grid_leveling_strategy_checksum, grid_y_size_checksum)->as_number(grid_size);
 
     // we use a different file format depending on whether it is square or not
     this->new_file_format= true;
 
     this->force_debug = false;
 
-    tolerance = THEKERNEL->config->value(leveling_strategy_checksum, cart_grid_leveling_strategy_checksum, tolerance_checksum)->by_default(0.03F)->as_number();
-    save = THEKERNEL->config->value(leveling_strategy_checksum, cart_grid_leveling_strategy_checksum, save_checksum)->by_default(false)->as_bool();
-    do_home = THEKERNEL->config->value(leveling_strategy_checksum, cart_grid_leveling_strategy_checksum, do_home_checksum)->by_default(true)->as_bool();
-    only_by_two_corners = THEKERNEL->config->value(leveling_strategy_checksum, cart_grid_leveling_strategy_checksum, only_by_two_corners_checksum)->by_default(false)->as_bool();
-    human_readable = THEKERNEL->config->value(leveling_strategy_checksum, cart_grid_leveling_strategy_checksum, human_readable_checksum)->by_default(false)->as_bool();
-    do_manual_attach = THEKERNEL->config->value(leveling_strategy_checksum, cart_grid_leveling_strategy_checksum, m_attach_checksum)->by_default(false)->as_bool();
+    tolerance = THEKERNEL->config->value(leveling_strategy_checksum, cart_grid_leveling_strategy_checksum, tolerance_checksum)->as_number(0.03F);
+    save = THEKERNEL->config->value(leveling_strategy_checksum, cart_grid_leveling_strategy_checksum, save_checksum)->as_bool(false);
+    do_home = THEKERNEL->config->value(leveling_strategy_checksum, cart_grid_leveling_strategy_checksum, do_home_checksum)->as_bool(true);
+    only_by_two_corners = THEKERNEL->config->value(leveling_strategy_checksum, cart_grid_leveling_strategy_checksum, only_by_two_corners_checksum)->as_bool(false);
+    human_readable = THEKERNEL->config->value(leveling_strategy_checksum, cart_grid_leveling_strategy_checksum, human_readable_checksum)->as_bool(false);
+    do_manual_attach = THEKERNEL->config->value(leveling_strategy_checksum, cart_grid_leveling_strategy_checksum, m_attach_checksum)->as_bool(false);
 
-    this->height_limit = THEKERNEL->config->value(leveling_strategy_checksum, cart_grid_leveling_strategy_checksum, height_limit_checksum)->by_default(NAN)->as_number();
-    this->dampening_start = THEKERNEL->config->value(leveling_strategy_checksum, cart_grid_leveling_strategy_checksum, dampening_start_checksum)->by_default(NAN)->as_number();
+    this->height_limit = THEKERNEL->config->value(leveling_strategy_checksum, cart_grid_leveling_strategy_checksum, height_limit_checksum)->as_number(NAN);
+    this->dampening_start = THEKERNEL->config->value(leveling_strategy_checksum, cart_grid_leveling_strategy_checksum, dampening_start_checksum)->as_number(NAN);
 
     if(!isnan(this->height_limit) && !isnan(this->dampening_start)) {
         this->damping_interval = height_limit - dampening_start;
@@ -182,8 +183,8 @@ bool CartGridStrategy::handleConfig()
 
     this->x_start = 0.0F;
     this->y_start = 0.0F;
-    this->x_size = THEKERNEL->config->value(leveling_strategy_checksum, cart_grid_leveling_strategy_checksum, x_size_checksum)->by_default(0.0F)->as_number();
-    this->y_size = THEKERNEL->config->value(leveling_strategy_checksum, cart_grid_leveling_strategy_checksum, y_size_checksum)->by_default(0.0F)->as_number();
+    this->x_size = THEKERNEL->config->value(leveling_strategy_checksum, cart_grid_leveling_strategy_checksum, x_size_checksum)->as_number(0.0F);
+    this->y_size = THEKERNEL->config->value(leveling_strategy_checksum, cart_grid_leveling_strategy_checksum, y_size_checksum)->as_number(0.0F);
     if (this->x_size == 0.0F || this->y_size == 0.0F) {
         THEKERNEL->streams->printf("Error: Invalid config, x_size and y_size must be defined\n");
         return false;
@@ -191,12 +192,12 @@ bool CartGridStrategy::handleConfig()
 
     // the initial height above the bed we stop the intial move down after home to find the bed
     // this should be a height that is enough that the probe will not hit the bed and is an offset from max_z (can be set to 0 if max_z takes into account the probe offset)
-    this->initial_height = THEKERNEL->config->value(leveling_strategy_checksum, cart_grid_leveling_strategy_checksum, initial_height_checksum)->by_default(NAN)->as_number();
+    this->initial_height = THEKERNEL->config->value(leveling_strategy_checksum, cart_grid_leveling_strategy_checksum, initial_height_checksum)->as_number(NAN);
     if(initial_height <= 0) initial_height= NAN;
 
     // Probe offsets xxx,yyy,zzz
     {
-        std::string po = THEKERNEL->config->value(leveling_strategy_checksum, cart_grid_leveling_strategy_checksum, probe_offsets_checksum)->by_default("0,0,0")->as_string();
+        std::string po = THEKERNEL->config->value(leveling_strategy_checksum, cart_grid_leveling_strategy_checksum, probe_offsets_checksum)->as_string("0,0,0");
         std::vector<float> v = parse_number_list(po.c_str());
         if(v.size() >= 3) {
             this->probe_offsets = std::make_tuple(v[0], v[1], v[2]);
@@ -206,7 +207,7 @@ bool CartGridStrategy::handleConfig()
     //  manual attachment point xxx,yyy,zzz
     if (do_manual_attach)
     {
-        std::string ap = THEKERNEL->config->value(leveling_strategy_checksum, cart_grid_leveling_strategy_checksum, mount_position_checksum)->by_default("0,0,50")->as_string();
+        std::string ap = THEKERNEL->config->value(leveling_strategy_checksum, cart_grid_leveling_strategy_checksum, mount_position_checksum)->as_string("0,0,50");
         std::vector<float> w = parse_number_list(ap.c_str());
         if(w.size() >= 3) {
             m_attach = new float[3];
@@ -222,8 +223,8 @@ bool CartGridStrategy::handleConfig()
         m_attach= nullptr;
     }
 
-    this->before_probe = THEKERNEL->config->value(leveling_strategy_checksum, cart_grid_leveling_strategy_checksum, before_probe_gcode_checksum)->by_default("")->as_string();
-    this->after_probe = THEKERNEL->config->value(leveling_strategy_checksum, cart_grid_leveling_strategy_checksum, after_probe_gcode_checksum)->by_default("")->as_string();
+    this->before_probe = THEKERNEL->config->value(leveling_strategy_checksum, cart_grid_leveling_strategy_checksum, before_probe_gcode_checksum)->as_string("");
+    this->after_probe = THEKERNEL->config->value(leveling_strategy_checksum, cart_grid_leveling_strategy_checksum, after_probe_gcode_checksum)->as_string("");
 
     // for the gcode commands we need to replace _ for space
     std::replace(before_probe.begin(), before_probe.end(), '_', ' '); // replace _ with space
@@ -238,7 +239,7 @@ bool CartGridStrategy::handleConfig()
     }
 
     // Flex compensation configuration
-    this->flex_x_points = THEKERNEL->config->value(leveling_strategy_checksum, cart_grid_leveling_strategy_checksum, flex_x_points_checksum)->by_default(30)->as_number();
+    this->flex_x_points = THEKERNEL->config->value(leveling_strategy_checksum, cart_grid_leveling_strategy_checksum, flex_x_points_checksum)->as_number(30);
     this->flex_x_start = 0.0F;
 
     // Allocate memory for flex compensation data
@@ -250,22 +251,31 @@ bool CartGridStrategy::handleConfig()
         return false;
     }
 
-    this->flex_compensation_always_active = THEKERNEL->config->value(leveling_strategy_checksum, cart_grid_leveling_strategy_checksum, flex_compensation_always_active_checksum)->by_default(false)->as_bool();
+    this->flex_compensation_always_active = THEKERNEL->config->value(leveling_strategy_checksum, cart_grid_leveling_strategy_checksum, flex_compensation_always_active_checksum)->as_bool(false);
     reset_flex_compensation();
     reset_bed_level();
 
-    if(flex_compensation_always_active) {
-        if(load_flex_compensation_data(THEKERNEL->streams)) {
-            flex_compensation_active = true;
-            updateCompensationTransform();
-        }else{
-            THEKERNEL->set_flex_compensation_load_error(true);
-            flex_compensation_active = false;
-            updateCompensationTransform();
-        }
-    }
+    // Flex file load is deferred until after_config_cache_clear(): fopen/std::function
+    // and long printf paths allocate on the main heap, which must not grow into the
+    // fixed config-cache region while the cache is still live.
 
     return true;
+}
+
+void CartGridStrategy::after_config_cache_clear()
+{
+    if(!flex_compensation_always_active) {
+        return;
+    }
+
+    if(load_flex_compensation_data(THEKERNEL->streams)) {
+        flex_compensation_active = true;
+        updateCompensationTransform();
+    } else {
+        THEKERNEL->set_flex_compensation_load_error(true);
+        flex_compensation_active = false;
+        updateCompensationTransform();
+    }
 }
 
 void CartGridStrategy::save_grid(StreamOutput *stream)
@@ -277,62 +287,62 @@ void CartGridStrategy::save_grid(StreamOutput *stream)
 
     // we use a different file format depending on whether it is square or not
     const char *filename= (this->new_file_format) ? GRIDFILE_NM : GRIDFILE;
-    FILE *fp = fopen(filename, "w");
+    FILE *fp = fwfs::fopen(filename, "w");
     if(fp == NULL) {
         stream->printf("error:Failed to open grid file %s\n", filename);
         return;
     }
     uint8_t tmp_configured_grid_size = current_grid_x_size;
-    if(fwrite(&tmp_configured_grid_size, sizeof(uint8_t), 1, fp) != 1) {
+    if(fwfs::fwrite(&tmp_configured_grid_size, sizeof(uint8_t), 1, fp) != 1) {
         stream->printf("error:Failed to write grid x size\n");
-        fclose(fp);
+        fwfs::fclose(fp);
         return;
     }
 
     if(this->new_file_format){
         tmp_configured_grid_size = current_grid_y_size;
-        if(fwrite(&tmp_configured_grid_size, sizeof(uint8_t), 1, fp) != 1) {
+        if(fwfs::fwrite(&tmp_configured_grid_size, sizeof(uint8_t), 1, fp) != 1) {
             stream->printf("error:Failed to write grid y size\n");
-            fclose(fp);
+            fwfs::fclose(fp);
             return;
         }
     }
 
-    if(fwrite(&x_start, sizeof(float), 1, fp) != 1)  {
+    if(fwfs::fwrite(&x_start, sizeof(float), 1, fp) != 1)  {
         stream->printf("error:Failed to write x_start\n");
-        fclose(fp);
+        fwfs::fclose(fp);
         return;
     }
     
-    if(fwrite(&y_start, sizeof(float), 1, fp) != 1)  {
+    if(fwfs::fwrite(&y_start, sizeof(float), 1, fp) != 1)  {
         stream->printf("error:Failed to write y_start\n");
-        fclose(fp);
+        fwfs::fclose(fp);
         return;
     }
 
-    if(fwrite(&x_size, sizeof(float), 1, fp) != 1)  {
+    if(fwfs::fwrite(&x_size, sizeof(float), 1, fp) != 1)  {
         stream->printf("error:Failed to write x_size\n");
-        fclose(fp);
+        fwfs::fclose(fp);
         return;
     }
 
-    if(fwrite(&y_size, sizeof(float), 1, fp) != 1)  {
+    if(fwfs::fwrite(&y_size, sizeof(float), 1, fp) != 1)  {
         stream->printf("error:Failed to write y_size\n");
-        fclose(fp);
+        fwfs::fclose(fp);
         return;
     }
 
     for (int y = 0; y < current_grid_y_size; y++) {
         for (int x = 0; x < current_grid_x_size; x++) {
-            if(fwrite(&grid[x + (current_grid_x_size * y)], sizeof(float), 1, fp) != 1) {
+            if(fwfs::fwrite(&grid[x + (current_grid_x_size * y)], sizeof(float), 1, fp) != 1) {
                 stream->printf("error:Failed to write grid\n");
-                fclose(fp);
+                fwfs::fclose(fp);
                 return;
             }
         }
     }
     stream->printf("grid saved to %s\n", filename);
-    fclose(fp);
+    fwfs::fclose(fp);
 }
 
 bool CartGridStrategy::load_grid(StreamOutput *stream)
@@ -340,7 +350,7 @@ bool CartGridStrategy::load_grid(StreamOutput *stream)
     // we use a different file format depending on whether it is square or not
     const char *filename= (this->new_file_format) ? GRIDFILE_NM : GRIDFILE;
 
-    FILE *fp = fopen(filename, "r");
+    FILE *fp = fwfs::fopen(filename, "r");
     if(fp == NULL) {
         stream->printf("error:Failed to open grid %s\n", filename);
         return false;
@@ -349,30 +359,30 @@ bool CartGridStrategy::load_grid(StreamOutput *stream)
     uint8_t load_grid_x_size, load_grid_y_size;
     float x, y, temp_x_start, temp_y_start;
 
-    if(fread(&load_grid_x_size, sizeof(uint8_t), 1, fp) != 1) {
+    if(fwfs::fread(&load_grid_x_size, sizeof(uint8_t), 1, fp) != 1) {
         stream->printf("error:Failed to read grid size\n");
-        fclose(fp);
+        fwfs::fclose(fp);
         return false;
     }
 
     if(load_grid_x_size > configured_grid_x_size) {
         stream->printf("error:grid size x is greater than config - read %d - config %d\n", load_grid_x_size, configured_grid_x_size);
-        fclose(fp);
+        fwfs::fclose(fp);
         return false;
     }
 
     load_grid_y_size = load_grid_x_size;
 
     if(this->new_file_format){
-        if(fread(&load_grid_y_size, sizeof(uint8_t), 1, fp) != 1) {
+        if(fwfs::fread(&load_grid_y_size, sizeof(uint8_t), 1, fp) != 1) {
             stream->printf("error:Failed to read grid size\n");
-            fclose(fp);
+            fwfs::fclose(fp);
             return false;
         }
 
         if(load_grid_y_size > configured_grid_y_size) {
             stream->printf("error:grid size y is greater than config - read %d - config %d\n", load_grid_y_size, configured_grid_y_size);
-            fclose(fp);
+            fwfs::fclose(fp);
             return false;
         }
     }
@@ -380,30 +390,30 @@ bool CartGridStrategy::load_grid(StreamOutput *stream)
     current_grid_x_size = load_grid_x_size;
     current_grid_y_size = load_grid_y_size;
 
-    if(fread(&temp_x_start, sizeof(float), 1, fp) != 1) {
+    if(fwfs::fread(&temp_x_start, sizeof(float), 1, fp) != 1) {
         stream->printf("error:Failed to read x_start\n");
-        fclose(fp);
+        fwfs::fclose(fp);
         return false;
     }
 
-    if(fread(&temp_y_start, sizeof(float), 1, fp) != 1) {
+    if(fwfs::fread(&temp_y_start, sizeof(float), 1, fp) != 1) {
         stream->printf("error:Failed to read y_start\n");
-        fclose(fp);
+        fwfs::fclose(fp);
         return false;
     }
 
     x_start = temp_x_start;
     y_start = temp_y_start;
 
-    if(fread(&x, sizeof(float), 1, fp) != 1) {
+    if(fwfs::fread(&x, sizeof(float), 1, fp) != 1) {
         stream->printf("error:Failed to read grid x size\n");
-        fclose(fp);
+        fwfs::fclose(fp);
         return false;
     }
 
-    if(fread(&y, sizeof(float), 1, fp) != 1) {
+    if(fwfs::fread(&y, sizeof(float), 1, fp) != 1) {
         stream->printf("error:Failed to read grid y size\n");
-        fclose(fp);
+        fwfs::fclose(fp);
         return false;
     }
 
@@ -415,9 +425,9 @@ bool CartGridStrategy::load_grid(StreamOutput *stream)
 
     for (int y = 0; y < current_grid_y_size; y++) {
         for (int x = 0; x < current_grid_x_size; x++) {
-            if(fread(&grid[x + (current_grid_x_size * y)], sizeof(float), 1, fp) != 1) {
+            if(fwfs::fread(&grid[x + (current_grid_x_size * y)], sizeof(float), 1, fp) != 1) {
                 stream->printf("error:Failed to read grid\n");
-                fclose(fp);
+                fwfs::fclose(fp);
                 return false;
             }
             if((grid[x + (current_grid_x_size * y)]) > max_z) max_z = grid[x + (current_grid_x_size * y)];
@@ -427,7 +437,7 @@ bool CartGridStrategy::load_grid(StreamOutput *stream)
     max_delta = fabs(max_z - min_z);
     THEROBOT->set_max_delta(max_delta);
     stream->printf("grid loaded, grid: (%f, %f), size: %d x %d\n", x_size, y_size, load_grid_x_size, load_grid_y_size);
-    fclose(fp);
+    fwfs::fclose(fp);
     return true;
 }
 
@@ -532,7 +542,7 @@ bool CartGridStrategy::handleGcode(Gcode *gcode)
             if(gcode->subcode == 1) {
                 // we use a different file format depending on whether it is square or not
                 const char *filename= (this->new_file_format) ? GRIDFILE_NM : GRIDFILE;
-                remove(filename);
+                fwfs::remove(filename);
                 gcode->stream->printf("%s deleted\n", filename);
             } else {
                 __disable_irq();
@@ -573,7 +583,7 @@ bool CartGridStrategy::handleGcode(Gcode *gcode)
                 }
             } else if(gcode->subcode == 4) {
                 // Delete flex compensation data
-                remove(FLEX_COMPENSATION_FILE);
+                fwfs::remove(FLEX_COMPENSATION_FILE);
                 gcode->stream->printf("Flex compensation data deleted\n");
             }else if(gcode->subcode == 5) {
                 // Enable Debugging
@@ -1314,7 +1324,7 @@ void CartGridStrategy::save_flex_compensation_data(StreamOutput *stream)
         return;
     }
 
-    FILE *fp = fopen(FLEX_COMPENSATION_FILE, "w");
+    FILE *fp = fwfs::fopen(FLEX_COMPENSATION_FILE, "w");
     if(fp == NULL) {
         stream->printf("error: Failed to open flex compensation file %s\n", FLEX_COMPENSATION_FILE);
         return;
@@ -1323,38 +1333,38 @@ void CartGridStrategy::save_flex_compensation_data(StreamOutput *stream)
     float version = (float)(FLEX_COMPENSATION_VERSION);
 
     // Write version (float)
-    if(fwrite(&version, sizeof(float), 1, fp) != 1) {
+    if(fwfs::fwrite(&version, sizeof(float), 1, fp) != 1) {
         stream->printf("error: Failed to write version\n");
-        fclose(fp);
+        fwfs::fclose(fp);
         return;
     }
 
     // Write flex_x_start (float)
-    if(fwrite(&flex_x_start, sizeof(float), 1, fp) != 1) {
+    if(fwfs::fwrite(&flex_x_start, sizeof(float), 1, fp) != 1) {
         stream->printf("error: Failed to write flex_x_start\n");
-        fclose(fp);
+        fwfs::fclose(fp);
         return;
     }
 
     // Write flex_current_grid_x_size (uint8_t)
-    if(fwrite(&flex_current_x_points, sizeof(uint8_t), 1, fp) != 1) {
+    if(fwfs::fwrite(&flex_current_x_points, sizeof(uint8_t), 1, fp) != 1) {
         stream->printf("error: Failed to write flex_current_grid_x_size\n");
-        fclose(fp);
+        fwfs::fclose(fp);
         return;
     }
 
     // Write flex_x_size (float)
-    if(fwrite(&flex_x_size, sizeof(float), 1, fp) != 1) {
+    if(fwfs::fwrite(&flex_x_size, sizeof(float), 1, fp) != 1) {
         stream->printf("error: Failed to write flex_x_size\n");
-        fclose(fp);
+        fwfs::fclose(fp);
         return;
     }
 
     // Write compensation data for the actual grid size used
     for(int i = 0; i < flex_current_x_points; i++) {
-        if(fwrite(&flex_compensation_data[i], sizeof(float), 1, fp) != 1) {
+        if(fwfs::fwrite(&flex_compensation_data[i], sizeof(float), 1, fp) != 1) {
             stream->printf("error: Failed to write flex compensation data at index %d\n", i);
-            fclose(fp);
+            fwfs::fclose(fp);
             return;
         }
     }
@@ -1362,12 +1372,12 @@ void CartGridStrategy::save_flex_compensation_data(StreamOutput *stream)
     stream->printf("Flex compensation data saved to %s\n", FLEX_COMPENSATION_FILE);
     stream->printf("Saved: flex_x_start=%.3f, flex_grid_size=%d, flex_x_size=%.3f\n", 
                    flex_x_start, flex_current_x_points, flex_x_size);
-    fclose(fp);
+    fwfs::fclose(fp);
 }
 
 bool CartGridStrategy::load_flex_compensation_data(StreamOutput *stream)
 {
-    FILE *fp = fopen(FLEX_COMPENSATION_FILE, "r");
+    FILE *fp = fwfs::fopen(FLEX_COMPENSATION_FILE, "r");
     if(fp == NULL) {
         stream->printf("error: Failed to open flex compensation file %s\n", FLEX_COMPENSATION_FILE);
         return false;
@@ -1380,9 +1390,9 @@ bool CartGridStrategy::load_flex_compensation_data(StreamOutput *stream)
     float version;
 
     // Read version (float)
-    if(fread(&version, sizeof(float), 1, fp) != 1) {
+    if(fwfs::fread(&version, sizeof(float), 1, fp) != 1) {
         stream->printf("error: Failed to read version\n");
-        fclose(fp);
+        fwfs::fclose(fp);
         return false;
     }
 
@@ -1393,21 +1403,21 @@ bool CartGridStrategy::load_flex_compensation_data(StreamOutput *stream)
             stream->printf("error: Invalid flex compensation version\n");
         }
         stream->printf("error: Please delete the flex compensation file (M380.4) and run the flex compensation measurement again\n");
-        fclose(fp);
+        fwfs::fclose(fp);
         return false;
     }
 
     // Read flex_x_start (float)
-    if(fread(&load_flex_x_start, sizeof(float), 1, fp) != 1) {
+    if(fwfs::fread(&load_flex_x_start, sizeof(float), 1, fp) != 1) {
         stream->printf("error: Failed to read flex_x_start\n");
-        fclose(fp);
+        fwfs::fclose(fp);
         return false;
     }
 
     // Read flex_current_grid_x_size (uint8_t)
-    if(fread(&load_flex_current_x_points, sizeof(uint8_t), 1, fp) != 1) {
+    if(fwfs::fread(&load_flex_current_x_points, sizeof(uint8_t), 1, fp) != 1) {
         stream->printf("error: Failed to read flex_current_grid_x_size\n");
-        fclose(fp);
+        fwfs::fclose(fp);
         return false;
     }
 
@@ -1415,14 +1425,14 @@ bool CartGridStrategy::load_flex_compensation_data(StreamOutput *stream)
     if(load_flex_current_x_points > flex_x_points) {
         stream->printf("error: Loaded flex grid size %d exceeds maximum configured size %d\n", 
                       load_flex_current_x_points, flex_x_points);
-        fclose(fp);
+        fwfs::fclose(fp);
         return false;
     }
 
     // Read flex_x_size (float)
-    if(fread(&load_flex_x_size, sizeof(float), 1, fp) != 1) {
+    if(fwfs::fread(&load_flex_x_size, sizeof(float), 1, fp) != 1) {
         stream->printf("error: Failed to read flex_x_size\n");
-        fclose(fp);
+        fwfs::fclose(fp);
         return false;
     }
 
@@ -1431,9 +1441,9 @@ bool CartGridStrategy::load_flex_compensation_data(StreamOutput *stream)
 
     // Load compensation data for the actual grid size used
     for(int i = 0; i < load_flex_current_x_points; i++) {
-        if(fread(&flex_compensation_data[i], sizeof(float), 1, fp) != 1) {
+        if(fwfs::fread(&flex_compensation_data[i], sizeof(float), 1, fp) != 1) {
             stream->printf("error: Failed to read flex compensation data at index %d\n", i);
-            fclose(fp);
+            fwfs::fclose(fp);
             return false;
         }
     }
@@ -1448,7 +1458,7 @@ bool CartGridStrategy::load_flex_compensation_data(StreamOutput *stream)
     stream->printf("Flex compensation data loaded from %s\n", FLEX_COMPENSATION_FILE);
     stream->printf("Loaded: flex_x_start=%.3f, flex_grid_size=%d, flex_x_size=%.3f\n", 
                    flex_x_start, flex_current_x_points, flex_x_size);
-    fclose(fp);
+    fwfs::fclose(fp);
     return true;
 }
 

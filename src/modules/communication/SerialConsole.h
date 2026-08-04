@@ -22,7 +22,8 @@ using std::string;
 
 class SerialConsole : public Module, public StreamOutput {
     public:
-        SerialConsole( PinName rx_pin, PinName tx_pin, int baud_rate );
+        SerialConsole( PinName tx_pin, PinName rx_pin, int baud_rate );
+        ~SerialConsole();
 
         void on_module_loaded();
         void on_serial_char_received();
@@ -37,6 +38,9 @@ class SerialConsole : public Module, public StreamOutput {
         int puts(const char*, int size = 0);
         int gets(char** buf, int size = 0);
         bool ready();
+        bool frames_protocol_output() const { return true; }
+        void on_protocol_changed();
+        void reset();
         char getc_result;
 
         int get_baud() const { return current_baud_rate; }
@@ -51,6 +55,29 @@ class SerialConsole : public Module, public StreamOutput {
         int default_baud_rate;
         int temp_baud_rate;                       // non-zero = temporary baud active
         uint32_t last_activity_ms;                // for 15s timeout revert
+        uint16_t makera_header;
+        uint16_t makera_received;
+        uint16_t makera_data_length;
+
+        bool makera_cmd_queue_push(const char *data, uint16_t len);
+        void makera_cmd_queue_clear();
+        bool makera_cmd_queue_empty() const;
+
+        enum FileParseState {
+            FILE_WAIT_HEADER,
+            FILE_READ_LENGTH,
+            FILE_READ_DATA,
+            FILE_CHECK_FOOTER
+        } file_parse_state;
+        uint16_t file_frame_index;
+        uint16_t file_bytes_needed;
+        uint8_t file_header[2];
+        uint8_t file_footer[2];
+
+        void process_makera_byte(uint8_t received);
+        void reset_makera_command_parser();
+        void reset_file_parser();
+        int check_file_packet(char **buf);
         struct {
           bool query_flag:1;
           bool halt_flag:1;

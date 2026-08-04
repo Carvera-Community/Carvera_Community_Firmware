@@ -80,8 +80,12 @@ FATFileSystem::~FATFileSystem() {
 
 FileHandle *FATFileSystem::open(const char* name, int flags) {
     FFSDEBUG("open(%s) on filesystem [%s], drv [%d]\n", name, _name, _fsid);
-    char n[64];
-    sprintf(n, "%d:/%s", _fsid, name);
+    char n[FATFS_PATH_MAX];
+    int nlen = snprintf(n, sizeof(n), "%d:/%s", _fsid, name);
+    if (nlen < 0 || nlen >= (int)sizeof(n)) {
+        FFSDEBUG("open() path too long\n");
+        return NULL;
+    }
 
     /* POSIX flags -> FatFS open mode */
     BYTE openmode;
@@ -100,14 +104,21 @@ FileHandle *FATFileSystem::open(const char* name, int flags) {
         }
     }
 
-    FIL_t fh;
-    FRESULT res = f_open(&fh, n, openmode);
+    // Heap-allocate FIL_t: it embeds a 512-byte sector buffer. Keeping it on the
+    // stack (and copying by value into FATFileHandle) blew the LPC stack during
+    // M576 and other multi-open workloads.
+    FIL_t *fh = new FIL_t;
+    if (fh == NULL) {
+        return NULL;
+    }
+    FRESULT res = f_open(fh, n, openmode);
     if(res) {
         FFSDEBUG("f_open('w') failed (%d, %s)\n", res, FR_ERRORS[res]);
+        delete fh;
         return NULL;
     }
     if(flags & O_APPEND) {
-        f_lseek(&fh, fh.fsize);
+        f_lseek(fh, fh->fsize);
     }
     return new FATFileHandle(fh);
 }
@@ -141,8 +152,12 @@ int FATFileSystem::format() {
 }
 
 DirHandle *FATFileSystem::opendir(const char *name) {
-    char n[64];
-    sprintf(n, "%d:/%s", _fsid, name);
+    char n[FATFS_PATH_MAX];
+    int nlen = snprintf(n, sizeof(n), "%d:/%s", _fsid, name);
+    if (nlen < 0 || nlen >= (int)sizeof(n)) {
+        FFSDEBUG("opendir() path too long\n");
+        return NULL;
+    }
     DIR_t dir;
     FRESULT res = f_opendir(&dir, n);
     if(res != 0) {
