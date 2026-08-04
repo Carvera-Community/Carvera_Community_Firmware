@@ -24,12 +24,15 @@
 
 #include  "usbhost_lpc17xx.h"
 
+#include "libs/compiler.h"
+#include "wait_api.h"
+
 /*
 **************************************************************************************************************
 *                                              GLOBAL VARIABLES
 **************************************************************************************************************
 */
-int gUSBConnected;
+volatile int gUSBConnected;
 
 volatile  USB_INT32U   HOST_RhscIntr = 0;         /* Root Hub Status Change interrupt                       */
 volatile  USB_INT32U   HOST_WdhIntr  = 0;         /* Semaphore to wait until the TD is submitted            */
@@ -40,14 +43,25 @@ volatile  HCED        *EDBulkOut;                 /* BulkOut endpoint descriptor
 volatile  HCTD        *TDHead;                    /* Head transfer descriptor structure                     */
 volatile  HCTD        *TDTail;                    /* Tail transfer descriptor structure                     */
 volatile  HCCA        *Hcca;                      /* Host Controller Communications Area structure          */ 
-          USB_INT16U  *TDBufNonVol;               /* Identical to TDBuffer just to reduce compiler warnings */
 volatile  USB_INT08U  *TDBuffer;                  /* Current Buffer Pointer of transfer descriptor          */
 
-// USB host structures
-// AHB SRAM block 1
-#define HOSTBASEADDR 0x2007C000
-// reserve memory for the linker
-static USB_INT08U HostBuf[0x200] __attribute__((at(HOSTBASEADDR)));
+// The USB host controller can only DMA from AHB SRAM.
+struct USBHostMemory {
+    HCCA hcca;
+    HCTD td_head;
+    HCTD td_tail;
+    HCED ed_ctrl;
+    HCED ed_bulk_in;
+    HCED ed_bulk_out;
+    USB_INT08U td_buffer[0xB0];
+};
+
+static USBHostMemory HostMem LOCATED_IN_AHBSRAM ALIGNED_TO(256);
+static_assert(sizeof(USBHostMemory) == 0x200, "USB host memory layout must stay within the OHCI AHB block");
+
+static constexpr USB_INT32U HOST_TD_TIMEOUT_MS = 500;
+static constexpr USB_INT32U HOST_PORT_RESET_SETTLE_MS = 100;
+static constexpr USB_INT32U HOST_PORT_RESET_START_MS = 50;
 /*
 **************************************************************************************************************
 *                                         DELAY IN MILLI SECONDS
@@ -86,12 +100,7 @@ void  Host_DelayMS (USB_INT32U  delay)
 
 void  Host_DelayUS (USB_INT32U  delay)
 {
-    volatile  USB_INT32U  i;
-
-
-    for (i = 0; i < (4 * delay); i++) {    /* This logic was tested. It gives app. 1 micro sec delay        */
-        ;
-    }
+    wait_us((int)delay);
 }
 
 // bits of the USB/OTG clock control register
@@ -123,8 +132,12 @@ void  Host_DelayUS (USB_INT32U  delay)
 */
 void  Host_Init (void)
 {
-    PRINT_Log("In Host_Init\n");
+    PRINT_Log("USBHostLite: Host_Init\n");
     NVIC_DisableIRQ(USB_IRQn);                           /* Disable the USB interrupt source           */
+    HOST_RhscIntr = 0;
+    HOST_WdhIntr = 0;
+    HOST_TDControlStatus = 0;
+    gUSBConnected = 0;
     
     // turn on power for USB
     LPC_SC->PCONP       |= (1UL<<31);
@@ -161,15 +174,15 @@ void  Host_Init (void)
     LPC_PINCON->PINSEL1 &= ~((3<<26) | (3<<28));  
     LPC_PINCON->PINSEL1 |=  ((1<<26)|(1<<28));     // 0x14000000
         
-    PRINT_Log("Initializing Host Stack\n");
+    PRINT_Log("USBHostLite: initializing host stack\n");
 
-    Hcca       = (volatile  HCCA       *)(HostBuf+0x000);
-    TDHead     = (volatile  HCTD       *)(HostBuf+0x100);
-    TDTail     = (volatile  HCTD       *)(HostBuf+0x110);
-    EDCtrl     = (volatile  HCED       *)(HostBuf+0x120); 
-    EDBulkIn   = (volatile  HCED       *)(HostBuf+0x130);
-    EDBulkOut  = (volatile  HCED       *)(HostBuf+0x140);
-    TDBuffer   = (volatile  USB_INT08U *)(HostBuf+0x150);
+    Hcca       = &HostMem.hcca;
+    TDHead     = &HostMem.td_head;
+    TDTail     = &HostMem.td_tail;
+    EDCtrl     = &HostMem.ed_ctrl;
+    EDBulkIn   = &HostMem.ed_bulk_in;
+    EDBulkOut  = &HostMem.ed_bulk_out;
+    TDBuffer   = HostMem.td_buffer;
     
     /* Initialize all the TDs, EDs and HCCA to 0  */
     Host_EDInit(EDCtrl);
@@ -200,10 +213,23 @@ void  Host_Init (void)
                          OR_INTR_ENABLE_WDH |
                          OR_INTR_ENABLE_RHSC;
 
-    NVIC_SetPriority(USB_IRQn, 0);       /* highest priority */
+    // Start each host session from the current line state, not from root-port
+    // change bits left over from power-up or a previous firmware image. The
+    // ISR normally clears these before enumeration; the synthetic connected
+    // path below must do the same.
+    LPC_USB->HcRhPortStatus1 = OR_RH_PORT_CSC | OR_RH_PORT_PRSC;
+
+    // A device can already be attached when Host_Init runs, especially after a
+    // firmware reset that did not remove VBUS. Treat live connect status as a
+    // connection event so class drivers can enumerate without unplug/replug.
+    if ((LPC_USB->HcRhPortStatus1 & OR_RH_PORT_CCS) && !HOST_RhscIntr) {
+        HOST_RhscIntr = 1;
+        gUSBConnected = 1;
+    }
+
     /* Enable the USB Interrupt */
     NVIC_EnableIRQ(USB_IRQn);
-    PRINT_Log("Host Initialized\n");
+    PRINT_Log("USBHostLite: host initialized\n");
 }
 
 /*
@@ -254,7 +280,7 @@ extern "C" void USB_IRQHandler (void)
                             gUSBConnected = 1;
                         }
                         else
-                            PRINT_Log("Spurious status change (connected)?\n");
+                            PRINT_Log("USBHostLite: spurious status change (connected)?\n");
                     } else {
                         if (gUSBConnected) {
                             LPC_USB->HcInterruptEnable = 0; // why do we get multiple disc. rupts???
@@ -262,7 +288,7 @@ extern "C" void USB_IRQHandler (void)
                             gUSBConnected = 0;
                         }
                         else
-                            PRINT_Log("Spurious status change (disconnected)?\n");
+                            PRINT_Log("USBHostLite: spurious status change (disconnected)?\n");
                     }
                 }
                 LPC_USB->HcRhPortStatus1 = OR_RH_PORT_CSC;
@@ -273,7 +299,7 @@ extern "C" void USB_IRQHandler (void)
         }
         if (int_status & OR_INTR_STATUS_WDH) {                  /* Writeback Done Head interrupt        */
             HOST_WdhIntr = 1;
-            HOST_TDControlStatus = (TDHead->Control >> 28) & 0xf;
+            HOST_TDControlStatus = (TDHead->Control >> TD_CC_SHIFT) & TD_CC_MASK;
         }            
         LPC_USB->HcInterruptStatus = int_status;                         /* Clear interrupt status register      */
     }
@@ -299,7 +325,7 @@ extern "C" void USB_IRQHandler (void)
 
 USB_INT32S  Host_ProcessTD (volatile  HCED       *ed,
                             volatile  USB_INT32U  token,
-                            volatile  USB_INT08U *buffer,
+                      const volatile  USB_INT08U *buffer,
                                       USB_INT32U  buffer_len)
 {
     volatile  USB_INT32U   td_toggle;
@@ -314,6 +340,11 @@ USB_INT32S  Host_ProcessTD (volatile  HCED       *ed,
     } else {
         td_toggle = 0;
     }
+
+    HOST_WdhIntr = 0;
+    HOST_TDControlStatus = 0;
+    LPC_USB->HcInterruptStatus = OR_INTR_STATUS_WDH;
+
     TDHead->Control = (TD_ROUNDING    |
                       token           |
                       TD_DELAY_INT(0) |                           
@@ -327,7 +358,7 @@ USB_INT32S  Host_ProcessTD (volatile  HCED       *ed,
     TDHead->BufEnd       = (USB_INT32U)(buffer + (buffer_len - 1));
     TDTail->BufEnd       = 0;
 
-    ed->HeadTd  = (USB_INT32U)TDHead | ((ed->HeadTd) & 0x00000002);
+    ed->HeadTd  = (USB_INT32U)TDHead | ((ed->HeadTd) & OHCI_ED_HEAD_TOGGLE_CARRY);
     ed->TailTd  = (USB_INT32U)TDTail;
     ed->Next    = 0;
 
@@ -339,88 +370,125 @@ USB_INT32S  Host_ProcessTD (volatile  HCED       *ed,
         LPC_USB->HcBulkHeadED    = (USB_INT32U)ed;
         LPC_USB->HcCommandStatus = LPC_USB->HcCommandStatus | OR_CMD_STATUS_BLF;
         LPC_USB->HcControl       = LPC_USB->HcControl       | OR_CONTROL_BLE;
-    }    
+    }
 
-    // Host_WDHWait();
-    Host_DelayMS(100);
+    USB_INT32U waited = 0;
+    while (!HOST_WdhIntr && waited < HOST_TD_TIMEOUT_MS) {
+        Host_DelayMS(1);
+        waited++;
+    }
+
+    if (!HOST_WdhIntr) {
+        return (ERR_TD_FAIL);
+    }
+
+    HOST_WdhIntr = 0;
 
 //    if (!(TDHead->Control & 0xF0000000)) {
     if (!HOST_TDControlStatus) {
         return (OK);
-    } else {      
+    } else {
         return (ERR_TD_FAIL);
     }
 }
 
-/*
-**************************************************************************************************************
-*                                       ENUMERATE THE DEVICE
-*
-* Description: This function is used to enumerate the device connected
-*
-* Arguments  : None
-*
-* Returns    : None
-*
-**************************************************************************************************************
-*/
-
-USB_INT32S  Host_EnumDev (void)
+USB_INT32S Host_WaitForDevice(USB_INT32U timeout_ms)
 {
-    USB_INT32S  rc;
-
-    PRINT_Log("Connect a Mass Storage device\n");
-    while (!HOST_RhscIntr)
-        __WFI();
-
-    Host_DelayMS(100);                             /* USB 2.0 spec says atleast 50ms delay beore port reset */
-    LPC_USB->HcRhPortStatus1 = OR_RH_PORT_PRS; // Initiate port reset
-    while (LPC_USB->HcRhPortStatus1 & OR_RH_PORT_PRS)
-        __WFI(); // Wait for port reset to complete...
-    LPC_USB->HcRhPortStatus1 = OR_RH_PORT_PRSC; // ...and clear port reset signal
-    Host_DelayMS(200);                                                 /* Wait for 100 MS after port reset  */
-
-    EDCtrl->Control = 8 << 16;                                         /* Put max pkt size = 8              */
-                                                                       /* Read first 8 bytes of device desc */
-    rc = HOST_GET_DESCRIPTOR(USB_DESCRIPTOR_TYPE_DEVICE, 0, TDBuffer, 8);
-    if (rc != OK) {
-        PRINT_Err(rc);
-        return (rc);
+    if (timeout_ms == 0) {
+        while (!HOST_RhscIntr)
+            __WFI();
+        return (OK);
     }
 
-    EDCtrl->Control = TDBuffer[7] << 16;                               /* Get max pkt size of endpoint 0    */
-    rc = HOST_SET_ADDRESS(1);                                          /* Set the device address to 1       */
-    if (rc != OK) {
-        PRINT_Err(rc);
-        return (rc);
+    USB_INT32U waited = 0;
+    while (!HOST_RhscIntr && waited < timeout_ms) {
+        Host_DelayMS(1);
+        waited++;
     }
 
+    return HOST_RhscIntr ? OK : ERR_TD_FAIL;
+}
+
+USB_INT32S Host_ResetRootPort(USB_INT32U timeout_ms, HostPortResetStatus *status)
+{
+    if ((LPC_USB->HcRhPortStatus1 & OR_RH_PORT_CCS) == 0) {
+        if (status) {
+            status->waited_ms = 0;
+            status->port_status = LPC_USB->HcRhPortStatus1;
+            status->interrupt_status = LPC_USB->HcInterruptStatus;
+        }
+        return (ERR_TD_FAIL);
+    }
+
+    LPC_USB->HcRhPortStatus1 = OR_RH_PORT_CSC | OR_RH_PORT_PRSC;
+    Host_DelayMS(HOST_PORT_RESET_SETTLE_MS);
+    LPC_USB->HcRhPortStatus1 = OR_RH_PORT_PRS;
+
+    Host_DelayMS(HOST_PORT_RESET_START_MS);
+    USB_INT32U waited = HOST_PORT_RESET_START_MS;
+    if (timeout_ms == 0) {
+        while (LPC_USB->HcRhPortStatus1 & OR_RH_PORT_PRS)
+            __WFI();
+    } else {
+        while ((LPC_USB->HcRhPortStatus1 & OR_RH_PORT_PRS) && waited < timeout_ms) {
+            Host_DelayMS(1);
+            waited++;
+        }
+    }
+
+    if (status) {
+        status->waited_ms = waited;
+        status->port_status = LPC_USB->HcRhPortStatus1;
+        status->interrupt_status = LPC_USB->HcInterruptStatus;
+    }
+
+    if (LPC_USB->HcRhPortStatus1 & OR_RH_PORT_PRS) {
+        return (ERR_TD_FAIL);
+    }
+
+    LPC_USB->HcRhPortStatus1 = OR_RH_PORT_CSC | OR_RH_PORT_PRSC;
+    Host_DelayMS(200);
+    return (OK);
+}
+
+USB_INT32S Host_ReadDeviceDescriptor(void)
+{
+    EDCtrl->Control = OHCI_ED_MAX_PACKET_SIZE(USB_ENDPOINT_ZERO_INITIAL_DESCRIPTOR_BYTES);
+    USB_INT32S rc = HOST_GET_DESCRIPTOR(USB_DESCRIPTOR_TYPE_DEVICE, 0, TDBuffer,
+                                        USB_ENDPOINT_ZERO_INITIAL_DESCRIPTOR_BYTES);
+    if (rc == OK) {
+        EDCtrl->Control = OHCI_ED_MAX_PACKET_SIZE(TDBuffer[USB_DEVICE_MAX_PACKET_SIZE0_OFFSET]);
+    }
+    return (rc);
+}
+
+USB_INT32S Host_SetDeviceAddress(USB_INT08U address)
+{
+    USB_INT32S rc = HOST_SET_ADDRESS(address);
+    if (rc != OK) {
+        return (rc);
+    }
     Host_DelayMS(2);
-    EDCtrl->Control = (EDCtrl->Control) | 1;                          /* Modify control pipe with address 1 */
-                                                                      /* Get the configuration descriptor   */
-    rc = HOST_GET_DESCRIPTOR(USB_DESCRIPTOR_TYPE_CONFIGURATION, 0, TDBuffer, 9);
+    EDCtrl->Control = EDCtrl->Control | address;
+    return (OK);
+}
+
+USB_INT32S Host_ReadConfigurationDescriptor(USB_INT16U max_len, USB_INT16U *fetched_len)
+{
+    USB_INT32S rc = HOST_GET_DESCRIPTOR(USB_DESCRIPTOR_TYPE_CONFIGURATION, 0, TDBuffer,
+                                        USB_CONFIGURATION_DESCRIPTOR_HEADER_SIZE);
     if (rc != OK) {
-        PRINT_Err(rc);
-        return (rc);
-    }
-                                                                       /* Get the first configuration data  */
-    rc = HOST_GET_DESCRIPTOR(USB_DESCRIPTOR_TYPE_CONFIGURATION, 0, TDBuffer, ReadLE16U(&TDBuffer[2]));
-    if (rc != OK) {
-        PRINT_Err(rc);
         return (rc);
     }
 
-    rc = MS_ParseConfiguration();                                      /* Parse the configuration           */
-    if (rc != OK) {
-        PRINT_Err(rc);
-        return (rc);
+    USB_INT16U cfg_len = ReadLE16U(&TDBuffer[USB_CONFIGURATION_TOTAL_LENGTH_OFFSET]);
+    if (max_len && cfg_len > max_len) {
+        cfg_len = max_len;
     }
-
-    rc = USBH_SET_CONFIGURATION(1);                                    /* Select device configuration 1     */
-    if (rc != OK) {
-        PRINT_Err(rc);
+    rc = HOST_GET_DESCRIPTOR(USB_DESCRIPTOR_TYPE_CONFIGURATION, 0, TDBuffer, cfg_len);
+    if (rc == OK && fetched_len) {
+        *fetched_len = cfg_len;
     }
-    Host_DelayMS(100);                                               /* Some devices may require this delay */
     return (rc);
 }
 
@@ -454,7 +522,7 @@ USB_INT32S  Host_CtrlRecv (         USB_INT08U   bm_request_type,
 
 
     Host_FillSetup(bm_request_type, b_request, w_value, w_index, w_length);
-    rc = Host_ProcessTD(EDCtrl, TD_SETUP, TDBuffer, 8);
+    rc = Host_ProcessTD(EDCtrl, TD_SETUP, TDBuffer, USB_SETUP_PACKET_SIZE);
     if (rc == OK) {
         if (w_length) {
             rc = Host_ProcessTD(EDCtrl, TD_IN, TDBuffer, w_length);
@@ -485,16 +553,22 @@ USB_INT32S  Host_CtrlSend (          USB_INT08U   bm_request_type,
                                      USB_INT16U   w_value,
                                      USB_INT16U   w_index,
                                      USB_INT16U   w_length,
-                           volatile  USB_INT08U  *buffer)
+                     const volatile  USB_INT08U  *buffer)
 {
     USB_INT32S  rc;
 
 
     Host_FillSetup(bm_request_type, b_request, w_value, w_index, w_length);
 
-    rc = Host_ProcessTD(EDCtrl, TD_SETUP, TDBuffer, 8);
+    rc = Host_ProcessTD(EDCtrl, TD_SETUP, TDBuffer, USB_SETUP_PACKET_SIZE);
     if (rc == OK) {
         if (w_length) {
+            if (buffer == NULL) {
+                return (ERR_TD_FAIL);
+            }
+            for (USB_INT16U i = 0; i < w_length; i++) {
+                TDBuffer[i] = buffer[i];
+            }
             rc = Host_ProcessTD(EDCtrl, TD_OUT, TDBuffer, w_length);
         }
         if (rc == OK) {
@@ -524,15 +598,11 @@ void  Host_FillSetup (USB_INT08U   bm_request_type,
                       USB_INT16U   w_index,
                       USB_INT16U   w_length)
 {
-    int i;
-    for (i=0;i<w_length;i++)
-        TDBuffer[i] = 0;
-    
-    TDBuffer[0] = bm_request_type;
-    TDBuffer[1] = b_request;
-    WriteLE16U(&TDBuffer[2], w_value);
-    WriteLE16U(&TDBuffer[4], w_index);
-    WriteLE16U(&TDBuffer[6], w_length);
+    TDBuffer[USB_SETUP_BM_REQUEST_TYPE_OFFSET] = bm_request_type;
+    TDBuffer[USB_SETUP_B_REQUEST_OFFSET] = b_request;
+    WriteLE16U(&TDBuffer[USB_SETUP_W_VALUE_OFFSET], w_value);
+    WriteLE16U(&TDBuffer[USB_SETUP_W_INDEX_OFFSET], w_index);
+    WriteLE16U(&TDBuffer[USB_SETUP_W_LENGTH_OFFSET], w_length);
 }
 
 
@@ -645,12 +715,10 @@ void  Host_WDHWait (void)
 
 USB_INT32U  ReadLE32U (volatile  USB_INT08U  *pmem)
 {
-    USB_INT32U val = *(USB_INT32U*)pmem;
-#ifdef __BIG_ENDIAN
-    return __REV(val);
-#else
-    return val;
-#endif    
+    return ((USB_INT32U)pmem[0]) |
+           ((USB_INT32U)pmem[1] << 8) |
+           ((USB_INT32U)pmem[2] << 16) |
+           ((USB_INT32U)pmem[3] << 24);
 }
 
 /*
@@ -671,11 +739,10 @@ USB_INT32U  ReadLE32U (volatile  USB_INT08U  *pmem)
 void  WriteLE32U (volatile  USB_INT08U  *pmem,
                             USB_INT32U   val)
 {
-#ifdef __BIG_ENDIAN
-    *(USB_INT32U*)pmem = __REV(val);
-#else
-    *(USB_INT32U*)pmem = val;
-#endif
+    pmem[0] = (USB_INT08U)val;
+    pmem[1] = (USB_INT08U)(val >> 8);
+    pmem[2] = (USB_INT08U)(val >> 16);
+    pmem[3] = (USB_INT08U)(val >> 24);
 }
 
 /*
@@ -694,12 +761,8 @@ void  WriteLE32U (volatile  USB_INT08U  *pmem,
 
 USB_INT16U  ReadLE16U (volatile  USB_INT08U  *pmem)
 {
-    USB_INT16U val = *(USB_INT16U*)pmem;
-#ifdef __BIG_ENDIAN
-    return __REV16(val);
-#else
-    return val;
-#endif    
+    return (USB_INT16U)(((USB_INT16U)pmem[0]) |
+                        ((USB_INT16U)pmem[1] << 8));
 }
 
 /*
@@ -720,11 +783,8 @@ USB_INT16U  ReadLE16U (volatile  USB_INT08U  *pmem)
 void  WriteLE16U (volatile  USB_INT08U  *pmem,
                             USB_INT16U   val)
 {
-#ifdef __BIG_ENDIAN
-    *(USB_INT16U*)pmem = (__REV16(val) & 0xFFFF);
-#else
-    *(USB_INT16U*)pmem = val;
-#endif
+    pmem[0] = (USB_INT08U)val;
+    pmem[1] = (USB_INT08U)(val >> 8);
 }
 
 /*
@@ -743,12 +803,10 @@ void  WriteLE16U (volatile  USB_INT08U  *pmem,
 
 USB_INT32U  ReadBE32U (volatile  USB_INT08U  *pmem)
 {
-    USB_INT32U val = *(USB_INT32U*)pmem;
-#ifdef __BIG_ENDIAN
-    return val;
-#else
-    return __REV(val);
-#endif
+    return ((USB_INT32U)pmem[0] << 24) |
+           ((USB_INT32U)pmem[1] << 16) |
+           ((USB_INT32U)pmem[2] << 8) |
+           ((USB_INT32U)pmem[3]);
 }
 
 /*
@@ -769,11 +827,10 @@ USB_INT32U  ReadBE32U (volatile  USB_INT08U  *pmem)
 void  WriteBE32U (volatile  USB_INT08U  *pmem,
                             USB_INT32U   val)
 {
-#ifdef __BIG_ENDIAN
-    *(USB_INT32U*)pmem = val;
-#else
-    *(USB_INT32U*)pmem = __REV(val);
-#endif
+    pmem[0] = (USB_INT08U)(val >> 24);
+    pmem[1] = (USB_INT08U)(val >> 16);
+    pmem[2] = (USB_INT08U)(val >> 8);
+    pmem[3] = (USB_INT08U)val;
 }
 
 /*
@@ -792,12 +849,8 @@ void  WriteBE32U (volatile  USB_INT08U  *pmem,
 
 USB_INT16U  ReadBE16U (volatile  USB_INT08U  *pmem)
 {
-    USB_INT16U val = *(USB_INT16U*)pmem;
-#ifdef __BIG_ENDIAN
-    return val;
-#else
-    return __REV16(val);
-#endif    
+    return (USB_INT16U)(((USB_INT16U)pmem[0] << 8) |
+                        ((USB_INT16U)pmem[1]));
 }
 
 /*
@@ -818,9 +871,6 @@ USB_INT16U  ReadBE16U (volatile  USB_INT08U  *pmem)
 void  WriteBE16U (volatile  USB_INT08U  *pmem,
                             USB_INT16U   val)
 {
-#ifdef __BIG_ENDIAN
-    *(USB_INT16U*)pmem = val;
-#else
-    *(USB_INT16U*)pmem = (__REV16(val) & 0xFFFF);
-#endif
+    pmem[0] = (USB_INT08U)(val >> 8);
+    pmem[1] = (USB_INT08U)val;
 }

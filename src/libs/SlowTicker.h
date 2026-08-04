@@ -56,6 +56,11 @@ class SlowTicker : public Module{
 protected:
     int flag_1s_count;
     volatile int flag_1s_flag;
+
+public:
+    volatile uint32_t tick_max_us;
+    volatile uint32_t tick_last_us;
+    uint32_t idle_us_accum;
 };
 
 

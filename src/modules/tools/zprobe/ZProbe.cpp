@@ -30,9 +30,11 @@
 #include "us_ticker_api.h"
 #include "ATCHandlerPublicAccess.h"
 // strategies we know about
+#ifndef CARTGRID_ONLY
 #include "DeltaCalibrationStrategy.h"
 #include "ThreePointStrategy.h"
 #include "DeltaGridStrategy.h"
+#endif
 #include "CartGridStrategy.h"
 
 #include <vector>
@@ -79,7 +81,7 @@ constexpr double pi = 3.141592653589793;
 void ZProbe::on_module_loaded()
 {
     // if the module is disabled -> do nothing
-    if(!THEKERNEL->config->value( zprobe_checksum, enable_checksum )->by_default(true)->as_bool()) {
+    if(!THEKERNEL->config->value( zprobe_checksum, enable_checksum )->as_bool(true)) {
         // as this module is not needed free up the resource
         delete this;
         return;
@@ -110,10 +112,10 @@ void ZProbe::on_module_loaded()
 
 void ZProbe::config_load()
 {
-    this->pin.from_string( THEKERNEL->config->value(zprobe_checksum, probe_pin_checksum)->by_default("2.6v" )->as_string())->as_input();
-    this->calibrate_pin.from_string( THEKERNEL->config->value(zprobe_checksum, calibrate_pin_checksum)->by_default("0.5^" )->as_string())->as_input();
-    this->debounce_ms    = THEKERNEL->config->value(zprobe_checksum, debounce_ms_checksum)->by_default(0  )->as_number();
-    this->probe_calibration_safety_margin = THEKERNEL->config->value(zprobe_checksum, probe_calibration_safety_margin_checksum)->by_default(0.1F)->as_number();
+    this->pin.from_string( THEKERNEL->config->value(zprobe_checksum, probe_pin_checksum)->as_string("2.6v" ))->as_input();
+    this->calibrate_pin.from_string( THEKERNEL->config->value(zprobe_checksum, calibrate_pin_checksum)->as_string("0.5^" ))->as_input();
+    this->debounce_ms    = THEKERNEL->config->value(zprobe_checksum, debounce_ms_checksum)->as_number(0  );
+    this->probe_calibration_safety_margin = THEKERNEL->config->value(zprobe_checksum, probe_calibration_safety_margin_checksum)->as_number(0.1F);
     this->halt_pending = false;
     this->probe_triggered = false;
 
@@ -127,6 +129,7 @@ void ZProbe::config_load()
 
             // check with each known strategy and load it if it matches
             switch(cs) {
+#ifndef CARTGRID_ONLY
                 case delta_calibration_strategy_checksum:
                     ls= new DeltaCalibrationStrategy(this);
                     found= true;
@@ -142,7 +145,7 @@ void ZProbe::config_load()
                     ls= new DeltaGridStrategy(this);
                     found= true;
                     break;
-
+#endif
                 case cart_grid_leveling_strategy_checksum:
                     ls= new CartGridStrategy(this);
                     found= true;
@@ -159,31 +162,40 @@ void ZProbe::config_load()
     }
 
     // need to know if we need to use delta kinematics for homing
-    this->is_delta = THEKERNEL->config->value(delta_homing_checksum)->by_default(false)->as_bool();
-    this->is_rdelta = THEKERNEL->config->value(rdelta_homing_checksum)->by_default(false)->as_bool();
+    this->is_delta = THEKERNEL->config->value(delta_homing_checksum)->as_bool(false);
+    this->is_rdelta = THEKERNEL->config->value(rdelta_homing_checksum)->as_bool(false);
 
     // default for backwards compatibility add DeltaCalibrationStrategy if a delta
     // may be deprecated
+#ifndef CARTGRID_ONLY
     if(this->strategies.empty()) {
         if(this->is_delta) {
             this->strategies.push_back(new DeltaCalibrationStrategy(this));
             this->strategies.back()->handleConfig();
         }
     }
+#endif
 
-    this->probe_height  = THEKERNEL->config->value(zprobe_checksum, probe_height_checksum)->by_default(5)->as_number();
-    this->slow_feedrate = THEKERNEL->config->value(zprobe_checksum, slow_feedrate_checksum)->by_default(5)->as_number(); // feedrate in mm/sec
-    this->fast_feedrate = THEKERNEL->config->value(zprobe_checksum, fast_feedrate_checksum)->by_default(100)->as_number(); // feedrate in mm/sec
-    this->return_feedrate = THEKERNEL->config->value(zprobe_checksum, return_feedrate_checksum)->by_default(5)->as_number(); // feedrate in mm/sec
-    this->reverse_z     = THEKERNEL->config->value(zprobe_checksum, reverse_z_direction_checksum)->by_default(false)->as_bool(); // Z probe moves in reverse direction
-    this->max_z         = THEKERNEL->config->value(zprobe_checksum, max_z_checksum)->by_default(NAN)->as_number(); // maximum zprobe distance
-    THEKERNEL->probe_tip_diameter = THEKERNEL->config->value(zprobe_checksum, probe_tip_diameter_checksum)->by_default(2)->as_number(); // probe tip diameter
-    this->tool_0_3axis  = THEKERNEL->config->value(zprobe_checksum, toolZeroIs3Axis_checksum)->by_default(false)->as_bool();
+    this->probe_height  = THEKERNEL->config->value(zprobe_checksum, probe_height_checksum)->as_number(5);
+    this->slow_feedrate = THEKERNEL->config->value(zprobe_checksum, slow_feedrate_checksum)->as_number(5); // feedrate in mm/sec
+    this->fast_feedrate = THEKERNEL->config->value(zprobe_checksum, fast_feedrate_checksum)->as_number(100); // feedrate in mm/sec
+    this->return_feedrate = THEKERNEL->config->value(zprobe_checksum, return_feedrate_checksum)->as_number(5); // feedrate in mm/sec
+    this->reverse_z     = THEKERNEL->config->value(zprobe_checksum, reverse_z_direction_checksum)->as_bool(false); // Z probe moves in reverse direction
+    this->max_z         = THEKERNEL->config->value(zprobe_checksum, max_z_checksum)->as_number(NAN); // maximum zprobe distance
+    THEKERNEL->probe_tip_diameter = THEKERNEL->config->value(zprobe_checksum, probe_tip_diameter_checksum)->as_number(2); // probe tip diameter
+    this->tool_0_3axis  = THEKERNEL->config->value(zprobe_checksum, toolZeroIs3Axis_checksum)->as_bool(false);
     if(isnan(this->max_z)){
-        this->max_z = THEKERNEL->config->value(gamma_max_checksum)->by_default(200)->as_number(); // maximum zprobe distance
+        this->max_z = THEKERNEL->config->value(gamma_max_checksum)->as_number(200); // maximum zprobe distance
     }
-    this->dwell_before_probing = THEKERNEL->config->value(zprobe_checksum, dwell_before_probing_checksum)->by_default(0)->as_number(); // dwell time in seconds before probing
+    this->dwell_before_probing = THEKERNEL->config->value(zprobe_checksum, dwell_before_probing_checksum)->as_number(0); // dwell time in seconds before probing
 
+}
+
+void ZProbe::after_config_cache_clear()
+{
+    for(auto ls : strategies) {
+        ls->after_config_cache_clear();
+    }
 }
 
 void ZProbe::on_main_loop(void *argument)
@@ -622,14 +634,14 @@ void ZProbe::on_gcode_received(void *argument)
                     parse_parameters(gcode);
                 } else if (gcode->subcode == 2){//calibrate using boss
                     if (!gcode->has_letter('X') && !gcode->has_letter('Y')){ //error if there is a problem
-                        gcode->stream->printf("ALARM: Probe fail: No Gague Length\n");
+                        gcode->stream->printf("ERROR: Probe fail: No Gague Length\n");
                         THEKERNEL->call_event(ON_HALT, nullptr);
                         THEKERNEL->set_halt_reason(PROBE_FAIL);
                         return;
                     }
                 
                     if (gcode->has_letter('X') && gcode->has_letter('Y')){
-                        gcode->stream->printf("ALARM: Probe fail: Multiple Axes Given When 1 Expected\n");
+                        gcode->stream->printf("ERROR: Probe fail: Multiple Axes Given When 1 Expected\n");
                         THEKERNEL->call_event(ON_HALT, nullptr);
                         THEKERNEL->set_halt_reason(PROBE_FAIL);
                         return;
@@ -639,7 +651,7 @@ void ZProbe::on_gcode_received(void *argument)
                     }
                 }else {
                     if (!gcode->has_letter('X') && !gcode->has_letter('Y') ) { //error if there is a problem
-                        gcode->stream->printf("ALARM: Probe fail: No Radius Given\n");
+                        gcode->stream->printf("ERROR: Probe fail: No Radius Given\n");
                         THEKERNEL->call_event(ON_HALT, nullptr);
                         THEKERNEL->set_halt_reason(PROBE_FAIL);
                         return;
@@ -652,7 +664,7 @@ void ZProbe::on_gcode_received(void *argument)
                 break;
             case 461:
                 if (!gcode->has_letter('X') && !gcode->has_letter('Y')){ //error if there is a problem
-                    gcode->stream->printf("ALARM: Probe fail: No Axis Set\n");
+                    gcode->stream->printf("ERROR: Probe fail: No Axis Set\n");
                     THEKERNEL->call_event(ON_HALT, nullptr);
                     THEKERNEL->set_halt_reason(PROBE_FAIL);
                     return;
@@ -663,7 +675,7 @@ void ZProbe::on_gcode_received(void *argument)
                 break;
             case 462:
                 if (!gcode->has_letter('X') && !gcode->has_letter('Y')){ //error if there is a problem
-                    gcode->stream->printf("ALARM: Probe fail: No Axis Set\n");
+                    gcode->stream->printf("ERROR: Probe fail: No Axis Set\n");
                     THEKERNEL->call_event(ON_HALT, nullptr);
                     THEKERNEL->set_halt_reason(PROBE_FAIL);
                     return;
@@ -674,7 +686,7 @@ void ZProbe::on_gcode_received(void *argument)
                 break;
             case 463:
                 if (!gcode->has_letter('X') || !gcode->has_letter('Y')){
-                    gcode->stream->printf("ALARM: Probe fail: Both X and Y axis need to be set for Corner Probing\n");
+                    gcode->stream->printf("ERROR: Probe fail: Both X and Y axis need to be set for Corner Probing\n");
                     THEKERNEL->call_event(ON_HALT, nullptr);
                     THEKERNEL->set_halt_reason(PROBE_FAIL);
                     return;
@@ -685,7 +697,7 @@ void ZProbe::on_gcode_received(void *argument)
                 break;
             case 464:
                 if (!gcode->has_letter('X') || !gcode->has_letter('Y')){
-                    gcode->stream->printf("ALARM: Probe fail: Both X and Y axis need to be set for Corner Probing\n");
+                    gcode->stream->printf("ERROR: Probe fail: Both X and Y axis need to be set for Corner Probing\n");
                     THEKERNEL->call_event(ON_HALT, nullptr);
                     THEKERNEL->set_halt_reason(PROBE_FAIL);
                     return;
@@ -698,7 +710,7 @@ void ZProbe::on_gcode_received(void *argument)
                 parse_parameters(gcode, true);
                 if (gcode->subcode == 1){
                     if (!gcode->has_letter('Y') || !gcode->has_letter('H')){
-                        gcode->stream->printf("ALARM: Probe fail: No distance or height set\n");
+                        gcode->stream->printf("ERROR: Probe fail: No distance or height set\n");
                         THEKERNEL->call_event(ON_HALT, nullptr);
                         THEKERNEL->set_halt_reason(PROBE_FAIL);
                         return;
@@ -706,7 +718,7 @@ void ZProbe::on_gcode_received(void *argument)
                     probing_cycle = PROBE_A_AXIS;
                 }else if (gcode->subcode == 2){
                     if (!gcode->has_letter('X') || !gcode->has_letter('Y') || !gcode->has_letter('R')){
-                        gcode->stream->printf("ALARM: Probe fail: No offset, distance or height set\n");
+                        gcode->stream->printf("ERROR: Probe fail: No offset, distance or height set\n");
                         THEKERNEL->call_event(ON_HALT, nullptr);
                         THEKERNEL->set_halt_reason(PROBE_FAIL);
                         return;
@@ -714,13 +726,13 @@ void ZProbe::on_gcode_received(void *argument)
                     probing_cycle = PROBE_A_AXIS_WITH_OFFSET;
                 }else{
                     if (!gcode->has_letter('X') && !gcode->has_letter('Y')){
-                            gcode->stream->printf("ALARM: Probe fail: No axis set\n");
+                            gcode->stream->printf("ERROR: Probe fail: No axis set\n");
                         THEKERNEL->call_event(ON_HALT, nullptr);
                         THEKERNEL->set_halt_reason(PROBE_FAIL);
                         return;
                     }
                     if (gcode->has_letter('X') && gcode->has_letter('Y')){
-                        gcode->stream->printf("ALARM: Probe fail: Axis probing only supports 1 axis input\n");
+                        gcode->stream->printf("ERROR: Probe fail: Axis probing only supports 1 axis input\n");
                         THEKERNEL->call_event(ON_HALT, nullptr);
                         THEKERNEL->set_halt_reason(PROBE_FAIL);
                         return;
@@ -731,7 +743,7 @@ void ZProbe::on_gcode_received(void *argument)
             case 466:
                 if (gcode->subcode == 1){
                     if (!gcode->has_letter('X') || !gcode->has_letter('Y') || !gcode->has_letter('H')){
-                        gcode->stream->printf("ALARM: Probe fail: Both X and Y axis and height need to be set for Square Probing\n");
+                        gcode->stream->printf("ERROR: Probe fail: Both X and Y axis and height need to be set for Square Probing\n");
                         THEKERNEL->call_event(ON_HALT, nullptr);
                         THEKERNEL->set_halt_reason(PROBE_FAIL);
                         return;
@@ -741,7 +753,7 @@ void ZProbe::on_gcode_received(void *argument)
                     }
                 }else{
                     if (!gcode->has_letter('X') && !gcode->has_letter('Y') && !gcode->has_letter('Z')){
-                        gcode->stream->printf("ALARM: Probe fail: No Axis Set\n");
+                        gcode->stream->printf("ERROR: Probe fail: No Axis Set\n");
                         THEKERNEL->call_event(ON_HALT, nullptr);
                         THEKERNEL->set_halt_reason(PROBE_FAIL);
                         return;
@@ -821,7 +833,7 @@ bool ZProbe::probe_XYZ(Gcode *gcode)
     THEKERNEL->conveyor->wait_for_idle();
 
     if(this->pin.get() != invert_probe) {
-        gcode->stream->printf("Error:ZProbe triggered before move, aborting command.\n");
+        gcode->stream->printf("ERROR: ZProbe triggered before move, aborting command.\n");
         THEKERNEL->set_halt_reason(PROBE_FAIL);
         THEKERNEL->call_event(ON_HALT, nullptr);
         THEKERNEL->set_halt_reason(PROBE_FAIL);
@@ -840,7 +852,7 @@ bool ZProbe::probe_XYZ(Gcode *gcode)
     float delta[3]= {x, y, z};
     THEKERNEL->set_zprobing(true);
     if(!THEROBOT->delta_move(delta, rate, 3)) {
-    	gcode->stream->printf("ERROR: Move too small,  %1.3f, %1.3f, %1.3f\n", x, y, z);
+    	gcode->stream->printf("ERROR: Probing move too small,  %1.3f, %1.3f, %1.3f\n", x, y, z);
         THEKERNEL->set_halt_reason(PROBE_FAIL);
         THEKERNEL->call_event(ON_HALT, nullptr);
         probing = false;
@@ -872,10 +884,9 @@ bool ZProbe::probe_XYZ(Gcode *gcode)
 
     if(probeok == 0 && (gcode->subcode == 2 || gcode->subcode == 4)) {
         // issue error if probe was not triggered and subcode is 2 or 4
-        gcode->stream->printf("ALARM: Probe fail\n");
+        gcode->stream->printf("ERROR: Probe failed to trigger\n");
         THEKERNEL->set_halt_reason(PROBE_FAIL);
         THEKERNEL->call_event(ON_HALT, nullptr);
-        THEKERNEL->set_halt_reason(PROBE_FAIL);
         return false; //probe was not activated but failed due to subcodes
     }
     if(probeok == 0){
@@ -892,10 +903,10 @@ uint8_t ZProbe::check_probe_tool() {
     }
     
     // 3d probe tool
-    if ((tool.active_tool == 0 && this->tool_0_3axis) || tool.active_tool >= 999990){
+    if ((tool.active_tool == 0 && this->tool_0_3axis) || tool.active_tool >= 999990 || tool.active_tool == 9999){
         return 2;
     // probe tool in general
-    }else if (tool.active_tool == 0 || tool.active_tool >= 999990){
+    }else if (tool.active_tool == 0){ //removed extra compares that would never be reached
         return 1;
     }
     return 0;
@@ -959,7 +970,7 @@ void ZProbe::calibrate_Z(Gcode *gcode)
     float delta[3]= {0, 0, z};
     THEKERNEL->set_zprobing(true);
     if(!THEROBOT->delta_move(delta, rate, 3)) {
-        gcode->stream->printf("ERROR: Move too small,  %1.3f\n", z);
+        gcode->stream->printf("ERROR: Probing move too small,  %1.3f\n", z);
         THEKERNEL->set_halt_reason(PROBE_FAIL);
         THEKERNEL->call_event(ON_HALT, nullptr);
         calibrating = false;
@@ -987,9 +998,6 @@ void ZProbe::calibrate_Z(Gcode *gcode)
     if (safety_margin_exceeded) {
         safety_margin_exceeded = false;
         THEKERNEL->set_halt_reason(PROBE_FAIL);
-        THEKERNEL->call_event(ON_HALT, nullptr);
-        gcode->stream->printf("ALARM: Probe failed to trigger within safety margin (%.2fmm)\n", 
-                             this->probe_calibration_safety_margin);
         gcode->stream->printf("Distance moved: %.3f\n", distance_moved);
         gcode->stream->printf("Probe pin triggered: %d, position: %.3f\n", probe_detected, probe_pin_position);
         gcode->stream->printf("Calibrate pin triggered: %d, position: %.3f\n", calibrate_detected, calibrate_pin_position);
@@ -997,6 +1005,8 @@ void ZProbe::calibrate_Z(Gcode *gcode)
         gcode->stream->printf("Error detected at position: %.3f\n", calibrate_current_z);
         gcode->stream->printf("Safety Margin Value: %.3f\n",  probe_calibration_safety_margin);
         gcode->stream->printf("debounce: %d, cali_debounce: %d, debounce_ms: %d\n", debounce, cali_debounce, debounce_ms);
+        gcode->stream->printf("ERROR: Probe failed to trigger within safety margin (%.2fmm). See MDI\n", this->probe_calibration_safety_margin);
+        THEKERNEL->call_event(ON_HALT, nullptr);
         return;
     }
 
@@ -1020,7 +1030,7 @@ void ZProbe::calibrate_Z(Gcode *gcode)
 
     if (calibrateok == 0) {
         // issue error if probe was not triggered and subcode is 2 or 4
-        gcode->stream->printf("ALARM: Calibrate fail!\n");
+        gcode->stream->printf("ERROR: Calibrate fail!\n");
         THEKERNEL->set_halt_reason(CALIBRATE_FAIL);
         THEKERNEL->call_event(ON_HALT, nullptr);
     }
@@ -1252,7 +1262,7 @@ int ZProbe::xy_probe_move_alarm_when_hit(int direction, int probe_g38_subcode, f
     std::sprintf(this->buff, "G38.%i X%.3f Y%.3f F%.3f", 3+probe_g38_subcode,THEROBOT->from_millimeters(direction * x), THEROBOT->from_millimeters(direction * y), feed_rate);
     this->gcodeBuffer = new Gcode(this->buff, &StreamOutput::NullStream);
     if (probe_XYZ(this->gcodeBuffer)){
-        THEKERNEL->streams->printf("ALARM: Probe hit wall when moving to outer position\n");
+        THEKERNEL->streams->printf("ERROR: Probe hit wall when moving to outer position\n");
         THEKERNEL->call_event(ON_HALT, nullptr);
         THEKERNEL->set_halt_reason(PROBE_FAIL);
         delete gcodeBuffer;
@@ -1284,14 +1294,14 @@ void ZProbe::z_probe_move_with_retract(int probe_g38_subcode, float z, float cle
 bool ZProbe::parse_parameters(Gcode *gcode, bool override_probe_check){
     init_parameters_and_out_coords();
 
-    if (!((override_probe_check && THEKERNEL->eeprom_data->TOOL == 0) || (this->tool_0_3axis && THEKERNEL->eeprom_data->TOOL == 0) || THEKERNEL->eeprom_data->TOOL >= 999990)){
-        THEKERNEL->streams->printf("ALARM: Attempted to 3 axis probe with an improper tool number. Tool number needs to be >= 999990\n or you need to set tool 0 as a 3 axis probe with: \n config-set sd zprobe.tool_zero_is_3axis true \n");
+    if (!((override_probe_check && THEKERNEL->eeprom_data->TOOL == 0) || (this->tool_0_3axis && THEKERNEL->eeprom_data->TOOL == 0) || THEKERNEL->eeprom_data->TOOL >= 999990 || THEKERNEL->eeprom_data->TOOL == 9999)){
+        THEKERNEL->streams->printf("ERROR: Attempted to 3 axis probe with an improper tool number. Tool number needs to be >= 999990\n or you need to set tool 0 as a 3 axis probe with: \n config-set sd zprobe.tool_zero_is_3axis true \n");
         THEKERNEL->call_event(ON_HALT, nullptr);
         THEKERNEL->set_halt_reason(PROBE_FAIL);
         return false;
     }else if(THEROBOT->get_tool_not_calibrated() && gcode->has_letter('S') && (gcode->has_letter('H') || gcode->has_letter('Z'))){
         if(gcode->get_value('S') == 2){
-            THEKERNEL->streams->printf("ALARM: Probe not calibrated. Please calibrate probe before probing.\n");
+            THEKERNEL->streams->printf("ERROR: Probe not calibrated. Please calibrate probe before probing.\n");
             THEKERNEL->call_event(ON_HALT, nullptr);
             THEKERNEL->set_halt_reason(PROBE_FAIL);
             return false;
@@ -1392,7 +1402,7 @@ void ZProbe::probe_bore(bool calibration) //M461
     }
 
     if (param.repeat < 1){
-        THEKERNEL->streams->printf("ALARM: Probe fail: repeat value cannot be less than 1\n");
+        THEKERNEL->streams->printf("ERROR: Probe fail: repeat value cannot be less than 1\n");
         THEKERNEL->call_event(ON_HALT, nullptr);
         THEKERNEL->set_halt_reason(PROBE_FAIL);
         return;
@@ -1521,7 +1531,7 @@ void ZProbe::probe_boss(bool calibration) //M462
     int repeat_count = calibration ? 1 : param.repeat;
     
     if (repeat_count < 1){
-        THEKERNEL->streams->printf("ALARM: Probe fail: repeat value cannot be less than 1\n");
+        THEKERNEL->streams->printf("ERROR: Probe fail: repeat value cannot be less than 1\n");
         THEKERNEL->call_event(ON_HALT, nullptr);
         THEKERNEL->set_halt_reason(PROBE_FAIL);
         return;
@@ -1690,7 +1700,7 @@ void ZProbe::probe_insideCorner() //M463
     float mpos[3];
 
     if (param.repeat < 1){
-        THEKERNEL->streams->printf("ALARM: Probe fail: repeat value cannot be less than 1\n");
+        THEKERNEL->streams->printf("ERROR: Probe fail: repeat value cannot be less than 1\n");
         THEKERNEL->call_event(ON_HALT, nullptr);
         THEKERNEL->set_halt_reason(PROBE_FAIL);
         return;
@@ -1774,7 +1784,7 @@ void ZProbe::probe_outsideCorner() //M464
     float mpos[3];
 
     if (param.repeat < 1){
-        THEKERNEL->streams->printf("ALARM: Probe fail: repeat value cannot be less than 1\n");
+        THEKERNEL->streams->printf("ERROR: Probe fail: repeat value cannot be less than 1\n");
         THEKERNEL->call_event(ON_HALT, nullptr);
         THEKERNEL->set_halt_reason(PROBE_FAIL);
         return;
@@ -1916,7 +1926,7 @@ void ZProbe::probe_axisangle(bool probe_a_axis, bool probe_with_offset) //M465
         // Validate the values before using them
         if (isnan(machine_offset.anchor1_x) || isnan(machine_offset.anchor1_y) || 
             isnan(machine_offset.rotation_offset_x) || isnan(machine_offset.rotation_offset_y)) {
-            THEKERNEL->streams->printf("ALARM: Invalid machine offset values\n");
+            THEKERNEL->streams->printf("ERROR: Invalid machine offset values\n");
             THEKERNEL->call_event(ON_HALT, nullptr);
             THEKERNEL->set_halt_reason(PROBE_FAIL);
             return;
@@ -1929,7 +1939,7 @@ void ZProbe::probe_axisangle(bool probe_a_axis, bool probe_with_offset) //M465
         float target_y = machine_offset.anchor1_y + machine_offset.rotation_offset_y;
 
         if (isnan(target_x) || isnan(target_y)) {
-            THEKERNEL->streams->printf("ALARM: Invalid target coordinates\n");
+            THEKERNEL->streams->printf("ERROR: Invalid target coordinates\n");
             THEKERNEL->call_event(ON_HALT, nullptr);
             THEKERNEL->set_halt_reason(PROBE_FAIL);
             return;
@@ -1954,7 +1964,7 @@ void ZProbe::probe_axisangle(bool probe_a_axis, bool probe_with_offset) //M465
         }
 
         if (param.repeat < 1){
-            THEKERNEL->streams->printf("ALARM: Probe fail: repeat value cannot be less than 1\n");
+            THEKERNEL->streams->printf("ERROR: Probe fail: repeat value cannot be less than 1\n");
             THEKERNEL->call_event(ON_HALT, nullptr);
             THEKERNEL->set_halt_reason(PROBE_FAIL);
             return;
@@ -2000,7 +2010,7 @@ void ZProbe::probe_axisangle(bool probe_a_axis, bool probe_with_offset) //M465
 
             // probe along x axis to second position, alarm if hit
             if (xy_probe_move_alarm_when_hit(POS, param.probe_g38_subcode, 0.0, param.y_rotated_y, param.rapid_rate) == 1) {
-                THEKERNEL->streams->printf("ALARM: Probe fail: hit wall during first move\n");
+                THEKERNEL->streams->printf("ERROR: Probe fail: hit wall during first move\n");
                 THEKERNEL->call_event(ON_HALT, nullptr);
                 THEKERNEL->set_halt_reason(PROBE_FAIL);
                 return;
@@ -2010,14 +2020,14 @@ void ZProbe::probe_axisangle(bool probe_a_axis, bool probe_with_offset) //M465
             if (check_last_probe_ok()){
                 out_coords.y_positive_y_out = out_coords.z_negative_z_out;
             }else{
-                THEKERNEL->streams->printf("ALARM: Probe fail: first point not found\n");
+                THEKERNEL->streams->printf("ERROR: Probe fail: first point not found\n");
                 THEKERNEL->call_event(ON_HALT, nullptr);
                 THEKERNEL->set_halt_reason(PROBE_FAIL);
                 return;
             }
             
             if (xy_probe_move_alarm_when_hit(NEG, param.probe_g38_subcode, 0.0, 2 * param.y_rotated_y, param.rapid_rate) == 1) {
-                THEKERNEL->streams->printf("ALARM: Probe fail: hit wall during second move\n");
+                THEKERNEL->streams->printf("ERROR: Probe fail: hit wall during second move\n");
                 THEKERNEL->call_event(ON_HALT, nullptr);
                 THEKERNEL->set_halt_reason(PROBE_FAIL);
                 return;
@@ -2027,7 +2037,7 @@ void ZProbe::probe_axisangle(bool probe_a_axis, bool probe_with_offset) //M465
                 out_coords.y_negative_y_out = out_coords.z_negative_z_out;
             }
             else{
-                THEKERNEL->streams->printf("ALARM: Probe fail: second point not found\n");
+                THEKERNEL->streams->printf("ERROR: Probe fail: second point not found\n");
                 THEKERNEL->call_event(ON_HALT, nullptr);
                 THEKERNEL->set_halt_reason(PROBE_FAIL);
                 return;
@@ -2044,7 +2054,7 @@ void ZProbe::probe_axisangle(bool probe_a_axis, bool probe_with_offset) //M465
             THECONVEYOR->wait_for_idle();
             
             if (!check_last_probe_ok()) {
-                THEKERNEL->streams->printf("ALARM: Probe fail: first point not found\n");
+                THEKERNEL->streams->printf("ERROR: Probe fail: first point not found\n");
                 THEKERNEL->call_event(ON_HALT, nullptr);
                 THEKERNEL->set_halt_reason(PROBE_FAIL);
                 return;
@@ -2058,7 +2068,7 @@ void ZProbe::probe_axisangle(bool probe_a_axis, bool probe_with_offset) //M465
             coordinated_move(out_coords.origin_x, out_coords.origin_y, NAN, param.rapid_rate );
             //probe along x axis to second position, alarm if hit
             if (xy_probe_move_alarm_when_hit(POS, param.probe_g38_subcode, param.x_rotated_x, param.x_rotated_y, param.rapid_rate) == 1) {
-                THEKERNEL->streams->printf("ALARM: Probe fail: hit wall during move to second position\n");
+                THEKERNEL->streams->printf("ERROR: Probe fail: hit wall during move to second position\n");
                 THEKERNEL->call_event(ON_HALT, nullptr);
                 THEKERNEL->set_halt_reason(PROBE_FAIL);
                 return;
@@ -2069,7 +2079,7 @@ void ZProbe::probe_axisangle(bool probe_a_axis, bool probe_with_offset) //M465
             THECONVEYOR->wait_for_idle();
             
             if (!check_last_probe_ok()) {
-                THEKERNEL->streams->printf("ALARM: Probe fail: second point not found\n");
+                THEKERNEL->streams->printf("ERROR: Probe fail: second point not found\n");
                 THEKERNEL->call_event(ON_HALT, nullptr);
                 THEKERNEL->set_halt_reason(PROBE_FAIL);
                 return;
@@ -2093,7 +2103,7 @@ void ZProbe::probe_axisangle(bool probe_a_axis, bool probe_with_offset) //M465
             THECONVEYOR->wait_for_idle();
             
             if (!check_last_probe_ok()) {
-                THEKERNEL->streams->printf("ALARM: Probe fail: first point not found\n");
+                THEKERNEL->streams->printf("ERROR: Probe fail: first point not found\n");
                 THEKERNEL->call_event(ON_HALT, nullptr);
                 THEKERNEL->set_halt_reason(PROBE_FAIL);
                 return;
@@ -2107,7 +2117,7 @@ void ZProbe::probe_axisangle(bool probe_a_axis, bool probe_with_offset) //M465
             coordinated_move(out_coords.origin_x, out_coords.origin_y, NAN, param.rapid_rate );
             //probe along x axis to second position, alarm if hit
             if (xy_probe_move_alarm_when_hit(POS, param.probe_g38_subcode, param.y_rotated_x, param.y_rotated_y, param.rapid_rate) == 1) {
-                THEKERNEL->streams->printf("ALARM: Probe fail: hit wall during move to second position\n");
+                THEKERNEL->streams->printf("ERROR: Probe fail: hit wall during move to second position\n");
                 THEKERNEL->call_event(ON_HALT, nullptr);
                 THEKERNEL->set_halt_reason(PROBE_FAIL);
                 return;
@@ -2118,7 +2128,7 @@ void ZProbe::probe_axisangle(bool probe_a_axis, bool probe_with_offset) //M465
             THECONVEYOR->wait_for_idle();
             
             if (!check_last_probe_ok()) {
-                THEKERNEL->streams->printf("ALARM: Probe fail: second point not found\n");
+                THEKERNEL->streams->printf("ERROR: Probe fail: second point not found\n");
                 THEKERNEL->call_event(ON_HALT, nullptr);
                 THEKERNEL->set_halt_reason(PROBE_FAIL);
                 return;
@@ -2209,7 +2219,7 @@ void ZProbe::probe_square(){
     float mpos[5];
 
     if (param.repeat < 1){
-        THEKERNEL->streams->printf("ALARM: Probe fail: repeat value cannot be less than 1\n");
+        THEKERNEL->streams->printf("ERROR: Probe fail: repeat value cannot be less than 1\n");
         THEKERNEL->call_event(ON_HALT, nullptr);
         THEKERNEL->set_halt_reason(PROBE_FAIL);
         return;
@@ -2425,7 +2435,7 @@ void ZProbe::single_axis_probe_double_tap(){
     THEKERNEL->streams->printf("Probing Single Axis\n");
 
     if (param.repeat < 1){
-        THEKERNEL->streams->printf("ALARM: Probe fail: repeat value cannot be less than 1\n");
+        THEKERNEL->streams->printf("ERROR: Probe fail: repeat value cannot be less than 1\n");
         THEKERNEL->call_event(ON_HALT, nullptr);
         THEKERNEL->set_halt_reason(PROBE_FAIL);
         return;

@@ -1,0 +1,1 @@
+This config represents a CA1 machine with flex compensation enabled

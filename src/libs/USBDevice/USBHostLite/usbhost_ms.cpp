@@ -70,6 +70,56 @@ USB_INT32S MS_Init (USB_INT32U *blkSize, USB_INT32U *numBlks, USB_INT08U *inquir
     rc = MS_Inquire (inquiryResult);
     return (rc);
 }
+
+USB_INT32S MS_Enumerate(void)
+{
+    USB_INT32S rc;
+
+    PRINT_Log("USBHostLite: waiting for USB device\n");
+    rc = Host_WaitForDevice(0);
+    if (rc != OK) {
+        PRINT_Err(rc);
+        return (rc);
+    }
+
+    rc = Host_ResetRootPort(0, NULL);
+    if (rc != OK) {
+        PRINT_Err(rc);
+        return (rc);
+    }
+
+    rc = Host_ReadDeviceDescriptor();
+    if (rc != OK) {
+        PRINT_Err(rc);
+        return (rc);
+    }
+
+    rc = Host_SetDeviceAddress(1);
+    if (rc != OK) {
+        PRINT_Err(rc);
+        return (rc);
+    }
+
+    rc = Host_ReadConfigurationDescriptor(0, NULL);
+    if (rc != OK) {
+        PRINT_Err(rc);
+        return (rc);
+    }
+
+    rc = MS_ParseConfiguration();
+    if (rc != OK) {
+        PRINT_Err(rc);
+        return (rc);
+    }
+
+    rc = USBH_SET_CONFIGURATION(1);
+    if (rc != OK) {
+        PRINT_Err(rc);
+    }
+    Host_DelayMS(100);
+    return (rc);
+}
+
 /*
 **************************************************************************************************************
 *                                         PARSE THE CONFIGURATION
@@ -370,7 +420,7 @@ USB_INT32S  MS_BulkRecv (          USB_INT32U   block_number,
 
 USB_INT32S  MS_BulkSend (          USB_INT32U   block_number,
                                    USB_INT16U   num_blocks,
-                         volatile  USB_INT08U  *user_buffer)
+                   const volatile  USB_INT08U  *user_buffer)
 {
     USB_INT32S  rc;
 
