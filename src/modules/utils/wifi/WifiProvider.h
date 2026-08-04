@@ -88,6 +88,10 @@ private:
 	int connection_fail_count;
 	int sta_down_seconds;
 	u8 last_sta_connection_status;
+	uint32_t wifi_seconds;
+	uint32_t sta_flap_times[3]; // timestamps of recent STA reconnect cycles (WIFI_STA_FLAP_LIMIT)
+	uint8_t sta_flap_count;
+	uint32_t ap_hold_remaining_s; // keep AP up while > 0 after STA flapping
 	char machine_name[64]; // Fixed-size buffer to avoid std::string heap allocation
 	char ap_address[16];
 	char ap_netmask[16];
@@ -101,6 +105,8 @@ private:
     	bool ap_auto_disable:1;
     	bool ap_currently_on:1;
     	bool ap_manually_disabled:1; // sticky from `ap disable` until `ap enable`
+    	bool sta_was_connected:1;
+    	bool sta_down_since_connected:1;
     	volatile bool halt_flag:1;
     	volatile bool query_flag:1;
     	volatile bool diagnose_flag:1;
