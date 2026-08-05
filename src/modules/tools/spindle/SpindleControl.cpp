@@ -72,15 +72,10 @@ void SpindleControl::on_gcode_received(void *argument)
                 return;
             }
 
-            // Only in 3dtoolsetter mode do we force EXT spindle direction.
-            // Hardware behavior verified on Carvera: HIGH=forward, LOW=reverse.
-            // M3 => HIGH/forward, M4 => LOW/reverse.
-            if (this->enable_3dtoolsetter) {
-                if (gcode->m == 3) {
-                    send_internal_command("M851 S100");
-                } else {
-                    send_internal_command("M852");
-                }
+            // In 3dtoolsetter mode, keep M3 unmodified and apply direction override only on M4.
+            // M5 clears this override back to default state.
+            if (this->enable_3dtoolsetter && gcode->m == 4) {
+                send_internal_command("M851 S100");
             }
 
         	if (!THEKERNEL->get_laser_mode()) {

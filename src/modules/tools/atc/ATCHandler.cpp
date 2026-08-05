@@ -135,6 +135,7 @@ ATCHandler::ATCHandler()
     probe_oneoff_z = 0.0;
     probe_oneoff_configured = false;
 	enable_3dtoolsetter = false;
+	enable_zprobe_3dtoolsetter = false;
 	target_collet_type = UNDEFINED;
 	a_axis_cor.phase = 0;
 	a_axis_cor.pass = 0;
@@ -1409,7 +1410,7 @@ void ATCHandler::fill_cali_scripts(bool is_probe, bool clear_z, int repeat_count
 			snprintf(buff, sizeof(buff), "M493.1 R%d", i);
 			this->script_queue.push(buff);
 
-			if(this->enable_3dtoolsetter && !is_probe) {
+			if(this->enable_zprobe_3dtoolsetter && !is_probe) {
 				// Diameter touch-off sequence for non-probe tools uses reverse spindle direction.
 				snprintf(buff, sizeof(buff), "G91 G0 Z2");
 				this->script_queue.push(buff);
@@ -1424,8 +1425,6 @@ void ATCHandler::fill_cali_scripts(bool is_probe, bool clear_z, int repeat_count
 				snprintf(buff, sizeof(buff), "G91 G0 X-0.5");
 				this->script_queue.push(buff);
 				snprintf(buff, sizeof(buff), "M5");
-				this->script_queue.push(buff);
-				snprintf(buff, sizeof(buff), "M491.4");
 				this->script_queue.push(buff);
 			}
 
@@ -1785,6 +1784,7 @@ void ATCHandler::on_config_reload(void *argument)
 	this->probe_retract_mm = THEKERNEL->config->value(atc_checksum, probe_checksum, retract_mm_checksum)->as_number(2   );
 	this->probe_height_mm = THEKERNEL->config->value(atc_checksum, probe_checksum, probe_height_mm_checksum)->as_number(0   );
 	this->enable_3dtoolsetter = THEKERNEL->config->value(atc_checksum, three_d_toolsetter_checksum)->as_bool(false);
+	this->enable_zprobe_3dtoolsetter = THEKERNEL->config->value(zprobe_checksum, three_d_toolsetter_checksum)->as_bool(false);
 	
 	this->anchor_width = THEKERNEL->config->value(coordinate_checksum, anchor_width_checksum)->as_number(15  );
 	this->anchor1_x = THEKERNEL->config->value(coordinate_checksum, anchor1_x_checksum)->as_number(-359  );
@@ -2755,7 +2755,7 @@ void ATCHandler::on_gcode_received(void *argument)
 					return;
 				}
 
-			} else {
+			} else if (gcode->subcode == 0) {
 				
 				// Handle one-off probe position offsets
 
@@ -2794,6 +2794,10 @@ void ATCHandler::on_gcode_received(void *argument)
 				bool tlo_calibrating = true;
 				PublicData::set_value( zprobe_checksum, set_tlo_calibrating_checksum, &tlo_calibrating );
 				this->fill_cali_scripts(active_tool == 0 || active_tool >= 999990 || active_tool == 9999, true, repeat_count);
+
+			} else {
+				THEKERNEL->streams->printf("ERROR: Unsupported M491.%d subcode\n", static_cast<int>(gcode->subcode));
+				return;
 
 			}
 		} else if (gcode->m == 492) {
