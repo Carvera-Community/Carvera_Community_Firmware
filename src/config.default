@@ -270,6 +270,8 @@ zprobe.debounce_ms							1				# Set if noisy
 zprobe.probe_tip_diameter					1.6				#3 axis probe tip diamter
 # zprobe.calibration_safety_margin              0.1             # max distance to move after calibrate pin but before probe pin detected
 zprobe.3dtoolsetter                           false           # opt-in: for 3D probe tools, probe trigger alone completes tool calibration
+# zprobe.three_axis_probe_tdo_correction        0.0             # additive correction (mm) applied to 3-axis diameter touch-off measurement
+zprobe.calibration_safety_margin              0.1             # max distance to move after calibrate pin but before probe pin detected
 
 # Leveling strategy
 leveling-strategy.rectangular-grid.enable					true

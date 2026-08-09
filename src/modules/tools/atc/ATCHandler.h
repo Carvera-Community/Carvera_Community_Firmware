@@ -112,6 +112,9 @@ private:
     void fill_zprobe_scripts(float x_pos, float y_pos, float x_offset, float y_offset);
     void fill_zprobe_abs_scripts();
     void fill_xyzprobe_scripts(float tool_dia, float probe_height);
+    void queue_tool_dia_touchoff_sequence();
+    void capture_tool_dia_probe_start();
+    bool finalize_tool_dia_measurement(const char* source_tag);
 
     //
     void set_tlo_by_offset(float z_axis_offset);
@@ -196,6 +199,7 @@ private:
     float probe_retract_mm;
     float probe_height_mm;
     float three_axis_probe_tlo_correction;
+    float three_axis_probe_tdo_correction;
 
     // Configurable probe position (absolute Machine Coordinate System)
     float probe_mcs_x;
@@ -327,6 +331,11 @@ private:
     float ref_tool_mz;
     float cur_tool_mz;
     float tool_offset;
+    float tool_dia_probe_start_x;
+    bool tool_dia_probe_start_valid;
+    bool run_diameter_touchoff_after_tlo;
+    bool diameter_touchoff_use_wear_update;
+    bool spindle_3dtoolsetter_enabled;
     const uint8_t max_tl_mcz_values = 5;
     deque<float> tl_mcz_values = deque<float>(max_tl_mcz_values, 0.0f);
     int beep_state;
