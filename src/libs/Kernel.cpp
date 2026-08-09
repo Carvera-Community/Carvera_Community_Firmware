@@ -844,11 +844,19 @@ void Kernel::check_eeprom_data()
 		this->eeprom_data->TOOLMZ = 0;
 		needrewtite = true;
 	}
-    // TOOL_DIA_WEAR was formerly the 'reserve' field and may contain arbitrary garbage.
-    // Guard against both NaN and out-of-range values from old firmware.
-    if (isnan(this->eeprom_data->TOOL_DIA_WEAR) || fabsf(this->eeprom_data->TOOL_DIA_WEAR) > 100.0f)
+    if(isnan(this->eeprom_data->reserve))
+    {
+        this->eeprom_data->reserve = 0;
+        needrewtite = true;
+    }
+    if(isnan(this->eeprom_data->TOOL_DIA_WEAR))
     {
         this->eeprom_data->TOOL_DIA_WEAR = 0;
+		needrewtite = true;
+	}
+    if(isnan(this->eeprom_data->TOOL_DIA))
+    {
+        this->eeprom_data->TOOL_DIA = 0;
         needrewtite = true;
     }
 	if(isnan(this->eeprom_data->TOOL))
