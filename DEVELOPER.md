@@ -13,6 +13,7 @@
   * [GDB commands](#gdb-commands)
   * [Reconnecting](#reconnecting)
   * [Defining commands](#defining-commands)
+* [Boot memory budget check](#boot-memory-budget-check)
 * [Static analysis](#static-analysis)
   * [Requirements](#requirements)
   * [Running analysis](#running-analysis)
@@ -399,6 +400,96 @@ commands
   cont
 end
 ```
+
+# Boot memory budget check
+
+The linker and `arm-none-eabi-size` only report the **static** image layout.
+Many boot costs are decided at runtime from `config.txt` (`new` / `new(AHB)`,
+planner queue, cart grid, flex buffer, FatFs `fopen`, etc.). Those can still
+exhaust:
+
+1. **AHB MemoryPool** — permanent pool between `__AHB_dyn_start` and `__AHB_end`
+2. **Main heap vs config-cache window** — with `STACK_SIZE=0`, the heap can grow
+   into the live config cache before `config_cache_clear()`. That hard-resets
+   and looks like a boot loop.
+
+[`build/check-ahb-budget.py`](./build/check-ahb-budget.py) is a host-side model
+of those two budgets for known SD fixtures under
+[`tests/TEST_memory_budget/`](./tests/TEST_memory_budget/). CI runs it after the
+main firmware build (map + ELF required).
+
+## When to run it
+
+- After changing boot-time `new` / `new(AHB)` sites (`Kernel.cpp`, `main.cpp`,
+  `Config.cpp`), planner queue size, cart grid / flex compensation, or anything
+  that opens files during early boot
+- When investigating a boot cycle that smells like OOM
+
+## How to run it
+
+Build first so `LPC1768/main.map` and `LPC1768/main.elf` exist, then:
+
+```bash
+# Ensure arm-none-eabi-gdb is on PATH (DWARF sizeof); gcc.sh --env does this
+eval "$(./build/gcc.sh --gcc 14.2 --env)"
+
+./build/check-ahb-budget.py \
+  --map LPC1768/main.map \
+  --elf LPC1768/main.elf \
+  --configs-dir tests/TEST_memory_budget/configs
+```
+
+Optional: `--margin N` (default `512`) for required free bytes on both budgets;
+`--gdb /path/to/arm-none-eabi-gdb` if the toolchain is not on `PATH`.
+
+Exit `0` = every fixture fits. Exit `1` = at least one fixture exceeds a budget
+(or the ELF/gdb sizeof probe failed).
+
+## What it models
+
+| Budget | Sources |
+| --- | --- |
+| AHB permanent | Discovered `new(AHB)` modules, `BlockQueue`, cart grid floats, flex float buffer |
+| Main heap (cache-live) | Discovered `new` modules, config-driven switches / temperature controls / spindle / cart strategy, plus a fudge (`BOOT_HEAP_UNACCOUNTED`) for unmodeled boot heap |
+
+Config merge order matches firmware: code defaults → firm default
+(`Config/config.default` vs `config2.default` by machine) → SD `config.txt`.
+
+Sizes come from `arm-none-eabi-gdb` DWARF `sizeof` against `main.elf` when
+`--elf` is set (CI always passes `--elf`). A weak or missing probe is treated as
+an error so the check cannot false-pass on hardcoded fallbacks alone.
+
+`flex_compensation_always_active` also charges a **FlexAutoloadPeak** on the
+main heap (`FIL_t` sector buffer ≈ 548B + `FILE` + handle + bind/printf
+scratch). Production defers that SD load until after `config_cache_clear()`, but
+the checker still requires the peak to fit in the cache-live window — that is a
+the boot-loop failure class.
+
+## Fixtures
+
+See [`tests/TEST_memory_budget/README.md`](./tests/TEST_memory_budget/README.md).
+
+| Dir | Intent |
+| --- | --- |
+| `configs/1` | Carvera Air + flex always-active (large grid) |
+| `configs/2` | Stock Carvera |
+
+Add a new fixture by creating `tests/TEST_memory_budget/configs/<n>/` with
+`config.txt` and a short `README.md` (used as a machine-type hint). Optional
+`flex_compensation.dat` is for on-device repro only; the host checker does not
+read it.
+
+Both fixtures should pass on current firmware (including
+`flex_compensation_always_active` on `configs/1`).
+
+## Calibrating and extending
+
+- Refine `BOOT_HEAP_UNACCOUNTED` in `check-ahb-budget.py` against on-device
+  `mem -v` high-water marks; the constant is intentionally coarse.
+- New deferred post-cache loads: extend `DEFERRED_LOAD_CHECKS` in the script so
+  structural regressions (load moved back into `handleConfig`) are caught.
+- On-device AHB tracing during boot: see [`enable-pool-trace`](#enable-pool-trace)
+  under Debugging.
 
 # Static analysis
 

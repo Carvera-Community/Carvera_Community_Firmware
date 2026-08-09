@@ -46,6 +46,7 @@
 #include "platform_memory.h"
 #include "SwitchPublicAccess.h"
 #include "SDFAT.h"
+#include "FATFileSystem.h"
 #include "Thermistor.h"
 #include "md5.h"
 #include "utils.h"
@@ -59,9 +60,14 @@
 
 #include "mbed.h" // for wait_ms()
 #include <strings.h> // For strncasecmp
+#include <string.h>
+#include <vector>
 
 extern unsigned int g_maximumHeapAddress;
-extern unsigned char xbuff[8200];
+extern const unsigned short crc_table[256];
+#define XBUFF_LENGTH	8208
+extern unsigned char xbuff[XBUFF_LENGTH];
+extern unsigned char fbuff[4096];
 
 #define EOT  0x04
 #define CAN  0x16 //0x18
@@ -222,13 +228,27 @@ void SimpleShell::on_gcode_received(void *argument)
 
     if (gcode->has_m) {
         if (gcode->m == 20) { // list sd card
-            gcode->stream->printf("Begin file list\r\n");
-            ls_command("/sd", gcode->stream);
-            gcode->stream->printf("End file list\r\n");
+            if (communication_protocol == PROTOCOL_SMOOTHIE) {
+                gcode->stream->printf("Begin file list\r\n");
+                ls_command("/sd", gcode->stream);
+                gcode->stream->printf("End file list\r\n");
+            } else {
+                PacketMessage(PTYPE_NORMAL_INFO, "Begin file list\r\n", 0, gcode->stream);
+                ls_command("/sd", gcode->stream);
+                PacketMessage(PTYPE_NORMAL_INFO, "End file list\r\n", 0, gcode->stream);
+            }
+            
 
         } else if (gcode->m == 30) { // remove file
             if(!args.empty() && !THEKERNEL->is_grbl_mode())
                 rm_command("/sd/" + args, gcode->stream);
+        } else if (gcode->m == 576) { // check SD file integrity against stored MD5 hashes
+            if (gcode->subcode == 2) {
+                md5check_file_command(args, gcode->stream);
+            } else {
+                // M576 / M576.1 -- walk all files that have a stored MD5
+                md5check_command(args, gcode->stream);
+            }
         } else if (gcode->m == 331) { // change to vacuum mode
         	if (gcode->subcode == 0) {
 				THEKERNEL->set_vacuum_mode(true);
@@ -278,10 +298,19 @@ void SimpleShell::on_gcode_received(void *argument)
 				//PacketMessage(PTYPE_NORMAL_INFO, "turning vacuum mode off\r\n", 0, gcode->stream);
                 gcode->stream->printf("turning vacuum mode off\r\n");
 			}
-			else
-			{
-				// turn on extend out mode
-				//PacketMessage(PTYPE_NORMAL_INFO, "turning extend out mode off\r\n", 0, gcode->stream);
+			else if (gcode->subcode == 3) {
+				THEKERNEL->set_extout_mode(false);
+			    // get spindle state
+			    struct spindle_status ss;
+			    bool ok = PublicData::get_value(pwm_spindle_control_checksum, get_spindle_status_checksum, &ss);
+			    if (ok) {
+			    	if (ss.state) {
+		        		// close extout
+		        		bool b = false;
+		        		PublicData::set_value( switch_checksum, extendout_checksum, state_checksum, &b );
+			    	}
+	        	}
+	        	//PacketMessage(PTYPE_NORMAL_INFO, "turning extend out mode off\r\n", 0, gcode->stream);
                 gcode->stream->printf("turning extend out mode off\r\n");
 			}
 
@@ -308,6 +337,28 @@ void SimpleShell::on_gcode_received(void *argument)
             if (gcode->has_letter('U')) colors.g = gcode->get_value('U');
             if (gcode->has_letter('B')) colors.b = gcode->get_value('B');
             PublicData::set_value(main_button_checksum, set_led_bar_checksum, &colors);
+        } else if (gcode->m == 485) { //swap communication protocols
+            if (gcode->subcode == 1) {
+                gcode->stream->printf("setting to smoothie communication protocol\n");
+                if (communication_protocol != PROTOCOL_SMOOTHIE) {
+                    //send response
+                    gcode->stream->printf("ok\r\n");
+                    communication_protocol = PROTOCOL_SMOOTHIE;
+                    THEKERNEL->streams->on_protocol_changed();
+                }
+                
+            } else if (gcode->subcode == 2) {
+                gcode->stream->printf("setting to makera communication protocol\n");
+                if (communication_protocol != PROTOCOL_MAKERA) {
+                    //send response
+                    gcode->stream->printf("ok\r\n");
+                    communication_protocol = PROTOCOL_MAKERA;
+                    THEKERNEL->streams->on_protocol_changed();
+                }
+            } else {
+                gcode->stream->printf("current communication protocol: %s\n",
+                    communication_protocol == PROTOCOL_SMOOTHIE ? "smoothie" : "makera");
+            }
         }
     }
 }
@@ -469,6 +520,7 @@ void SimpleShell::ls_command( string parameters, StreamOutput *stream )
     struct tm timeinfo;
     char dirTmp[256]; 
     unsigned int npos=0;
+     const unsigned int chunk_limit = communication_protocol == PROTOCOL_SMOOTHIE ? 7900 : 4000;
     d = fwfs::opendir(path.c_str());
     if (d != NULL) {
         while ((p = readdir(d)) != NULL) {
@@ -492,27 +544,50 @@ void SimpleShell::ls_command( string parameters, StreamOutput *stream )
         	}
         	memcpy(&xbuff[npos], dirTmp, strlen(dirTmp));
         	npos += strlen(dirTmp);
-        	if(npos >= 7900)
-        	{
-        		stream->puts((char *)xbuff, npos);
-        		npos = 0;
-        	}
+            if (communication_protocol == PROTOCOL_SMOOTHIE) {
+                if(npos >= chunk_limit)
+                {
+        		    stream->puts((char *)xbuff, npos);
+                    npos = 0;
+                }
+            } else {
+                if(npos >= chunk_limit)
+                {
+                    PacketMessage(PTYPE_LOAD_INFO, (char *)xbuff, npos, stream);
+                    npos = 0;
+                }
+            }
+        	
         	
         }
         if( npos != 0)
         {
-        	stream->puts((char *)xbuff, npos);
+            if (communication_protocol == PROTOCOL_SMOOTHIE) {
+                stream->puts((char *)xbuff, npos);
+            } else {
+                PacketMessage(PTYPE_LOAD_INFO, (char *)xbuff, npos, stream);
+            }
+        	
         }
-        closedir(d);
-        if(opts.find("-e", 0, 2) != string::npos) {
-        	char eot = EOT;
-            stream->puts(&eot, 1);
+        closedir(d); 
+        
+        if (communication_protocol == PROTOCOL_SMOOTHIE) {
+            if(opts.find("-e", 0, 2) != string::npos) {
+                char eot = EOT;
+                stream->puts(&eot, 1);
+            }
+        } else {
+            PacketMessage(PTYPE_LOAD_FINISH, "Load directory finished.\r\n", 0, stream);
         }
     } else {
-        if(opts.find("-e", 0, 2) != string::npos) {
-            stream->_putc(CAN);
+        if (communication_protocol == PROTOCOL_SMOOTHIE) {
+            if(opts.find("-e", 0, 2) != string::npos) {
+                stream->_putc(CAN);
+            }
+            stream->printf("Could not open directory %s\r\n", path.c_str());
+        } else {
+            PacketMessage(PTYPE_LOAD_ERROR, "Could not open directory!\r\n", 0, stream);
         }
-        stream->printf("Could not open directory %s\r\n", path.c_str());
     }
 }
 
@@ -521,107 +596,94 @@ extern SDFAT mounter;
 void SimpleShell::remount_command( string parameters, StreamOutput *stream )
 {
     mounter.remount();
-    stream->printf("remounted\r\n");
+    if (communication_protocol == PROTOCOL_SMOOTHIE) {
+        stream->printf("remounted\r\n");
+    } else {
+        PacketMessage(PTYPE_NORMAL_INFO, "remounted\r\n", 0, stream);
+    }
 }
 
 // Delete a file
 void SimpleShell::rm_command( string parameters, StreamOutput *stream )
 {
-	bool send_eof = false;
+    bool send_eof = false; //smoothie
     string path = absolute_from_relative(shift_parameter( parameters ));
     string md5_path = change_to_md5_path(path);
     string lz_path = change_to_lz_path(path);
-    if(!parameters.empty() && shift_parameter(parameters) == "-e") {
-    	send_eof = true;
+    if (communication_protocol == PROTOCOL_SMOOTHIE) {
+        if(!parameters.empty() && shift_parameter(parameters) == "-e") {
+            send_eof = true;
+        }
     }
+
+
 
     string toRemove = absolute_from_relative(path);
     int s = fwfs::remove(toRemove.c_str());
     if (s != 0) {
-        if(send_eof) {
-            stream->_putc(CAN);
+        if (communication_protocol == PROTOCOL_SMOOTHIE) {
+            if(send_eof) {
+                stream->_putc(CAN);
+            }
+            stream->printf("Could not delete %s \r\n", toRemove.c_str());
+        } else {
+            stream->printf("Could not delete %s \r\n", toRemove.c_str());
+            PacketMessage(PTYPE_LOAD_ERROR, "ok\r\n", 0, stream);
         }
-    	stream->printf("Could not delete %s \r\n", toRemove.c_str());
+        
     } else {
     	string str_md5 = absolute_from_relative(md5_path);
     	s = fwfs::remove(str_md5.c_str());
-/*
-		if (s != 0) {
-			if(send_eof) {
-				stream->_putc(CAN);
-			}
-			stream->printf("Could not delete %s \r\n", str_md5.c_str());
-		} 
-		else {
-			string str_lz = absolute_from_relative(lz_path);
-			s = fwfs::remove(str_lz.c_str());
-			if (s != 0){
-				if(send_eof) {
-					stream->_putc(CAN);
-				}
-				stream->printf("Could not delete %s \r\n", str_lz.c_str());
-			}
-			else {
-		        if(send_eof) {
-		            stream->_putc(EOT);
-	        	}
-			
-			}
-    	}*/
     	string str_lz = absolute_from_relative(lz_path);
 		s = fwfs::remove(str_lz.c_str());
-		if(send_eof) {
-            stream->_putc(EOT);
-    	}
+
+        if (communication_protocol == PROTOCOL_SMOOTHIE) {
+            if(send_eof) {
+                stream->_putc(EOT);
+            }
+        } else {
+            PacketMessage(PTYPE_LOAD_FINISH, "ok\r\n", 0, stream);
+        }
     }
 }
 
 // Rename a file
 void SimpleShell::mv_command( string parameters, StreamOutput *stream )
 {
-	bool send_eof = false;
+    bool send_eof = false; //smoothie
     string from = absolute_from_relative(shift_parameter( parameters ));
     string md5_from = change_to_md5_path(from);
     string lz_from = change_to_lz_path(from);
     string to = absolute_from_relative(shift_parameter(parameters));
     string md5_to = change_to_md5_path(to);
     string lz_to = change_to_lz_path(to);
-    if(!parameters.empty() && shift_parameter(parameters) == "-e") {
-    	send_eof = true;
+
+    if (communication_protocol == PROTOCOL_SMOOTHIE) {
+        if(!parameters.empty() && shift_parameter(parameters) == "-e") {
+            send_eof = true;
+        }
     }
     int s = fwfs::rename(from.c_str(), to.c_str());
     if (s != 0)  {
-    	if (send_eof) {
-    		stream->_putc(CAN);
-    	}
+        if (communication_protocol == PROTOCOL_SMOOTHIE) {
+            if (send_eof) {
+                stream->_putc(CAN);
+            }
+        } else {
+            PacketMessage(PTYPE_LOAD_ERROR, "ok\r\n", 0, stream);
+        }
     	stream->printf("Could not rename %s to %s\r\n", from.c_str(), to.c_str());
     } else  {
     	s = fwfs::rename(md5_from.c_str(), md5_to.c_str());
-/*        if (s != 0)  {
-        	if (send_eof) {
-        		stream->_putc(CAN);
-        	}
-        	stream->printf("Could not rename %s to %s\r\n", md5_from.c_str(), md5_to.c_str());
-        }
-        else {
-        	s = fwfs::rename(lz_from.c_str(), lz_to.c_str());
-        	if (s != 0)  {
-	        	if (send_eof) {
-	        		stream->_putc(CAN);
-	        	}
-	        	stream->printf("Could not rename %s to %s\r\n", lz_from.c_str(), lz_to.c_str());
-        	}
-        	else {
-        		if (send_eof) {
-				stream->_putc(EOT);
-				}
-				stream->printf("renamed %s to %s\r\n", from.c_str(), to.c_str());
-        	}
-        }*/
         s = fwfs::rename(lz_from.c_str(), lz_to.c_str());
-        if (send_eof) {
-			stream->_putc(EOT);
-		}
+
+        if (communication_protocol == PROTOCOL_SMOOTHIE) {
+            if (send_eof) {
+                stream->_putc(EOT);
+            }
+        } else {
+            PacketMessage(PTYPE_LOAD_FINISH, "ok\r\n", 0, stream);
+        }
 		stream->printf("renamed %s to %s\r\n", from.c_str(), to.c_str());
     }
 }
@@ -629,46 +691,39 @@ void SimpleShell::mv_command( string parameters, StreamOutput *stream )
 // Create a new directory
 void SimpleShell::mkdir_command( string parameters, StreamOutput *stream )
 {
-	bool send_eof = false;
+    bool send_eof = false; //smoothie
     string path = absolute_from_relative(shift_parameter( parameters ));
     string md5_path = change_to_md5_path(path);
     string lz_path = change_to_lz_path(path);
-    if(!parameters.empty() && shift_parameter(parameters) == "-e") {
-    	send_eof = true;
+
+    if (communication_protocol == PROTOCOL_SMOOTHIE) {
+        if(!parameters.empty() && shift_parameter(parameters) == "-e") {
+            send_eof = true;
+        }
     }
+
     int result = fwfs::mkdir(path.c_str(), 0);
     if (result != 0) {
-    	if (send_eof) {
-    		stream->_putc(CAN); // ^Z terminates error
-    	}
+        if (communication_protocol == PROTOCOL_SMOOTHIE) {
+            if (send_eof) {
+                stream->_putc(CAN); // ^Z terminates error
+            }
+        } else {
+            PacketMessage(PTYPE_LOAD_ERROR, "ok\r\n", 0, stream);
+        }
     	stream->printf("could not create directory %s\r\n", path.c_str());
     } else {
     	result = fwfs::mkdir(md5_path.c_str(), 0);
-/*        if (result != 0) {
-        	if (send_eof) {
-        		stream->_putc(CAN); // ^Z terminates error
-        	}
-        	stream->printf("could not create md5 directory %s\r\n", md5_path.c_str());
-        } 
-        else if (fwfs::mkdir(lz_path.c_str(), 0) != 0) {
-        	if (send_eof) {
-        		stream->_putc(CAN); // ^Z terminates error
-        	}
-        	stream->printf("could not create lz directory %s\r\n", lz_path.c_str());
-        }    
-        else {
-        	if (send_eof) {
-            	stream->_putc(EOT); // ^D terminates the upload
-        	}
-        	stream->printf("created directory %s\r\n", path.c_str());
-        }
-*/
 		fwfs::mkdir(lz_path.c_str(), 0);
-		if (send_eof) {
+
+        if (communication_protocol == PROTOCOL_SMOOTHIE) {
+            if (send_eof) {
             	stream->_putc(EOT); // ^D terminates the upload
         	}
+        } else {
+            PacketMessage(PTYPE_LOAD_FINISH, "ok\r\n", 0, stream);
+        }
         stream->printf("created directory %s\r\n", path.c_str());
-		
     }
 }
 
@@ -981,6 +1036,8 @@ void SimpleShell::wlan_command( string parameters, StreamOutput *stream)
 	bool send_eof = false;
 	bool disconnect = false;
     string ssid, password;
+    ssid = "";
+	password = "";
 
     while (!parameters.empty()) {
         string s = shift_parameter( parameters );
@@ -1004,15 +1061,28 @@ void SimpleShell::wlan_command( string parameters, StreamOutput *stream)
         bool ok = PublicData::get_value( wlan_checksum, get_wlan_checksum, &returned_data );
         if (ok) {
             char *str = (char *)returned_data;
-            stream->printf("%s", str);
+            if (communication_protocol == PROTOCOL_SMOOTHIE) {
+                stream->printf("%s", str);
+            } else {
+                PacketMessage(PTYPE_LOAD_INFO, str, 0, stream);
+            }
             AHB.dealloc(str);
         	if (send_eof) {
-            	stream->_putc(EOT);
+                if (communication_protocol == PROTOCOL_SMOOTHIE) {
+                    stream->_putc(EOT);
+                } else {
+                    PacketMessage(PTYPE_LOAD_FINISH, "ok\r\n", 0, stream);
+                }
+            	
         	}
 
         } else {
         	if (send_eof) {
-        		stream->_putc(CAN);
+                if (communication_protocol == PROTOCOL_SMOOTHIE) {
+                    stream->_putc(CAN);
+                } else {
+                    PacketMessage(PTYPE_LOAD_ERROR, "No wlan detected\r\n", 0, stream);
+                }
         	} else {
                 stream->printf("No wlan detected\n");
         	}
@@ -1034,25 +1104,57 @@ void SimpleShell::wlan_command( string parameters, StreamOutput *stream)
         bool ok = PublicData::set_value( wlan_checksum, set_wlan_checksum, &t );
         if (ok) {
         	if (t.has_error) {
-                stream->printf("Error: %s\n", t.error_info);
-            	if (send_eof) {
-            		stream->_putc(CAN);
-            	}
+                if (communication_protocol == PROTOCOL_SMOOTHIE) {
+                    stream->printf("Error: %s\n", t.error_info);
+                    if (send_eof) {
+            		    stream->_putc(CAN);
+                    }
+                } else {
+                    char error_msg[64];
+                    memset(error_msg, 0, sizeof(error_msg));
+                    sprintf(error_msg, "Error: %s\n", t.error_info );
+                    PacketMessage(PTYPE_LOAD_INFO, error_msg, 0, stream);
+                    if (send_eof) {
+                        PacketMessage(PTYPE_LOAD_ERROR, "Connect or Disconnect error.\r\n", 0, stream);
+                    }
+                }
         	} else {
         		if (t.disconnect) {
-            		stream->printf("Wifi Disconnected!\n");
+                    if (communication_protocol == PROTOCOL_SMOOTHIE) {
+                        stream->printf("Wifi Disconnected!\n");
+                    } else {
+            		    PacketMessage(PTYPE_LOAD_INFO, "Wifi Disconnected!\n", 0, stream);
+                    }
         		} else {
-            		stream->printf("Wifi connected, ip: %s\n", t.ip_address);
+                    if (communication_protocol == PROTOCOL_SMOOTHIE) {
+                        stream->printf("Wifi connected, ip: %s\n", t.ip_address);
+                    } else {
+            		    char error_msg[64];
+                        memset(error_msg, 0, sizeof(error_msg));
+                        sprintf(error_msg, "Wifi connected, ip: %s\n", t.ip_address );
+                        PacketMessage(PTYPE_LOAD_INFO, error_msg, 0, stream);
+                    }
         		}
             	if (send_eof) {
-                	stream->_putc(EOT);
+                    if (communication_protocol == PROTOCOL_SMOOTHIE) {
+                        stream->_putc(EOT);
+                    } else {
+                	    PacketMessage(PTYPE_LOAD_FINISH, "ok\r\n", 0, stream);
+                    }
             	}
         	}
         } else {
-            stream->printf("%s\n", "Parameter error when setting wlan!");
-        	if (send_eof) {
-        		stream->_putc(CAN);
-        	}
+            if (communication_protocol == PROTOCOL_SMOOTHIE) {
+                stream->printf("Parameter error when setting wlan!\n");
+                if (send_eof) {
+                    stream->_putc(CAN);
+                }
+            } else {
+                PacketMessage(PTYPE_LOAD_INFO, "Parameter error when setting wlan!\n", 0, stream);
+                if (send_eof) {
+                    PacketMessage(PTYPE_LOAD_ERROR, "Parameter error when setting wlan!\r\n", 0, stream);
+                }
+            }
         }
     }
 }
@@ -1204,8 +1306,11 @@ void SimpleShell::diagnose_command( string parameters, StreamOutput *stream)
         str.append(buf, n);
     }
     str.append("}\n");
-    stream->printf("%s", str.c_str());
-
+    if (communication_protocol == PROTOCOL_SMOOTHIE) {
+        stream->printf("%s", str.c_str());
+    } else {
+        stream->printfcmd(PTYPE_DIAG_RES, "%s", str.c_str());
+    }
 }
 
 // sleep command
@@ -1989,6 +2094,440 @@ void SimpleShell::md5sum_command( string parameters, StreamOutput *stream )
 
 }
 
+// FatFs open/opendir build paths in a FATFS_PATH_MAX buffer ("0:/" + path-relative-to-mount).
+static bool fatfs_path_too_long(const char *abspath)
+{
+    const char *rel = abspath;
+    if (strncmp(abspath, "/sd/", 4) == 0) {
+        rel = abspath + 4;
+    } else if (abspath[0] == '/') {
+        rel = abspath + 1;
+    }
+    return (3 + strlen(rel) + 1) > FATFS_PATH_MAX;
+}
+
+// Build MD5 sidecar path from a data file path without mkdir/opendir side effects.
+static bool md5_path_from_data_path(const char *data_path, char *out, size_t out_size)
+{
+    static const char prefix[] = "/sd/gcodes/";
+    static const size_t prefix_len = sizeof(prefix) - 1;
+    if (strncmp(data_path, prefix, prefix_len) != 0) {
+        return false;
+    }
+    const char *rel = data_path + prefix_len;
+    if (17 + strlen(rel) + 1 > out_size) {
+        return false;
+    }
+    strcpy(out, "/sd/gcodes/.md5/");
+    strcat(out, rel);
+    return true;
+}
+
+static void md5_hex_from_digest(const MD5& md5, char *hex_out)
+{
+    uint8_t digest[16];
+    md5.bindigest(digest, 16);
+    for (int i = 0; i < 16; i++) {
+        static const char hexdigits[] = "0123456789abcdef";
+        hex_out[i * 2] = hexdigits[digest[i] >> 4];
+        hex_out[i * 2 + 1] = hexdigits[digest[i] & 0x0f];
+    }
+    hex_out[32] = '\0';
+}
+
+// Stream file through MD5 using stdio fopen (FIL_t is heap-allocated in FatFs open).
+static bool compute_file_md5(const char *filepath, char *hex_out)
+{
+    hex_out[0] = '\0';
+    if (fatfs_path_too_long(filepath)) {
+        return false;
+    }
+
+    FILE *lp = fwfs::fopen(filepath, "r");
+    if (lp == NULL) {
+        return false;
+    }
+
+    MD5 md5;
+    uint8_t buf[128];
+    size_t n;
+    unsigned idle_ctr = 0;
+    while ((n = fwfs::fread(buf, 1, sizeof(buf), lp)) > 0) {
+        md5.update(buf, static_cast<MD5::size_type>(n));
+        // ~every 4KB; never call ON_IDLE while a DIR is open
+        if ((++idle_ctr & 0x1f) == 0) {
+            THEKERNEL->call_event(ON_IDLE);
+            if (THEKERNEL->is_halted()) {
+                fwfs::fclose(lp);
+                return false;
+            }
+        }
+    }
+    fwfs::fclose(lp);
+
+    md5.finalize();
+    md5_hex_from_digest(md5, hex_out);
+    return true;
+}
+
+// Read the 32-char stored MD5 from a sidecar file into hex_out (33 bytes).
+static bool read_stored_md5(const char *md5_path, char *hex_out)
+{
+    hex_out[0] = '\0';
+    if (fatfs_path_too_long(md5_path)) {
+        return false;
+    }
+
+    FILE *fp = fwfs::fopen(md5_path, "r");
+    if (fp == NULL) {
+        return false;
+    }
+
+    memset(hex_out, 0, 33);
+    size_t n = fwfs::fread(hex_out, 1, 32, fp);
+    fwfs::fclose(fp);
+    if (n < 32) {
+        hex_out[0] = '\0';
+        return false;
+    }
+    hex_out[32] = '\0';
+    return true;
+}
+
+static bool file_matches_md5_sidecar(const char *md5_path, const char *data_path)
+{
+    char stored[33];
+    char computed[33];
+    if (!read_stored_md5(md5_path, stored)) {
+        return false;
+    }
+    if (!compute_file_md5(data_path, computed)) {
+        return false;
+    }
+    return strncasecmp(computed, stored, 32) == 0;
+}
+
+// Working path buffer size for the directory walk (absolute paths under /sd/...).
+static const size_t MD5_CHECK_PATH_MAX = FATFS_PATH_MAX;
+
+static bool path_is_directory(const char *path)
+{
+    DIR *d = fwfs::opendir(path);
+    if (d == NULL) {
+        return false;
+    }
+    closedir(d);
+    return true;
+}
+
+// True if this gcodes data file has a matching MD5 sidecar.
+static bool sidecar_exists_for_data(const char *data_path, char *md5_path)
+{
+    if (!md5_path_from_data_path(data_path, md5_path, MD5_CHECK_PATH_MAX)) {
+        return false;
+    }
+    if (fatfs_path_too_long(md5_path)) {
+        return false;
+    }
+    return file_exists(md5_path);
+}
+
+// Count data files that have a matching MD5 sidecar (same criteria as verify).
+// Do NOT call ON_IDLE while a DIR is open (_USE_LFN == 1 is not reentrant).
+static unsigned int count_hashed_data_files(char *data_path, char *md5_path)
+{
+    DIR *d = fwfs::opendir(data_path);
+    if (d == NULL) {
+        return 0;
+    }
+
+    unsigned int count = 0;
+    std::vector<string> subdirs;
+    std::vector<string> files;
+    struct dirent *p;
+    while ((p = readdir(d)) != NULL) {
+        if (p->d_name[0] == '.') {
+            continue;
+        }
+        if (p->d_isdir && (strcmp(p->d_name, ".md5") == 0 || strcmp(p->d_name, ".lz") == 0)) {
+            continue;
+        }
+        if (p->d_isdir) {
+            subdirs.push_back(p->d_name);
+        } else {
+            files.push_back(p->d_name);
+        }
+    }
+    closedir(d);
+
+    size_t baselen = strlen(data_path);
+    for (size_t i = 0; i < files.size(); i++) {
+        if (baselen + 1 + files[i].size() + 1 > MD5_CHECK_PATH_MAX) {
+            continue;
+        }
+        data_path[baselen] = '/';
+        strcpy(data_path + baselen + 1, files[i].c_str());
+        if (sidecar_exists_for_data(data_path, md5_path)) {
+            count++;
+        }
+        data_path[baselen] = '\0';
+    }
+    files.clear();
+
+    for (size_t i = 0; i < subdirs.size(); i++) {
+        if (THEKERNEL->is_halted()) {
+            break;
+        }
+        if (baselen + 1 + subdirs[i].size() + 1 > MD5_CHECK_PATH_MAX) {
+            continue;
+        }
+        data_path[baselen] = '/';
+        strcpy(data_path + baselen + 1, subdirs[i].c_str());
+        count += count_hashed_data_files(data_path, md5_path);
+        data_path[baselen] = '\0';
+        THEKERNEL->call_event(ON_IDLE);
+    }
+    return count;
+}
+
+// Verify by walking data LFNs (full names). Skip files with no sidecar.
+// Do NOT call ON_IDLE while a DIR is open.
+static void verify_hashed_data_files(char *data_path, char *md5_path,
+                                     unsigned int& current, unsigned int total,
+                                     unsigned int& intact_count, unsigned int& corrupt_count,
+                                     StreamOutput *stream, bool& aborted)
+{
+    if (aborted || THEKERNEL->is_halted()) {
+        aborted = true;
+        return;
+    }
+
+    DIR *d = fwfs::opendir(data_path);
+    if (d == NULL) {
+        return;
+    }
+
+    std::vector<string> files;
+    std::vector<string> subdirs;
+    struct dirent *p;
+    while ((p = readdir(d)) != NULL) {
+        if (p->d_name[0] == '.') {
+            continue;
+        }
+        if (p->d_isdir && (strcmp(p->d_name, ".md5") == 0 || strcmp(p->d_name, ".lz") == 0)) {
+            continue;
+        }
+        if (p->d_isdir) {
+            subdirs.push_back(p->d_name);
+        } else {
+            files.push_back(p->d_name);
+        }
+    }
+    closedir(d);
+
+    size_t baselen = strlen(data_path);
+
+    for (size_t i = 0; i < files.size(); i++) {
+        if (THEKERNEL->is_halted()) {
+            aborted = true;
+            return;
+        }
+
+        if (baselen + 1 + files[i].size() + 1 > MD5_CHECK_PATH_MAX) {
+            continue;
+        }
+
+        data_path[baselen] = '/';
+        strcpy(data_path + baselen + 1, files[i].c_str());
+
+        if (!sidecar_exists_for_data(data_path, md5_path)) {
+            data_path[baselen] = '\0';
+            continue;
+        }
+
+        current++;
+        stream->printf("[%u/%u] - %s\n", current, total, data_path);
+
+        bool intact = false;
+        if (!fatfs_path_too_long(data_path) && !fatfs_path_too_long(md5_path)) {
+            intact = file_matches_md5_sidecar(md5_path, data_path);
+        }
+        if (intact) {
+            intact_count++;
+            stream->printf("Intact\n");
+        } else {
+            corrupt_count++;
+            stream->printf("Corrupt\n");
+        }
+
+        data_path[baselen] = '\0';
+        THEKERNEL->call_event(ON_IDLE);
+    }
+
+    files.clear();
+
+    for (size_t i = 0; i < subdirs.size(); i++) {
+        if (aborted || THEKERNEL->is_halted()) {
+            aborted = true;
+            return;
+        }
+        if (baselen + 1 + subdirs[i].size() + 1 > MD5_CHECK_PATH_MAX) {
+            continue;
+        }
+        data_path[baselen] = '/';
+        strcpy(data_path + baselen + 1, subdirs[i].c_str());
+        verify_hashed_data_files(data_path, md5_path, current, total,
+                                 intact_count, corrupt_count, stream, aborted);
+        data_path[baselen] = '\0';
+        THEKERNEL->call_event(ON_IDLE);
+    }
+}
+
+// Run count + verify. data_root is a /sd/gcodes/... directory.
+static void run_md5_check_walk(const char *data_root, StreamOutput *stream)
+{
+    // Heap-allocate walk buffers (not BSS -- LPC main RAM is tight).
+    char *data_path = new char[MD5_CHECK_PATH_MAX];
+    char *md5_path = new char[MD5_CHECK_PATH_MAX];
+    if (data_path == NULL || md5_path == NULL) {
+        delete[] data_path;
+        delete[] md5_path;
+        stream->printf("ERROR: Out of memory\n");
+        return;
+    }
+
+    if (strlen(data_root) >= MD5_CHECK_PATH_MAX) {
+        stream->printf("ERROR: Path too long\n");
+        delete[] data_path;
+        delete[] md5_path;
+        return;
+    }
+    strcpy(data_path, data_root);
+
+    stream->printf("Scanning for files with MD5 hashes...\n");
+
+    // Same walk criteria as verify: data LFN + matching sidecar (not raw .md5
+    // entries — those can include orphan truncated names from older firmware).
+    unsigned int total = count_hashed_data_files(data_path, md5_path);
+
+    strcpy(data_path, data_root);
+
+    if (THEKERNEL->is_halted()) {
+        stream->printf("ERROR: File integrity check aborted\n");
+        delete[] data_path;
+        delete[] md5_path;
+        return;
+    }
+
+    if (total == 0) {
+        stream->printf("No files with stored MD5 hashes found\n");
+        delete[] data_path;
+        delete[] md5_path;
+        return;
+    }
+
+    stream->printf("Checking %u file(s)...\n", total);
+
+    unsigned int current = 0;
+    unsigned int intact_count = 0;
+    unsigned int corrupt_count = 0;
+    bool aborted = false;
+    verify_hashed_data_files(data_path, md5_path, current, total,
+                             intact_count, corrupt_count, stream, aborted);
+
+    if (aborted || THEKERNEL->is_halted()) {
+        stream->printf("ERROR: File integrity check aborted\n");
+    } else {
+        stream->printf("File integrity check complete: %u intact, %u corrupt\n",
+                       intact_count, corrupt_count);
+    }
+
+    delete[] data_path;
+    delete[] md5_path;
+}
+
+// Strip trailing slashes (except root "/")
+static void strip_trailing_slashes(string& path)
+{
+    while (path.size() > 1 && path[path.size() - 1] == '/') {
+        path.erase(path.size() - 1);
+    }
+}
+
+// M576 / M576.1 -- walk all gcode files that have a stored MD5 and verify them
+void SimpleShell::md5check_command( string parameters, StreamOutput *stream )
+{
+    (void)parameters;
+
+    if (THEKERNEL->is_halted()) {
+        stream->printf("ERROR: Cannot check file integrity while halted\n");
+        return;
+    }
+
+    run_md5_check_walk("/sd/gcodes", stream);
+}
+
+// M576.2 -- check a single file, or recursively check a directory
+void SimpleShell::md5check_file_command( string parameters, StreamOutput *stream )
+{
+    if (parameters.empty()) {
+        stream->printf("ERROR: M576.2 requires a file or directory path\n");
+        return;
+    }
+
+    if (THEKERNEL->is_halted()) {
+        stream->printf("ERROR: Cannot check file integrity while halted\n");
+        return;
+    }
+
+    string filename = absolute_from_relative(parameters);
+    strip_trailing_slashes(filename);
+
+    // Normalize relative gcode paths to /sd/gcodes/... when needed
+    if (filename.find("gcodes/") == string::npos && filename != "/sd/gcodes") {
+        if (!parameters.empty() && parameters[0] != '/') {
+            filename = "/sd/gcodes/" + parameters;
+            strip_trailing_slashes(filename);
+        }
+    }
+
+    if (filename.find("gcodes/") == string::npos && filename != "/sd/gcodes") {
+        stream->printf("ERROR: Path must be under /sd/gcodes/\n");
+        return;
+    }
+
+    // Directory: recursively check this folder and children
+    if (path_is_directory(filename.c_str())) {
+        run_md5_check_walk(filename.c_str(), stream);
+        return;
+    }
+
+    // Single file
+    if (fatfs_path_too_long(filename.c_str())) {
+        stream->printf("ERROR: Path too long for SD open\n");
+        return;
+    }
+
+    char md5_path[MD5_CHECK_PATH_MAX];
+    if (!md5_path_from_data_path(filename.c_str(), md5_path, sizeof(md5_path))) {
+        stream->printf("ERROR: Path must be under /sd/gcodes/\n");
+        return;
+    }
+
+    char stored[33];
+    if (!read_stored_md5(md5_path, stored)) {
+        stream->printf("ERROR: No MD5 hash found for ");
+        stream->printf("%s\n", filename.c_str());
+        return;
+    }
+
+    stream->printf("[1/1] - %s\n", filename.c_str());
+    bool intact = file_matches_md5_sidecar(md5_path, filename.c_str());
+    stream->printf("%s\n", intact ? "Intact" : "Corrupt");
+    stream->printf("File integrity check complete: %u intact, %u corrupt\n",
+                   intact ? 1u : 0u, intact ? 0u : 1u);
+}
+
 // runs several types of test on the mechanisms
 void SimpleShell::test_command( string parameters, StreamOutput *stream)
 {
@@ -2763,4 +3302,35 @@ void SimpleShell::config_default_command( string parameters, StreamOutput *strea
     fwfs::fclose(default_lp);
 
     stream->printf("Settings save as default complete.\n");
+}
+
+void SimpleShell::PacketMessage(char cmd, const char* s, int size, StreamOutput *stream)
+{
+	int crc = 0;
+    unsigned int len = 0;
+	size_t total_length = size == 0 ? strlen(s) : size;
+	fbuff[0] = (HEADER>>8)&0xFF;
+	fbuff[1] = HEADER&0xFF;
+	fbuff[4] = cmd;
+	memcpy(&fbuff[5], s, total_length);
+	len = total_length + 3;
+	fbuff[2] = (len>>8)&0xFF;
+	fbuff[3] = len&0xFF;
+	crc = crc16_ccitt(&fbuff[2], len);
+	fbuff[total_length+5] = (crc>>8)&0xFF;
+	fbuff[total_length+6] = crc&0xFF;
+	fbuff[total_length+7] = (FOOTER>>8)&0xFF;
+	fbuff[total_length+8] = FOOTER&0xFF;
+	stream->puts((char *)fbuff, len+6);
+}
+
+unsigned int SimpleShell::crc16_ccitt(unsigned char *data, unsigned int len)
+{
+	unsigned char tmp;
+	unsigned short crc = 0;
+	for (unsigned int i = 0; i < len; i ++) {
+        tmp = ((crc >> 8) ^ data[i]) & 0xff;
+        crc = ((crc << 8) ^ crc_table[tmp]) & 0xffff;
+	}
+	return crc & 0xffff;
 }

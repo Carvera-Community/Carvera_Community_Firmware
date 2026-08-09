@@ -134,6 +134,8 @@ ATCHandler::ATCHandler()
     probe_oneoff_z = 0.0;
     probe_oneoff_configured = false;
 	target_collet_type = UNDEFINED;
+	a_axis_cor.phase = 0;
+	a_axis_cor.pass = 0;
 }
 
 void ATCHandler::clear_script_queue(){
@@ -498,25 +500,8 @@ void ATCHandler::calibrate_set_value(Gcode *gcode)
 				THEKERNEL->streams->printf("These values have been temporarily set. \nTo make them permanent run:\nconfig-set sd coordinate.rotation_offset_z %.3f\n", final_y);
 				break;
 			case 6:
-				// calibrate 4th axis center of rotation (Y and Z combined)
-				if (!gcode->has_letter('Y') || !gcode->has_letter('Z')){
-					THEKERNEL->streams->printf("Not enough variables given to M469\n Abort\n");
-					return;
-				}
-				{
-					float new_y_cor = gcode->get_value('Y');
-					float new_z_cor = gcode->get_value('Z');
-					float new_rot_y = new_y_cor - this->anchor1_y;
-					THEKERNEL->streams->printf("Previous 4th Center of Rotation Y: %.3f (rotation_offset_y: %.3f)\n",
-						this->anchor1_y + this->rotation_offset_y, this->rotation_offset_y);
-					THEKERNEL->streams->printf("New 4th Center of Rotation Y: %.3f (rotation_offset_y: %.3f)\n", new_y_cor, new_rot_y);
-					THEKERNEL->streams->printf("Previous 4th Center of Rotation Z: %.3f\n", this->rotation_offset_z);
-					THEKERNEL->streams->printf("New 4th Center of Rotation Z: %.3f\n", new_z_cor);
-					this->rotation_offset_y = new_rot_y;
-					this->rotation_offset_z = new_z_cor;
-					THEKERNEL->streams->printf("These values have been temporarily set.\nTo make them permanent run:\nconfig-set sd coordinate.rotation_offset_y %.3f\nconfig-set sd coordinate.rotation_offset_z %.3f\n",
-						new_rot_y, new_z_cor);
-				}
+				// continue / finish 4th axis center-of-rotation calibration (M469.6)
+				calibrate_a_axis_cor_step();
 				break;
 			default:
 				return;
@@ -531,9 +516,10 @@ void ATCHandler::stock_firmware_inner_corner_probe(float x_val, float y_val, flo
 	this->script_queue.push(buff);
 	snprintf(buff, sizeof(buff), "G91 G54 G0 X%.3f Y%.3f", -x_val, -y_val);
 	this->script_queue.push(buff);
-	snprintf(buff, sizeof(buff), "G91 G54 G0 Z%.3f S1", -z_val);
+	snprintf(buff, sizeof(buff), "G91 G54 G0 Z%.3f", -z_val);
 	this->script_queue.push(buff);
 	snprintf(buff, sizeof(buff), "M463 X%.3f Y%.3f D%.3f S1", x_val, y_val, d_val);
+	this->script_queue.push(buff);
 }
 
 void ATCHandler::calibrate_anchor1(Gcode *gcode) //M469.1
@@ -814,21 +800,126 @@ void ATCHandler::calibrate_a_axis_height(Gcode *gcode) //M469.5
 	this->script_queue.push(buff);
 }
 
+namespace {
+
+// M469.6 continuation phases (advanced by M469.7 P6 after each probe)
+enum CorPhase : uint8_t {
+	COR_IDLE = 0,
+	COR_AFTER_INIT_Z,
+	COR_AFTER_Y_FRONT,
+	COR_AFTER_Y_BACK,
+	COR_AFTER_Z_TOP,
+	COR_AFTER_REF_Z, // 4th-axis module reference surface (same as M469.5 / fill_zprobe_abs)
+};
+
+// MCS positions matching gcode #5022 / #5023 / #5024
+void atc_get_mcs_yza(float &y, float &z, float &a)
+{
+	float mpos[3];
+	THEROBOT->get_current_machine_position(mpos);
+	if (THEROBOT->compensationTransform) THEROBOT->compensationTransform(mpos, true, false);
+	y = mpos[Y_AXIS];
+	z = mpos[Z_AXIS];
+	a = THEROBOT->actuators[A_AXIS]->get_current_position();
+}
+
+float atc_get_mcs_axis(uint8_t axis)
+{
+
+	if (axis == A_AXIS) {
+		return THEROBOT->actuators[A_AXIS]->get_current_position();
+	}
+
+	float mpos[3];
+	THEROBOT->get_current_machine_position(mpos);
+	if (THEROBOT->compensationTransform) THEROBOT->compensationTransform(mpos, true, false);
+	return mpos[axis];
+}
+
+const char* cor_probe_cmd(bool invert)
+{
+	return invert ? "G38.4" : "G38.2";
+}
+
+} // namespace
+
+void ATCHandler::cor_queue_z_clearance()
+{
+	char buff[80];
+	snprintf(buff, sizeof(buff), "G53 G90 G0 Z%.3f F3000", a_axis_cor.z_est + a_axis_cor.z_clr);
+	this->script_queue.push(buff);
+}
+
+void ATCHandler::cor_queue_probe_y_front()
+{
+	char buff[100];
+	const float y_front = a_axis_cor.start_y - a_axis_cor.y_clr;
+	snprintf(buff, sizeof(buff), "G53 G0 G90 Y%.3f A%.3f F%.3f", y_front, a_axis_cor.start_a + 90.0f, a_axis_cor.pos_feed);
+	this->script_queue.push(buff);
+	snprintf(buff, sizeof(buff), "G53 G0 Z%.3f F%.3f", a_axis_cor.z_centerline, a_axis_cor.pos_feed);
+	this->script_queue.push(buff);
+	snprintf(buff, sizeof(buff), "G91 %s Y%.3f F%.3f", cor_probe_cmd(a_axis_cor.invert_probe), a_axis_cor.probe_travel, this->probe_slow_rate);
+	this->script_queue.push(buff);
+	this->script_queue.push("M469.7 P6");
+}
+
+void ATCHandler::cor_queue_probe_y_back()
+{
+	char buff[100];
+	const float y_back = a_axis_cor.start_y + a_axis_cor.y_clr;
+	snprintf(buff, sizeof(buff), "G53 G0 Y%.3f A%.3f F%.3f", y_back, a_axis_cor.start_a - 90.0f, a_axis_cor.pos_feed);
+	this->script_queue.push(buff);
+	snprintf(buff, sizeof(buff), "G53 G0 Z%.3f F%.3f", a_axis_cor.z_centerline, a_axis_cor.pos_feed);
+	this->script_queue.push(buff);
+	snprintf(buff, sizeof(buff), "G91 %s Y%.3f F%.3f", cor_probe_cmd(a_axis_cor.invert_probe), -a_axis_cor.probe_travel, this->probe_slow_rate);
+	this->script_queue.push(buff);
+	this->script_queue.push("M469.7 P6");
+}
+
+void ATCHandler::cor_queue_probe_z_top()
+{
+	char buff[100];
+	snprintf(buff, sizeof(buff), "G53 G0 Y%.3f A%.3f F%.3f", a_axis_cor.y_center, a_axis_cor.start_a, a_axis_cor.pos_feed);
+	this->script_queue.push(buff);
+	snprintf(buff, sizeof(buff), "G91 %s Z%.3f F%.3f", cor_probe_cmd(a_axis_cor.invert_probe), -a_axis_cor.probe_travel, this->probe_slow_rate);
+	this->script_queue.push(buff);
+	this->script_queue.push("M469.7 P6");
+}
+
+// Probe the 4th-axis module reference surface used by fill_zprobe_abs / M469.5.
+// rotation_offset_z = Z_ref - Z_CoR (height of that surface above chuck center).
+void ATCHandler::cor_queue_probe_module_ref()
+{
+	char buff[100];
+	float ref_x;
+	if (!(THEKERNEL->factory_set->FuncSetting & (1 << 0))) {
+		ref_x = this->anchor1_x + this->rotation_offset_x - 3.0f;
+	} else {
+		ref_x = this->anchor1_x + this->rotation_offset_x - 7.0f;
+	}
+	// Use measured CoR Y so the ref probe stays on the rotation centerline
+	const float ref_y = a_axis_cor.y_center;
+
+	snprintf(buff, sizeof(buff), "G90 G53 G0 Z%.3f", THEROBOT->from_millimeters(this->clearance_z));
+	this->script_queue.push(buff);
+	snprintf(buff, sizeof(buff), "G53 G0 X%.3f Y%.3f A%.3f F%.3f", ref_x, ref_y, a_axis_cor.start_a, a_axis_cor.pos_feed);
+	this->script_queue.push(buff);
+	snprintf(buff, sizeof(buff), "G91 %s Z%.3f F%.3f", cor_probe_cmd(a_axis_cor.invert_probe), -120.0f, this->probe_slow_rate);
+	this->script_queue.push(buff);
+	this->script_queue.push("M469.7 P6");
+}
+
 void ATCHandler::calibrate_a_axis_cor(Gcode *gcode) //M469.6
 {
-	float artifact_dia = 50.0f; // 50mm is used as a magic value here representing the Sanou K02-50 chuck body that is standard on all the Makera machines 
-	float probe_tip_dia = (THEKERNEL->probe_tip_diameter > 0) ? THEKERNEL->probe_tip_diameter : 2.0f;
-	float clearance = 2.0f;
-	float pos_feed = 400.0f;
-
 	THEKERNEL->streams->printf("Calibrating A Axis Center of Rotation\n");
-	char buff[100];
 
 	if (!THEROBOT->is_homed_all_axes()) {
 		return;
 	}
 
-	if (!((this->active_tool == 0) || (this->active_tool >= 999990) || (THEKERNEL->eeprom_data->TOOL == 9999))) {
+	const bool probe_tool = (this->active_tool == 0) || (this->active_tool == 9999) ||
+		(this->active_tool >= 999990) || (THEKERNEL->eeprom_data->TOOL == 9999);
+	if (!probe_tool) {
 		THEKERNEL->streams->printf("ERROR: Attempted to probe with an improper tool. A 3-axis probe must be installed (tool 0, 9999 or tool >= 999990).\n");
 		THEKERNEL->call_event(ON_HALT, nullptr);
 		THEKERNEL->set_halt_reason(PROBE_FAIL);
@@ -842,160 +933,146 @@ void ATCHandler::calibrate_a_axis_cor(Gcode *gcode) //M469.6
 		return;
 	}
 
+	// Parameters (defaults match Sanou K02-50 chuck body / typical 3-axis probe)
+	float artifact_dia = 50.0f;
+	float tip_dia = (THEKERNEL->probe_tip_diameter > 0) ? THEKERNEL->probe_tip_diameter : 2.0f;
+	float clearance = 2.0f;
+	float pos_feed = 400.0f;
 	bool invert_probe = false;
-	if (gcode->has_letter('I') && gcode->get_value('I')) {
-		invert_probe = true;
-	}
-	if (gcode->has_letter('R')) {
-		artifact_dia = gcode->get_value('R');
-	}
-	if (gcode->has_letter('D')) {
-		probe_tip_dia = gcode->get_value('D');
-	}
-	if (gcode->has_letter('C')) {
-		clearance = gcode->get_value('C');
-	}
-	if (gcode->has_letter('F')) {
-		pos_feed = gcode->get_value('F');
+
+	if (gcode->has_letter('I')) invert_probe = gcode->get_value('I') == 1 ? true:false;
+	if (gcode->has_letter('R')) artifact_dia = gcode->get_value('R');
+	if (gcode->has_letter('D')) tip_dia = gcode->get_value('D');
+	if (gcode->has_letter('C')) clearance = gcode->get_value('C');
+	if (gcode->has_letter('F')) pos_feed = gcode->get_value('F');
+
+	if (artifact_dia <= 0.0f || tip_dia <= 0.0f || clearance <= 0.0f || pos_feed <= 0.0f) {
+		THEKERNEL->streams->printf("ERROR: M469.6 invalid parameter (R/D/C/F must be > 0).\n");
+		return;
 	}
 
-	const char* probe_cmd = invert_probe ? "G38.4" : "G38.2";
-	// Y clearance offset: half artifact diameter + half probe tip + clearance gap
-	float y_clr = (artifact_dia + probe_tip_dia) / 2.0f + clearance;
-	// Z clearance above CoR: artifact radius + clearance gap
-	float z_clr = artifact_dia / 2.0f + clearance;
-	// Centerline Z correction for probe ball geometry (0.131 = empirical correction factor)
-	float z_ctr = (probe_tip_dia - 0.131f) / -2.0f;
-	float z_corr = this->three_axis_probe_tlo_correction;
+	a_axis_cor.invert_probe = invert_probe;
+	a_axis_cor.artifact_dia = artifact_dia;
+	a_axis_cor.tip_r = tip_dia * 0.5f;
+	a_axis_cor.clearance = clearance;
+	a_axis_cor.probe_travel = clearance * 2.0f;
+	a_axis_cor.pos_feed = pos_feed;
+	a_axis_cor.y_clr = a_axis_cor.tip_r + artifact_dia * 0.5f + clearance;
+	a_axis_cor.z_clr = artifact_dia * 0.5f + clearance;
+	a_axis_cor.z_ctr = (tip_dia - 0.131f) * -0.5f; // empirical ball-geometry factor
+	a_axis_cor.z_corr = this->three_axis_probe_tlo_correction;
+	a_axis_cor.pass = 1;
+	a_axis_cor.phase = COR_AFTER_INIT_Z;
 
-	this->script_queue.push(";Position probe tip above the artifact center within clearance distance of its surface");
-
-	// Ensure absolute mode and metric units
+	char buff[100];
+	this->script_queue.push(";Position probe tip above the artifact center within clearance of its surface");
+	this->script_queue.push(";After CoR finding, probes the standard 4th-axis Z reference (same as M469.5) to compute rotation_offset_z");
 	this->script_queue.push("G90 G21");
+	snprintf(buff, sizeof(buff), "G91 %s Z%.3f F%.3f", cor_probe_cmd(invert_probe), -a_axis_cor.probe_travel, this->probe_slow_rate);
+	this->script_queue.push(buff);
+	this->script_queue.push("M469.7 P6");
+}
 
-	// ---- PROBE FOR INITIAL Z ----
-	snprintf(buff, sizeof(buff), "G91 %s Z%.3f F%.3f", probe_cmd, -clearance * 2.0f, this->probe_slow_rate);
-	this->script_queue.push(buff);
-	// #118 = estimated Z CoR in MCS = Z contact point - artifact radius
-	snprintf(buff, sizeof(buff), "#118=[#5023-%.3f]", artifact_dia / 2.0f);
-	this->script_queue.push(buff);
-	this->script_queue.push("G91 G0 Z1");
+void ATCHandler::calibrate_a_axis_cor_step()
+{
+	char buff[80];
 
-	// ---- CAPTURE STARTING POSITION ----
-	this->script_queue.push("#108=#5022");  // current Y MCS
-	this->script_queue.push("#109=#5024");  // current A MCS
+	switch (a_axis_cor.phase) {
+		case COR_AFTER_INIT_Z: {
+			float y, z, a;
+			atc_get_mcs_yza(y, z, a);
+			a_axis_cor.z_est = z - a_axis_cor.artifact_dia * 0.5f;
+			a_axis_cor.start_y = y;
+			a_axis_cor.start_a = a;
+			a_axis_cor.z_centerline = a_axis_cor.z_est + a_axis_cor.z_ctr;
 
-	// ---- CALCULATE CLEARANCE POSITIONS (fixed relative to starting Y) ----
-	snprintf(buff, sizeof(buff), "#102=[#108-%.3f]", y_clr);  // Y front clearance
-	this->script_queue.push(buff);
-	snprintf(buff, sizeof(buff), "#106=[#108+%.3f]", y_clr);  // Y back clearance
-	this->script_queue.push(buff);
-	snprintf(buff, sizeof(buff), "#119=[#118+%.3f]", z_ctr);  // Centerline Z probing position
-	this->script_queue.push(buff);
+			a_axis_cor.phase = COR_AFTER_Y_FRONT;
+			this->script_queue.push("G91 G0 Z1");
+			cor_queue_probe_y_front();
+			break;
+		}
 
-	// ---- RUN 1: STEP 1 - PROBE Y FRONT @ A+90 ----
-	snprintf(buff, sizeof(buff), "G53 G0 G90 Y#102 A[#109+90] F%.3f", pos_feed);
-	this->script_queue.push(buff);
-	snprintf(buff, sizeof(buff), "G53 G0 Z#119 F%.3f", pos_feed);
-	this->script_queue.push(buff);
-	snprintf(buff, sizeof(buff), "G91 %s Y%.3f F%.3f", probe_cmd, clearance * 2.0f, this->probe_slow_rate);
-	this->script_queue.push(buff);
-	// Y1 = contact position + probe radius
-	snprintf(buff, sizeof(buff), "#110=[#5022+%.3f]", probe_tip_dia / 2.0f);
-	this->script_queue.push(buff);
-	snprintf(buff, sizeof(buff), "G91 G0 Y%.3f", -clearance);
-	this->script_queue.push(buff);
+		case COR_AFTER_Y_FRONT: {
+			a_axis_cor.y1 = atc_get_mcs_axis(Y_AXIS) + a_axis_cor.tip_r;
+			snprintf(buff, sizeof(buff), "G91 G0 Y%.3f", -a_axis_cor.clearance);
+			this->script_queue.push(buff);
 
-	// ---- RUN 1: STEP 2 - PROBE Y BACK @ A-90 ----
-	snprintf(buff, sizeof(buff), "G53 G90 G0 Z[#118+%.3f] F3000", z_clr);
-	this->script_queue.push(buff);
-	snprintf(buff, sizeof(buff), "G53 G0 Y#106 A[#109-90] F%.3f", pos_feed);
-	this->script_queue.push(buff);
-	snprintf(buff, sizeof(buff), "G53 G0 Z#119 F%.3f", pos_feed);
-	this->script_queue.push(buff);
-	snprintf(buff, sizeof(buff), "G91 %s Y%.3f F%.3f", probe_cmd, -clearance * 2.0f, this->probe_slow_rate);
-	this->script_queue.push(buff);
-	// Y2 = contact position - probe radius
-	snprintf(buff, sizeof(buff), "#111=[#5022-%.3f]", probe_tip_dia / 2.0f);
-	this->script_queue.push(buff);
-	snprintf(buff, sizeof(buff), "G91 G0 Y%.3f", clearance);
-	this->script_queue.push(buff);
+			a_axis_cor.phase = COR_AFTER_Y_BACK;
+			cor_queue_z_clearance();
+			cor_queue_probe_y_back();
+			break;
+		}
 
-	// ---- RUN 1: STEP 3 - CALC Y CENTER ----
-	this->script_queue.push("#113=[[#110+#111]/2]");
+		case COR_AFTER_Y_BACK: {
+			a_axis_cor.y2 = atc_get_mcs_axis(Y_AXIS) - a_axis_cor.tip_r;
+			snprintf(buff, sizeof(buff), "G91 G0 Y%.3f", a_axis_cor.clearance);
+			this->script_queue.push(buff);
+			a_axis_cor.y_center = (a_axis_cor.y1 + a_axis_cor.y2) * 0.5f;
 
-	// ---- RUN 1: STEP 4 - PROBE Z TOP @ A0 ----
-	snprintf(buff, sizeof(buff), "G53 G90 G0 Z[#118+%.3f] F3000", z_clr);
-	this->script_queue.push(buff);
-	snprintf(buff, sizeof(buff), "G53 G0 Y#113 A#109 F%.3f", pos_feed);
-	this->script_queue.push(buff);
-	snprintf(buff, sizeof(buff), "G91 %s Z%.3f F%.3f", probe_cmd, -clearance * 2.0f, this->probe_slow_rate);
-	this->script_queue.push(buff);
-	// Z1 = contact position + probe Z correction
-	snprintf(buff, sizeof(buff), "#112=[#5023+%.3f]", z_corr);
-	this->script_queue.push(buff);
-	snprintf(buff, sizeof(buff), "G53 G90 G0 Z[#118+%.3f] F3000", z_clr);
-	this->script_queue.push(buff);
+			a_axis_cor.phase = COR_AFTER_Z_TOP;
+			cor_queue_z_clearance();
+			cor_queue_probe_z_top();
+			break;
+		}
 
-	// ---- RUN 1: STEP 5 - CALC Z CENTER ----
-	// Z CoR = Z top surface - apparent radius (half the measured Y span)
-	this->script_queue.push("#114=[#112-[[#111-#110]/2]]");
-	// Z offset = Z CoR - probe TLO
-	this->script_queue.push("#116=[#114-#2000]");
+		case COR_AFTER_Z_TOP: {
+			const float z_top_raw = atc_get_mcs_axis(Z_AXIS);
+			const float apparent_r = (a_axis_cor.y2 - a_axis_cor.y1) * 0.5f;
+			// Tip-corrected CoR for aiming the convergence pass (matches original NC #112/#114)
+			const float z_cor_aim = z_top_raw + a_axis_cor.z_corr - apparent_r;
+			cor_queue_z_clearance();
 
-	// ======= SECOND RUN FOR CONVERGENCE =======
-	// Use converged #116 to refine the centerline Z probing position
-	snprintf(buff, sizeof(buff), "#119=[#116+%.3f+#2000]", z_ctr);
-	this->script_queue.push(buff);
+			if (a_axis_cor.pass == 1) {
+				a_axis_cor.z_centerline = z_cor_aim + a_axis_cor.z_ctr;
+				a_axis_cor.pass = 2;
+				a_axis_cor.phase = COR_AFTER_Y_FRONT;
+				cor_queue_probe_y_front();
+			} else {
+				// Store raw MCS CoR for the config offset (M469.5 also uses raw #5023, no TLO)
+				a_axis_cor.z_cor_mcs = z_top_raw - apparent_r;
+				a_axis_cor.phase = COR_AFTER_REF_Z;
+				cor_queue_probe_module_ref();
+			}
+			break;
+		}
 
-	// ---- RUN 2: STEP 1 - PROBE Y FRONT @ A+90 ----
-	snprintf(buff, sizeof(buff), "G53 G0 G90 Y#102 A[#109+90] F%.3f", pos_feed);
-	this->script_queue.push(buff);
-	snprintf(buff, sizeof(buff), "G53 G0 Z#119 F%.3f", pos_feed);
-	this->script_queue.push(buff);
-	snprintf(buff, sizeof(buff), "G91 %s Y%.3f F%.3f", probe_cmd, clearance * 2.0f, this->probe_slow_rate);
-	this->script_queue.push(buff);
-	snprintf(buff, sizeof(buff), "#110=[#5022+%.3f]", probe_tip_dia / 2.0f);
-	this->script_queue.push(buff);
-	snprintf(buff, sizeof(buff), "G91 G0 Y%.3f", -clearance);
-	this->script_queue.push(buff);
+		case COR_AFTER_REF_Z: {
+			// Same reference surface as fill_zprobe_abs / M469.5 A (#120).
+			// rotation_offset_z = Z_ref - Z_CoR  (module surface height above chuck center).
+			const float z_ref_mcs = atc_get_mcs_axis(Z_AXIS);
+			const float new_rot_z = z_ref_mcs - a_axis_cor.z_cor_mcs;
+			const float new_rot_y = a_axis_cor.y_center - this->anchor1_y;
 
-	// ---- RUN 2: STEP 2 - PROBE Y BACK @ A-90 ----
-	snprintf(buff, sizeof(buff), "G53 G90 G0 Z[#118+%.3f] F3000", z_clr);
-	this->script_queue.push(buff);
-	snprintf(buff, sizeof(buff), "G53 G0 Y#106 A[#109-90] F%.3f", pos_feed);
-	this->script_queue.push(buff);
-	snprintf(buff, sizeof(buff), "G53 G0 Z#119 F%.3f", pos_feed);
-	this->script_queue.push(buff);
-	snprintf(buff, sizeof(buff), "G91 %s Y%.3f F%.3f", probe_cmd, -clearance * 2.0f, this->probe_slow_rate);
-	this->script_queue.push(buff);
-	snprintf(buff, sizeof(buff), "#111=[#5022-%.3f]", probe_tip_dia / 2.0f);
-	this->script_queue.push(buff);
-	snprintf(buff, sizeof(buff), "G91 G0 Y%.3f", clearance);
-	this->script_queue.push(buff);
+			snprintf(buff, sizeof(buff), "G90 G53 G0 Z%.3f", THEROBOT->from_millimeters(this->clearance_z));
+			this->script_queue.push(buff);
 
-	// ---- RUN 2: STEP 3 - CALC Y CENTER ----
-	this->script_queue.push("#113=[[#110+#111]/2]");
+			THEKERNEL->streams->printf("CoR MCS Y: %.3f  Z: %.3f\n", a_axis_cor.y_center, a_axis_cor.z_cor_mcs);
+			THEKERNEL->streams->printf("Module ref MCS Z: %.3f\n", z_ref_mcs);
+			THEKERNEL->streams->printf("Previous 4th Center of Rotation Y: %.3f (rotation_offset_y: %.3f)\n",
+				this->anchor1_y + this->rotation_offset_y, this->rotation_offset_y);
+			THEKERNEL->streams->printf("New 4th Center of Rotation Y: %.3f (rotation_offset_y: %.3f)\n",
+				a_axis_cor.y_center, new_rot_y);
+			THEKERNEL->streams->printf("Previous rotation_offset_z (ref above CoR): %.3f\n", this->rotation_offset_z);
+			THEKERNEL->streams->printf("New rotation_offset_z (ref above CoR): %.3f\n", new_rot_z);
 
-	// ---- RUN 2: STEP 4 - PROBE Z TOP @ A0 ----
-	snprintf(buff, sizeof(buff), "G53 G90 G0 Z[#118+%.3f] F3000", z_clr);
-	this->script_queue.push(buff);
-	snprintf(buff, sizeof(buff), "G53 G0 Y#113 A#109 F%.3f", pos_feed);
-	this->script_queue.push(buff);
-	snprintf(buff, sizeof(buff), "G91 %s Z%.3f F%.3f", probe_cmd, -clearance * 2.0f, this->probe_slow_rate);
-	this->script_queue.push(buff);
-	snprintf(buff, sizeof(buff), "#112=[#5023+%.3f]", z_corr);
-	this->script_queue.push(buff);
-	snprintf(buff, sizeof(buff), "G53 G90 G0 Z[#118+%.3f] F3000", z_clr);
-	this->script_queue.push(buff);
+			this->rotation_offset_y = new_rot_y;
+			this->rotation_offset_z = new_rot_z;
+			THEKERNEL->streams->printf("These values have been temporarily set.\n");
+			THEKERNEL->streams->printf("To make them permanent run:\n");
+			THEKERNEL->streams->printf("config-set sd coordinate.rotation_offset_y %.3f\n", new_rot_y);
+			THEKERNEL->streams->printf("config-set sd coordinate.rotation_offset_z %.3f\n", new_rot_z);
 
-	// ---- RUN 2: STEP 5 - CALC Z CENTER (converged) ----
-	// Second pass includes -#2000 in the Z CoR formula for full convergence
-	this->script_queue.push("#114=[#112-[[#111-#110]/2]-#2000]");
-	this->script_queue.push("#116=[#114]");
+			a_axis_cor.phase = COR_IDLE;
+			a_axis_cor.pass = 0;
+			break;
+		}
 
-	// ---- APPLY CALIBRATION VALUES ----
-	this->script_queue.push("M469.7 Y#113 Z#116 P6");
+		default:
+			THEKERNEL->streams->printf("ERROR: M469.7 P6 called with no active A-axis CoR calibration.\n");
+			a_axis_cor.phase = COR_IDLE;
+			a_axis_cor.pass = 0;
+			break;
+	}
 }
 
 void ATCHandler::home_machine_with_pin(Gcode *gcode)//M469
@@ -1830,6 +1907,8 @@ void ATCHandler::abort(){
 		THEROBOT->set_tool_not_calibrated(true);
 	}
 	this->atc_status = NONE;
+	this->a_axis_cor.phase = 0;
+	this->a_axis_cor.pass = 0;
 	this->clear_script_queue();
 	this->set_inner_playing(false);
 	THEKERNEL->set_atc_state(ATC_NONE);
@@ -2427,7 +2506,7 @@ void ATCHandler::on_gcode_received(void *argument)
 				this->clear_script_queue();
 				home_machine_with_pin(gcode);
 			}
-		} else if (gcode->m == 680) {
+		} else if (gcode->m == 480) {
 			float d_val = 2;
 			float x_val = 20;
 			float y_val = 20;

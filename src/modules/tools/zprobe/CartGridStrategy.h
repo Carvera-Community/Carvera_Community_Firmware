@@ -18,6 +18,7 @@ public:
     ~CartGridStrategy();
     bool handleGcode(Gcode* gcode);
     bool handleConfig();
+    void after_config_cache_clear() override;
 
 private:
 
