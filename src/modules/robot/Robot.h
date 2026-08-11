@@ -210,16 +210,15 @@ class Robot : public Module {
 
         uint8_t n_motors;                                    //count of the motors/axis registered
         
-        // Cutter compensation preprocessor (v2.0 bolt-on architecture)
+       
         CompensationPreprocessor* compensation_preprocessor;
 
-        // Compensation suspend state — set when G18/G19 is issued while comp is active;
+        // Compensation suspend state — set when G18/G19 is issued + comp is active,
+        // so the wall offset is preserved during Z-dominant moves.
         // cleared when G17 resumes or G40 explicitly cancels.
         bool comp_suspended;
         CompensationType suspended_comp_type;
         float suspended_comp_radius;
-        // Model C frozen offset (WCS frame): the constant XY translation carried through a
-        // G18/G19 excursion so the wall offset is preserved during Z-dominant moves.
         float comp_frozen_offset[2];
 
         // Used by Planner
