@@ -495,6 +495,22 @@ std::string Kernel::get_query_string()
         str.append(buf, n);
     }
 
+    // cutter compensation state (append-only status field)
+    CompensationType comp_type = robot->get_compensation_type();
+    const char* comp_mode = "OFF";
+    if (comp_type == CompensationType::LEFT) {
+        comp_mode = "G41";
+    } else if (comp_type == CompensationType::RIGHT) {
+        comp_mode = "G42";
+    }
+    n = snprintf(buf, sizeof(buf), "|CC:%s,%1.3f,%1.3f,%1.3f",
+        comp_mode,
+        robot->from_millimeters(robot->get_compensation_radius()),
+        eeprom_data->TOOL_DIA,
+        eeprom_data->TOOL_DIA_WEAR);
+    if(n > sizeof(buf)) n = sizeof(buf);
+    str.append(buf, n);
+
     // if halted
     if (halted) {
         n = snprintf(buf, sizeof(buf), "|H:%d", halt_reason);
