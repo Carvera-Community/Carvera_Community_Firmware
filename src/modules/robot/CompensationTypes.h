@@ -9,7 +9,7 @@ You should have received a copy of the GNU General Public License along with Car
 #define COMPENSATION_TYPES_H
 
 enum class CompensationType {
-    NONE = 0,   // G40 - canel compensation
+    NONE = 0,   // G40 - cancel compensation
     LEFT = 1,   // G41 - Tool offset left
     RIGHT = 2   // G42 - Tool offset right
 };
