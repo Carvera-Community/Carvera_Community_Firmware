@@ -53,6 +53,7 @@ PWMSpindleControl::PWMSpindleControl()
 
 void PWMSpindleControl::on_module_loaded()
 {
+    this->supports_3dtoolsetter_m4 = true;
     this->load_3dtoolsetter_config();
 
     last_time = 0;

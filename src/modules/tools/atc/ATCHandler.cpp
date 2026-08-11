@@ -42,8 +42,7 @@
 #include <math.h>
 #include <vector>
 
-namespace {
-inline void send_internal_gcode(const char *cmd)
+static inline void send_internal_gcode(const char *cmd)
 {
 	string g(cmd);
 	Gcode gc(g, &(StreamOutput::NullStream));
@@ -55,7 +54,6 @@ inline void send_internal_gcode(const char *cmd)
 // - Contact radius: half of the calibrated contact disk diameter.
 constexpr float kToolDiaTouchoffStartOffsetMm = 10.5f;
 constexpr float kToolDiaTouchoffContactRadiusMm = 5.0f;
-}
 
 #define ATC_AXIS 4
 #define STEPPER THEROBOT->actuators
@@ -900,8 +898,6 @@ void ATCHandler::calibrate_a_axis_height(Gcode *gcode) //M469.5
 	this->script_queue.push(buff);
 }
 
-namespace {
-
 // M469.6 continuation phases (advanced by M469.7 P6 after each probe)
 enum CorPhase : uint8_t {
 	COR_IDLE = 0,
@@ -913,7 +909,7 @@ enum CorPhase : uint8_t {
 };
 
 // MCS positions matching gcode #5022 / #5023 / #5024
-void atc_get_mcs_yza(float &y, float &z, float &a)
+static void atc_get_mcs_yza(float &y, float &z, float &a)
 {
 	float mpos[3];
 	THEROBOT->get_current_machine_position(mpos);
@@ -923,7 +919,7 @@ void atc_get_mcs_yza(float &y, float &z, float &a)
 	a = THEROBOT->actuators[A_AXIS]->get_current_position();
 }
 
-float atc_get_mcs_axis(uint8_t axis)
+static float atc_get_mcs_axis(uint8_t axis)
 {
 
 	if (axis == A_AXIS) {
@@ -936,12 +932,10 @@ float atc_get_mcs_axis(uint8_t axis)
 	return mpos[axis];
 }
 
-const char* cor_probe_cmd(bool invert)
+static const char* cor_probe_cmd(bool invert)
 {
 	return invert ? "G38.4" : "G38.2";
 }
-
-} // namespace
 
 void ATCHandler::cor_queue_z_clearance()
 {
@@ -3008,7 +3002,7 @@ void ATCHandler::on_gcode_received(void *argument)
 				}
 				if (gcode->has_letter('D')) { //set stored tool diameter
 					// Immutability latch: diameter must not change while G41/G42 is modal
-					if (THEROBOT->is_compensation_active()) {
+					if (THEKERNEL->is_flex_compensation_active()) {
 						bool is_playing = false;
 						PublicData::get_value(player_checksum, is_playing_checksum, &is_playing);
 						if (is_playing) {
@@ -3031,7 +3025,7 @@ void ATCHandler::on_gcode_received(void *argument)
 					}
 				}
 				if (gcode->has_letter('W')) { // set additive diameter wear
-					if (THEROBOT->is_compensation_active()) {
+					if (THEKERNEL->is_flex_compensation_active()) {
 						bool is_playing = false;
 						PublicData::get_value(player_checksum, is_playing_checksum, &is_playing);
 						if (is_playing) {

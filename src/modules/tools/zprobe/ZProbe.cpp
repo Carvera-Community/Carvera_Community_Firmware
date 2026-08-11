@@ -101,6 +101,7 @@ void ZProbe::on_module_loaded()
     // we read the probe in this timer
     probing = false;
     calibrating = false;
+    probe_only_calibration_active = false;
     tlo_calibrating = false;
     THEKERNEL->slow_ticker->attach(1000, this, &ZProbe::read_probe);
     THEKERNEL->slow_ticker->attach(1000, this, &ZProbe::read_calibrate);
@@ -318,9 +319,7 @@ uint32_t ZProbe::read_probe(uint32_t dummy)
                 probe_detected = true;
                 probe_pin_position = STEPPER[Z_AXIS]->get_current_position();
                 // In 3dtoolsetter mode, for 3D probe tools, probe trigger alone completes calibration.
-                if (calibrating && this->enable_3dtoolsetter && check_probe_tool() == 2) {
-                    calibrate_detected = true;
-                    calibrate_pin_position = probe_pin_position;
+                if (this->probe_only_calibration_active) {
                     for (auto &a : THEROBOT->actuators) a->stop_moving();
                     debounce = 0;
                     cali_debounce = 0;
@@ -344,6 +343,9 @@ uint32_t ZProbe::read_probe(uint32_t dummy)
 uint32_t ZProbe::read_calibrate(uint32_t dummy)
 {
     if (!calibrating) return 0;
+
+    // In 3dtoolsetter probe-only calibration mode, G38.6 success/fail is based solely on probe pin transitions.
+    if (this->probe_only_calibration_active) return 0;
 
     // check all axes in case calibration movement includes X/Y components
     if (STEPPER[X_AXIS]->is_moving() || STEPPER[Y_AXIS]->is_moving() || STEPPER[Z_AXIS]->is_moving()) {
@@ -807,6 +809,7 @@ void ZProbe::on_gcode_received(void *argument)
 
 void ZProbe::reset_probe_tracking() {
     safety_margin_exceeded = false;
+    probe_only_calibration_active = false;
     calibrate_pin_position = 0.0F;
     probe_pin_position = 0.0F;
     calibrate_current_z = 0.0F;
@@ -958,7 +961,7 @@ void ZProbe::calibrate_Z(Gcode *gcode)
     }
 
     if(x == 0 && y == 0 && z == 0) {
-        gcode->stream->printf("error: at least one of X, Y, or Z must be specified, and be > or < 0\n");
+        gcode->stream->printf("error: at least one of X, Y, or Z must be non-zero\n");
         return;
     }
 
@@ -982,6 +985,9 @@ void ZProbe::calibrate_Z(Gcode *gcode)
 
     reset_probe_tracking();
 
+    bool probe_only_calibration = this->enable_3dtoolsetter && (check_probe_tool() == 2);
+    this->probe_only_calibration_active = probe_only_calibration;
+
     // If calibration is happening with a probe tool, enable tracking of probe position in the read_probe ISR.
     if (check_probe_tool() > 0) {
         probing = true;
@@ -995,6 +1001,7 @@ void ZProbe::calibrate_Z(Gcode *gcode)
         THEKERNEL->set_halt_reason(PROBE_FAIL);
         THEKERNEL->call_event(ON_HALT, nullptr);
         calibrating = false;
+        this->probe_only_calibration_active = false;
         THEKERNEL->set_zprobing(false);
         return;
     }
@@ -1028,6 +1035,7 @@ void ZProbe::calibrate_Z(Gcode *gcode)
         gcode->stream->printf("debounce: %d, cali_debounce: %d, debounce_ms: %d\n", debounce, cali_debounce, debounce_ms);
         gcode->stream->printf("ERROR: Probe failed to trigger within safety margin (%.2fmm). See MDI\n", this->probe_calibration_safety_margin);
         THEKERNEL->call_event(ON_HALT, nullptr);
+        this->probe_only_calibration_active = false;
         return;
     }
 
@@ -1039,7 +1047,6 @@ void ZProbe::calibrate_Z(Gcode *gcode)
                              calibrate_pin_position);
     }
     
-    bool probe_only_calibration = this->enable_3dtoolsetter && (check_probe_tool() == 2);
     uint8_t calibrateok = (calibrate_detected || (probe_only_calibration && probe_detected)) ? 1 : 0;
 
     // print results using the GRBL format
@@ -1052,10 +1059,16 @@ void ZProbe::calibrate_Z(Gcode *gcode)
 
     if (calibrateok == 0) {
         // issue error if probe was not triggered and subcode is 2 or 4
-        gcode->stream->printf("ERROR: Calibrate fail!\n");
+        if (probe_only_calibration) {
+            gcode->stream->printf("ERROR: Probe-only calibration failed: probe pin did not trigger\n");
+        } else {
+            gcode->stream->printf("ERROR: Calibrate fail!\n");
+        }
         THEKERNEL->set_halt_reason(CALIBRATE_FAIL);
         THEKERNEL->call_event(ON_HALT, nullptr);
     }
+
+    this->probe_only_calibration_active = false;
 
     if (probe_detected) {
     	this->probe_trigger_time = us_ticker_read();

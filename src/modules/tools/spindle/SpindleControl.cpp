@@ -20,13 +20,11 @@
 #define spindle_checksum CHECKSUM("spindle")
 #define three_d_toolsetter_checksum CHECKSUM("3dtoolsetter")
 
-namespace {
-void send_internal_command(const char *cmd)
+static void send_internal_command(const char *cmd)
 {
     string g(cmd);
     Gcode gc(g, &(StreamOutput::NullStream));
     THEKERNEL->call_event(ON_GCODE_RECEIVED, &gc);
-}
 }
 
 void SpindleControl::load_3dtoolsetter_config()
@@ -60,7 +58,7 @@ void SpindleControl::on_gcode_received(void *argument)
             report_settings();
           
         }
-        else if (gcode->m == 4 && !this->enable_3dtoolsetter)
+        else if (gcode->m == 4 && this->supports_3dtoolsetter_m4 && !this->enable_3dtoolsetter)
         {
             THEKERNEL->streams->printf("ERROR: M4 is disabled unless spindle.3dtoolsetter is true\n");
             return;
@@ -74,7 +72,7 @@ void SpindleControl::on_gcode_received(void *argument)
 
             // In 3dtoolsetter mode, keep M3 unmodified and apply direction override only on M4.
             // M5 clears this override back to default state.
-            if (this->enable_3dtoolsetter && gcode->m == 4) {
+            if (this->supports_3dtoolsetter_m4 && this->enable_3dtoolsetter && gcode->m == 4) {
                 send_internal_command("M851 S100");
             }
 
