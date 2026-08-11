@@ -43,6 +43,16 @@ ASSETS = {
 SOURCE_SUFFIXES = (".c", ".cc", ".cpp", ".cxx", ".h", ".hh", ".hpp", ".hxx")
 
 
+def clang_format_executable(project_root: Path, system: str, machine: str) -> Path:
+    executable_name = "clang-format.exe" if system == "Windows" else "clang-format"
+    return (
+        project_root
+        / f"clang-format-{CLANG_FORMAT_VERSION}"
+        / f"{system}-{machine}"
+        / executable_name
+    )
+
+
 def download_clang_format(project_root: Path) -> Path:
     host = (platform.system(), platform.machine())
     asset = ASSETS.get(host)
@@ -51,14 +61,7 @@ def download_clang_format(project_root: Path) -> Path:
         raise RuntimeError(f"unsupported host {host[0]}/{host[1]}; supported hosts: {supported}")
 
     executable_name = "clang-format.exe" if host[0] == "Windows" else "clang-format"
-    executable = (
-        project_root
-        / ".scratch"
-        / "clang-format"
-        / CLANG_FORMAT_VERSION
-        / f"{host[0]}-{host[1]}"
-        / executable_name
-    )
+    executable = clang_format_executable(project_root, *host)
     if executable.is_file():
         return executable
 

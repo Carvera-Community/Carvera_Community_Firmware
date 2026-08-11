@@ -34,6 +34,7 @@
 *.DS_Store
 /make*/
 /gcc-arm-none-eabi*
+/clang-format*
 /LPC1768
 /mbed/drop
 /mbed/src/Debug
