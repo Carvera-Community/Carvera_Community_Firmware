@@ -99,7 +99,7 @@ typedef struct {
 	float REFMZ;
 	float TOOLMZ;
     float reserve;
-    // TEMPORARY: TOOL_DIA_WEAR is EEPROM-backed in this PR cycle and will be replaced by SD tool-table storage.
+    // TEMPORARY: TOOL_DIA_WEAR is EEPROM-backed in this PR cycle and should be replaced by SD tool-table storage.
     float TOOL_DIA_WEAR;
 	int TOOL;
     float perm_vars[20];
@@ -107,7 +107,7 @@ typedef struct {
     int current_wcs;
     float WCScoord[6][4];
     float WCSrotation[6];
-    // TEMPORARY: TOOL_DIA is EEPROM-backed in this PR cycle and will be replaced by SD tool-table storage.
+    // TEMPORARY: TOOL_DIA is EEPROM-backed in this PR cycle and should be replaced by SD tool-table storage.
     float TOOL_DIA;
 } EEPROM_data;
 

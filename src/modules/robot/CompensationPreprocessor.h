@@ -32,17 +32,14 @@ class Gcode;
 class StreamOutput;
 
 /**
- * Cutter Compensation Preprocessor v2.0 - Bolt-On Architecture
+ * Cutter Compensation Preprocessor
  * 
  * Design Philosophy:
  * - Gcode-in, Gcode-out: Modifies G-code coordinates, not internal structures
  * - Single execution path: ALL moves go through Robot::process_move()
  * - Lookahead buffer: 3-move window for corner detection and compensation
- * - String reconstruction: Rebuild G-code from modified coordinates
- * 
- * Buffer model: 3-slot lookahead ring for uncompensated input plus compensated output queue
- * Allocation model: compensated lines are emitted as heap-allocated Gcode objects
- * Code savings: -150 lines (removes duplicate transform logic)
+ * - String reconstruction: Rebuild G-code from modified coordinates for output to Robot.cpp
+ * - fixed-size preallocated Gcode pool recycled per output slot
  */
 class CompensationPreprocessor {
 public:
@@ -87,7 +84,7 @@ public:
 
     /**
      * Get the current compensation offset vector (last compensated XY minus last programmed XY,
-     * WCS frame). Used by Robot.cpp Model C to freeze the offset across a G18/G19 excursion.
+     * WCS frame). Used by Robot.cpp to freeze the offset across a G18/G19 excursion.
      * @return true if a valid offset is available, false (zeroed) if nothing emitted yet.
      */
     bool get_current_offset_vector(float out_xy[2]) const;

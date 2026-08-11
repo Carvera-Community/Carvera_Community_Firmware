@@ -146,7 +146,7 @@ Robot::Robot()
     memset(this->sin_r, 0, sizeof sin_r);
     memset(this->r, 0, sizeof r);
     
-    // Initialize cutter compensation preprocessor (v2.0)
+    // Initialize cutter compensation preprocessor
     this->compensation_preprocessor = new CompensationPreprocessor();
     this->comp_suspended = false;
     this->suspended_comp_type = CompensationType::NONE;
@@ -614,9 +614,9 @@ void Robot::on_gcode_received(void *argument)
 {
     Gcode *gcode = static_cast<Gcode *>(argument);
 
-    // R-format arcs cannot be compensated (no I/J offsets to transform); reject them at runtime.
+    // R-format arcs cannot be compensated (no I/J offsets to transform); rejected at runtime.
     // The G17 plane check is done at G41/G42 enable time; G18/G19 issued while comp is active
-    // is caught by the G18/G19 case in process_buffered_command.
+    // caught by case in process_buffered_command.
     if (compensation_preprocessor->is_active() && gcode->has_g && (gcode->g == 2 || gcode->g == 3)) {
         if (gcode->has_letter('R')) {
             THEKERNEL->streams->printf("ERROR: R-format arc (G2/G3 R...) is not supported with G41/G42 compensation. Use I/J offsets instead. Compensation disabled.\n");
@@ -709,11 +709,11 @@ void Robot::on_gcode_received(void *argument)
         }
     };
 
-    // V1 approach: defend-only gating while compensation is active.
-    // Mature behavior will preserve strict command ordering through an order-preserving
-    // reassembly stage; for now, potentially unsafe state/motion-affecting non-motion
-    // commands are rejected and harmless operator QoL/report commands are safelisted.
-    if (!gcode->has_g || (gcode->g != 0 && gcode->g != 1 && gcode->g != 2 && gcode->g != 3)) {
+    
+    // As compensation behavior matures, command order will be reassembled explicitly;
+    // Currently, unsafe state/motion-affecting non-motion commands are rejected and;
+    // harmless operators QoL/report commands are safelisted.
+    if (!gcode->has_g || (gcode->has_g && gcode->g <= 3 )) {
         if (gcode->has_g && gcode->g == 4) {
             // Preserve command order: execute buffered compensated motion first, then dwell.
             compensation_preprocessor->flush();
@@ -761,7 +761,7 @@ void Robot::on_gcode_received(void *argument)
         return;
     }
     
-    // Cutter compensation v2.0: Buffer commands when compensation is ON
+    // Buffer commands when compensation is ON
     COMPENSATION_TRACE_PRINTF(gcode->stream, ">>BUFFER: %s (count=%d, comp=%s)\n", 
         gcode->get_command(), 
         compensation_preprocessor->get_buffer_count(),
@@ -925,14 +925,13 @@ void Robot::process_buffered_command(Gcode *gcode)
                 break;
 
             case 17:
-                // Model C (V1 graceful degradation): if compensation was frozen by a G18/G19
-                // plane switch, resume live solving here. This is NOT full mixed-plane
-                // compensation — it just restores the live G17 solver after the excursion.
+                // If compensation was frozen by a G18/G19 plane switch, 
+                // resume live solving here. This is NOT full mixed-plane
+                // compensation — it just restores the live G17 solver after the switch.
                 if (this->comp_suspended) {
-                    // Re-seed the preprocessor with the *programmed* (uncompensated) WCS position,
-                    // which is the current physical WCS position minus the frozen offset we have
-                    // been carrying. set_compensation() calls clear() (wiping the seed), so it MUST
-                    // be called before set_initial_position(), mirroring the G41/G42 enable order.
+                    // Re-seed preprocessor with (uncompensated) WCS position - frozen offset.
+                    // Set_compensation() calls clear() (wiping the seed),
+                    // but called before set_initial_position(), mirroring the G41/G42 enable order.
                     wcs_t wcs_pos = mcs2wcs(machine_position);
                     float wcs_position[3] = {
                         std::get<X_AXIS>(wcs_pos) - this->comp_frozen_offset[X_AXIS],
@@ -952,10 +951,10 @@ void Robot::process_buffered_command(Gcode *gcode)
             case 18:
             case 19:
                 if (compensation_preprocessor->is_active()) {
-                    // Model C (V1 graceful degradation): freeze the current compensation offset and
-                    // carry it as a fixed XY translation through the G18/G19 plane excursion instead
-                    // of solving compensation live. Live solving resumes on G17. This keeps the wall
-                    // offset constant during Z-dominant moves; it is NOT full mixed-plane compensation.
+                    // Freeze the current compensation offset and
+                    // carry it as a fixed XY translation through the G18/G19 plane
+                    // Live solving resumes on G17. 
+                    // Keeps offset constant during Z-dominant moves(lead ins);
                     this->suspended_comp_type   = compensation_preprocessor->get_comp_type();
                     this->suspended_comp_radius = compensation_preprocessor->get_comp_radius();
                     // Flush remaining buffered XY moves so the machine is at the last fully
@@ -1000,7 +999,7 @@ void Robot::process_buffered_command(Gcode *gcode)
             case 40: // G40 - Compensation Off
             {
                 COMPENSATION_TRACE_PRINTF(gcode->stream, ">>G40: Flushing buffer (count=%d)\n", compensation_preprocessor->get_buffer_count());
-                // CRITICAL: Flush all buffered moves BEFORE disabling compensation
+                // CRITICAL: BEFORE disabling compensation
                 compensation_preprocessor->flush();  // Set is_flushing flag to bypass lookahead requirement
                 int flush_count = 0;
                 while (compensation_preprocessor->get_buffer_count() > 0) {
