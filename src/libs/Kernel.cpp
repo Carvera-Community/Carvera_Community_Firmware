@@ -497,13 +497,13 @@ std::string Kernel::get_query_string()
 
     // cutter compensation state (append-only status field)
     CompensationType comp_type = robot->get_compensation_type();
-    const char* comp_mode = "OFF";
+    int comp_mode = 0;
     if (comp_type == CompensationType::LEFT) {
-        comp_mode = "G41";
+        comp_mode = 41;
     } else if (comp_type == CompensationType::RIGHT) {
-        comp_mode = "G42";
+        comp_mode = 42;
     }
-    n = snprintf(buf, sizeof(buf), "|CC:%s,%1.3f,%1.3f,%1.3f",
+    n = snprintf(buf, sizeof(buf), "|CC:%d,%1.3f,%1.3f,%1.3f",
         comp_mode,
         robot->from_millimeters(robot->get_compensation_radius()),
         eeprom_data->TOOL_DIA,

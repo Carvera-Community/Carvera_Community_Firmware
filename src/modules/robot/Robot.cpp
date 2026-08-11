@@ -614,19 +614,6 @@ void Robot::on_gcode_received(void *argument)
 {
     Gcode *gcode = static_cast<Gcode *>(argument);
 
-    // R-format arcs cannot be compensated (no I/J offsets to transform); rejected at runtime.
-    // The G17 plane check is done at G41/G42 enable time; G18/G19 issued while comp is active
-    // caught by case in process_buffered_command.
-    if (compensation_preprocessor->is_active() && gcode->has_g && (gcode->g == 2 || gcode->g == 3)) {
-        if (gcode->has_letter('R')) {
-            THEKERNEL->streams->printf("ERROR: R-format arc (G2/G3 R...) is not supported with G41/G42 compensation. Use I/J offsets instead. Compensation disabled.\n");
-            compensation_preprocessor->set_compensation(CompensationType::NONE, 0.0f);
-            THEKERNEL->set_halt_reason(MANUAL);
-            THEKERNEL->call_event(ON_HALT, nullptr);
-            return;
-        }
-    }
-
     // PHASE1: Simple pass-through mode - NO BUFFERING when compensation is OFF
     // This isolates the buffer testing to only when explicitly activated
     if (!compensation_preprocessor->is_active()) {
@@ -634,47 +621,6 @@ void Robot::on_gcode_received(void *argument)
         process_buffered_command(gcode);
         return;
     }
-
-    // CRITICAL: G40/G41/G42 must NEVER be buffered - they control the buffering system itself!
-    // G40 needs to flush the buffer, so it must execute immediately
-    // G41/G42 need to clear/reset the buffer, so they must execute immediately
-    if (gcode->has_g && (gcode->g == 40 || gcode->g == 41 || gcode->g == 42)) {
-        COMPENSATION_TRACE_PRINTF(gcode->stream, ">>BYPASS_BUFFER: G%d %s (compensation control command)\n", 
-            gcode->g, gcode->get_command());
-        process_buffered_command(gcode);
-        return;
-    }
-
-    auto is_v1_safelist_mcode = [](int m) -> bool {
-        switch (m) {
-            case 7:   // air on
-            case 9:   // air off
-            case 112: // emergency stop
-            case 114: // position report
-            case 118: // console message
-            case 119: // endstop report
-            case 220: // feed override
-            case 221: // flow/spindle override on Carvera command surface
-            case 223: // feed hold override on Carvera command surface
-            case 400: // wait for idle
-            case 801: // vacuum on
-            case 802: // vacuum off
-            case 811: // spindle fan on
-            case 812: // spindle fan off
-            case 821: // light on
-            case 822: // light off
-            case 831: // toolsensor switch on
-            case 832: // toolsensor switch off
-            case 841: // probe charger on
-            case 842: // probe charger off
-            case 851: // extend on
-            case 852: // extend off
-            case 999: // reset
-                return true;
-            default:
-                return false;
-        }
-    };
 
     auto is_blocked_mcode_while_comp = [](int m) -> bool {
         switch (m) {
@@ -694,14 +640,7 @@ void Robot::on_gcode_received(void *argument)
             case 10:  // WCS/offset write
             case 43:  // tool length offset apply
             case 49:  // tool length offset cancel
-            case 54:  // work coordinate system select
-            case 55:
-            case 56:
-            case 57:
-            case 58:
-            case 59:
             case 53:  // machine coordinate mode
-            case 91:  // relative mode
             case 92:  // local offset write
                 return true;
             default:
@@ -709,11 +648,47 @@ void Robot::on_gcode_received(void *argument)
         }
     };
 
-    
-    // As compensation behavior matures, command order will be reassembled explicitly;
-    // Currently, unsafe state/motion-affecting non-motion commands are rejected and;
-    // harmless operators QoL/report commands are safelisted.
-    if (!gcode->has_g || (gcode->has_g && gcode->g <= 3 )) {
+    // As compensation behavior matures, command order will be reassembled explicitly.
+    // For now, non-motion commands pass through unless explicitly blocked as unsafe
+    // while compensation is active.
+    if (!gcode->has_g || (gcode->g != 0 && gcode->g != 1 && gcode->g != 2 && gcode->g != 3)) {
+        // Reject coordinate-system changes only when they would actually change active WCS.
+        if (gcode->has_g && gcode->g >= 54 && gcode->g <= 59) {
+            uint8_t requested_wcs = gcode->g - 54;
+            if (gcode->g == 59 && gcode->subcode > 0) {
+                requested_wcs += gcode->subcode;
+                if (requested_wcs >= MAX_WCS) requested_wcs = MAX_WCS - 1;
+            }
+            if (requested_wcs != current_wcs) {
+                THEKERNEL->streams->printf("ERROR: G5x work coordinate changes are not supported while G41/G42 compensation is active. Issue G40 first.\n");
+                THEKERNEL->set_halt_reason(MANUAL);
+                THEKERNEL->call_event(ON_HALT, nullptr);
+                return;
+            }
+        }
+
+        // Reject absolute/relative mode changes only when they would alter active mode.
+        if (gcode->has_g && gcode->g == 90 && !this->absolute_mode) {
+            THEKERNEL->streams->printf("ERROR: G90 (absolute mode) is not supported while G41/G42 compensation is active. Issue G40 first.\n");
+            THEKERNEL->set_halt_reason(MANUAL);
+            THEKERNEL->call_event(ON_HALT, nullptr);
+            return;
+        }
+        if (gcode->has_g && gcode->g == 91 && this->absolute_mode) {
+            THEKERNEL->streams->printf("ERROR: G91 (relative mode) is not supported while G41/G42 compensation is active. Issue G40 first.\n");
+            THEKERNEL->set_halt_reason(MANUAL);
+            THEKERNEL->call_event(ON_HALT, nullptr);
+            return;
+        }
+
+        // CRITICAL: G40/G41/G42 must NEVER be buffered - they control buffering itself.
+        if (gcode->has_g && (gcode->g == 40 || gcode->g == 41 || gcode->g == 42)) {
+            COMPENSATION_TRACE_PRINTF(gcode->stream, ">>BYPASS_BUFFER: G%d %s (compensation control command)\n",
+                gcode->g, gcode->get_command());
+            process_buffered_command(gcode);
+            return;
+        }
+
         if (gcode->has_g && gcode->g == 4) {
             // Preserve command order: execute buffered compensated motion first, then dwell.
             compensation_preprocessor->flush();
@@ -736,7 +711,7 @@ void Robot::on_gcode_received(void *argument)
             return;
         }
 
-        if (gcode->has_m && is_blocked_mcode_while_comp(gcode->m) && !is_v1_safelist_mcode(gcode->m)) {
+        if (gcode->has_m && is_blocked_mcode_while_comp(gcode->m)) {
             THEKERNEL->streams->printf("ERROR: M%d is not supported while G41/G42 compensation is active. Issue G40 first.\n", gcode->m);
             THEKERNEL->set_halt_reason(MANUAL);
             THEKERNEL->call_event(ON_HALT, nullptr);
@@ -744,13 +719,7 @@ void Robot::on_gcode_received(void *argument)
         }
 
         if (gcode->has_g && is_blocked_gcode_while_comp(gcode->g)) {
-            if (gcode->g == 91) {
-                THEKERNEL->streams->printf("ERROR: G91 (relative mode) is not supported while G41/G42 compensation is active. Issue G40 first.\n");
-            } else if (gcode->g >= 54 && gcode->g <= 59) {
-                THEKERNEL->streams->printf("ERROR: G5x work coordinate changes are not supported while G41/G42 compensation is active. Issue G40 first.\n");
-            } else {
-                THEKERNEL->streams->printf("ERROR: G%d is not supported while G41/G42 compensation is active. Issue G40 first.\n", gcode->g);
-            }
+            THEKERNEL->streams->printf("ERROR: G%d is not supported while G41/G42 compensation is active. Issue G40 first.\n", gcode->g);
             THEKERNEL->set_halt_reason(MANUAL);
             THEKERNEL->call_event(ON_HALT, nullptr);
             return;
@@ -758,6 +727,16 @@ void Robot::on_gcode_received(void *argument)
 
         COMPENSATION_TRACE_PRINTF(gcode->stream, ">>BYPASS_BUFFER: %s (non-motion while comp=ON)\n", gcode->get_command());
         process_buffered_command(gcode);
+        return;
+    }
+
+    // Motion-time check: R-format arcs cannot be compensated (no I/J offsets to transform).
+    // G17 plane eligibility is validated at G41/G42 enable time.
+    if (gcode->has_g && (gcode->g == 2 || gcode->g == 3) && gcode->has_letter('R')) {
+        THEKERNEL->streams->printf("ERROR: R-format arc (G2/G3 R...) is not supported with G41/G42 compensation. Use I/J offsets instead. Compensation disabled.\n");
+        compensation_preprocessor->set_compensation(CompensationType::NONE, 0.0f);
+        THEKERNEL->set_halt_reason(MANUAL);
+        THEKERNEL->call_event(ON_HALT, nullptr);
         return;
     }
     
