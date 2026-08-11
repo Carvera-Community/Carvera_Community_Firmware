@@ -22,6 +22,14 @@ You should have received a copy of the GNU General Public License along with Car
 
 using namespace std;
 
+#if CUTTER_COMPENSATION_METRICS_ENABLED
+#define COMP_METRICS(code) do { code; } while (0)
+#define COMP_RECORD_SAMPLE() do { record_load_balance_sample(); } while (0)
+#else
+#define COMP_METRICS(code) do { } while (0)
+#define COMP_RECORD_SAMPLE() do { } while (0)
+#endif
+
 bool CompensationPreprocessor::resolve_diameter(bool has_d_word, float d_word_value,
                                                 float eeprom_tool_dia,
                                                 float eeprom_tool_dia_wear,
@@ -355,13 +363,13 @@ void CompensationPreprocessor::set_compensation(CompensationType type, float rad
 
 Gcode* CompensationPreprocessor::buffer_gcode(Gcode* gcode)
 {
-    load_balance_metrics.input_gcode_count++;
+    COMP_METRICS(load_balance_metrics.input_gcode_count++;);
     COMPENSATION_TRACE_PRINTF(THEKERNEL->streams, ">>BUFFER_GCODE: ENTRY - gcode=%p, uncomp_count=%d, comp_ready=%d\n",
         (void*)gcode, uncomp_count, comp_ready_count);
 
     if (gcode == nullptr) {
-        load_balance_metrics.load_balance_wait_count++;
-        record_load_balance_sample();
+        COMP_METRICS(load_balance_metrics.load_balance_wait_count++;);
+        COMP_RECORD_SAMPLE();
         COMPENSATION_TRACE_PRINTF(THEKERNEL->streams, ">>BUFFER_GCODE: Null gcode pointer\n");
         return nullptr;
     }
@@ -369,7 +377,7 @@ Gcode* CompensationPreprocessor::buffer_gcode(Gcode* gcode)
     uint8_t motion_g = resolve_motion_g(gcode);
     last_g = motion_g;
     if (is_arc_motion(motion_g)) {
-        load_balance_metrics.arc_input_count++;
+        COMP_METRICS(load_balance_metrics.arc_input_count++;);
     }
     
     // Extract coordinates (modal if not specified)
@@ -408,16 +416,16 @@ Gcode* CompensationPreprocessor::buffer_gcode(Gcode* gcode)
     print_uncomp_buffered();
 
     if (uncomp_count < BUFFER_SIZE) {
-        load_balance_metrics.priming_wait_count++;
-        load_balance_metrics.load_balance_wait_count++;
-        record_load_balance_sample();
+        COMP_METRICS(load_balance_metrics.priming_wait_count++;);
+        COMP_METRICS(load_balance_metrics.load_balance_wait_count++;);
+        COMP_RECORD_SAMPLE();
         COMPENSATION_TRACE_PRINTF(THEKERNEL->streams, ">>BUFFER_GCODE: Priming uncomp buffer (count=%d)\n", uncomp_count);
         return nullptr;
     }
 
     if (!pipeline_primed) {
-        load_balance_metrics.priming_wait_count++;
-        load_balance_metrics.load_balance_wait_count++;
+        COMP_METRICS(load_balance_metrics.priming_wait_count++;);
+        COMP_METRICS(load_balance_metrics.load_balance_wait_count++;);
         COMPENSATION_TRACE_PRINTF(THEKERNEL->streams, ">>BUFFER_GCODE: First full cycle - priming with double compute\n");
         compute_and_output();
         if (comp_ready_count < BUFFER_SIZE) {
@@ -425,7 +433,7 @@ Gcode* CompensationPreprocessor::buffer_gcode(Gcode* gcode)
         }
         pipeline_primed = true;
         print_buffer_state();
-        record_load_balance_sample();
+        COMP_RECORD_SAMPLE();
         return nullptr;
     }
     
@@ -436,9 +444,9 @@ Gcode* CompensationPreprocessor::buffer_gcode(Gcode* gcode)
 
     Gcode* output = serve_compensated_gcode(false);
     if (output == nullptr) {
-        load_balance_metrics.load_balance_wait_count++;
+        COMP_METRICS(load_balance_metrics.load_balance_wait_count++;);
     }
-    record_load_balance_sample();
+    COMP_RECORD_SAMPLE();
     COMPENSATION_TRACE_PRINTF(THEKERNEL->streams, ">>BUFFER_GCODE: EXIT - returning %p\n", (void*)output);
     return output;
 }
@@ -449,25 +457,25 @@ Gcode* CompensationPreprocessor::buffer_gcode(Gcode* gcode)
 
 void CompensationPreprocessor::compute_and_output()
 {
-    load_balance_metrics.compute_count++;
+    COMP_METRICS(load_balance_metrics.compute_count++;);
     COMPENSATION_TRACE_PRINTF(THEKERNEL->streams, ">>COMPUTE: ENTRY - uncomp_count=%d, comp_count=%d, comp_ready=%d\n",
         uncomp_count, comp_count, comp_ready_count);
 
     if (uncomp_count < 2) {
-        record_load_balance_sample();
+        COMP_RECORD_SAMPLE();
         COMPENSATION_TRACE_PRINTF(THEKERNEL->streams, ">>COMPUTE: Not enough uncomp points to compute\n");
         return;
     }
 
     if (comp_ready_count >= BUFFER_SIZE) {
-        record_load_balance_sample();
+        COMP_RECORD_SAMPLE();
         COMPENSATION_TRACE_PRINTF(THEKERNEL->streams, ">>COMPUTE: Comp ring has no free slot, skip\n");
         return;
     }
 
     int comp_idx = comp_head;
     if (comp_ring[comp_idx].gcode != nullptr) {
-        record_load_balance_sample();
+        COMP_RECORD_SAMPLE();
         COMPENSATION_TRACE_PRINTF(THEKERNEL->streams, ">>COMPUTE: Target comp slot %d still occupied, skip\n", comp_idx);
         return;
     }
@@ -544,7 +552,7 @@ void CompensationPreprocessor::compute_and_output()
 
     comp_ring[comp_idx].gcode = gcode_pool[comp_idx];
     gcode_pool[comp_idx]->reset(gcode_str);
-    load_balance_metrics.generated_gcode_count++;
+    COMP_METRICS(load_balance_metrics.generated_gcode_count++;);
     last_emitted_uncomp[X_AXIS] = b.x;
     last_emitted_uncomp[Y_AXIS] = b.y;
     last_emitted_uncomp[Z_AXIS] = b.z;
@@ -560,7 +568,7 @@ void CompensationPreprocessor::compute_and_output()
     uncomp_tail = (uncomp_tail + 1) % BUFFER_SIZE;
     comp_head = (comp_head + 1) % BUFFER_SIZE;
     first_output_pending = false;
-    record_load_balance_sample();
+    COMP_RECORD_SAMPLE();
 
     COMPENSATION_TRACE_PRINTF(THEKERNEL->streams, ">>COMPUTE: EXIT - complete, comp_count=%d, comp_ready=%d, uncomp_tail=%d, comp_head=%d\n",
         comp_count, comp_ready_count, uncomp_tail, comp_head);
@@ -579,7 +587,7 @@ bool CompensationPreprocessor::compute_terminal_output()
         int comp_idx = comp_head;
 
         if (comp_ring[comp_idx].gcode != nullptr) {
-            record_load_balance_sample();
+            COMP_RECORD_SAMPLE();
             return false;
         }
 
@@ -611,7 +619,7 @@ bool CompensationPreprocessor::compute_terminal_output()
 
         comp_ring[comp_idx].gcode = gcode_pool[comp_idx];
         gcode_pool[comp_idx]->reset(gcode_str);
-        load_balance_metrics.generated_gcode_count++;
+        COMP_METRICS(load_balance_metrics.generated_gcode_count++;);
         last_emitted_uncomp[X_AXIS] = curr.x;
         last_emitted_uncomp[Y_AXIS] = curr.y;
         last_emitted_uncomp[Z_AXIS] = curr.z;
@@ -624,7 +632,7 @@ bool CompensationPreprocessor::compute_terminal_output()
         comp_ready_count++;
         if (comp_count < BUFFER_SIZE) comp_count++;
         uncomp_tail = uncomp_head;
-        record_load_balance_sample();
+        COMP_RECORD_SAMPLE();
 
         COMPENSATION_TRACE_PRINTF(THEKERNEL->streams, ">>TERMINAL: Single-move case comp[%d] generated\n", comp_idx);
         return true;
@@ -639,7 +647,7 @@ bool CompensationPreprocessor::compute_terminal_output()
     int comp_idx = comp_head;
 
     if (comp_ring[comp_idx].gcode != nullptr) {
-        record_load_balance_sample();
+        COMP_RECORD_SAMPLE();
         COMPENSATION_TRACE_PRINTF(THEKERNEL->streams, ">>TERMINAL: Target comp slot %d still occupied, skip\n", comp_idx);
         return false;
     }
@@ -685,7 +693,7 @@ bool CompensationPreprocessor::compute_terminal_output()
 
     comp_ring[comp_idx].gcode = gcode_pool[comp_idx];
     gcode_pool[comp_idx]->reset(gcode_str);
-    load_balance_metrics.generated_gcode_count++;
+    COMP_METRICS(load_balance_metrics.generated_gcode_count++;);
     last_emitted_uncomp[X_AXIS] = curr.x;
     last_emitted_uncomp[Y_AXIS] = curr.y;
     last_emitted_uncomp[Z_AXIS] = curr.z;
@@ -700,7 +708,7 @@ bool CompensationPreprocessor::compute_terminal_output()
         comp_count++;
     }
     uncomp_tail = uncomp_head;
-    record_load_balance_sample();
+    COMP_RECORD_SAMPLE();
 
     COMPENSATION_TRACE_PRINTF(THEKERNEL->streams, ">>TERMINAL: Added final point comp[%d], comp_ready=%d\n", comp_idx, comp_ready_count);
     return true;
@@ -879,7 +887,7 @@ void CompensationPreprocessor::flush()
 
     uncomp_count = comp_ready_count;
     comp_count = comp_ready_count;
-    record_load_balance_sample();
+    COMP_RECORD_SAMPLE();
 
     COMPENSATION_TRACE_PRINTF(THEKERNEL->streams, ">>FLUSH: EXIT - drain ready uncomp=%d comp=%d\n", uncomp_count, comp_count);
 }
@@ -918,7 +926,7 @@ void CompensationPreprocessor::clear()
     last_emitted_comp[1] = 0.0f;
     last_emitted_comp[2] = 0.0f;
     has_last_emitted = false;
-    record_load_balance_sample();
+    COMP_RECORD_SAMPLE();
     
     COMPENSATION_TRACE_PRINTF(THEKERNEL->streams, ">>CLEAR: Buffer indices reset\n");
     
@@ -954,8 +962,8 @@ Gcode* CompensationPreprocessor::serve_compensated_gcode(bool draining)
         draining ? 1 : 0, comp_count, comp_ready_count, comp_tail);
 
     if (comp_ready_count == 0) {
-        load_balance_metrics.empty_serve_count++;
-        record_load_balance_sample();
+        COMP_METRICS(load_balance_metrics.empty_serve_count++;);
+        COMP_RECORD_SAMPLE();
         COMPENSATION_TRACE_PRINTF(THEKERNEL->streams, ">>SERVE_GCODE: No compensated moves available\n");
         return nullptr;
     }
@@ -964,7 +972,7 @@ Gcode* CompensationPreprocessor::serve_compensated_gcode(bool draining)
     comp_ring[comp_tail].gcode = nullptr;
     comp_tail = (comp_tail + 1) % BUFFER_SIZE;
     comp_ready_count--;
-    load_balance_metrics.served_gcode_count++;
+    COMP_METRICS(load_balance_metrics.served_gcode_count++;);
 
     if (draining) {
         if (comp_count > 0) {
@@ -977,7 +985,7 @@ Gcode* CompensationPreprocessor::serve_compensated_gcode(bool draining)
             is_flushing = false;
         }
     }
-    record_load_balance_sample();
+    COMP_RECORD_SAMPLE();
 
     COMPENSATION_TRACE_PRINTF(THEKERNEL->streams, ">>SERVE_GCODE: EXIT - returning %p, counts now uncomp=%d comp=%d ready=%d\n",
         (void*)result, uncomp_count, comp_count, comp_ready_count);
