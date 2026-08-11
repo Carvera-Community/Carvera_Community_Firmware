@@ -20,6 +20,7 @@ class SpindleControl: public Module {
 
     protected:
         bool spindle_on;
+        bool supports_3dtoolsetter_m4{false};
         bool enable_3dtoolsetter{false};
         void load_3dtoolsetter_config();
         bool handling_gcode;
