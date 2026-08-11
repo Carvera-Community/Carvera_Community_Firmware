@@ -1025,8 +1025,10 @@ void Robot::process_buffered_command(Gcode *gcode)
                     }
                 }
                 COMPENSATION_TRACE_PRINTF(gcode->stream, ">>G40: Flushed %d moves, compensation OFF\n", flush_count);
-                // Emit load-balance report now that the run is complete
+                // Emit load-balance report now that the run is complete (metrics builds only)
+#if CUTTER_COMPENSATION_METRICS_ENABLED
                 compensation_preprocessor->print_load_balance_report(THEKERNEL->streams);
+#endif
                 // Now it's safe to disable compensation
                 compensation_preprocessor->set_compensation(CompensationType::NONE, 0.0f);
                 // Clear any pending suspend state — G40 is an explicit cancel
@@ -1066,7 +1068,9 @@ void Robot::process_buffered_command(Gcode *gcode)
                     gcode->g, (type == CompensationType::LEFT ? "LEFT" : "RIGHT"), radius);
 
                 // Start a fresh metrics window for this compensation run.
+#if CUTTER_COMPENSATION_METRICS_ENABLED
                 compensation_preprocessor->reset_load_balance_metrics();
+#endif
                 
                 // CRITICAL: Initialize uncompensated position to current WCS position
                 // Must convert from MCS to WCS because G-code coordinates are in WCS
