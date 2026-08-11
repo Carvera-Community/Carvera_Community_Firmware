@@ -84,6 +84,8 @@ class Robot : public Module {
 
         // Cutter compensation state query (avoids exposing the preprocessor pointer)
         bool is_compensation_active() const;
+        CompensationType get_compensation_type() const;
+        float get_compensation_radius() const;
 
         BaseSolution* arm_solution;                           // Selected Arm solution ( millimeters to step calculation )
 
