@@ -1,5 +1,7 @@
 [unreleased]
 - Enhancement: Add a tool to check or fix the code formatting according to Google C/C++ style guide.
+
+[2.2.0c-RC1]
 - Enhancement: AnalogSpindleControl now supports optional RPM feedback and Alarm pin functionality, same as PWMSpindleControl. Same configuration keys (spindle.feedback_pin, spindle.pulses_per_rev, spindle.acc_ratio, and spindle.control_smoothing, spindle.alarm_pin)
 - Enhancement: Suspend/resume saves spindle state, stops the spindle on pause, and restores speed only if it was running. This functionality is enabled by default, but can be disabled via config key spindle_suspend_restore_enable.
 - Enhancement: `debugmode` shell command to turn on/off firmware diagnostic tools that are continiously running 
@@ -10,25 +12,25 @@
 - Enhancement: Added improved PID Spindle control that increases performance of carvera C1 spindles. Setup requires following the guide on the documentation page
 - Enhancement: Add endstops repeatability test (M575)
 - Enhancement: Add SD card file integrity check. M576/M576.1 walks all files with stored MD5 hashes. M576.2 checks a single file or recursively checks a directory
-- Fixed: Corrected the Shrink A command G92.4 A0 S0. Now instead of compressing machine coordinates it compresses work coordinates. Backported from Makera firmware
-- Enhancement: Add option to auto-disable on-board wifi AP once machine is connected to external wifi (STA). By default this is turned on, to turn off type config-set sd wifi.ap_auto_disable false into the MDI
-- Fixed: Prevent incorrect current line reporting after a tool change
-- Lint: conformed all error messages to the format ERROR: <message> for easier hooks in the controller
-- Changed: M495 now retracts Z and clears the chuck in separate axis moves before approaching the work origin (new R flag for rotary jobs), and unwinds the 4th axis in work coordinates when returning to work origin, preventing collisions with the workpiece or fixture. Backported from Makera firmware
-- Fixed: Increased max supported ssid length from 27 to 32 characters. Backported from Makera firmware.
-- Compatibility: Makera Probing commands M480.1-M480.10 have been added and call their community firmware equivalent. The inside probing routines are slightly different and start inside the corner instead of above it.  See https://carvera-community.gitbook.io/docs/firmware/supported-commands/mcodes for more information.
-- Changed: increased allowed gcode subcodes from 0-7 to 0-15
-- Fixed: Tool 9999 is a probe in the Makera specific probing commands. Added crash protection to tool 9999 in addition to tool 0 and tool >= 999990. These tool numbers should not be used for non-probes
-- Changed: Machine can not run files if it has not been homed
-- Fixed: inconsistent formatting on commands that respond with `ok`
 - Enhancement: Support for turning On an external connected vacuum via M851/M852. Backported from Makera firmware
+- Enhancement: Add option to auto-disable on-board wifi AP once machine is connected to external wifi (STA). By default this is turned on, to turn off type config-set sd wifi.ap_auto_disable false into the MDI
+- Enhancement: Makera Probing commands M480.1-M480.10 have been added and call their community firmware equivalent. The inside probing routines are slightly different and start inside the corner instead of above it.  See https://carvera-community.gitbook.io/docs/firmware/supported-commands/mcodes for more information.
+- Fixed: Corrected the Shrink A command G92.4 A0 S0. Now instead of compressing machine coordinates it compresses work coordinates. Backported from Makera firmware
+- Fixed: Prevent incorrect current line reporting after a tool change
+- Fixed: Increased max supported ssid length from 27 to 32 characters. Backported from Makera firmware.
+- Fixed: any call to a variable out of range will now return a machine halt. 
+- Fixed: M494.4 was mistakenly using H instead of E for height below the headstock to probe
+- Fixed: Tool 9999 is a probe in the Makera specific probing commands. Added crash protection to tool 9999 in addition to tool 0 and tool >= 999990. These tool numbers should not be used for non-probes
+- Fixed: inconsistent formatting on commands that respond with `ok`
+- Fixed: If config is set to halt when the lid is opened, the machine will halt if any of the motion motors are moving, or the spindle is on. This change also allows manual changes if the cover is open, but will halt if the machine starts its calibration routine. refactored and signifigantly improved from makera code
+- Changed: Machine can not run files if it has not been homed
 - Changed: reduce PWM period in software spindle speed pwm. Change from Makera
 - Changed: Increased Software based PWM frequency from 50hz to 100hz. Backported from Makera firmware.
 - Changed: uplifted the makera communication protocol from their PRs. This should make it so that the community firmware works with makera studio at a basic level
-- Fixed: If config is set to halt when the lid is opened, the machine will halt if any of the motion motors are moving, or the spindle is on. This change also allows manual changes if the cover is open, but will halt if the machine starts its calibration routine. refactored and signifigantly improved from makera code
 - Changed: improved M118.1 P command return to give more information. M118.1 P#101 now returns #101 = (value), will also return #101+3 = (value)
-- Fixed: any call to a variable out of range will now return a machine halt. 
-- Fixed: M494.4 was mistakenly using H instead of E for height below the headstock to probe
+- Changed: increased allowed gcode subcodes from 0-7 to 0-15
+- Changed: conformed all error messages to the format ERROR: <message> for easier hooks in the controller
+- Changed: M495 now retracts Z and clears the chuck in separate axis moves before approaching the work origin (new R flag for rotary jobs), and unwinds the 4th axis in work coordinates when returning to work origin, preventing collisions with the workpiece or fixture. Backported from Makera firmware
 
 [2.1.0c]
 - Fixed: Unused Variables removed

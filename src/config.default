@@ -66,7 +66,7 @@ delta_step_pin								1.18			# Pin for delta stepper step signal
 delta_dir_pin								1.20!			# Pin for delta stepper direction
 delta_en_pin								3.26			# Pin for delta enable
 #delta_max_rate								10800.0			# mm/min transform from degree/min
-#delta_acceleration							360			    # degree/secÂ²
+#delta_acceleration							360			    # degree/sec^2
 delta_steps_per_mm							26.666667			# may be steps per degree for example (26.67)
 #delta_steps_per_mm							44.444444			# may be steps per degree for example (26.67)
 
@@ -75,7 +75,7 @@ epsilon_step_pin							1.21			# Pin for delta stepper step signal
 epsilon_dir_pin								1.23			# Pin for delta stepper direction
 epsilon_en_pin								1.30			# Pin for delta enable
 #epsilon_max_rate							100.0			# mm/min
-#epsilon_acceleration						10.0			# mm/secÂ²
+#epsilon_acceleration						10.0			# mm/sec^2
 epsilon_steps_per_mm						43200			# 1:27 rate may be steps per degree for example (43200)
 
 # WIFI
