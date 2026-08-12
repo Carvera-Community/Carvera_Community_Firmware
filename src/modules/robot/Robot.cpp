@@ -648,6 +648,22 @@ void Robot::on_gcode_received(void *argument)
         }
     };
 
+    auto clear_comp_state_for_halt = [this]() {
+        // Avoid sticky compensation across $X unlock / next program after a guard halt.
+        compensation_preprocessor->set_compensation(CompensationType::NONE, 0.0f);
+        this->next_command_is_MCS = false;
+    };
+
+    // G53 is rewritten upstream into a G0/G1 plus next_command_is_MCS, so guard on
+    // that flag as well to reliably reject machine-coordinate moves while comp is on.
+    if (this->next_command_is_MCS && gcode->has_g && (gcode->g == 0 || gcode->g == 1 || gcode->g == 2 || gcode->g == 3)) {
+        clear_comp_state_for_halt();
+        THEKERNEL->streams->printf("ERROR: G53 is not supported while G41/G42 compensation is active. Issue G40 first.\n");
+        THEKERNEL->set_halt_reason(MANUAL);
+        THEKERNEL->call_event(ON_HALT, nullptr);
+        return;
+    }
+
     // As compensation behavior matures, command order will be reassembled explicitly.
     // For now, non-motion commands pass through unless explicitly blocked as unsafe
     // while compensation is active.
@@ -661,6 +677,7 @@ void Robot::on_gcode_received(void *argument)
             }
             if (requested_wcs != current_wcs) {
                 THEKERNEL->streams->printf("ERROR: G5x work coordinate changes are not supported while G41/G42 compensation is active. Issue G40 first.\n");
+                clear_comp_state_for_halt();
                 THEKERNEL->set_halt_reason(MANUAL);
                 THEKERNEL->call_event(ON_HALT, nullptr);
                 return;
@@ -670,12 +687,14 @@ void Robot::on_gcode_received(void *argument)
         // Reject absolute/relative mode changes only when they would alter active mode.
         if (gcode->has_g && gcode->g == 90 && !this->absolute_mode) {
             THEKERNEL->streams->printf("ERROR: G90 (absolute mode) is not supported while G41/G42 compensation is active. Issue G40 first.\n");
+            clear_comp_state_for_halt();
             THEKERNEL->set_halt_reason(MANUAL);
             THEKERNEL->call_event(ON_HALT, nullptr);
             return;
         }
         if (gcode->has_g && gcode->g == 91 && this->absolute_mode) {
             THEKERNEL->streams->printf("ERROR: G91 (relative mode) is not supported while G41/G42 compensation is active. Issue G40 first.\n");
+            clear_comp_state_for_halt();
             THEKERNEL->set_halt_reason(MANUAL);
             THEKERNEL->call_event(ON_HALT, nullptr);
             return;
@@ -713,6 +732,7 @@ void Robot::on_gcode_received(void *argument)
 
         if (gcode->has_m && is_blocked_mcode_while_comp(gcode->m)) {
             THEKERNEL->streams->printf("ERROR: M%d is not supported while G41/G42 compensation is active. Issue G40 first.\n", gcode->m);
+            clear_comp_state_for_halt();
             THEKERNEL->set_halt_reason(MANUAL);
             THEKERNEL->call_event(ON_HALT, nullptr);
             return;
@@ -720,6 +740,7 @@ void Robot::on_gcode_received(void *argument)
 
         if (gcode->has_g && is_blocked_gcode_while_comp(gcode->g)) {
             THEKERNEL->streams->printf("ERROR: G%d is not supported while G41/G42 compensation is active. Issue G40 first.\n", gcode->g);
+            clear_comp_state_for_halt();
             THEKERNEL->set_halt_reason(MANUAL);
             THEKERNEL->call_event(ON_HALT, nullptr);
             return;
