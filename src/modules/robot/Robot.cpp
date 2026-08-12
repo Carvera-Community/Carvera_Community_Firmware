@@ -949,6 +949,8 @@ void Robot::process_buffered_command(Gcode *gcode)
                 this->select_plane(X_AXIS, Y_AXIS, Z_AXIS);
                 break;
             case 18:
+                if (gcode->g == 18) this->select_plane(X_AXIS, Z_AXIS, Y_AXIS);
+                else this->select_plane(Y_AXIS, Z_AXIS, X_AXIS);
             case 19:
                 if (compensation_preprocessor->is_active()) {
                     // Freeze the current compensation offset and
@@ -982,8 +984,6 @@ void Robot::process_buffered_command(Gcode *gcode)
                     THEKERNEL->streams->printf("INFO: G41/G42 compensation frozen for G%d plane "
                         "(offset carried as fixed translation; live compensation resumes on G17)\n", gcode->g);
                 }
-                if (gcode->g == 18) this->select_plane(X_AXIS, Z_AXIS, Y_AXIS);
-                else this->select_plane(Y_AXIS, Z_AXIS, X_AXIS);
                 break;
             // Inch mode is broken see https://github.com/Carvera-Community/Carvera_Community_Firmware/issues/209
             // case 20: this->inch_mode = true;   break;
@@ -1103,10 +1103,7 @@ void Robot::process_buffered_command(Gcode *gcode)
                 break;
 
             case 90: this->absolute_mode = true; this->e_absolute_mode = true; break;
-            case 91:
-                this->absolute_mode = false;
-                this->e_absolute_mode = false;
-                break;
+            case 91: this->absolute_mode = false; this->e_absolute_mode = false; break;
 
             case 92: {
                 if(gcode->subcode == 1 || gcode->subcode == 2 || gcode->get_num_args() == 0) {
