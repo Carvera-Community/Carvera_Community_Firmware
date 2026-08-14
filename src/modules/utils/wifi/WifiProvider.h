@@ -69,7 +69,11 @@ private:
 
     void on_pin_rise();
     void receive_wifi_data();
-    bool queue_makera_payload(const char *data, uint16_t len);
+    bool process_makera_byte(uint8_t received);
+    void reset_makera_command_parser();
+    bool makera_cmd_queue_push(const char *data, uint16_t len);
+    void makera_cmd_queue_clear();
+    bool makera_cmd_queue_empty() const;
     unsigned int crc16_ccitt(unsigned char *data, unsigned int len);
     int CheckFilePacket(char** buf);
 
@@ -111,11 +115,13 @@ private:
     	volatile bool query_flag:1;
     	volatile bool diagnose_flag:1;
     	volatile bool has_data_flag:1;
-    	// FILE_START only: payload stays in WifiSerialbuff until dispatched so
-    	// following file-transfer bytes are not parsed as command frames.
-    	volatile bool makera_command_pending:1;
+    	// Pause RX after FILE_START is queued so file-transfer bytes stay in
+    	// the ESP until upload_command() reads them via gets().
+    	volatile bool makera_pause_rx:1;
     };
-    uint16_t makera_pending_payload_len;
+    uint16_t makera_header;
+    uint16_t makera_received;
+    uint16_t makera_data_length;
     ParseState currentState = WAIT_HEADER;    
     int ptrData;
     int ptr_xbuff;
