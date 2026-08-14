@@ -65,6 +65,7 @@ Conveyor::Conveyor()
     flush= false;
     continuous_mode = 0;
     hold_queue= false;
+	abort_motion = false;
 }
 
 void Conveyor::on_module_loaded()
@@ -132,6 +133,22 @@ bool Conveyor::is_idle() const
     return false;
 }
 
+void Conveyor::request_motion_abort()
+{
+    abort_motion = true;
+    allow_fetch = false;
+    flush = true;
+    for (auto &actuator : THEROBOT->actuators) {
+        actuator->stop_moving();
+    }
+}
+
+void Conveyor::clear_motion_abort()
+{
+    flush = false;
+    abort_motion = false;
+}
+
 // Wait for the queue to be empty and for all the jobs to finish in step ticker
 void Conveyor::wait_for_idle(bool wait_for_motors)
 {
@@ -157,25 +174,26 @@ void Conveyor::wait_for_idle(bool wait_for_motors)
 /*
  * push the pre-prepared head block onto the queue
  */
-void Conveyor::queue_head_block()
+bool Conveyor::queue_head_block()
 {
     // upstream caller will block on this until there is room in the queue
-    while (queue.is_full() && !THEKERNEL->is_halted()) {
+    while (queue.is_full() && !THEKERNEL->is_halted() && !motion_abort_requested()) {
         //check_queue();
         THEKERNEL->call_event(ON_IDLE, this); // will call check_queue();
     }
 
-    if(THEKERNEL->is_halted()) {
+    if(THEKERNEL->is_halted() || motion_abort_requested()) {
         // we do not want to stick more stuff on the queue if we are in halt state
         // clear and release the block on the head
         queue.head_ref()->clear();
-        return; // if we got a halt then we are done here
+        return false;
     }
 
     queue.produce_head();
 
     // not sure if this is the correct place but we need to turn on the motors if they were not already on
     THEKERNEL->call_event(ON_ENABLE, (void*)1); // turn all enable pins on
+    return true;
 }
 
 void Conveyor::check_queue(bool force)

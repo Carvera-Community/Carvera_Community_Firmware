@@ -106,6 +106,9 @@ CPPSRCS1 := $(filter-out \
 	$(SRC)/modules/communication/RemoteTransfer.cpp \
 ,$(CPPSRCS1))
 endif
+ifeq "$(STREAMED_JOB_PLAYBACK)" "1"
+DEFINES += -DSTREAMED_JOB_PLAYBACK
+endif
 ifeq "$(NONETWORK)" "1"
 	CPPSRCS2 = $(filter-out $(SRC)/libs/Network/%,$(CPPSRCS1))
 else

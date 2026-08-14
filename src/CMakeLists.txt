@@ -24,7 +24,8 @@ set(_firmware_definitions
 )
 foreach(_optional_definition
         SERIAL_RX_DMA
-        REMOTE_SETTINGS_TRANSFER)
+        REMOTE_SETTINGS_TRANSFER
+        STREAMED_JOB_PLAYBACK)
     if(${_optional_definition})
         list(APPEND _firmware_definitions ${_optional_definition})
     endif()
