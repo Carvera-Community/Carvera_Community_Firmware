@@ -44,6 +44,7 @@ class Laser : public Module{
         float laser_minimum_power; // value used to tickle the laser on moves.  Also minimum value for auto-scaling
         float laser_maximum_s_value; // Value of S code that will represent max power
         float scale;
+        bool handling_gcode;
 
         int32_t ms_per_tick; // ms between each ticks, depends on PWM frequency
 

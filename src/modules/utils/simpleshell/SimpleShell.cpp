@@ -483,7 +483,7 @@ void SimpleShell::on_console_line_received( void *argument )
         		|| cmd == "goto") {
             // these are handled by Player module
 
-        } else if (cmd == "laser") {
+        } else if (cmd == "laser" || cmd == "laserabort") {
             // these are handled by Laser module
 
         } else if (cmd.substr(0, 2) == "ok") {

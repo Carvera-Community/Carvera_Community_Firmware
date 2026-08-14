@@ -44,11 +44,20 @@
 #define laser_module_max_power_checksum         CHECKSUM("laser_module_max_power")
 #define laser_module_maximum_s_value_checksum   CHECKSUM("laser_module_maximum_s_value")
 
+namespace {
+bool is_air_or_z1()
+{
+    const Machine model = THEKERNEL->factory_set->MachineModel;
+    return model == CARVERA_AIR || model == Z1 || model == Z1PRO;
+}
+}
+
 Laser::Laser()
 {
     laser_on = false;
     scale = 1;
     testing = false;
+    handling_gcode = false;
 }
 
 void Laser::on_module_loaded()
@@ -150,7 +159,7 @@ void Laser::on_console_line_received( void *argument )
         if (laser_cmd == "on") {
         	THEKERNEL->set_laser_mode(true);
 			
-        	if(CARVERA_AIR == THEKERNEL->factory_set->MachineModel)
+            if(is_air_or_z1())
         	{
 	        	// turn off power fan 
 	            char buf[32];
@@ -173,10 +182,12 @@ void Laser::on_console_line_received( void *argument )
 	            Gcode gc3(g3, &(StreamOutput::NullStream));
 	            THEKERNEL->call_event(ON_GCODE_RECEIVED, &gc3);
 				// turn on spindle fan 
-	            n = snprintf(buf, sizeof(buf), "M811S40");
-	            string g4(buf, n);
-	            Gcode gc4(g4, &(StreamOutput::NullStream));
-	            THEKERNEL->call_event(ON_GCODE_RECEIVED, &gc4);
+	            if (CARVERA_AIR == THEKERNEL->factory_set->MachineModel) {
+	                n = snprintf(buf, sizeof(buf), "M811S40");
+	                string g4(buf, n);
+	                Gcode gc4(g4, &(StreamOutput::NullStream));
+	                THEKERNEL->call_event(ON_GCODE_RECEIVED, &gc4);
+	            }
 	        } 
  	
         	// turn on laser pin
@@ -185,7 +196,7 @@ void Laser::on_console_line_received( void *argument )
         } else if (laser_cmd == "off") {
         	THEKERNEL->set_laser_mode(false);
         	
-        	if(CARVERA_AIR == THEKERNEL->factory_set->MachineModel)
+            if(is_air_or_z1())
         	{
 	        	// turn off power fan 
 	            char buf[32];
@@ -241,8 +252,11 @@ void Laser::on_gcode_received(void *argument)
 
     // M codes execute immediately
     if (gcode->has_m) {
-    	if (gcode->m == 3 && THEKERNEL->get_laser_mode())
+        if (gcode->m == 3 && THEKERNEL->get_laser_mode())
 		{
+			if (handling_gcode) return;
+			handling_gcode = true;
+
     		THECONVEYOR->wait_for_idle();
             // M3 with S value provided: set speed
             if (gcode->has_letter('S'))
@@ -253,18 +267,23 @@ void Laser::on_gcode_received(void *argument)
         	this->laser_pin->set(true);
     		this->laser_on = true;
     		this->testing = false;
+			handling_gcode = false;
     		// THEKERNEL->streams->printf("Laser on, S: %1.4f\n", THEROBOT->get_s_value());
-		} else if (gcode->m == 5) {
+		} else if (gcode->m == 5 && THEKERNEL->get_laser_mode()) {
+			if (handling_gcode) return;
+			handling_gcode = true;
+
     		THECONVEYOR->wait_for_idle();
 			this->laser_on = false;
 			this->testing = false;
         	// turn on laser pin
         	this->laser_pin->set(false);
+			handling_gcode = false;
 		} else if (gcode->m == 321 && !THEKERNEL->get_laser_mode()) { // change to laser mode
 			THECONVEYOR->wait_for_idle();
         	THEKERNEL->set_laser_mode(true);
         	
-        	if(CARVERA_AIR == THEKERNEL->factory_set->MachineModel)
+            if(is_air_or_z1())
         	{
 	        	// turn off power fan 
 	            char buf[32];
@@ -287,10 +306,12 @@ void Laser::on_gcode_received(void *argument)
 	            Gcode gc3(g3, &(StreamOutput::NullStream));
 	            THEKERNEL->call_event(ON_GCODE_RECEIVED, &gc3);
 				// turn on spindle fan 
-	            n = snprintf(buf, sizeof(buf), "M811S40");
-	            string g4(buf, n);
-	            Gcode gc4(g4, &(StreamOutput::NullStream));
-	            THEKERNEL->call_event(ON_GCODE_RECEIVED, &gc4);
+	            if (CARVERA_AIR == THEKERNEL->factory_set->MachineModel) {
+	                n = snprintf(buf, sizeof(buf), "M811S40");
+	                string g4(buf, n);
+	                Gcode gc4(g4, &(StreamOutput::NullStream));
+	                THEKERNEL->call_event(ON_GCODE_RECEIVED, &gc4);
+	            }
 	        }
     	
         	
@@ -306,7 +327,7 @@ void Laser::on_gcode_received(void *argument)
 	        	{
 	                n = snprintf(buf, sizeof(buf), "M6T-1");
 	            }
-	            else if(CARVERA_AIR == THEKERNEL->factory_set->MachineModel)
+	            else if(is_air_or_z1())
         		{
                 	n = snprintf(buf, sizeof(buf), "M6T8888");
         		}
@@ -326,7 +347,7 @@ void Laser::on_gcode_received(void *argument)
         	THECONVEYOR->wait_for_idle();
         	THEKERNEL->set_laser_mode(false);
 			
-        	if(CARVERA_AIR == THEKERNEL->factory_set->MachineModel)
+            if(is_air_or_z1())
         	{
 	        	// turn off power fan 
 	            char buf[32];
@@ -492,7 +513,7 @@ void Laser::on_halt(void *argument)
         set_laser_power(0);
         this->laser_on = false;
     	THEKERNEL->set_laser_mode(false);
-    	if(CARVERA_AIR == THEKERNEL->factory_set->MachineModel)
+        if(is_air_or_z1())
     	{
         	// turn off power fan 
             char buf[32];

@@ -124,6 +124,7 @@ temperatureswitch.spindle.switch spindlefan
 
 # Homing and travel limits
 cover_endstop 1.9!v
+stepper_alarm_settle_ms 300
 
 # Probing and bed leveling
 zprobe.debounce_ms 1
@@ -154,6 +155,10 @@ spindle.pulses_per_rev 4
 spindle.control_P 0.00001
 spindle.control_I 0.00005
 spindle.control_D 0.00005
+spindle.control_P_scale 0.37
+spindle.control_D_scale 0.95
+spindle.delayed_D_control true
+spindle.min_running_pwm 0.1
 spindle.acc_ratio 1
 spindle.alarm_pin 0.19^
 
@@ -187,6 +192,7 @@ coordinate.clearance_z -1.0
 soft_endstop.enable false
 soft_endstop.x_min -206.0
 soft_endstop.y_min -206.0
+soft_endstop.rotary_y_min -160.0
 soft_endstop.z_min -102.0
 
 # Controller link and manual tool handling

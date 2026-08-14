@@ -43,8 +43,10 @@ void SpindleControl::on_gcode_received(void *argument)
         }
         else if (gcode->m == 3)
         {
-        	if(THEKERNEL->is_halted()) return; // if in halted state ignore any commands
-        	if (!THEKERNEL->get_laser_mode()) {
+            if(THEKERNEL->is_halted()) return; // if in halted state ignore any commands
+            if (handling_gcode) return;
+
+            if (!THEKERNEL->get_laser_mode()) {
                 // current tool number and tool offset
                 struct tool_status tool;
                 bool tool_ok = PublicData::get_value( atc_handler_checksum, get_tool_status_checksum, &tool );
@@ -55,10 +57,14 @@ void SpindleControl::on_gcode_received(void *argument)
             	if (!tool_ok) {
         			THEKERNEL->set_halt_reason(MANUAL);
         			THEKERNEL->call_event(ON_HALT, nullptr);
-        			THEKERNEL->streams->printf("ERROR: Spindle cannot run without a valid tool\n");
-        			return;
-            	}
+                THEKERNEL->streams->printf("ERROR: Spindle cannot run without a valid tool\n");
+                return;
+                }
+            }
 
+            handling_gcode = true;
+
+            if (!THEKERNEL->get_laser_mode()) {
                 THECONVEYOR->wait_for_idle();
 
                 // M3 with S value provided: set speed
@@ -93,10 +99,14 @@ void SpindleControl::on_gcode_received(void *argument)
 			    	PublicData::set_value( switch_checksum, extendout_checksum, state_value_checksum, &pad );
 			    }
         	}
+            handling_gcode = false;
         }
         else if (gcode->m == 5)
         {
-        	if (!THEKERNEL->get_laser_mode()) {
+            if (handling_gcode) return;
+            handling_gcode = true;
+
+            if (!THEKERNEL->get_laser_mode()) {
                 THECONVEYOR->wait_for_idle();
 
                 // M5: spindle off
@@ -116,6 +126,7 @@ void SpindleControl::on_gcode_received(void *argument)
         		bool b = false;
                 PublicData::set_value( switch_checksum, extendout_checksum, state_checksum, &b );
         	}
+            handling_gcode = false;
         }
         else if (gcode->m == 223)
         {	// M222 - rpm override percentage

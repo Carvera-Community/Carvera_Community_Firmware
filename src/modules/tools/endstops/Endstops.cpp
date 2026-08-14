@@ -25,6 +25,7 @@
 #include "libs/StreamOutput.h"
 #include "PublicDataRequest.h"
 #include "EndstopsPublicAccess.h"
+#include "us_ticker_api.h"
 #include "StreamOutputPool.h"
 #include "StepTicker.h"
 #include "BaseSolution.h"
@@ -35,6 +36,7 @@
 
 #include <ctype.h>
 #include <algorithm>
+#include <limits>
 #include <vector>
 
 // OLD deprecated syntax
@@ -65,11 +67,14 @@ enum DEFNS { MIN_PIN, MAX_PIN, MAX_TRAVEL, FAST_RATE, SLOW_RATE, RETRACT, DIRECT
 
 #define endstop_debounce_count_checksum  CHECKSUM("endstop_debounce_count")
 #define endstop_debounce_ms_checksum     CHECKSUM("endstop_debounce_ms")
+#define stepper_alarm_settle_ms_checksum CHECKSUM("stepper_alarm_settle_ms")
 
 #define home_z_first_checksum            CHECKSUM("home_z_first")
 #define homing_order_checksum            CHECKSUM("homing_order")
 #define move_to_origin_checksum          CHECKSUM("move_to_origin_after_home")
 #define park_after_home_checksum         CHECKSUM("park_after_home")
+#define soft_endstop_checksum            CHECKSUM("soft_endstop")
+#define rotary_y_min_checksum            CHECKSUM("rotary_y_min")
 
 #define alpha_trim_checksum              CHECKSUM("alpha_trim_mm")
 #define beta_trim_checksum               CHECKSUM("beta_trim_mm")
@@ -95,6 +100,36 @@ enum DEFNS { MIN_PIN, MAX_PIN, MAX_TRAVEL, FAST_RATE, SLOW_RATE, RETRACT, DIRECT
 #define motor_alarm_checksum               CHECKSUM("limit_enable")
 
 #define cover_endstop_checksum              CHECKSUM("cover_endstop")
+
+namespace {
+bool rotary_clearance_active(bool rotary_installed, float clearance_y_min)
+{
+    return rotary_installed && !isnan(clearance_y_min);
+}
+
+uint32_t y_before_x_homing_order(uint32_t order, bool clearance_active)
+{
+    if (!clearance_active)
+        return order;
+
+    uint32_t x_shift = 18;
+    uint32_t y_shift = 18;
+    for (uint32_t shift = 0; shift < 18; shift += 3) {
+        const uint32_t axis = (order >> shift) & 0x07U;
+        if (axis == 1U)
+            x_shift = shift;
+        if (axis == 2U)
+            y_shift = shift;
+    }
+
+    if (x_shift >= y_shift || y_shift == 18)
+        return order;
+
+    const uint32_t axis_mask = (0x07U << x_shift) | (0x07U << y_shift);
+    return (order & ~axis_mask) | (2U << x_shift) | (1U << y_shift);
+}
+
+}
 
 #define STEPPER THEROBOT->actuators
 #define STEPS_PER_MM(a) (STEPPER[a]->get_steps_per_mm())
@@ -485,6 +520,13 @@ void Endstops::get_global_configs()
     // NOTE the debounce count is in milliseconds so probably does not need to beset anymore
     this->debounce_ms= THEKERNEL->config->value(endstop_debounce_ms_checksum)->as_number(10);
     this->debounce_count= THEKERNEL->config->value(endstop_debounce_count_checksum)->as_number(100);
+    const int stepper_alarm_settle_ms =
+        THEKERNEL->config->value(stepper_alarm_settle_ms_checksum)->as_int(0);
+    constexpr int max_stepper_alarm_settle_ms =
+        static_cast<int>(std::numeric_limits<uint32_t>::max() / 1000U);
+    this->stepper_alarm_settle_us = stepper_alarm_settle_ms > 0
+        ? static_cast<uint32_t>(std::min(stepper_alarm_settle_ms, max_stepper_alarm_settle_ms)) * 1000U
+        : 0;
 
     this->is_corexy= THEKERNEL->config->value(corexy_homing_checksum)->as_bool(false);
     this->is_delta=  THEKERNEL->config->value(delta_homing_checksum)->as_bool(false);
@@ -492,6 +534,8 @@ void Endstops::get_global_configs()
     this->is_scara=  THEKERNEL->config->value(scara_homing_checksum)->as_bool(false);
 
     this->home_z_first= THEKERNEL->config->value(home_z_first_checksum)->as_bool(true);
+    this->rotary_clearance_y_min = THEKERNEL->config->value(
+        soft_endstop_checksum, rotary_y_min_checksum)->as_number(NAN);
 
     this->trim_mm[0] = THEKERNEL->config->value(alpha_trim_checksum)->as_number(0);
     this->trim_mm[1] = THEKERNEL->config->value(beta_trim_checksum)->as_number(0);
@@ -564,23 +608,23 @@ void Endstops::on_idle(void *argument)
     
     if(THEKERNEL->is_halted()) return;
     
-    for(auto& i : motor_alarms) {
-		// check min and max endstops
-		if(debounced_get(&i->pin)) {
-			// endstop triggered
-			if(!THEKERNEL->is_grbl_mode()) {
-				THEKERNEL->streams->printf("%c motor alarm triggered - reset required\n", i->axis);
-			}else{
-				THEKERNEL->streams->printf("ERROR: %c motor alarm triggered -  reset required\n", i->axis);
-			}
-			i->debounce= 0;
-			// disables heaters and motors, ignores incoming Gcode and flushes block queue
-			THEKERNEL->set_halt_reason(MOTOR_ERROR_X + i->axis_index);
-			THEKERNEL->call_event(ON_HALT, nullptr);
-			return;
-		}
-	}
-	
+    if (THEKERNEL->stepper_alarms_enabled(us_ticker_read(), stepper_alarm_settle_us)) {
+        for (auto& alarm : motor_alarms) {
+            if (debounced_get(&alarm->pin)) {
+                if (!THEKERNEL->is_grbl_mode()) {
+                    THEKERNEL->streams->printf("%c stepper alarm triggered - reset required\n", alarm->axis);
+                } else {
+                    THEKERNEL->streams->printf("ERROR: %c stepper alarm triggered - reset required\n", alarm->axis);
+                }
+                alarm->debounce = 0;
+                // Disable heaters and motors, ignore incoming G-code and flush the motion queue.
+                THEKERNEL->set_halt_reason(MOTOR_ERROR_X + alarm->axis_index);
+                THEKERNEL->call_event(ON_HALT, nullptr);
+                return;
+            }
+        }
+    }
+
     if(this->status != NOT_HOMING) {
         // don't check while homing
         return;
@@ -772,6 +816,19 @@ uint32_t Endstops::read_endstops(uint32_t dummy)
 void Endstops::home_xy()
 {
     if(axis_to_home[X_AXIS] && axis_to_home[Y_AXIS]) {
+        if(rotary_clearance_active(THEKERNEL->axis_is_on[A_AXIS], rotary_clearance_y_min)) {
+            float delta[3] {0, homing_axis[Y_AXIS].max_travel, 0};
+            if(homing_axis[Y_AXIS].home_direction) delta[Y_AXIS]= -delta[Y_AXIS];
+            THEROBOT->delta_move(delta, homing_axis[Y_AXIS].fast_rate, 3);
+
+            delta[X_AXIS]= homing_axis[X_AXIS].max_travel;
+            delta[Y_AXIS]= 0;
+            if(homing_axis[X_AXIS].home_direction) delta[X_AXIS]= -delta[X_AXIS];
+            THEROBOT->delta_move(delta, homing_axis[X_AXIS].fast_rate, 3);
+            THECONVEYOR->wait_for_idle();
+            return;
+        }
+
         // Home XY first so as not to slow them down by homing Z at the same time
         float delta[3] {homing_axis[X_AXIS].max_travel, homing_axis[Y_AXIS].max_travel, 0};
         if(homing_axis[X_AXIS].home_direction) delta[X_AXIS]= -delta[X_AXIS];
@@ -860,10 +917,9 @@ void Endstops::check_4th(char *data)
 }
 void Endstops::home(axis_bitmap_t a)
 {
-	bool axis_is_on[homing_axis.size()];
 	for (size_t i = X_AXIS; i < homing_axis.size(); ++i)
 	{
-		axis_is_on[i] = false;
+		if (a[i]) THEKERNEL->axis_is_on[i] = false;
 	}
 	
     // reset debounce counts for all endstops
@@ -883,6 +939,8 @@ void Endstops::home(axis_bitmap_t a)
 
     THEROBOT->disable_segmentation= true; // we must disable segmentation as this won't work with it enabled
 
+    const bool detect_rotary_before_xy = !isnan(rotary_clearance_y_min);
+
     if(!home_z_first) home_xy();
 
     if(axis_to_home[Z_AXIS]) {
@@ -892,9 +950,16 @@ void Endstops::home(axis_bitmap_t a)
         THEROBOT->delta_move(delta, homing_axis[Z_AXIS].fast_rate, 3);
         // wait for Z
         THECONVEYOR->wait_for_idle();
+        if(!homing_axis[Z_AXIS].pin_info->triggered) {
+            this->status = NOT_HOMING;
+            THEKERNEL->set_halt_reason(HOME_FAIL);
+            THEKERNEL->call_event(ON_HALT, nullptr);
+            THEROBOT->disable_segmentation = false;
+            return;
+        }
     }
 
-    if(home_z_first) home_xy();
+    if(home_z_first && !detect_rotary_before_xy) home_xy();
     if(THEKERNEL->factory_set->FuncSetting & (1<<0))	//A axis home enabled
     {
     	//We first move A B and C back a certain distance because the triggering gap of the A B and C is relatively long
@@ -923,12 +988,12 @@ void Endstops::home(axis_bitmap_t a)
 		                THECONVEYOR->wait_for_idle();
 		                if(!homing_axis[i].pin_info->pin.get())
 		                {
-		                	axis_is_on[i] = true;
+                            THEKERNEL->axis_is_on[i] = true;
 		                }
 	                }
 	                else
 	                {
-	                	axis_is_on[i] = true;
+                        THEKERNEL->axis_is_on[i] = true;
 	                }
 	            }
 	        }
@@ -938,7 +1003,7 @@ void Endstops::home(axis_bitmap_t a)
     	// potentially home A B and C individually
 	    if(homing_axis.size() > 3){
 	        for (size_t i = A_AXIS; i < homing_axis.size(); ++i) {
-	            if(axis_to_home[i] && (axis_is_on[i] == true)) {
+	            if(axis_to_home[i] && (THEKERNEL->axis_is_on[i] == true)) {
 	                // now home A B or C
 	                float delta[i+1];
 	                for (size_t j = 0; j <= i; ++j) delta[j]= 0;
@@ -971,6 +1036,8 @@ void Endstops::home(axis_bitmap_t a)
 	    }
 	}
 
+    if(home_z_first && detect_rotary_before_xy) home_xy();
+
     // check that the endstops were hit and it did not stop short for some reason
     // if the endstop is not triggered then enter ALARM state
     // with deltas we check all three axis were triggered, but at least one of XYZ must be set to home
@@ -989,7 +1056,7 @@ void Endstops::home(axis_bitmap_t a)
     // also check ABC
     if(homing_axis.size() > 3){
         for (size_t i = A_AXIS; i < homing_axis.size(); ++i) {
-            if(axis_to_home[i] && !homing_axis[i].pin_info->triggered && (axis_is_on[i] == true)) {
+            if(axis_to_home[i] && !homing_axis[i].pin_info->triggered && (THEKERNEL->axis_is_on[i] == true)) {
                 this->status = NOT_HOMING;
                 THEKERNEL->set_halt_reason(HOME_FAIL);
                 THEKERNEL->call_event(ON_HALT, nullptr);
@@ -1342,12 +1409,16 @@ void Endstops::process_home_command(Gcode* gcode)
         return;
     }
 
+    const bool needs_rotary_clearance = rotary_clearance_active(
+        THEKERNEL->axis_is_on[A_AXIS], rotary_clearance_y_min) && haxis[X_AXIS] && haxis[Y_AXIS];
+    const uint32_t effective_homing_order = y_before_x_homing_order(homing_order, needs_rotary_clearance);
+
     // do the actual homing
-    if(homing_order != 0 && !is_scara) {
+    if(effective_homing_order != 0 && !is_scara) {
         // if an order has been specified do it in the specified order
         // homing order is 0bfffeeedddcccbbbaaa where aaa is 1,2,3,4,5,6 to specify the first axis (XYZABC), bbb is the second and ccc is the third etc
         // eg 0b0101011001010 would be Y X Z A, 011 010 001 100 101 would be  B A X Y Z
-        for (uint32_t m = homing_order; m != 0; m >>= 3) {
+        for (uint32_t m = effective_homing_order; m != 0; m >>= 3) {
             uint32_t a= (m & 0x07)-1; // axis to home
             if(a < homing_axis.size() && haxis[a]) { // if axis is selected to home
                 axis_bitmap_t bs;
