@@ -129,6 +129,8 @@ stepper_alarm_settle_ms 300
 # Probing and bed leveling
 zprobe.debounce_ms 1
 zprobe.calibrate_pin 1.10^
+# Stop probe TLO calibration when the electronic tool setter triggers.
+zprobe.require_probe_trigger_for_calibration false
 leveling-strategy.rectangular-grid.enable true
 leveling-strategy.rectangular-grid.size 15
 leveling-strategy.rectangular-grid.x_size 50

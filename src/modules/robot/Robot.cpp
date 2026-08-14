@@ -2375,7 +2375,7 @@ bool Robot::is_homed_all_axes()
     }
     for (int i = X_AXIS; i <= Z_AXIS; ++i) {
         if (!this->is_homed(i)){
-            THEKERNEL->streams->printf("ERROR: Machine has not been homed. Use M888 to disable homed check\n");
+            THEKERNEL->streams->printf("ERROR: Machine has not been homed. Use M887 to disable homed check\n");
             THEKERNEL->set_halt_reason(HOME_FAIL);
             THEKERNEL->call_event(ON_HALT, nullptr);
             return false;

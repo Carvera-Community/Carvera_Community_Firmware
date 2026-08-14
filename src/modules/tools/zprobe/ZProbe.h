@@ -206,6 +206,7 @@ private:
     volatile float calibrate_pin_position;  
     // zprobe.calibrate_safety_margin
     float probe_calibration_safety_margin;
+    bool require_probe_trigger_for_calibration = true;
     // Z position when probe pin triggered        
     volatile float probe_pin_position;
     volatile float calibrate_current_z;

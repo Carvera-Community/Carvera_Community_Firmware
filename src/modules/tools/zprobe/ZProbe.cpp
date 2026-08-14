@@ -49,6 +49,7 @@
 #define probe_height_checksum    CHECKSUM("probe_height")
 #define probe_tip_diameter_checksum CHECKSUM("probe_tip_diameter")
 #define probe_calibration_safety_margin_checksum CHECKSUM("calibration_safety_margin")
+#define require_probe_trigger_for_calibration_checksum CHECKSUM("require_probe_trigger_for_calibration")
 #define toolZeroIs3Axis_checksum  CHECKSUM("tool_zero_is_3axis")
 #define gamma_max_checksum       CHECKSUM("gamma_max")
 #define max_z_checksum           CHECKSUM("max_z")
@@ -116,6 +117,8 @@ void ZProbe::config_load()
     this->calibrate_pin.from_string( THEKERNEL->config->value(zprobe_checksum, calibrate_pin_checksum)->as_string("0.5^" ))->as_input();
     this->debounce_ms    = THEKERNEL->config->value(zprobe_checksum, debounce_ms_checksum)->as_number(0  );
     this->probe_calibration_safety_margin = THEKERNEL->config->value(zprobe_checksum, probe_calibration_safety_margin_checksum)->as_number(0.1F);
+    this->require_probe_trigger_for_calibration = THEKERNEL->config->value(
+        zprobe_checksum, require_probe_trigger_for_calibration_checksum)->as_bool(true);
     this->halt_pending = false;
     this->probe_triggered = false;
 
@@ -193,6 +196,11 @@ void ZProbe::config_load()
 
 void ZProbe::on_main_loop(void *argument)
 {
+    bool keep_3d_probe_powered = CARVERA_AIR == THEKERNEL->factory_set->MachineModel;
+#if defined(MACHINE_FAMILY_Z1)
+    keep_3d_probe_powered = true;
+#endif
+
     // Handle deferred halt event from crash detection
     if (halt_pending) {
         halt_pending = false;
@@ -201,7 +209,7 @@ void ZProbe::on_main_loop(void *argument)
 
     if (check_probe_tool() == 2){
         is_3dprobe_active = true;
-        if (CARVERA_AIR == THEKERNEL->factory_set->MachineModel) {
+        if (keep_3d_probe_powered) {
             bool ignore_on_halt = true;
             PublicData::set_value( switch_checksum, detector_switch_checksum, ignore_on_halt_checksum, &ignore_on_halt );
             bool on = true;
@@ -213,7 +221,7 @@ void ZProbe::on_main_loop(void *argument)
             PublicData::set_value( switch_checksum, detector_switch_checksum, state_checksum, &off );
         }
         is_3dprobe_active = false;    
-        if (CARVERA_AIR == THEKERNEL->factory_set->MachineModel) {
+        if (keep_3d_probe_powered) {
             bool ignore_on_halt = false;
             PublicData::set_value( switch_checksum, detector_switch_checksum, ignore_on_halt_checksum, &ignore_on_halt );
         }
@@ -346,9 +354,8 @@ uint32_t ZProbe::read_calibrate(uint32_t dummy)
 
             if (!probing || probe_detected) {
                 // if we are not probing, e.g. doing a regular TLO calibration,
-                // or we are probing and the probe was detected we signal the
-                // motors to stop, which will preempt any moves on that axis we
-                // do all motors as it may be a delta
+                // or the configured trigger condition is met, stop all motors
+                // as it may be a delta.
                 for (auto &a : THEROBOT->actuators) a->stop_moving();
                 cali_debounce = 0;
             } else {
@@ -955,7 +962,7 @@ void ZProbe::calibrate_Z(Gcode *gcode)
     reset_probe_tracking();
 
     // If calibration is happening with a probe tool, enable tracking of probe position in the read_probe ISR.
-    if (check_probe_tool() > 0) {
+    if (require_probe_trigger_for_calibration && check_probe_tool() > 0) {
         probing = true;
     }
 

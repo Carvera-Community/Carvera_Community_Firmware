@@ -158,6 +158,8 @@ stepper_alarm_settle_ms 300
 # Probing and bed leveling
 zprobe.debounce_ms 1
 zprobe.calibrate_pin 1.10^
+# Stop probe TLO calibration when the electronic tool setter triggers.
+zprobe.require_probe_trigger_for_calibration false
 leveling-strategy.rectangular-grid.enable true
 leveling-strategy.rectangular-grid.size 15
 leveling-strategy.rectangular-grid.x_size 50
@@ -208,8 +210,10 @@ coordinate.anchor2_offset_x 88.5
 coordinate.anchor2_offset_y 45.0
 coordinate.toolrack_offset_x 48.78
 coordinate.toolrack_offset_y 179.74
+coordinate.toolrack_z -108
 coordinate.rotation_offset_x 12.0
 coordinate.rotation_offset_y 85.5
+coordinate.rotation_offset_z 23.0
 coordinate.anchor_length 100.0
 coordinate.worksize_x 300.0
 coordinate.worksize_y 200.0
