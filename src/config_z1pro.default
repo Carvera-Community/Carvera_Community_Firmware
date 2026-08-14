@@ -170,6 +170,7 @@ leveling-strategy.rectangular-grid.only_by_two_corners true
 # Board controls and status light
 second_usb_serial_enable false
 main_button_pin 1.8!^
+e_stop_pin 0.20^
 ps12_pin 2.12
 ps24_pin 3.26
 main_button_LED_R_pin nc
