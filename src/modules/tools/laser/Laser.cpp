@@ -210,6 +210,8 @@ void Laser::on_console_line_received( void *argument )
         } else if (laser_cmd == "test" && THEKERNEL->get_laser_mode()) {
         	this->testing = true;
         }
+    } else if (cmd == "laserabort") {
+        this->on_halt(nullptr);
     }
 }
 
