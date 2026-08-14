@@ -286,3 +286,10 @@ bed_cleaning.park_y -14.6
 bed_cleaning.front_x -2.0
 bed_cleaning.cycles 1
 bed_cleaning.spacing 40 # Distance between successive sweep rows, in mm
+
+# CANopen
+canopen.can_enable true
+canopen.can_bitrate 1000000
+canopen.can_node_id 10
+canopen.slave_node_id 1 # Remote node; the setting name is retained for compatibility
+canopen.can_heartbeat_ms 1000
