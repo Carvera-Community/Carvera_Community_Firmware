@@ -78,6 +78,18 @@ Carvera Community Firmware uses the same guidelines as upstream Smoothieware
 - http://smoothieware.org/developers-guide
 - http://smoothieware.org/contribution-guidlines
 
+When you are working on a pull request we have the following requirements:
+- Pull requests should be limited to one feature, or one bugfix/issue or small set of highly related issues that have real world impact on the machines
+- Pull requests should be standalone and based on the `Dev` branch unless there is a very good reason for them to rely on each other
+- Issues and PR bodies are for human to human communication. 
+  If using AI assistance, you are responsible for reviewing the content and not submitting something that you wouldn't write.
+- The expectation for all PRs is that the submitter has done everything reasonable to review and test the PR on their side. 
+  This includes running the code against your own machine hardware.
+- We allow AI assisted pull requests in this repository. 
+  Please use the Agents.md file if you are using an AI agent and fill out the relevant information in the PR request form
+- Do not scan  in the code base with the express purpose of bulk creating issues/PRs without prior approval from maintainers
+
+
 # Developers
 
 See [DEVELOPER.md](./DEVELOPER.md) for instructions on building the firmware and
