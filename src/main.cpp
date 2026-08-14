@@ -25,6 +25,8 @@
 #include "modules/tools/temperatureswitch/TemperatureSwitch.h"
 #include "modules/tools/drillingcycles/Drillingcycles.h"
 #include "modules/tools/atc/ATCHandler.h"
+#include "modules/tools/accessories/BedCleaning.h"
+#include "modules/tools/accessories/SpindleAccessories.h"
 #if !defined(NO_WIFI_PROVIDER)
 #include "modules/utils/wifi/WifiProvider.h"
 #endif
@@ -184,6 +186,12 @@ void init() {
 
     // ATC Handler
     kernel->add_module( new ATCHandler() );
+    static BedCleaning bed_cleaning_storage;
+    static SpindleAccessories spindle_accessories_storage;
+    kernel->bed_cleaning = &bed_cleaning_storage;
+    kernel->spindle_accessories = &spindle_accessories_storage;
+    kernel->add_module(kernel->bed_cleaning);
+    kernel->add_module(kernel->spindle_accessories);
 
 #if !defined(NO_USB_HOST)
     // This module owns the USB host controller while enabled.
