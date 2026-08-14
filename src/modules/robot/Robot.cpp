@@ -106,6 +106,7 @@
 #define xmin_checksum                      CHECKSUM("x_min")
 #define ymin_checksum                      CHECKSUM("y_min")
 #define zmin_checksum                      CHECKSUM("z_min")
+#define rotary_y_min_checksum              CHECKSUM("rotary_y_min")
 
 #define load_last_wcs_checksum             CHECKSUM("load_last_wcs")
 
@@ -378,6 +379,8 @@ void Robot::load_config()
     soft_endstop_min[X_AXIS] = THEKERNEL->config->value(soft_endstop_checksum, xmin_checksum)->as_number(-371.0F);
     soft_endstop_min[Y_AXIS] = THEKERNEL->config->value(soft_endstop_checksum, ymin_checksum)->as_number(-250.0F);
     soft_endstop_min[Z_AXIS] = THEKERNEL->config->value(soft_endstop_checksum, zmin_checksum)->as_number(-135.0F);
+    rotary_clearance_y_min = THEKERNEL->config->value(
+        soft_endstop_checksum, rotary_y_min_checksum)->as_number(NAN);
 }
 
 uint8_t Robot::register_motor(StepperMotor *motor)
@@ -1715,10 +1718,17 @@ bool Robot::append_milestone(const float target[], float feed_rate, unsigned int
 
     // check soft endstops only for homed axis that are enabled
     if(soft_endstop_enabled && !THEKERNEL->is_zprobing()) {
+        const bool rotary_installed = THEKERNEL->axis_is_on[A_AXIS];
+        float effective_y_min = soft_endstop_min[Y_AXIS];
+        if (rotary_installed && !isnan(rotary_clearance_y_min) &&
+            (isnan(effective_y_min) || rotary_clearance_y_min > effective_y_min)) {
+            effective_y_min = rotary_clearance_y_min;
+        }
         for (int i = 0; i <= Z_AXIS; ++i) {
             if(!is_homed(i)) continue;
+            const float minimum = i == Y_AXIS ? effective_y_min : soft_endstop_min[i];
             if( 
-                ( (!isnan(soft_endstop_min[i]) && transformed_target[i] < soft_endstop_min[i]) && deltas[i] < 0 ) 
+                ( (!isnan(minimum) && transformed_target[i] < minimum) && deltas[i] < 0 )
                 || 
                 ( (!isnan(soft_endstop_max[i]) && transformed_target[i] > soft_endstop_max[i]) && deltas[i] > 0 )
             ) {

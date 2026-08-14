@@ -3546,6 +3546,11 @@
       "description": "Print diagnostic status including spindle, laser, switches, endstops, probe, ATC pins, e-stop, and Wi-Fi.",
       "parameters": {}
     },
+    "laserabort": {
+      "type": "shell",
+      "description": "Stop engraving-laser output during playback abort handling.",
+      "parameters": {}
+    },
     "sleep": {
       "type": "shell",
       "description": "Cut 12 V/24 V supplies and put the controller to sleep (halt).",

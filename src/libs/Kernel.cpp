@@ -125,6 +125,7 @@ Kernel::Kernel()
     probe_addr = 0;
     checkled = false;
     spindleon = false;
+    for (bool &axis_on : axis_is_on) axis_on = false;
     debug_flags = {};
     cachewait = false;
     disable_serial_console = false;
@@ -132,6 +133,8 @@ Kernel::Kernel()
     flex_compensation_load_error = false;
     config_load_error = false;
     dispatching_console_line = false;
+    steppers_powered = false;
+    steppers_powered_at_us = 0;
 
     local_vars   = local_vars_storage;
     local_params = local_params_storage;
@@ -280,6 +283,18 @@ Kernel::Kernel()
     this->configurator = new Configurator();
 }
 
+void Kernel::on_steppers_powered(bool powered, uint32_t now_us)
+{
+    steppers_powered = powered;
+    if (powered)
+        steppers_powered_at_us = now_us;
+}
+
+bool Kernel::stepper_alarms_enabled(uint32_t now_us, uint32_t settle_us) const
+{
+    return steppers_powered && (settle_us == 0 || now_us - steppers_powered_at_us >= settle_us);
+}
+
 void Kernel::protocol_from_name(const std::string& name, ProtocolMode& protocol)
 {
     if (name == "smoothie") {
@@ -380,8 +395,9 @@ std::string Kernel::get_query_string()
 #endif
 
         // work space position
-        mpos[A_AXIS] = robot->actuators[A_AXIS]->get_current_position();
-        mpos[B_AXIS] = robot->actuators[B_AXIS]->get_current_position();
+        const int motor_count = robot->get_number_registered_motors();
+        mpos[A_AXIS] = motor_count > A_AXIS ? robot->actuators[A_AXIS]->get_current_position() : 0.0F;
+        mpos[B_AXIS] = motor_count > B_AXIS ? robot->actuators[B_AXIS]->get_current_position() : 0.0F;
         
         Robot::wcs_t pos = robot->mcs2wcs(mpos);
         n = snprintf(buf, sizeof(buf), "%1.4f,%1.4f,%1.4f", robot->from_millimeters(std::get<X_AXIS>(pos)), robot->from_millimeters(std::get<Y_AXIS>(pos)), robot->from_millimeters(std::get<Z_AXIS>(pos)));

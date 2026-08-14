@@ -144,6 +144,7 @@ void MainButton::switch_power_12(int state)
 void MainButton::switch_power_24(int state)
 {
 	this->PS24.set(state);
+	THEKERNEL->on_steppers_powered(state != 0, us_ticker_read());
 }
 
 void MainButton::on_second_tick(void *)

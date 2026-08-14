@@ -363,6 +363,7 @@ spindle.pulses_per_rev						2				#12				# default 1. Defines the number of pulse
 spindle.control_P							0.00001			# default 0.0001. P value for the PID controller              
 spindle.control_I							0.00005			# default 0.0001. I value for the PID controller
 spindle.control_D							0.00005			# default 0.0001. D value for the PID controller
+spindle.delayed_D_control				true			# delay derivative correction after a speed change
 # spindle.control_smoothing					0.1				# default 0.1. This value is low pass filter time constant in seconds.
 # spindle.delay_s								3.0				# delay seconds before next motion after spindle turn on or off
 # spindle.acc_ratio							1				#1.635			# acceleration ratio
