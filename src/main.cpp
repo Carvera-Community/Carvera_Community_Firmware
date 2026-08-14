@@ -11,6 +11,9 @@
 #endif
 
 #include "modules/tools/laser/Laser.h"
+#if defined(CANOPEN_SUPPORT)
+#include "modules/tools/canopen/CANopen.h"
+#endif
 #include "modules/tools/spindle/SpindleMaker.h"
 #include "modules/tools/temperaturecontrol/TemperatureControlPool.h"
 #include "modules/tools/endstops/Endstops.h"
@@ -183,6 +186,11 @@ void init() {
 
     // Create and add main modules
     kernel->add_module( new Player() );
+
+#if defined(CANOPEN_SUPPORT)
+    static CANOpenManager canopen_storage;
+    kernel->add_module(&canopen_storage);
+#endif
 
     // ATC Handler
     kernel->add_module( new ATCHandler() );
