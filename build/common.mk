@@ -93,6 +93,11 @@ ASRCS +=  $(wildcard $(SRC)/*.s $(SRC)/*/*.s $(SRC)/*/*/*.s $(SRC)/*/*/*/*.s $(S
 endif
 
 CPPSRCS1 = $(wildcard $(SRC)/*.cpp $(SRC)/*/*.cpp $(SRC)/*/*/*.cpp $(SRC)/*/*/*/*.cpp $(SRC)/*/*/*/*/*.cpp $(SRC)/*/*/*/*/*/*.cpp)
+ifeq "$(SERIAL_RX_DMA)" "1"
+DEFINES += -DSERIAL_RX_DMA
+else
+CPPSRCS1 := $(filter-out $(SRC)/modules/communication/UartRxDma.cpp,$(CPPSRCS1))
+endif
 ifeq "$(NONETWORK)" "1"
 	CPPSRCS2 = $(filter-out $(SRC)/libs/Network/%,$(CPPSRCS1))
 else
