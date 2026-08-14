@@ -25,3 +25,4 @@ Agents must leave them unchecked.
       for the complete change.
 - [ ] Build (`./build/build.sh --clean`) passes with no errors.
 - [ ] The changes have been tested on real hardware.
+- [ ] I have read and understood the [contributions guidelines](https://github.com/Carvera-Community/Carvera_Community_Firmware#filing-issues-and-contributing)
