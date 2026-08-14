@@ -287,7 +287,23 @@ void WifiProvider::receive_wifi_data() {
 				return;
 			}
 		}
-	} else {
+	}
+
+	// Makera framed protocol. Copy command payloads into the same 256-byte
+	// ring buffer Smoothie uses so receive is never blocked by a pending
+	// CTRL_MULTI (status CTRL_SINGLE must keep flowing). Drain several frames
+	// per idle so a burst of commands + status is not left sitting in the ESP.
+	const int max_frames = 16;
+	for (int frame = 0; frame < max_frames; frame++) {
+		if (frame > 0 && !M8266WIFI_SPI_Has_DataReceived()) {
+			return;
+		}
+
+		received = 0;
+		errorcnt = 0;
+		headerBuffer[0] = 0;
+		headerBuffer[1] = 0;
+
 		// wait head
 		starttime = us_ticker_read();
 		while ((received < 2) && ((us_ticker_read() - starttime) < timeout_ms) ) {
@@ -295,11 +311,11 @@ void WifiProvider::receive_wifi_data() {
 			if ((link_no == udp_link_no) || (revcnt == 0)) {
 				continue;
 			}
-			
+
 			headerBuffer[0] = headerBuffer[1];
 			received++;
 			headerBuffer[1] = RecvData;
-			if (received >= 2 && (headerBuffer[0] != ((HEADER >> 8) & 0xFF) || 
+			if (received >= 2 && (headerBuffer[0] != ((HEADER >> 8) & 0xFF) ||
 								headerBuffer[1] != (HEADER & 0xFF))) {
 				received = 1;
 				errorcnt ++;
@@ -307,16 +323,16 @@ void WifiProvider::receive_wifi_data() {
 		}
 		if( errorcnt > 20)
 		{
-			THEKERNEL->streams->puts("Please use Controller version V0.9.12 or later to connect.\r\n", 124); 
+			THEKERNEL->streams->puts("Please use Controller version V0.9.12 or later to connect.\r\n", 124);
 			return;
 		}
-			
+
 		if (received < 2){
 	//	    PacketMessage(PTYPE_NORMAL_INFO, "ALARM: Abort receive header\r\n", 0);
 			return;
 		}
-		
-		// receive length	    
+
+		// receive length
 		starttime = us_ticker_read();
 		while ((received < 4) && ((us_ticker_read() - starttime) < timeout_ms) ) {
 			revcnt = M8266WIFI_SPI_RecvData(&RecvData, 1, WIFI_DATA_TIMEOUT_MS, &link_no, &status);
@@ -326,22 +342,22 @@ void WifiProvider::receive_wifi_data() {
 			WifiSerialbuff[received] = RecvData;
 			received ++;
 		}
-		
+
 		if (received < 4){
 	//	    	PacketMessage(PTYPE_NORMAL_INFO, "ALARM: Abort receive length\r\n", 0);
 			return;
 		}
-		
+
 		uint16_t data_len = (WifiSerialbuff[2]<<8) | WifiSerialbuff[3];
 		uint16_t total_len = 4 + data_len + 2; // header + data + crc + tail
-		
+
 		if (data_len > 513 || total_len > sizeof(WifiSerialbuff)){
 	//	    	PacketMessage(PTYPE_NORMAL_INFO, "ALARM: Abort receive datalen error\r\n", 0);
-			return; 
+			return;
 		}
-		
+
 		starttime = us_ticker_read();
-		while ((received < total_len) && ((us_ticker_read() - starttime) < timeout_ms) ) {	    	
+		while ((received < total_len) && ((us_ticker_read() - starttime) < timeout_ms) ) {
 			revcnt = M8266WIFI_SPI_RecvData(&RecvData, 1, WIFI_DATA_TIMEOUT_MS, &link_no, &status);
 			if ((link_no == udp_link_no) || (revcnt == 0)) {
 				continue;
@@ -349,20 +365,20 @@ void WifiProvider::receive_wifi_data() {
 			WifiSerialbuff[received] = RecvData;
 			received ++;
 		}
-		
+
 		if (received < total_len) {
 	//	    PacketMessage(PTYPE_NORMAL_INFO, "ALARM: Abort receive data body\r\n", 0);
 			return;
-		}    
-			
+		}
+
 		// check tail
 		uint16_t tail = (WifiSerialbuff[total_len-2]<<8) | WifiSerialbuff[total_len-1];
 		if (tail != FOOTER) {
 	//	    	PacketMessage(PTYPE_NORMAL_INFO, "ALARM: Abort receive footer\r\n", 0);
 			return;
 		}
-		
-	/*	    
+
+	/*
 		// check CRC
 		uint16_t received_crc = (WifiSerialbuff[total_len-4] << 8) | WifiSerialbuff[total_len-3];
 		uint16_t calculated_crc = crc16_ccitt((unsigned char *)&WifiSerialbuff[2], data_len);
@@ -373,7 +389,7 @@ void WifiProvider::receive_wifi_data() {
 	*/
 		uint8_t cmdType = WifiSerialbuff[4];
 		switch(cmdType) {
-			case PTYPE_CTRL_SINGLE: { 
+			case PTYPE_CTRL_SINGLE: {
 				if(WifiSerialbuff[5] == '?') {
 					query_flag = true;
 				}
@@ -403,17 +419,23 @@ void WifiProvider::receive_wifi_data() {
 				break;
 			}
 			case PTYPE_CTRL_MULTI:
+				// Copy payload into the Smoothie ring buffer and keep receiving.
+				// Commands like suspend/abort call wait_for_idle(), which re-enters
+				// ON_IDLE; they must not run here (nested SPI on shared buffers).
+				if (data_len >= 3) {
+					queue_makera_payload(&WifiSerialbuff[5], data_len - 3);
+				}
+				break;
 			case PTYPE_FILE_START:
-				// Defer to on_main_loop — same as SerialConsole. Commands like
-				// suspend/abort call wait_for_idle(), which re-enters ON_IDLE; handling
-				// them here would nest receive_wifi_data/puts on shared SPI buffers and
-				// drop the controller connection.
+				// File bytes follow immediately. Hold the payload in WifiSerialbuff
+				// and stop RX until on_main_loop dispatches upload.
 				if (data_len >= 3) {
 					makera_pending_payload_len = data_len - 3;
 					makera_command_pending = true;
+					return;
 				}
 				break;
-				
+
 			default:
 				break;
 		}
@@ -633,7 +655,7 @@ void WifiProvider::on_idle(void *argument)
  {
 	if (THEKERNEL->is_uploading()) return;
 
-	// Do not receive another Makera frame while a deferred command still owns WifiSerialbuff
+	// FILE_START holds WifiSerialbuff and pauses RX until upload is dispatched.
 	if (!makera_command_pending && (has_data_flag || M8266WIFI_SPI_Has_DataReceived())) {
 		has_data_flag = false;
 		receive_wifi_data();
@@ -673,20 +695,7 @@ void WifiProvider::on_idle(void *argument)
 
 void WifiProvider::on_main_loop(void *argument)
 {
-	if (communication_protocol == PROTOCOL_MAKERA) {
-		if (makera_command_pending) {
-			struct SerialMessage message;
-			message.message.assign(WifiSerialbuff + 5, makera_pending_payload_len);
-			message.stream = this;
-			message.line = 0;
-
-			makera_command_pending = false;
-			makera_pending_payload_len = 0;
-			THEKERNEL->call_event(ON_CONSOLE_LINE_RECEIVED, &message);
-		}
-		return;
-	}
-
+	// Both protocols queue newline-terminated commands in `buffer` (256 bytes).
 	if ( this->has_char('\n') ){
 		string received;
 		received.reserve(20);
@@ -705,6 +714,45 @@ void WifiProvider::on_main_loop(void *argument)
 			}
 		}
 	}
+
+	if (makera_command_pending) {
+		struct SerialMessage message;
+		message.message.assign(WifiSerialbuff + 5, makera_pending_payload_len);
+		message.stream = this;
+		message.line = 0;
+
+		makera_command_pending = false;
+		makera_pending_payload_len = 0;
+		THEKERNEL->call_event(ON_CONSOLE_LINE_RECEIVED, &message);
+	}
+}
+
+bool WifiProvider::queue_makera_payload(const char *data, uint16_t len)
+{
+	// Match Smoothie: RingBuffer<char,256> capacity is 255 usable bytes.
+	if (len > 0 && data == nullptr) {
+		return false;
+	}
+	int free = this->buffer.capacity() - this->buffer.size();
+	if (len + 1 > free) {
+		return false;
+	}
+	for (uint16_t i = 0; i < len; i++) {
+		this->buffer.push_back(data[i]);
+	}
+	this->buffer.push_back('\n');
+	return true;
+}
+
+void WifiProvider::on_protocol_changed()
+{
+	buffer.tail = buffer.head;
+	query_flag = false;
+	halt_flag = false;
+	diagnose_flag = false;
+	makera_command_pending = false;
+	makera_pending_payload_len = 0;
+	reset();
 }
 
 void WifiProvider::PacketMessage(char cmd, const char* s, int size)
