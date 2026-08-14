@@ -332,7 +332,7 @@ second_usb_serial_enable					false			# This enables a second USB serial port
 
 # Main button
 #main_button_enable							true			# Set to true to enable main button
-# main_button_pin								2.13!^			# Main button pin
+main_button_pin								2.13!^			# Main button pin
 main_button_LED_R_pin						nc			# Main button red LED pin
 # main_button_LED_G_pin						1.15			# Main button green LED pin
 main_button_LED_B_pin						nc			# Main button blue LED pin
@@ -345,7 +345,7 @@ main_button_long_press_enable    			None  			#When the Main button long press,En
 #ps12_pin									0.22				# 12V power pin
 #ps24_pin									0.10				# 24V power pin
 # power_fan_delay_s							30				# power fan turn on/off delay
-#e_stop_pin									0.20^			# Emergency stop pin
+e_stop_pin									0.20^			# Emergency stop pin
 
 
 # 

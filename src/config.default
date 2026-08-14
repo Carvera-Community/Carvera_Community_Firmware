@@ -304,7 +304,7 @@ second_usb_serial_enable					false			# This enables a second USB serial port
 
 # Main button
 #main_button_enable							true			# Set to true to enable main button
-# main_button_pin								1.16^			# Main button pin
+main_button_pin								1.16^			# Main button pin
 # main_button_LED_R_pin						1.10			# Main button red LED pin
 # main_button_LED_G_pin						1.15			# Main button green LED pin
 # main_button_LED_B_pin						1.14			# Main button blue LED pin
