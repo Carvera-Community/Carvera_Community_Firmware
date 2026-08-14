@@ -41,6 +41,8 @@
 #include "SwitchPublicAccess.h"
 #include "ZProbePublicAccess.h"
 #include "MainButtonPublicAccess.h"
+#include "modules/tools/accessories/BedCleaning.h"
+#include "modules/tools/accessories/SpindleAccessories.h"
 #include "mbed.h"
 #include "utils.h"
 #include "WifiPublicAccess.h"
@@ -110,8 +112,6 @@ Kernel::Kernel()
     stop_request = false;
     uploading = false;
     laser_mode = false;
-    vacuum_mode = false;
-    extout_mode = false;
     optional_stop_mode = false;
     line_by_line_exec_mode = false;
     sleeping = false;
@@ -135,6 +135,8 @@ Kernel::Kernel()
     dispatching_console_line = false;
     steppers_powered = false;
     steppers_powered_at_us = 0;
+    bed_cleaning = nullptr;
+    spindle_accessories = nullptr;
 
     local_vars   = local_vars_storage;
     local_params = local_params_storage;
@@ -464,7 +466,8 @@ std::string Kernel::get_query_string()
     struct spindle_status ss;
     ok = PublicData::get_value(pwm_spindle_control_checksum, get_spindle_status_checksum, &ss);
     if (ok) {
-        n= snprintf(buf, sizeof(buf), "|S:%1.1f,%1.1f,%1.1f,%d", ss.current_rpm, ss.target_rpm, ss.factor, int(this->get_vacuum_mode()));
+        n = snprintf(buf, sizeof(buf), "|S:%1.1f,%1.1f,%1.1f,%d", ss.current_rpm, ss.target_rpm, ss.factor,
+                     int(this->spindle_accessories->chip_clear_enabled()));
         if(n > sizeof(buf)) n= sizeof(buf);
         str.append(buf, n);
     }
@@ -484,8 +487,16 @@ std::string Kernel::get_query_string()
     n= snprintf(buf, sizeof(buf), ",%1.1f", temp.current_temperature);
     if(n > sizeof(buf)) n= sizeof(buf);
     str.append(buf, n);
-	// get extout_mode 
-	n= snprintf(buf, sizeof(buf), ",%d,%d,%d", 0, 0, int(this->get_extout_mode()));
+#if defined(MACHINE_FAMILY_Z1)
+    laser_status accessory_laser{};
+    PublicData::get_value(laser_checksum, get_laser_status_checksum, &accessory_laser);
+    n = snprintf(buf, sizeof(buf), ",%d,%d,%d,%d",
+        int(this->spindle_accessories->auto_blowing_enabled()),
+        int(this->bed_cleaning->automatic_cleaning_enabled()), 0,
+        int(accessory_laser.static_removal));
+#else
+	n = snprintf(buf, sizeof(buf), ",%d,%d,%d", 0, 0, int(this->spindle_accessories->extendout_enabled()));
+#endif
     if(n > sizeof(buf)) n= sizeof(buf);
     str.append(buf, n);
 

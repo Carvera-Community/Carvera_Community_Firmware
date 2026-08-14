@@ -57,6 +57,7 @@ class Endstops : public Module{
         float trim_mm[3];
 
         Pin cover_endstop_pin;
+        Pin cover_endstop2_pin;
 
         // per endstop settings
         using endstop_info_t = struct {

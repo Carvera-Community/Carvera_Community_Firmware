@@ -19,6 +19,7 @@ public:
     void on_gcode_received(void *argument);
     void on_get_public_data(void *argument);
     void on_set_public_data(void *argument);
+    void on_abort(void *argument);
     void on_main_loop( void* argument );
     void on_halt(void *argument);
     int get_active_tool() const { return active_tool; }

@@ -43,6 +43,7 @@
 #define laser_module_minimum_power_checksum     CHECKSUM("laser_module_minimum_power")
 #define laser_module_max_power_checksum         CHECKSUM("laser_module_max_power")
 #define laser_module_maximum_s_value_checksum   CHECKSUM("laser_module_maximum_s_value")
+#define laser_module_static_removal_enable_checksum CHECKSUM("laser_module_static_removal_enable")
 
 namespace {
 bool is_air_or_z1()
@@ -58,6 +59,8 @@ Laser::Laser()
     scale = 1;
     testing = false;
     handling_gcode = false;
+    static_removal_supported = false;
+    static_removal_active = false;
 }
 
 void Laser::on_module_loaded()
@@ -117,6 +120,8 @@ void Laser::on_module_loaded()
 
     // S value that represents maximum (default 1)
     this->laser_maximum_s_value = THEKERNEL->config->value(laser_module_maximum_s_value_checksum)->as_number(1.0f) ;
+    this->static_removal_supported = THEKERNEL->config->value(
+        laser_module_static_removal_enable_checksum)->as_bool(false);
 
     set_laser_power(0);
 
@@ -211,7 +216,7 @@ void Laser::on_console_line_received( void *argument )
 	            THEKERNEL->call_event(ON_GCODE_RECEIVED, &gc2);
 				this->pwm_pin->period_us(THEKERNEL->Spindle_period_us);
 	        }
-        	this->laser_pin->set(false);
+            if(!this->static_removal_active) this->laser_pin->set(false);
         	this->testing = false;
         	this->set_laser_power(0);
         	// turn off laser pin
@@ -237,6 +242,7 @@ void Laser::on_get_public_data(void* argument)
 		t->mode = THEKERNEL->get_laser_mode();
 		t->state = this->laser_on;
 		t->testing = this->testing;
+        t->static_removal = this->static_removal_active;
 	    float p = pwm_pin->read();
 	    t->power = (this->pwm_inverting ? 1 - p : p) * 100;
 		t->scale = this->scale * 100;
@@ -277,7 +283,7 @@ void Laser::on_gcode_received(void *argument)
 			this->laser_on = false;
 			this->testing = false;
         	// turn on laser pin
-        	this->laser_pin->set(false);
+            if(!this->static_removal_active) this->laser_pin->set(false);
 			handling_gcode = false;
 		} else if (gcode->m == 321 && !THEKERNEL->get_laser_mode()) { // change to laser mode
 			THECONVEYOR->wait_for_idle();
@@ -362,7 +368,7 @@ void Laser::on_gcode_received(void *argument)
 	            THEKERNEL->call_event(ON_GCODE_RECEIVED, &gc2);
 				this->pwm_pin->period_us(THEKERNEL->Spindle_period_us);
 	        }
-        	this->laser_pin->set(false);
+            if(!this->static_removal_active) this->laser_pin->set(false);
         	this->testing = false;
         	if (gcode->subcode == 2) {
             	THEKERNEL->streams->printf("turning laser mode off and return to CNC mode\n");
@@ -384,7 +390,7 @@ void Laser::on_gcode_received(void *argument)
         	THEKERNEL->streams->printf("turning laser test mode on\n");
         } else if (gcode->m == 324) {
         	this->testing = false;
-			this->laser_pin->set(false);
+			if(!this->static_removal_active) this->laser_pin->set(false);
 			// turn off test mode
         	THEKERNEL->streams->printf("turning laser test mode off\n");
         } else if (gcode->m == 325) { // M223 S100 change laser power by percentage S
@@ -393,6 +399,14 @@ void Laser::on_gcode_received(void *argument)
             } else {
             	THEKERNEL->streams->printf("Laser power scale at %6.2f %%\n", this->scale * 100.0F);
             }
+        } else if(gcode->m == 331 && gcode->subcode == 4 && this->static_removal_supported) {
+            this->static_removal_active = true;
+            this->laser_pin->set(true);
+            gcode->stream->printf("turning static electricity removal mode on\r\n");
+        } else if(gcode->m == 332 && gcode->subcode == 4 && this->static_removal_supported) {
+            this->static_removal_active = false;
+            if(!THEKERNEL->get_laser_mode()) this->laser_pin->set(false);
+            gcode->stream->printf("turning static electricity removal mode off\r\n");
         }
     }
 }
@@ -529,6 +543,7 @@ void Laser::on_halt(void *argument)
 			this->pwm_pin->period_us(THEKERNEL->Spindle_period_us);
         }
     	this->laser_pin->set(false);
+	    this->static_removal_active = false;
     	this->testing = false;
     	THEROBOT->clearLaserOffset();
     }
