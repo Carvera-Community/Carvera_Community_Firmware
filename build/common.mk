@@ -78,6 +78,7 @@ OUTDIR = ../$(DEVICE)-z1
 DEFINES += -DMACHINE_FAMILY_Z1
 REMOTE_SETTINGS_TRANSFER := 1
 STREAMED_JOB_PLAYBACK := 1
+CANOPEN_SUPPORT := 1
 SERIAL_RX_DMA := 1
 NO_USB_HOST := 1
 NO_VESC_SPINDLE := 1
@@ -129,6 +130,14 @@ DEFINES += -DNO_SD_CARD
 endif
 ifeq "$(STREAMED_JOB_PLAYBACK)" "1"
 DEFINES += -DSTREAMED_JOB_PLAYBACK
+endif
+ifeq "$(CANOPEN_SUPPORT)" "1"
+DEFINES += -DCANOPEN_SUPPORT
+else
+CPPSRCS1 := $(filter-out \
+	$(SRC)/modules/tools/canopen/CANBus.cpp \
+	$(SRC)/modules/tools/canopen/% \
+,$(CPPSRCS1))
 endif
 ifeq "$(NONETWORK)" "1"
 	CPPSRCS2 = $(filter-out $(SRC)/libs/Network/%,$(CPPSRCS1))

@@ -30,7 +30,8 @@ endif()
 foreach(_optional_definition
         SERIAL_RX_DMA
         REMOTE_SETTINGS_TRANSFER
-        STREAMED_JOB_PLAYBACK)
+        STREAMED_JOB_PLAYBACK
+        CANOPEN_SUPPORT)
     if(${_optional_definition})
         list(APPEND _firmware_definitions ${_optional_definition})
     endif()
