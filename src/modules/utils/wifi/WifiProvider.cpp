@@ -336,7 +336,7 @@ void WifiProvider::receive_wifi_data() {
 			} else if (hunting_header && makera_received < 2) {
 				header_errors++;
 				if (header_errors > 20) {
-					THEKERNEL->streams->puts("Please use Controller version V0.9.12 or later to connect.\r\n", 124);
+					THEKERNEL->streams->puts("Please use Controller version 2.2.0 or later to connect.\r\n", 124);
 					reset_makera_command_parser();
 					return;
 				}
