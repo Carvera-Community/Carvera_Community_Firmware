@@ -47,6 +47,8 @@
 #include "heap/heap_debug.h"
 #include "heap/heap_5.h"
 #include "SwitchPublicAccess.h"
+#include "Config.h"
+#include "ConfigValue.h"
 #if !defined(NO_SD_CARD)
 #include "SDFAT.h"
 #endif
@@ -204,71 +206,6 @@ void SimpleShell::on_gcode_received(void *argument)
                 // M576 / M576.1 -- walk all files that have a stored MD5
                 md5check_command(args, gcode->stream);
             }
-        } else if (gcode->m == 331) { // change to vacuum mode
-        	if (gcode->subcode == 0) {
-				THEKERNEL->set_vacuum_mode(true);
-			    // get spindle state
-			    struct spindle_status ss;
-			    bool ok = PublicData::get_value(pwm_spindle_control_checksum, get_spindle_status_checksum, &ss);
-			    if (ok) {
-			    	if (ss.state) {
-		        		// open vacuum
-		        		bool b = true;
-		        		PublicData::set_value( switch_checksum, vacuum_checksum, state_checksum, &b );
-			    	}
-	        	}
-	        	//PacketMessage(PTYPE_NORMAL_INFO, "turning vacuum mode on\r\n", 0, gcode->stream);
-                gcode->stream->printf("turning vacuum mode on\r\n");
-			}
-			else if (gcode->subcode == 3) {
-				THEKERNEL->set_extout_mode(true);
-			    // get spindle state
-			    struct spindle_status ss;
-			    bool ok = PublicData::get_value(pwm_spindle_control_checksum, get_spindle_status_checksum, &ss);
-			    if (ok) {
-			    	if (ss.state) {
-		        		// open vacuum
-		        		bool b = true;
-		        		PublicData::set_value( switch_checksum, extendout_checksum, state_checksum, &b );
-			    	}
-	        	}
-	        	//PacketMessage(PTYPE_NORMAL_INFO, "turning extend out mode on\r\n", 0, gcode->stream);
-                gcode->stream->printf("turning extend out mode on\r\n");
-            }
-        } else if (gcode->m == 332) { // change to CNC mode			
-			if (gcode->subcode == 0) {
-				THEKERNEL->set_vacuum_mode(false);
-			    // get spindle state
-			    struct spindle_status ss;
-			    bool ok = PublicData::get_value(pwm_spindle_control_checksum, get_spindle_status_checksum, &ss);
-			    if (ok) {
-			    	if (ss.state) {
-		        		// close vacuum
-		        		bool b = false;
-		        		PublicData::set_value( switch_checksum, vacuum_checksum, state_checksum, &b );
-			    	}
-	        	}
-				// turn off vacuum mode
-		
-				//PacketMessage(PTYPE_NORMAL_INFO, "turning vacuum mode off\r\n", 0, gcode->stream);
-                gcode->stream->printf("turning vacuum mode off\r\n");
-			}
-			else if (gcode->subcode == 3) {
-				THEKERNEL->set_extout_mode(false);
-			    // get spindle state
-			    struct spindle_status ss;
-			    bool ok = PublicData::get_value(pwm_spindle_control_checksum, get_spindle_status_checksum, &ss);
-			    if (ok) {
-			    	if (ss.state) {
-		        		// close extout
-		        		bool b = false;
-		        		PublicData::set_value( switch_checksum, extendout_checksum, state_checksum, &b );
-			    	}
-	        	}
-	        	//PacketMessage(PTYPE_NORMAL_INFO, "turning extend out mode off\r\n", 0, gcode->stream);
-                gcode->stream->printf("turning extend out mode off\r\n");
-			}
-
 		} else if (gcode->m == 333) { // turn off optional stop mode
 			THEKERNEL->set_optional_stop_mode(false);
 			// turn off optional stop mode

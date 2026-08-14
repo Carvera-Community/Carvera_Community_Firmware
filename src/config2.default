@@ -400,6 +400,8 @@ switch.vacuum.input_off_command			M802			# Command that will turn this switch of
 # switch.vacuum.output_pin				nc				# Pin this module controls
 switch.vacuum.output_type				hwpwm		# Digital means this is just an on or off pin
 switch.vacuum.default_on_value 80		# Default vacuum power when open (50 - 100)
+accessory.chip_clear_switch extendout	# CA1 uses the external output for spindle chip clearing
+accessory.chip_clear_power 80
 
 # Light
 switch.light.startup_state true			# Whether to turn on light by default

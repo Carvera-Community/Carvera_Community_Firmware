@@ -35,6 +35,7 @@
 #include "PlayerPublicAccess.h"
 #include "TemperatureControlPublicAccess.h"
 #include "TemperatureControlPool.h"
+#include "modules/tools/accessories/BedCleaning.h"
 #include "StepTicker.h"
 #include "Block.h"
 #include "quicklz.h"
@@ -945,6 +946,8 @@ void Player::request_job_abort()
 
 void Player::finish_job_abort()
 {
+    // Keep ATC-owned accessories active until queued automation motion stops.
+    THEKERNEL->call_event(ON_ABORT);
     struct SerialMessage message;
     message.message = "M5";
     message.stream = THEKERNEL->streams;
@@ -1062,13 +1065,12 @@ void Player::abort_command( string parameters, StreamOutput *stream )
         return;
     }
 
-    PublicData::set_value( atc_handler_checksum, abort_checksum, nullptr );
-
     if(!playing_file && !line_source.is_open()
 #if defined(STREAMED_JOB_PLAYBACK)
         && !this->streamed_session_active()
 #endif
     ) {
+        THEKERNEL->call_event(ON_ABORT);
         stream->printf("Not currently playing\r\n");
         return;
     }
@@ -1123,6 +1125,10 @@ void Player::abort_command( string parameters, StreamOutput *stream )
 
     // wait for queue to empty
     THEKERNEL->conveyor->wait_for_idle();
+
+    // Keep ATC-owned accessories active until already-queued automation motion stops.
+    // A halt still releases them immediately through ATCHandler::on_halt().
+    THEKERNEL->call_event(ON_ABORT);
 
 
     if (communication_protocol == PROTOCOL_SMOOTHIE) {
@@ -1471,8 +1477,9 @@ void Player::on_main_loop(void *argument)
             this->reply_stream = NULL;
         }
         
-        bool bbb = true;
-        PublicData::set_value( atc_handler_checksum, set_job_complete_checksum, &bbb );
+    bool bbb = true;
+    PublicData::set_value( atc_handler_checksum, set_job_complete_checksum, &bbb );
+    THEKERNEL->bed_cleaning->job_completed();
     }
 }
 
@@ -1563,8 +1570,9 @@ void Player::on_get_public_data(void *argument)
             pdr->set_taken();
         }
     } else if (pdr->second_element_is(inner_playing_checksum)) {
-    	bool b = this->inner_playing;
-        pdr->set_data_ptr(&b);
+        static bool inner_playing;
+        inner_playing = this->inner_playing;
+        pdr->set_data_ptr(&inner_playing);
         pdr->set_taken();
     }
 }

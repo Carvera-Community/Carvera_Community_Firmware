@@ -85,6 +85,12 @@ epsilon_acceleration 10.0
 # Controller link and manual tool handling
 protocol makera
 wifi.enable false
+laser_module_pin 0.11
+laser_module_static_removal_enable true
+accessory.chip_clear_switch extendout
+accessory.chip_clear_power 80
+accessory.auto_blowing_switch spindlefan
+accessory.auto_blowing_power 30
 atc.homing_max_travel_mm 8
 atc.homing_rate_mm_s 0.4
 atc.action_rate_mm_s 0.25
@@ -263,3 +269,20 @@ cover_endstop2 1.14!v
 spindle.delay_on_s 8.0
 spindle.delay_off_s 4.0
 light.ledBrightness 12
+
+# Automatic bed cleaning
+# The external output lowers the brush. The spindle fan blows chips away.
+accessory.bed_cleaning_switch extendout
+accessory.bed_cleaning_fan_switch spindlefan
+accessory.bed_cleaning_fan_power 100
+temperatureswitch.spindle.temperature_source module
+bed_cleaning.enable true
+# Sweep from the rear-left corner to the front-right edge, then park clear of the work area.
+bed_cleaning.x_min -192.4
+bed_cleaning.x_max -11.6
+bed_cleaning.y_min -194.3
+bed_cleaning.y_max -1.0
+bed_cleaning.park_y -14.6
+bed_cleaning.front_x -2.0
+bed_cleaning.cycles 1
+bed_cleaning.spacing 40 # Distance between successive sweep rows, in mm

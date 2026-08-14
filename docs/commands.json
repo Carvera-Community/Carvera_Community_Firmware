@@ -1192,12 +1192,50 @@
     },
     "M331": {
       "type": "mcode",
-      "description": "Enable auto vacuum mode on the Carvera C1 so the vacuum follows the spindle.",
+      "description": "Enable auto chip clearing following the spindle on/off state. On C1 this is the vacuum; on CA1 and Z1 it is the external output.",
+      "parameters": {}
+    },
+    "M331.1": {
+      "type": "mcode",
+      "description": "Enable auto blow on Z1. The spindle fan will always run with this minimum power while the spindle is on.",
+      "parameters": {
+        "S": {
+          "required": false,
+          "description": "Fan power while blowing.",
+          "default": 30,
+          "unit": "%",
+          "default_source": "accessory.auto_blowing_power"
+        }
+      }
+    },
+    "M331.2": {
+      "type": "mcode",
+      "description": "Runs a cleaning cycle when gcode playback finishes.",
+      "parameters": {}
+    },
+    "M331.4": {
+      "type": "mcode",
+      "description": "Turn on the ionizer on Z1.",
       "parameters": {}
     },
     "M332": {
       "type": "mcode",
-      "description": "Disable auto vacuum mode.",
+      "description": "Disable auto chip clearing (C1: vacuum, CA1/Z1: External Output pin).",
+      "parameters": {}
+    },
+    "M332.1": {
+      "type": "mcode",
+      "description": "Disable auto blow.",
+      "parameters": {}
+    },
+    "M332.2": {
+      "type": "mcode",
+      "description": "Disable automatic bed cleaning after jobs.",
+      "parameters": {}
+    },
+    "M332.4": {
+      "type": "mcode",
+      "description": "Turn off the ionizer.",
       "parameters": {}
     },
     "M333": {
@@ -2570,6 +2608,25 @@
       "type": "mcode",
       "description": "Switch communication protocol to Makera.",
       "parameters": {}
+    },
+    "M486.1": {
+      "type": "mcode",
+      "description": "Run a bed-cleaning cycle on Z1.",
+      "parameters": {
+        "N": {
+          "required": false,
+          "description": "Number of sweep cycles (1–10).",
+          "default": 1,
+          "default_source": "bed_cleaning.cycles"
+        },
+        "T": {
+          "required": false,
+          "description": "Distance between successive sweep rows.",
+          "default": 40,
+          "unit": "mm",
+          "default_source": "bed_cleaning.spacing"
+        }
+      }
     },
     "M489": {
       "type": "mcode",

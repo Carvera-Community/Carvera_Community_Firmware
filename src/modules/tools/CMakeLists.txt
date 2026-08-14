@@ -1,5 +1,6 @@
 target_include_directories(carvera_sources PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
 
+add_subdirectory(accessories)
 add_subdirectory(atc)
 add_subdirectory(drillingcycles)
 add_subdirectory(endstops)

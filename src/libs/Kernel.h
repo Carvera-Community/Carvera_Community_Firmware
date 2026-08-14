@@ -39,6 +39,8 @@ class PublicData;
 class SimpleShell;
 class Configurator;
 struct SerialMessage;
+class BedCleaning;
+class SpindleAccessories;
 
 enum STATE {
 	IDLE    = 0,
@@ -160,17 +162,11 @@ class Kernel {
         void set_laser_mode(bool f) { laser_mode = f; }
         bool get_laser_mode() const { return laser_mode; }
 
-        void set_vacuum_mode(bool f) { vacuum_mode = f; }
-        bool get_vacuum_mode() const { return vacuum_mode; }
-
         void set_optional_stop_mode(bool f) { optional_stop_mode = f; }
         bool get_optional_stop_mode() const { return optional_stop_mode; }
         void set_line_by_line_exec_mode(bool f) { line_by_line_exec_mode = f; }
         bool get_line_by_line_exec_mode() const { return line_by_line_exec_mode; }
         
-        void set_extout_mode(bool f) { extout_mode = f; }
-        bool get_extout_mode() const { return extout_mode; }
-
         void set_sleeping(bool f) { sleeping = f; }
         bool is_sleeping() const { return sleeping; }
 
@@ -238,6 +234,8 @@ class Kernel {
         Conveyor*         conveyor;
         Configurator*     configurator;
         SimpleShell*      simpleshell;
+        BedCleaning* bed_cleaning;
+        SpindleAccessories* spindle_accessories;
 
         SlowTicker*       slow_ticker;
         StepTicker*       step_ticker;
@@ -289,8 +287,6 @@ class Kernel {
             bool keep_alive_request:1;
             volatile bool uploading:1;
             bool laser_mode:1;
-            bool vacuum_mode:1;
-            bool extout_mode:1;
             bool optional_stop_mode:1;
             bool line_by_line_exec_mode:1;
             bool sleeping:1;
@@ -310,7 +306,6 @@ class Kernel {
             bool steppers_powered:1;
         };
         int iic_page_write(unsigned char u8PageNum, unsigned char u8len, unsigned char *pu8Array);
-
 };
 
 #endif

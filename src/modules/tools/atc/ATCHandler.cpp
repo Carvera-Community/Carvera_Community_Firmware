@@ -1727,6 +1727,7 @@ void ATCHandler::on_module_loaded()
     this->register_for_event(ON_GCODE_RECEIVED);
     this->register_for_event(ON_GET_PUBLIC_DATA);
     this->register_for_event(ON_SET_PUBLIC_DATA);
+    this->register_for_event(ON_ABORT);
     this->register_for_event(ON_MAIN_LOOP);
     this->register_for_event(ON_HALT);
 
@@ -1939,6 +1940,11 @@ void ATCHandler::on_halt(void* argument)
 			}
 		}
 	}
+}
+
+void ATCHandler::on_abort(void *)
+{
+    abort();
 }
 
 void ATCHandler::abort(){
