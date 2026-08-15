@@ -77,6 +77,7 @@ class SerialConsole : public Module, public StreamOutput {
           bool query_flag:1;
           bool halt_flag:1;
           bool diagnose_flag:1;
+          bool makera_file_cancel:1;
         };
 };
 

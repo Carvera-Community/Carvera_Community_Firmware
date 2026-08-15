@@ -267,6 +267,17 @@ void WifiProvider::receive_wifi_data() {
 	int frames = 0;
 	u16 header_errors = 0;
 	while (frames < max_frames && !makera_pause_rx) {
+		// Backpressure. With no free slot there is nowhere to put the next
+		// command, so stop draining the module rather than parsing a frame
+		// only to throw it away; the bytes wait in the module's buffer until
+		// on_main_loop frees a slot. If that buffer does fill, the worst case
+		// is the loss this replaces, and the frame parser resynchronises.
+		// Only safe at a frame boundary: a half-read frame has to be finished
+		// or the staleness timeout would discard it.
+		if (makera.at_frame_boundary() && makera.queue_full()) {
+			return;
+		}
+
 		uint16_t want = makera.bytes_wanted();
 		if (want > WIFI_DATA_MAX_SIZE) {
 			want = WIFI_DATA_MAX_SIZE;
@@ -288,7 +299,10 @@ void WifiProvider::receive_wifi_data() {
 			n = want;
 		}
 		if (link_no == udp_link_no) {
-			continue;
+			// Discovery traffic, not part of the command stream. Return as the
+			// Smoothie path above does, rather than looping to read the rest of
+			// it a couple of bytes at a time behind a partial command frame.
+			return;
 		}
 
 		const uint32_t now_ms = us_ticker_read() / 1000;
@@ -319,6 +333,18 @@ void WifiProvider::receive_wifi_data() {
 
 				default:
 					break;
+			}
+
+			// A FILE_START that did not make it onto the queue has to be
+			// refused out loud. The host is about to start streaming the file
+			// and would otherwise sit waiting for a response that never comes.
+			// Backpressure means the queue can no longer be the reason, so
+			// this is a malformed or over-long path name.
+			if (result.frame_type == PTYPE_FILE_START && result.event != MakeraEvent::FileStart) {
+				// Payload matches Player::upload_command's own cancels, which
+				// send the string including its terminator.
+				static const char cancel_payload[] = "ok\r\n";
+				PacketMessage(PTYPE_FILE_CAN, cancel_payload, sizeof(cancel_payload));
 			}
 
 			if (result.event != MakeraEvent::None) {

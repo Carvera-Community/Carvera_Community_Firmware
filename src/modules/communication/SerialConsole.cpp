@@ -65,6 +65,7 @@ void SerialConsole::on_module_loaded() {
     query_flag = false;
     halt_flag = false;
     diagnose_flag = false;
+    makera_file_cancel = false;
 
     default_baud_rate = THEKERNEL->config->value(uart_checksum, baud_rate_setting_checksum)->as_number(current_baud_rate);
     if (default_baud_rate != current_baud_rate) {
@@ -200,6 +201,14 @@ void SerialConsole::on_idle(void * argument)
         if (reason != nullptr) {
             PacketMessage(PTYPE_NORMAL_INFO, reason, 0);
         }
+    }
+
+    if (makera_file_cancel) {
+        makera_file_cancel = false;
+        // Payload matches Player::upload_command's own cancels, which send the
+        // string including its terminator.
+        static const char cancel_payload[] = "ok\r\n";
+        PacketMessage(PTYPE_FILE_CAN, cancel_payload, sizeof(cancel_payload));
     }
 
     if (query_flag ) {
@@ -346,11 +355,17 @@ void SerialConsole::process_makera_byte(uint8_t received)
     // last_activity_ms was refreshed by the caller as this byte arrived.
     const MakeraResult result = makera.process_byte(received, last_activity_ms);
 
+    // Both of these are reported from on_idle rather than here: this runs in
+    // the receive interrupt, where writing to the port would block for the
+    // length of the message.
     if (result.event == MakeraEvent::TooLarge || result.event == MakeraEvent::QueueFull) {
-        // Reported from on_idle rather than here: this runs in the receive
-        // interrupt, where writing to the port would block for the length of
-        // the message.
         makera_error = result.event;
+    }
+
+    // A FILE_START that did not make it onto the queue has to be refused out
+    // loud, or the host sits waiting to stream a file we never accepted.
+    if (result.frame_type == PTYPE_FILE_START && result.event != MakeraEvent::FileStart) {
+        makera_file_cancel = true;
     }
 
     if (result.event == MakeraEvent::Control) {
@@ -410,6 +425,8 @@ void SerialConsole::on_protocol_changed()
     query_flag = false;
     halt_flag = false;
     diagnose_flag = false;
+    makera_file_cancel = false;
+    makera_error = MakeraEvent::None;
     makera.clear();
     reset_file_parser();
 }
