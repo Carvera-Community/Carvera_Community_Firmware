@@ -609,8 +609,6 @@ this->config->value( disable_leds_checksum )->by_default(false)->as_bool();
 Release branches are named `release/<semver>`:
 
 ```
-release/2.2.0-rc.1
-release/2.2.0-rc.2
 release/2.2.0
 release/2.3.0
 ```
@@ -621,19 +619,3 @@ change into every later release branch and finally into `Dev`, ordering the
 branches by parsing the part after `release/` as a semantic version. A branch
 whose name does not parse is skipped, so a fix landed on it would quietly fail
 to reach later releases.
-
-That means the prerelease suffix has to be lowercase and dot-separated
-(`-rc.2`, not `-RC2`), and the version needs three numeric components with no
-extra letters (`2.1.0`, not `2.1.0c`).
-
-Two repository settings are required for the cascade to work, both under
-repository or organisation administration:
-
-* **Allow GitHub Actions to create and approve pull requests** must be enabled,
-  since the cascade opens the follow-on PRs.
-* **Automatically delete head branches** must be disabled, because the cascade
-  needs the merged branch to survive long enough to merge onward.
-
-Rename an existing release branch through the GitHub web interface rather than
-by pushing a new name and deleting the old one. The web interface retargets any
-open pull requests; a delete-and-recreate closes them.
