@@ -18,6 +18,7 @@ using namespace std;
 
 #include "M8266WIFIDrv.h"
 #include "libs/RingBuffer.h"
+#include "libs/MakeraFrameParser.h"
 
 #define WIFI_DATA_MAX_SIZE 1460
 #define WIFI_DATA_TIMEOUT_MS 10
@@ -69,11 +70,6 @@ private:
 
     void on_pin_rise();
     void receive_wifi_data();
-    bool process_makera_byte(uint8_t received);
-    void reset_makera_command_parser();
-    bool makera_cmd_queue_push(const char *data, uint16_t len);
-    void makera_cmd_queue_clear();
-    bool makera_cmd_queue_empty() const;
     unsigned int crc16_ccitt(unsigned char *data, unsigned int len);
     int CheckFilePacket(char** buf);
 
@@ -119,9 +115,7 @@ private:
     	// the ESP until upload_command() reads them via gets().
     	volatile bool makera_pause_rx:1;
     };
-    uint16_t makera_header;
-    uint16_t makera_received;
-    uint16_t makera_data_length;
+    MakeraFrameParser makera;
     ParseState currentState = WAIT_HEADER;    
     int ptrData;
     int ptr_xbuff;

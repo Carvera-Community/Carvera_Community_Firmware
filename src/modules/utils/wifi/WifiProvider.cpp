@@ -39,6 +39,7 @@
 
 #include "platform_memory.h" // Needed for AHB allocator
 #include "libs/compiler.h"
+#include "libs/MakeraControl.h"
 
 #include "port_api.h"
 #include "InterruptIn.h"
@@ -65,50 +66,15 @@
 #define XBUFF_LENGTH	8208
 extern unsigned char xbuff[XBUFF_LENGTH];
 extern unsigned char fbuff[4096];
-char WifiSerialbuff[544] LOCATED_IN_AHBSRAM;
+static unsigned char WifiSerialbuff[544] LOCATED_IN_AHBSRAM;
 
 enum { MAKERA_CMD_QUEUE_DEPTH = 4, MAKERA_CMD_MAX_LEN = 256 };
 static char makera_cmd_payloads[MAKERA_CMD_QUEUE_DEPTH][MAKERA_CMD_MAX_LEN] LOCATED_IN_AHBSRAM;
 static uint16_t makera_cmd_lengths[MAKERA_CMD_QUEUE_DEPTH];
-static volatile uint8_t makera_cmd_head;
-static volatile uint8_t makera_cmd_tail;
 
 
 
-unsigned short crc_table[] = {
-	0x0000, 0x1021, 0x2042, 0x3063, 0x4084, 0x50a5, 0x60c6, 0x70e7,
-	0x8108, 0x9129, 0xa14a, 0xb16b, 0xc18c, 0xd1ad, 0xe1ce, 0xf1ef,
-	0x1231, 0x0210, 0x3273, 0x2252, 0x52b5, 0x4294, 0x72f7, 0x62d6,
-	0x9339, 0x8318, 0xb37b, 0xa35a, 0xd3bd, 0xc39c, 0xf3ff, 0xe3de,
-	0x2462, 0x3443, 0x0420, 0x1401, 0x64e6, 0x74c7, 0x44a4, 0x5485,
-	0xa56a, 0xb54b, 0x8528, 0x9509, 0xe5ee, 0xf5cf, 0xc5ac, 0xd58d,
-	0x3653, 0x2672, 0x1611, 0x0630, 0x76d7, 0x66f6, 0x5695, 0x46b4,
-	0xb75b, 0xa77a, 0x9719, 0x8738, 0xf7df, 0xe7fe, 0xd79d, 0xc7bc,
-	0x48c4, 0x58e5, 0x6886, 0x78a7, 0x0840, 0x1861, 0x2802, 0x3823,
-	0xc9cc, 0xd9ed, 0xe98e, 0xf9af, 0x8948, 0x9969, 0xa90a, 0xb92b,
-	0x5af5, 0x4ad4, 0x7ab7, 0x6a96, 0x1a71, 0x0a50, 0x3a33, 0x2a12,
-	0xdbfd, 0xcbdc, 0xfbbf, 0xeb9e, 0x9b79, 0x8b58, 0xbb3b, 0xab1a,
-	0x6ca6, 0x7c87, 0x4ce4, 0x5cc5, 0x2c22, 0x3c03, 0x0c60, 0x1c41,
-	0xedae, 0xfd8f, 0xcdec, 0xddcd, 0xad2a, 0xbd0b, 0x8d68, 0x9d49,
-	0x7e97, 0x6eb6, 0x5ed5, 0x4ef4, 0x3e13, 0x2e32, 0x1e51, 0x0e70,
-	0xff9f, 0xefbe, 0xdfdd, 0xcffc, 0xbf1b, 0xaf3a, 0x9f59, 0x8f78,
-	0x9188, 0x81a9, 0xb1ca, 0xa1eb, 0xd10c, 0xc12d, 0xf14e, 0xe16f,
-	0x1080, 0x00a1, 0x30c2, 0x20e3, 0x5004, 0x4025, 0x7046, 0x6067,
-	0x83b9, 0x9398, 0xa3fb, 0xb3da, 0xc33d, 0xd31c, 0xe37f, 0xf35e,
-	0x02b1, 0x1290, 0x22f3, 0x32d2, 0x4235, 0x5214, 0x6277, 0x7256,
-	0xb5ea, 0xa5cb, 0x95a8, 0x8589, 0xf56e, 0xe54f, 0xd52c, 0xc50d,
-	0x34e2, 0x24c3, 0x14a0, 0x0481, 0x7466, 0x6447, 0x5424, 0x4405,
-	0xa7db, 0xb7fa, 0x8799, 0x97b8, 0xe75f, 0xf77e, 0xc71d, 0xd73c,
-	0x26d3, 0x36f2, 0x0691, 0x16b0, 0x6657, 0x7676, 0x4615, 0x5634,
-	0xd94c, 0xc96d, 0xf90e, 0xe92f, 0x99c8, 0x89e9, 0xb98a, 0xa9ab,
-	0x5844, 0x4865, 0x7806, 0x6827, 0x18c0, 0x08e1, 0x3882, 0x28a3,
-	0xcb7d, 0xdb5c, 0xeb3f, 0xfb1e, 0x8bf9, 0x9bd8, 0xabbb, 0xbb9a,
-	0x4a75, 0x5a54, 0x6a37, 0x7a16, 0x0af1, 0x1ad0, 0x2ab3, 0x3a92,
-	0xfd2e, 0xed0f, 0xdd6c, 0xcd4d, 0xbdaa, 0xad8b, 0x9de8, 0x8dc9,
-	0x7c26, 0x6c07, 0x5c64, 0x4c45, 0x3ca2, 0x2c83, 0x1ce0, 0x0cc1,
-	0xef1f, 0xff3e, 0xcf5d, 0xdf7c, 0xaf9b, 0xbfba, 0x8fd9, 0x9ff8,
-	0x6e17, 0x7e36, 0x4e55, 0x5e74, 0x2e93, 0x3eb2, 0x0ed1, 0x1ef0,
-};
+extern const unsigned short crc_table[256];
 
 WifiProvider::WifiProvider()
 {
@@ -117,8 +83,9 @@ WifiProvider::WifiProvider()
 	wifi_init_ok = false;
 	has_data_flag = false;
 	makera_pause_rx = false;
-	makera_cmd_queue_clear();
-	reset_makera_command_parser();
+	makera.init(WifiSerialbuff, sizeof(WifiSerialbuff),
+			&makera_cmd_payloads[0][0], makera_cmd_lengths,
+			MAKERA_CMD_QUEUE_DEPTH, MAKERA_CMD_MAX_LEN);
 	connection_fail_count = 0;
 	sta_down_seconds = 0;
 	last_sta_connection_status = 0xff;
@@ -299,24 +266,12 @@ void WifiProvider::receive_wifi_data() {
 	int frames = 0;
 	u16 header_errors = 0;
 	while (frames < max_frames && !makera_pause_rx) {
-		uint16_t want;
-		if (makera_received < 2) {
-			want = 2;
-		} else if (makera_received < 4) {
-			want = (uint16_t)(4 - makera_received);
-		} else {
-			uint16_t total = (uint16_t)(makera_data_length + 6);
-			if (makera_data_length < 3 || total <= makera_received) {
-				reset_makera_command_parser();
-				continue;
-			}
-			want = (uint16_t)(total - makera_received);
-			if (want > WIFI_DATA_MAX_SIZE) {
-				want = WIFI_DATA_MAX_SIZE;
-			}
+		uint16_t want = makera.bytes_wanted();
+		if (want > WIFI_DATA_MAX_SIZE) {
+			want = WIFI_DATA_MAX_SIZE;
 		}
 
-		if (frames > 0 && makera_received == 0 && !M8266WIFI_SPI_Has_DataReceived()) {
+		if (frames > 0 && makera.at_frame_boundary() && !M8266WIFI_SPI_Has_DataReceived()) {
 			return;
 		}
 
@@ -329,134 +284,46 @@ void WifiProvider::receive_wifi_data() {
 		}
 
 		for (u16 i = 0; i < n; i++) {
-			bool hunting_header = (makera_received < 2);
-			if (process_makera_byte(WifiData[i])) {
+			bool hunting_header = makera.at_frame_boundary();
+			MakeraResult result = makera.process_byte(WifiData[i]);
+
+			switch (result.event) {
+				case MakeraEvent::Control:
+					switch (makera_handle_control(result.control)) {
+						case MakeraControlFlag::Query:    query_flag = true; break;
+						case MakeraControlFlag::Diagnose: diagnose_flag = true; break;
+						case MakeraControlFlag::Halt:     halt_flag = true; break;
+						case MakeraControlFlag::None:     break;
+					}
+					break;
+
+				case MakeraEvent::FileStart:
+					// Hold RX until the queued upload command takes over, so
+					// the file's own bytes are not parsed as command frames.
+					makera_pause_rx = true;
+					break;
+
+				default:
+					break;
+			}
+
+			if (result.event != MakeraEvent::None) {
 				frames++;
 				header_errors = 0;
-			} else if (hunting_header && makera_received < 2) {
+			} else if (hunting_header && makera.at_frame_boundary()) {
 				header_errors++;
 				if (header_errors > 20) {
 					THEKERNEL->streams->puts("Please use Controller version 2.2.0 or later to connect.\r\n", 124);
-					reset_makera_command_parser();
+					makera.reset_parser();
 					return;
 				}
 			}
+
 			if (makera_pause_rx) {
 				return;
 			}
 		}
 	}
-}
-
-void WifiProvider::reset_makera_command_parser()
-{
-	makera_header = 0;
-	makera_received = 0;
-	makera_data_length = 0;
-}
-
-bool WifiProvider::makera_cmd_queue_empty() const
-{
-	return makera_cmd_head == makera_cmd_tail;
-}
-
-void WifiProvider::makera_cmd_queue_clear()
-{
-	makera_cmd_head = 0;
-	makera_cmd_tail = 0;
-}
-
-bool WifiProvider::makera_cmd_queue_push(const char *data, uint16_t len)
-{
-	if (data == nullptr || len == 0 || len > MAKERA_CMD_MAX_LEN) {
-		return false;
-	}
-
-	uint8_t next = (uint8_t)((makera_cmd_tail + 1) % MAKERA_CMD_QUEUE_DEPTH);
-	if (next == makera_cmd_head) {
-		return false; // queue full — drop
-	}
-
-	memcpy(makera_cmd_payloads[makera_cmd_tail], data, len);
-	makera_cmd_lengths[makera_cmd_tail] = len;
-	makera_cmd_tail = next;
-	return true;
-}
-
-bool WifiProvider::process_makera_byte(uint8_t received)
-{
-	if (makera_received < 2) {
-		makera_header = (uint16_t)((makera_header << 8) | received);
-		if (makera_header == HEADER) {
-			WifiSerialbuff[0] = (HEADER >> 8) & 0xff;
-			WifiSerialbuff[1] = HEADER & 0xff;
-			makera_received = 2;
-		}
-		return false;
-	}
-
-	WifiSerialbuff[makera_received++] = (char)received;
-	if (makera_received == 4) {
-		makera_data_length = (uint16_t)((WifiSerialbuff[2] << 8) | (uint8_t)WifiSerialbuff[3]);
-		if (makera_data_length < 3 || (size_t)makera_data_length + 6 > sizeof(WifiSerialbuff)) {
-			reset_makera_command_parser();
-			return true;
-		}
-		return false;
-	}
-
-	if (makera_received < makera_data_length + 6) {
-		return false;
-	}
-
-	uint16_t footer = (uint16_t)(((uint8_t)WifiSerialbuff[makera_received - 2] << 8)
-					| (uint8_t)WifiSerialbuff[makera_received - 1]);
-	uint16_t received_crc = (uint16_t)(((uint8_t)WifiSerialbuff[makera_received - 4] << 8)
-					| (uint8_t)WifiSerialbuff[makera_received - 3]);
-	uint16_t calculated_crc = crc16_ccitt((unsigned char *)&WifiSerialbuff[2], makera_data_length);
-	if (footer != FOOTER || received_crc != calculated_crc) {
-		reset_makera_command_parser();
-		return true;
-	}
-
-	uint8_t command = (uint8_t)WifiSerialbuff[4];
-	if (command == PTYPE_CTRL_SINGLE) {
-		if (makera_data_length >= 4) {
-			uint8_t control = (uint8_t)WifiSerialbuff[5];
-			if (control == '?') {
-				query_flag = true;
-			} else if (control == '*') {
-				diagnose_flag = true;
-			} else if (control == 'X' - 'A' + 1) {
-				halt_flag = true;
-			} else if (control == 'Y' - 'A' + 1) {
-				if (THEKERNEL->get_internal_stop_request()) {
-					THEKERNEL->set_internal_stop_request(false);
-				} else {
-					THEKERNEL->set_stop_request(true);
-					THEKERNEL->set_stop_request_time(us_ticker_read() / 1000);
-				}
-			} else if (control == 'Z' - 'A' + 1) {
-				THEKERNEL->set_keep_alive_request(true);
-			} else if (THEKERNEL->is_feed_hold_enabled() && control == '!') {
-				THEKERNEL->set_feed_hold(true);
-			} else if (THEKERNEL->is_feed_hold_enabled() && control == '~') {
-				THEKERNEL->set_feed_hold(false);
-			}
-		}
-	} else if (command == PTYPE_CTRL_MULTI || command == PTYPE_FILE_START) {
-		// Copy payload now so WifiSerialbuff can accept the next frame.
-		uint16_t payload_len = (uint16_t)(makera_data_length - 3);
-		bool queued = makera_cmd_queue_push(&WifiSerialbuff[5], payload_len);
-		if (command == PTYPE_FILE_START && queued) {
-			makera_pause_rx = true;
-		}
-		reset_makera_command_parser();
-		return true;
-	}
-
-	reset_makera_command_parser();
-	return true;
 }
 
 unsigned int WifiProvider::crc16_ccitt(unsigned char *data, unsigned int len)
@@ -712,17 +579,17 @@ void WifiProvider::on_idle(void *argument)
 void WifiProvider::on_main_loop(void *argument)
 {
 	if (communication_protocol == PROTOCOL_MAKERA) {
-		if (!makera_cmd_queue_empty()) {
-			uint8_t idx = makera_cmd_head;
-			uint16_t payload_length = makera_cmd_lengths[idx];
+		uint16_t payload_length = 0;
+		const char *payload = makera.queue_front(&payload_length);
+		if (payload != nullptr) {
 			struct SerialMessage message;
-			message.message.assign(makera_cmd_payloads[idx], payload_length);
+			message.message.assign(payload, payload_length);
 			message.stream = this;
 			message.line = 0;
 
-			makera_cmd_head = (uint8_t)((idx + 1) % MAKERA_CMD_QUEUE_DEPTH);
+			makera.queue_pop();
 			THEKERNEL->call_event(ON_CONSOLE_LINE_RECEIVED, &message);
-			if (makera_pause_rx && makera_cmd_queue_empty()) {
+			if (makera_pause_rx && makera.queue_empty()) {
 				makera_pause_rx = false;
 			}
 		}
@@ -756,8 +623,7 @@ void WifiProvider::on_protocol_changed()
 	halt_flag = false;
 	diagnose_flag = false;
 	makera_pause_rx = false;
-	makera_cmd_queue_clear();
-	reset_makera_command_parser();
+	makera.clear();
 	reset();
 }
 

@@ -16,6 +16,7 @@
 using std::string;
 #include "libs/RingBuffer.h"
 #include "libs/StreamOutput.h"
+#include "libs/MakeraFrameParser.h"
 
 
 #define baud_rate_setting_checksum CHECKSUM("baud_rate")
@@ -55,13 +56,7 @@ class SerialConsole : public Module, public StreamOutput {
         int default_baud_rate;
         int temp_baud_rate;                       // non-zero = temporary baud active
         uint32_t last_activity_ms;                // for 15s timeout revert
-        uint16_t makera_header;
-        uint16_t makera_received;
-        uint16_t makera_data_length;
-
-        bool makera_cmd_queue_push(const char *data, uint16_t len);
-        void makera_cmd_queue_clear();
-        bool makera_cmd_queue_empty() const;
+        MakeraFrameParser makera;
 
         enum FileParseState {
             FILE_WAIT_HEADER,
@@ -75,7 +70,6 @@ class SerialConsole : public Module, public StreamOutput {
         uint8_t file_footer[2];
 
         void process_makera_byte(uint8_t received);
-        void reset_makera_command_parser();
         void reset_file_parser();
         int check_file_packet(char **buf);
         struct {
