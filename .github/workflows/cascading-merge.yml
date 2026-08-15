@@ -7,7 +7,7 @@ name: Cascading Branch Merge
 # to lose on the next release.
 #
 # Release branches must be named release/<semver> for the ordering to work,
-# for example release/2.2.0-rc.2 then release/2.2.0 then release/2.3.0.
+# for example release/2.1.x then release/2.2.x then release/2.3.x.
 # See DEVELOPER.md.
 
 on:
