@@ -57,6 +57,7 @@ class SerialConsole : public Module, public StreamOutput {
         int temp_baud_rate;                       // non-zero = temporary baud active
         uint32_t last_activity_ms;                // for 15s timeout revert
         MakeraFrameParser makera;
+        volatile MakeraEvent makera_error;        // set in the RX irq, reported from on_idle
 
         enum FileParseState {
             FILE_WAIT_HEADER,

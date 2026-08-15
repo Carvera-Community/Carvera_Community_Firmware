@@ -83,6 +83,7 @@ WifiProvider::WifiProvider()
 	wifi_init_ok = false;
 	has_data_flag = false;
 	makera_pause_rx = false;
+	makera_error = MakeraEvent::None;
 	makera.init(WifiSerialbuff, sizeof(WifiSerialbuff),
 			&makera_cmd_payloads[0][0], makera_cmd_lengths,
 			MAKERA_CMD_QUEUE_DEPTH, MAKERA_CMD_MAX_LEN);
@@ -279,13 +280,21 @@ void WifiProvider::receive_wifi_data() {
 		if (n == 0) {
 			return;
 		}
+		// The shipped driver returns the number of bytes it copied, but its
+		// header documents returning the whole packet size when the packet is
+		// larger than the buffer. Clamp so a future driver cannot walk us off
+		// the end of WifiData.
+		if (n > want) {
+			n = want;
+		}
 		if (link_no == udp_link_no) {
 			continue;
 		}
 
+		const uint32_t now_ms = us_ticker_read() / 1000;
 		for (u16 i = 0; i < n; i++) {
 			bool hunting_header = makera.at_frame_boundary();
-			MakeraResult result = makera.process_byte(WifiData[i]);
+			MakeraResult result = makera.process_byte(WifiData[i], now_ms);
 
 			switch (result.event) {
 				case MakeraEvent::Control:
@@ -303,6 +312,11 @@ void WifiProvider::receive_wifi_data() {
 					makera_pause_rx = true;
 					break;
 
+				case MakeraEvent::TooLarge:
+				case MakeraEvent::QueueFull:
+					makera_error = result.event;
+					break;
+
 				default:
 					break;
 			}
@@ -313,7 +327,12 @@ void WifiProvider::receive_wifi_data() {
 			} else if (hunting_header && makera.at_frame_boundary()) {
 				header_errors++;
 				if (header_errors > 20) {
-					THEKERNEL->streams->puts("Please use Controller version 2.2.0 or later to connect.\r\n", 124);
+					// Deliberately unframed and sent only to this link: the
+					// peer is not speaking the protocol, so a framed reply
+					// would be no more readable than the traffic we just
+					// failed to parse.
+					puts("ERROR: no valid frame found. If this is a Community Controller "
+					     "older than 2.2.0, please update it.\r\n", 0);
 					makera.reset_parser();
 					return;
 				}
@@ -542,6 +561,14 @@ void WifiProvider::on_idle(void *argument)
 	if (!makera_pause_rx && (has_data_flag || M8266WIFI_SPI_Has_DataReceived())) {
 		has_data_flag = false;
 		receive_wifi_data();
+	}
+
+	if (makera_error != MakeraEvent::None) {
+		const char *reason = makera_event_message(makera_error);
+		makera_error = MakeraEvent::None;
+		if (reason != nullptr) {
+			PacketMessage(PTYPE_NORMAL_INFO, reason, 0);
+		}
 	}
 
     if (query_flag) {

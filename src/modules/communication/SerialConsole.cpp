@@ -48,6 +48,7 @@ SerialConsole::SerialConsole( PinName tx_pin, PinName rx_pin, int baud_rate ){
     this->default_baud_rate = baud_rate;
     this->temp_baud_rate = 0;
     this->last_activity_ms = 0;
+    this->makera_error = MakeraEvent::None;
     this->makera.init(serial_protocol_buffer, sizeof(serial_protocol_buffer),
                       &makera_cmd_payloads[0][0], makera_cmd_lengths,
                       MAKERA_CMD_QUEUE_DEPTH, MAKERA_CMD_MAX_LEN);
@@ -193,6 +194,14 @@ void SerialConsole::on_idle(void * argument)
         }
     }
 
+    if (makera_error != MakeraEvent::None) {
+        const char *reason = makera_event_message(makera_error);
+        makera_error = MakeraEvent::None;
+        if (reason != nullptr) {
+            PacketMessage(PTYPE_NORMAL_INFO, reason, 0);
+        }
+    }
+
     if (query_flag ) {
         query_flag = false;
         if (communication_protocol == PROTOCOL_SMOOTHIE) {
@@ -334,7 +343,15 @@ int SerialConsole::gets(char** buf, int size)
 
 void SerialConsole::process_makera_byte(uint8_t received)
 {
-    const MakeraResult result = makera.process_byte(received);
+    // last_activity_ms was refreshed by the caller as this byte arrived.
+    const MakeraResult result = makera.process_byte(received, last_activity_ms);
+
+    if (result.event == MakeraEvent::TooLarge || result.event == MakeraEvent::QueueFull) {
+        // Reported from on_idle rather than here: this runs in the receive
+        // interrupt, where writing to the port would block for the length of
+        // the message.
+        makera_error = result.event;
+    }
 
     if (result.event == MakeraEvent::Control) {
         switch (makera_handle_control(result.control)) {

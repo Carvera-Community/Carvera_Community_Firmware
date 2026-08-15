@@ -4,6 +4,18 @@
 
 extern const unsigned short crc_table[256];
 
+const char *makera_event_message(MakeraEvent event)
+{
+    switch (event) {
+        case MakeraEvent::TooLarge:
+            return "ERROR: command discarded, longer than the 256 byte limit\r\n";
+        case MakeraEvent::QueueFull:
+            return "ERROR: command discarded, command queue full\r\n";
+        default:
+            return nullptr;
+    }
+}
+
 MakeraFrameParser::MakeraFrameParser()
 {
     frame = nullptr;
@@ -43,6 +55,7 @@ void MakeraFrameParser::reset_parser()
     header = 0;
     received = 0;
     data_length = 0;
+    last_byte_ms = 0;
 }
 
 void MakeraFrameParser::clear()
@@ -100,11 +113,19 @@ void MakeraFrameParser::queue_pop()
     head = (uint8_t)((head + 1) % slot_count);
 }
 
-MakeraResult MakeraFrameParser::process_byte(uint8_t byte)
+MakeraResult MakeraFrameParser::process_byte(uint8_t byte, uint32_t now_ms)
 {
     MakeraResult result = { MakeraEvent::None, 0, 0 };
 
     if (frame == nullptr) return result;
+
+    // Drop a frame that stopped arriving. Unsigned arithmetic makes the
+    // comparison correct across the tick counter's wrap.
+    if ((received > 0 || header != 0) &&
+        (uint32_t)(now_ms - last_byte_ms) >= (uint32_t)FRAME_TIMEOUT_MS) {
+        reset_parser();
+    }
+    last_byte_ms = now_ms;
 
     // Hunting for the header: keep a sliding two-byte window so a frame that
     // follows stray bytes is still picked up.

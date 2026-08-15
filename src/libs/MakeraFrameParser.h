@@ -43,6 +43,11 @@ struct MakeraResult {
     uint8_t control;    // first payload byte, only when event is Control
 };
 
+// Text describing a frame that was understood but could not be accepted, or
+// nullptr for events that need no report. Shared so that both consoles say the
+// same thing.
+const char *makera_event_message(MakeraEvent event);
+
 class MakeraFrameParser
 {
 public:
@@ -55,7 +60,16 @@ public:
               char *slot_storage, uint16_t *slot_length_storage,
               uint8_t slot_count, uint16_t slot_size);
 
-    MakeraResult process_byte(uint8_t byte);
+    // A partial frame is abandoned once this long has passed without another
+    // byte, so that one lost byte cannot leave the parser mid-frame
+    // indefinitely, swallowing every frame that follows. This is an
+    // inter-byte gap rather than a budget for the whole frame, so it only has
+    // to outlast a host stalling mid-frame, never the time a frame takes to
+    // arrive.
+    enum { FRAME_TIMEOUT_MS = 1000 };
+
+    // now_ms is passed in rather than read here so this stays free of mbed.
+    MakeraResult process_byte(uint8_t byte, uint32_t now_ms);
 
     void reset_parser(); // framing state only, leaves the queue alone
     void clear();        // framing state and queue
@@ -90,6 +104,7 @@ private:
     uint16_t header;
     uint16_t received;
     uint16_t data_length;
+    uint32_t last_byte_ms;
 
     volatile uint8_t head;
     volatile uint8_t tail;

@@ -116,6 +116,7 @@ private:
     	volatile bool makera_pause_rx:1;
     };
     MakeraFrameParser makera;
+    MakeraEvent makera_error;                 // set while parsing, reported from on_idle
     ParseState currentState = WAIT_HEADER;    
     int ptrData;
     int ptr_xbuff;
