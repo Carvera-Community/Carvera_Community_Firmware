@@ -1,0 +1,38 @@
+# .github/workflows/cascading-merge.yml
+name: Cascading Branch Merge
+
+# When a PR merges into a release branch, forward that change into every later
+# release branch in semantic version order, and finally into Dev. Without this,
+# a fix landed on an older release has to be cherry-picked by hand and is easy
+# to lose on the next release.
+#
+# Release branches must be named release/<semver> for the ordering to work,
+# for example release/2.2.0-rc.2 then release/2.2.0 then release/2.3.0.
+# See DEVELOPER.md.
+
+on:
+  pull_request:
+    types:
+      - closed
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+jobs:
+  merge:
+    name: Cascading Auto Merge
+    runs-on: ubuntu-latest
+
+    if: |
+      github.event.pull_request.merged == true &&
+      startsWith(github.base_ref, 'release/')
+
+    steps:
+      - name: Automatic Merge
+        uses: ActionsDesk/cascading-downstream-merge@v3.1.0
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          prefixes: release/
+          ref_branch: Dev
