@@ -4,6 +4,10 @@
 - Fixed: Wifi frames marked as CTRL_SINGLE now handle priority commands immediately same as USB
 - Fixed: Wifi Frames are rejected if the footer or CRC does not match
 - Fixed: LPC reads Wifi in chunks instead of one byte at a time
+- Fixed: Commands sent over wifi faster than the machine could run them were silently discarded once the queue filled. The machine now leaves them buffered in the wifi module until it has room
+- Fixed: A byte lost mid-frame left the parser waiting for the rest of that frame indefinitely. A partial frame is now abandoned after a one second gap
+- Fixed: A command too long to queue, or a file transfer that could not be started, was dropped without telling the Controller. Both are now reported
+- Changed: The wifi and USB consoles now share one implementation of the Makera protocol parser
 
 [2.2.0c-RC1]
 - Enhancement: AnalogSpindleControl now supports optional RPM feedback and Alarm pin functionality, same as PWMSpindleControl. Same configuration keys (spindle.feedback_pin, spindle.pulses_per_rev, spindle.acc_ratio, and spindle.control_smoothing, spindle.alarm_pin)
