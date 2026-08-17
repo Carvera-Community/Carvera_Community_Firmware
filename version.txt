@@ -1,4 +1,5 @@
 [unreleased]
+- Fixed: Makera commands received over Wi-Fi no longer block reception while an earlier command is running.
 - Changed: Build as C++17 and use one CRC-16/CCITT implementation for active protocols.
 
 [2.2.0c-RC1]
