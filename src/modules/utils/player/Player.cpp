@@ -43,7 +43,6 @@
 #include <algorithm>
 
 #include "mbed.h"
-#include "libs/compiler.h"
 
 #define home_on_boot_checksum             CHECKSUM("home_on_boot")
 #define on_boot_gcode_checksum            CHECKSUM("on_boot_gcode")
@@ -57,8 +56,8 @@
 extern SDFAT mounter;
 
 #define XBUFF_LENGTH	8208
-unsigned char xbuff[XBUFF_LENGTH] LOCATED_IN_AHBSRAM; /* 2 for data length, 8192 for XModem + 3 head chars + 2 crc + nul */
-unsigned char fbuff[4096] LOCATED_IN_AHBSRAM;
+unsigned char xbuff[XBUFF_LENGTH]; /* 2 for data length, 8192 for XModem + 3 head chars + 2 crc + nul */
+unsigned char fbuff[4096];
 
 // used for XMODEM - smoothie
 #define SOH  0x01
@@ -70,8 +69,8 @@ unsigned char fbuff[4096] LOCATED_IN_AHBSRAM;
 #define CTRLZ 0x1A
 
 
-char error_msg[64] LOCATED_IN_AHBSRAM;
-char md5buf[64] LOCATED_IN_AHBSRAM;
+char error_msg[64];
+char md5buf[64];
 // used for XMODEM 
 #define WAIT_MD5  0x01
 #define WAIT_FILE_VIEW  0x02

@@ -16,8 +16,6 @@
 #include "Gcode.h"
 #include "libs/StreamOutputPool.h"
 #include "StepTicker.h"
-#include "platform_memory.h"
-
 #include "mri.h"
 #include <inttypes.h>
 

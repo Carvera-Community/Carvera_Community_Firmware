@@ -85,7 +85,7 @@ USB_INT32S  MS_BulkSend          (          USB_INT32U    block_number,
                                             USB_INT16U    num_blocks,
                             const volatile  USB_INT08U   *user_buffer);
 USB_INT32S  MS_Enumerate         (void);
-USB_INT32S  MS_ParseConfiguration(void);
+USB_INT32S  MS_ParseConfiguration(USB_INT16U descriptor_len);
 USB_INT32S  MS_TestUnitReady     (void);
 USB_INT32S  MS_ReadCapacity (USB_INT32U *numBlks, USB_INT32U *blkSize);
 USB_INT32S  MS_GetMaxLUN         (void);

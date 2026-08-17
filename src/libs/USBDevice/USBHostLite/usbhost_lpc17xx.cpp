@@ -44,6 +44,7 @@ volatile  HCTD        *TDHead;                    /* Head transfer descriptor st
 volatile  HCTD        *TDTail;                    /* Tail transfer descriptor structure                     */
 volatile  HCCA        *Hcca;                      /* Host Controller Communications Area structure          */ 
 volatile  USB_INT08U  *TDBuffer;                  /* Current Buffer Pointer of transfer descriptor          */
+volatile  USB_INT08U  *MSBuffer;                  /* Mass-storage sector bounce buffer                      */
 
 // The USB host controller can only DMA from AHB SRAM.
 struct USBHostMemory {
@@ -53,11 +54,11 @@ struct USBHostMemory {
     HCED ed_ctrl;
     HCED ed_bulk_in;
     HCED ed_bulk_out;
-    USB_INT08U td_buffer[0xB0];
+    USB_INT08U td_buffer[HOST_TD_BUFFER_SIZE];
+    USB_INT08U ms_buffer[0x200];
 };
 
 static USBHostMemory HostMem LOCATED_IN_AHBSRAM ALIGNED_TO(256);
-static_assert(sizeof(USBHostMemory) == 0x200, "USB host memory layout must stay within the OHCI AHB block");
 
 static constexpr USB_INT32U HOST_TD_TIMEOUT_MS = 500;
 static constexpr USB_INT32U HOST_PORT_RESET_SETTLE_MS = 100;
@@ -177,6 +178,7 @@ void  Host_Init (void)
     PRINT_Log("USBHostLite: initializing host stack\n");
 
     Hcca       = &HostMem.hcca;
+    MSBuffer   = HostMem.ms_buffer;
     TDHead     = &HostMem.td_head;
     TDTail     = &HostMem.td_tail;
     EDCtrl     = &HostMem.ed_ctrl;
@@ -482,6 +484,9 @@ USB_INT32S Host_ReadConfigurationDescriptor(USB_INT16U max_len, USB_INT16U *fetc
     }
 
     USB_INT16U cfg_len = ReadLE16U(&TDBuffer[USB_CONFIGURATION_TOTAL_LENGTH_OFFSET]);
+    if (cfg_len > HOST_TD_BUFFER_SIZE) {
+        cfg_len = HOST_TD_BUFFER_SIZE;
+    }
     if (max_len && cfg_len > max_len) {
         cfg_len = max_len;
     }

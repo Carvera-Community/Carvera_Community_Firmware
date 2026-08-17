@@ -74,6 +74,7 @@
 #define  USB_SET_CONFIGURATION_SETTLE_MS                100
 #define  USB_ENDPOINT_ZERO_INITIAL_DESCRIPTOR_BYTES      8
 #define  USB_SETUP_PACKET_SIZE                          8
+#define  HOST_TD_BUFFER_SIZE                            0xB0
 #define  USB_CONFIGURATION_DESCRIPTOR_HEADER_SIZE        9
 #define  USB_SETUP_BM_REQUEST_TYPE_OFFSET               0
 #define  USB_SETUP_B_REQUEST_OFFSET                     1
@@ -234,6 +235,7 @@ extern  volatile  HCED        *EDBulkOut;       /* BulkOut endpoint descriptor s
 extern  volatile  HCTD        *TDHead;          /* Head transfer descriptor structure                       */
 extern  volatile  HCTD        *TDTail;          /* Tail transfer descriptor structure                       */
 extern  volatile  USB_INT08U  *TDBuffer;        /* Current Buffer Pointer of transfer descriptor            */
+extern  volatile  USB_INT08U  *MSBuffer;        /* Mass-storage sector bounce buffer                        */
 
 typedef struct hostPortResetStatus {
     USB_INT32U waited_ms;
