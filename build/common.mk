@@ -256,7 +256,7 @@ GCFLAGS += -fanalyzer -floop-unroll-and-jam \
 endif
 
 
-GPFLAGS += $(GCFLAGS) -fno-rtti -std=gnu++17
+GPFLAGS += $(GCFLAGS) -fno-rtti -std=gnu++11
 
 AS_GCFLAGS += -g3 $(DEVICE_FLAGS) -x assembler-with-cpp
 AS_GCFLAGS += $(patsubst %,-I%,$(INCDIRS))

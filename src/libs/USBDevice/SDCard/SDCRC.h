@@ -23,6 +23,7 @@ namespace SDCRC
 {
 
 char crc7(const char* data, int length);
+unsigned short crc16(const char* data, int length);
 
 }
 

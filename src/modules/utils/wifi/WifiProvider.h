@@ -18,7 +18,6 @@ using namespace std;
 
 #include "M8266WIFIDrv.h"
 #include "libs/RingBuffer.h"
-#include "libs/MakeraFrame.h"
 
 #define WIFI_DATA_MAX_SIZE 1460
 #define WIFI_DATA_TIMEOUT_MS 10
@@ -38,7 +37,6 @@ public:
     void on_idle(void* argument);
     void on_get_public_data(void* argument);
     void on_set_public_data(void* argument);
-    void on_protocol_changed();
 
     int gets(char** buf, int size = 0);
     int puts(const char*, int size = 0);
@@ -70,6 +68,7 @@ private:
 
     void on_pin_rise();
     void receive_wifi_data();
+    unsigned int crc16_ccitt(unsigned char *data, unsigned int len);
     int CheckFilePacket(char** buf);
 
     void PacketMessage(char cmd, const char* s, int size);
@@ -86,12 +85,11 @@ private:
 	int tcp_timeout_s;
 	int connection_fail_count;
 	int sta_down_seconds;
+	u8 last_sta_connection_status;
 	uint32_t wifi_seconds;
 	uint32_t sta_flap_times[3]; // timestamps of recent STA reconnect cycles (WIFI_STA_FLAP_LIMIT)
-	uint32_t ap_hold_remaining_s; // keep AP up while > 0 after STA flapping
-	u8 last_sta_connection_status;
 	uint8_t sta_flap_count;
-	u8 makera_remote_ip[4];
+	uint32_t ap_hold_remaining_s; // keep AP up while > 0 after STA flapping
 	char machine_name[64]; // Fixed-size buffer to avoid std::string heap allocation
 	char ap_address[16];
 	char ap_netmask[16];
@@ -111,13 +109,10 @@ private:
     	volatile bool query_flag:1;
     	volatile bool diagnose_flag:1;
     	volatile bool has_data_flag:1;
-    	bool makera_remote_known:1;
+    	volatile bool makera_command_pending:1;
     };
-    bool makera_file_pending;
-    bool makera_file_cancel;
-    u16 makera_remote_port;
-    makera::FrameDecoder makera_frame_decoder;
-    makera::QueueResult makera_error;
+    // Payload length for deferred Makera CTRL_MULTI / FILE_START (bytes at WifiSerialbuff+5)
+    uint16_t makera_pending_payload_len;
     ParseState currentState = WAIT_HEADER;    
     int ptrData;
     int ptr_xbuff;
