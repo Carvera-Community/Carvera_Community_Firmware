@@ -122,6 +122,11 @@ void operator delete(void *p)
     free(p);
 }
 
+void operator delete(void *p, size_t)
+{
+    operator delete(p);
+}
+
 #define offset(x) ((uint32_t)(((uint8_t *)x) - ((uint8_t *)this->base)))
 
 typedef struct __attribute__((packed)) {
