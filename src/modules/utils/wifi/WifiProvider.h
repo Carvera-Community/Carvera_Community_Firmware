@@ -9,8 +9,8 @@
 #define WIFIPROVIDER_H_
 
 using namespace std;
+#include <string>
 #include <vector>
-#include <queue>
 
 #include "Pin.h"
 #include "Module.h"
@@ -113,11 +113,11 @@ private:
     	volatile bool has_data_flag:1;
     	bool makera_remote_known:1;
     };
-    bool makera_file_pending;
     bool makera_file_cancel;
+    bool processing_makera_input;
+    std::string deferred_makera_command;
     u16 makera_remote_port;
     makera::FrameDecoder makera_frame_decoder;
-    makera::QueueResult makera_error;
     ParseState currentState = WAIT_HEADER;    
     int ptrData;
     int ptr_xbuff;
