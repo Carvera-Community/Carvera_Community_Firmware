@@ -2,7 +2,6 @@
 
 #include <cstddef>
 #include <cstdint>
-#include <cstring>
 
 #include "CRC16.h"
 
@@ -30,8 +29,6 @@ struct Packet {
 };
 
 enum class DecodeResult : uint8_t { incomplete, complete, invalid_length, invalid_crc, invalid_footer };
-enum class QueueResult : uint8_t { accepted, empty, too_large, full };
-
 class FrameDecoder {
  public:
   explicit FrameDecoder(Packet& packet) : packet_(packet) {}
@@ -59,44 +56,6 @@ class FrameDecoder {
   bool header_prefix_ = false;
   bool have_last_byte_ = false;
   Packet& packet_;
-};
-
-template <std::size_t Depth, std::size_t MaxSize>
-class CommandQueue {
- public:
-  static_assert(Depth > 1, "A command queue needs at least two slots");
-
-  QueueResult push(const char* data, std::size_t size) {
-    if (data == nullptr || size == 0) return QueueResult::empty;
-    if (size > MaxSize) return QueueResult::too_large;
-    if (full()) return QueueResult::full;
-    std::memcpy(data_[tail_], data, size);
-    sizes_[tail_] = static_cast<uint16_t>(size);
-    tail_ = next(tail_);
-    return QueueResult::accepted;
-  }
-
-  const char* front(std::size_t& size) const {
-    if (empty()) return nullptr;
-    size = sizes_[head_];
-    return data_[head_];
-  }
-
-  void pop() {
-    if (!empty()) head_ = next(head_);
-  }
-
-  void clear() { head_ = tail_ = 0; }
-  bool empty() const { return head_ == tail_; }
-  bool full() const { return next(tail_) == head_; }
-
- private:
-  static uint8_t next(uint8_t index) { return static_cast<uint8_t>((index + 1) % Depth); }
-
-  char data_[Depth][MaxSize];
-  uint16_t sizes_[Depth];
-  volatile uint8_t head_ = 0;
-  volatile uint8_t tail_ = 0;
 };
 
 }  // namespace makera

@@ -67,13 +67,6 @@ struct Decoder {
   makera::FrameDecoder* operator->() { return &frame; }
 };
 
-template <typename Queue>
-std::string queue_front(const Queue& queue) {
-  std::size_t size = 0;
-  const char* data = queue.front(size);
-  return data == nullptr ? std::string() : std::string(data, size);
-}
-
 }  // namespace
 
 int main() {
@@ -261,40 +254,6 @@ int main() {
     CHECK(makera::decode_control('!') == makera::ControlAction::feed_hold);
     CHECK(makera::decode_control('~') == makera::ControlAction::feed_resume);
     CHECK(makera::decode_control('x') == makera::ControlAction::none);
-  }
-
-  {
-    TEST("the command queue preserves order and capacity");
-    makera::CommandQueue<4, 256> queue;
-    CHECK(queue.empty());
-    CHECK(queue.push("first", 5) == makera::QueueResult::accepted);
-    CHECK(queue.push("second", 6) == makera::QueueResult::accepted);
-    CHECK(queue.push("third", 5) == makera::QueueResult::accepted);
-    CHECK(queue.full());
-    CHECK(queue.push("overflow", 8) == makera::QueueResult::full);
-    CHECK(queue_front(queue) == "first");
-    queue.pop();
-    CHECK(queue_front(queue) == "second");
-    queue.pop();
-    CHECK(queue_front(queue) == "third");
-    queue.pop();
-    CHECK(queue.empty());
-    CHECK(queue.push("fourth", 6) == makera::QueueResult::accepted);
-    CHECK(queue.push("fifth", 5) == makera::QueueResult::accepted);
-    CHECK(queue_front(queue) == "fourth");
-    queue.pop();
-    CHECK(queue_front(queue) == "fifth");
-  }
-
-  {
-    TEST("the command queue rejects oversized data");
-    makera::CommandQueue<4, 4> queue;
-    CHECK(queue.push("four", 4) == makera::QueueResult::accepted);
-    CHECK(queue.push("large", 5) == makera::QueueResult::too_large);
-    CHECK(queue.push("", 0) == makera::QueueResult::empty);
-    CHECK(queue_front(queue) == "four");
-    queue.clear();
-    CHECK(queue.empty());
   }
 
   std::printf("\n%d checks, %d failures\n", checks, failures);
