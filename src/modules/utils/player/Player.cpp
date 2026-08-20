@@ -1052,8 +1052,16 @@ void Player::on_main_loop(void *argument)
 
             } else {
                 // discard long line
-                if (this->current_stream != nullptr) { this->current_stream->printf("Warning: Discarded long line\n"); }
+                if (!discard && this->current_stream != nullptr) {
+                    this->current_stream->printf("Warning: Discarded long line\n");
+                }
                 discard = true;
+
+                uint32_t now_us = us_ticker_read();
+                if ((now_us - last_idle_us) >= 200000) {
+                    THEKERNEL->call_event(ON_IDLE);
+                    last_idle_us = now_us;
+                }
             }
         }
 
