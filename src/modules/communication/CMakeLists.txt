@@ -8,5 +8,8 @@ target_sources(carvera_sources PRIVATE
 if(SERIAL_RX_DMA)
     target_sources(carvera_sources PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/UartRxDma.cpp")
 endif()
+if(REMOTE_SETTINGS_TRANSFER)
+    target_sources(carvera_sources PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/RemoteTransfer.cpp")
+endif()
 
 add_subdirectory(utils)
