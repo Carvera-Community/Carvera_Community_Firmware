@@ -33,10 +33,11 @@ using std::string;
 
 extern unsigned char xbuff[XBUFF_LENGTH];
 
-// The frame buffer and command queue stay in main RAM (SerialConsole itself is AHB-allocated).
-enum { MAKERA_CMD_QUEUE_DEPTH = 4, MAKERA_CMD_MAX_LEN = 256 };
+// SerialConsole is AHB-allocated, so keep the larger Makera receive buffer in main RAM.
 static makera::Packet makera_packet;
-static makera::CommandQueue<MAKERA_CMD_QUEUE_DEPTH, MAKERA_CMD_MAX_LEN> makera_commands;
+static RingBuffer<char, 1024> makera_rx_bytes;
+// Let a back-to-back burst finish before command handlers reply on the same UART.
+constexpr uint32_t makera_rx_quiet_ms = 2;
 
 // Serial reading module
 // Treats every received line as a command and passes it ( via event call ) to the command dispatcher.
@@ -50,9 +51,11 @@ SerialConsole::SerialConsole( PinName tx_pin, PinName rx_pin, int baud_rate )
     this->default_baud_rate = baud_rate;
     this->temp_baud_rate = 0;
     this->last_activity_ms = 0;
-    this->makera_error = makera::QueueResult::accepted;
+    this->makera_rx_overflow = false;
+    this->processing_makera_input = false;
     this->makera_frame_decoder.reset();
-    makera_commands.clear();
+    this->deferred_makera_command.clear();
+    makera_rx_bytes.tail = makera_rx_bytes.head;
     this->reset_file_parser();
 }
 
@@ -124,9 +127,12 @@ void SerialConsole::on_serial_char_received() {
 		}
 
         if (communication_protocol == PROTOCOL_MAKERA) {
-            // Keep RX IRQ enabled and queue completed commands. Disabling IRQ while a
-            // command is pending drops back-to-back host traffic (e.g. buffer then play).
-            process_makera_byte(static_cast<uint8_t>(received));
+            const int next = makera_rx_bytes.next_block_index(makera_rx_bytes.head);
+            if (next == makera_rx_bytes.tail) {
+                makera_rx_overflow = true;
+            } else {
+                makera_rx_bytes.push_back(received);
+            }
             continue;
         }
 		
@@ -187,8 +193,20 @@ void SerialConsole::on_idle(void * argument)
 {
 	if (THEKERNEL->is_uploading()) return;
 
+    const uint32_t now_ms = us_ticker_read() / 1000;
+    if (communication_protocol == PROTOCOL_MAKERA && !processing_makera_input &&
+        now_ms - last_activity_ms >= makera_rx_quiet_ms) {
+        processing_makera_input = true;
+        while (deferred_makera_command.empty() && makera_rx_bytes.tail != makera_rx_bytes.head) {
+            char received;
+            makera_rx_bytes.pop_front(received);
+            process_makera_byte(static_cast<uint8_t>(received));
+            if (THEKERNEL->is_uploading()) break;
+        }
+        processing_makera_input = false;
+    }
+
     if (temp_baud_rate != 0) {
-        uint32_t now_ms = us_ticker_read() / 1000;
         if ((now_ms - last_activity_ms) >= 15000) {
             this->serial->baud(default_baud_rate);
             this->current_baud_rate = default_baud_rate;
@@ -196,12 +214,9 @@ void SerialConsole::on_idle(void * argument)
         }
     }
 
-    if (makera_error != makera::QueueResult::accepted) {
-        const char *message = makera_error == makera::QueueResult::too_large
-            ? "ERROR: command discarded, longer than the 256 byte limit\r\n"
-            : "ERROR: command discarded, command queue full\r\n";
-        makera_error = makera::QueueResult::accepted;
-        PacketMessage(PTYPE_NORMAL_INFO, message, 0);
+    if (makera_rx_overflow) {
+        makera_rx_overflow = false;
+        PacketMessage(PTYPE_NORMAL_INFO, "ERROR: serial receive buffer full\r\n", 0);
     }
 
     if (makera_file_cancel) {
@@ -246,16 +261,15 @@ void SerialConsole::on_idle(void * argument)
 // Actual event calling must happen in the main loop because if it happens in the interrupt we will loose data
 void SerialConsole::on_main_loop(void * argument){
     if (communication_protocol == PROTOCOL_MAKERA) {
-        size_t payload_length = 0;
-        const char *payload = makera_commands.front(payload_length);
-        if (payload != nullptr) {
+        if (!deferred_makera_command.empty()) {
             struct SerialMessage message;
-            message.message.assign(payload, payload_length);
+            message.message.swap(deferred_makera_command);
             message.stream = this;
             message.line = 0;
 
-            makera_commands.pop();
+            processing_makera_input = true;
             THEKERNEL->call_event(ON_CONSOLE_LINE_RECEIVED, &message);
+            processing_makera_input = false;
         }
         return;
     }
@@ -293,8 +307,15 @@ int SerialConsole::puts(const char* s, int size)
 int SerialConsole::gets(char** buf, int size)
 {
 	if (communication_protocol == PROTOCOL_MAKERA) {
-        while (this->serial->readable()) {
-            uint8_t received = static_cast<uint8_t>(this->serial->getc());
+        while (makera_rx_bytes.tail != makera_rx_bytes.head || this->serial->readable()) {
+            uint8_t received;
+            if (makera_rx_bytes.tail != makera_rx_bytes.head) {
+                char buffered;
+                makera_rx_bytes.pop_front(buffered);
+                received = static_cast<uint8_t>(buffered);
+            } else {
+                received = static_cast<uint8_t>(this->serial->getc());
+            }
             uint16_t checksum;
 
             switch (file_parse_state) {
@@ -365,17 +386,23 @@ void SerialConsole::process_makera_byte(uint8_t received)
         return;
     }
 
+    if (packet.type == PTYPE_CTRL_MULTI && makera::is_deferred_command(
+            reinterpret_cast<const char *>(packet.data), packet.data_length)) {
+        deferred_makera_command.assign(reinterpret_cast<const char *>(packet.data), packet.data_length);
+        return;
+    }
+
     if (packet.type == PTYPE_CTRL_MULTI || packet.type == PTYPE_FILE_START) {
-        const makera::QueueResult queued = makera_commands.push(
-            reinterpret_cast<const char *>(packet.data), packet.data_length);
-        if (queued == makera::QueueResult::empty) {
+        if (packet.data_length == 0) {
             if (packet.type == PTYPE_FILE_START) makera_file_cancel = true;
             return;
         }
-        if (queued != makera::QueueResult::accepted) {
-            makera_error = queued;
-            if (packet.type == PTYPE_FILE_START) makera_file_cancel = true;
-        }
+
+        struct SerialMessage message;
+        message.message.assign(reinterpret_cast<const char *>(packet.data), packet.data_length);
+        message.stream = this;
+        message.line = 0;
+        THEKERNEL->call_event(ON_CONSOLE_LINE_RECEIVED, &message);
     }
 }
 
@@ -427,8 +454,10 @@ void SerialConsole::on_protocol_changed()
     halt_flag = false;
     diagnose_flag = false;
     makera_file_cancel = false;
-    makera_error = makera::QueueResult::accepted;
-    makera_commands.clear();
+    makera_rx_overflow = false;
+    processing_makera_input = false;
+    deferred_makera_command.clear();
+    makera_rx_bytes.tail = makera_rx_bytes.head;
     makera_frame_decoder.reset();
     reset_file_parser();
 }
@@ -445,7 +474,8 @@ int SerialConsole::_getc()
 
 bool SerialConsole::ready()
 {
-    return this->serial->readable();
+	return (communication_protocol == PROTOCOL_MAKERA && makera_rx_bytes.tail != makera_rx_bytes.head) ||
+           this->serial->readable();
 }
 
 // Does the queue have a given char ?
