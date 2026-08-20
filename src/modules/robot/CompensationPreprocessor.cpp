@@ -198,8 +198,12 @@ bool CompensationPreprocessor::format_compensated_gcode(const float uncomp_start
     float comp_end[3], char* gcode_str, size_t gcode_str_size) const
 {
     char feedrate_suffix[32] = {0};
+    char spindle_suffix[32] = {0};
     if (curr.has_feedrate) {
         snprintf(feedrate_suffix, sizeof(feedrate_suffix), " F%.3f", curr.feedrate);
+    }
+    if (curr.has_s_value) {
+        snprintf(spindle_suffix, sizeof(spindle_suffix), " S%.3f", curr.s_value);
     }
 
     if (is_arc_motion(curr.motion_g)) {
@@ -252,23 +256,25 @@ bool CompensationPreprocessor::format_compensated_gcode(const float uncomp_start
         comp_end[X_AXIS] = arc_end_x;
         comp_end[Y_AXIS] = arc_end_y;
 
-        snprintf(gcode_str, gcode_str_size, "G%d X%.3f Y%.3f Z%.3f I%.3f J%.3f%s",
+        snprintf(gcode_str, gcode_str_size, "G%d X%.3f Y%.3f Z%.3f I%.3f J%.3f%s%s",
             curr.motion_g,
             arc_end_x,
             arc_end_y,
             comp_end[Z_AXIS],
             new_i,
             new_j,
-            feedrate_suffix);
+            feedrate_suffix,
+            spindle_suffix);
         return true;
     }
 
-    snprintf(gcode_str, gcode_str_size, "G%d X%.3f Y%.3f Z%.3f%s",
+    snprintf(gcode_str, gcode_str_size, "G%d X%.3f Y%.3f Z%.3f%s%s",
         curr.motion_g <= 1 ? curr.motion_g : 1,
         comp_end[X_AXIS],
         comp_end[Y_AXIS],
         comp_end[Z_AXIS],
-        feedrate_suffix);
+        feedrate_suffix,
+        spindle_suffix);
     return true;
 }
 
@@ -315,8 +321,11 @@ CompensationPreprocessor::CompensationPreprocessor()
         uncomp_ring[i].i = 0.0f;
         uncomp_ring[i].j = 0.0f;
         uncomp_ring[i].feedrate = 0.0f;
+        uncomp_ring[i].s_value = 0.0f;
+        uncomp_ring[i].line = 0;
         uncomp_ring[i].motion_g = 0;
         uncomp_ring[i].has_feedrate = false;
+        uncomp_ring[i].has_s_value = false;
         comp_ring[i].x = 0.0f;
         comp_ring[i].y = 0.0f;
         comp_ring[i].z = 0.0f;
@@ -419,8 +428,11 @@ Gcode* CompensationPreprocessor::buffer_gcode(Gcode* gcode)
     uncomp_ring[uncomp_head].i = gcode->has_letter('I') ? gcode->get_value('I') : 0.0f;
     uncomp_ring[uncomp_head].j = gcode->has_letter('J') ? gcode->get_value('J') : 0.0f;
     uncomp_ring[uncomp_head].feedrate = gcode->has_letter('F') ? gcode->get_value('F') : 0.0f;
+    uncomp_ring[uncomp_head].s_value = gcode->has_letter('S') ? gcode->get_value('S') : 0.0f;
+    uncomp_ring[uncomp_head].line = gcode->line;
     uncomp_ring[uncomp_head].motion_g = motion_g;
     uncomp_ring[uncomp_head].has_feedrate = gcode->has_letter('F');
+    uncomp_ring[uncomp_head].has_s_value = gcode->has_letter('S');
     
     uncomp_head = (uncomp_head + 1) % BUFFER_SIZE;
     if (uncomp_count < BUFFER_SIZE) {
@@ -567,7 +579,7 @@ void CompensationPreprocessor::compute_and_output()
     print_output(gcode_str);
 
     comp_ring[comp_idx].gcode = gcode_pool[comp_idx];
-    gcode_pool[comp_idx]->reset(gcode_str);
+    gcode_pool[comp_idx]->reset(gcode_str, true, b.line);
     COMP_METRICS(load_balance_metrics.generated_gcode_count++;);
     last_emitted_uncomp[X_AXIS] = b.x;
     last_emitted_uncomp[Y_AXIS] = b.y;
@@ -636,7 +648,7 @@ bool CompensationPreprocessor::compute_terminal_output()
         }
 
         comp_ring[comp_idx].gcode = gcode_pool[comp_idx];
-        gcode_pool[comp_idx]->reset(gcode_str);
+        gcode_pool[comp_idx]->reset(gcode_str, true, curr.line);
         COMP_METRICS(load_balance_metrics.generated_gcode_count++;);
         last_emitted_uncomp[X_AXIS] = curr.x;
         last_emitted_uncomp[Y_AXIS] = curr.y;
@@ -712,7 +724,7 @@ bool CompensationPreprocessor::compute_terminal_output()
     }
 
     comp_ring[comp_idx].gcode = gcode_pool[comp_idx];
-    gcode_pool[comp_idx]->reset(gcode_str);
+    gcode_pool[comp_idx]->reset(gcode_str, true, curr.line);
     COMP_METRICS(load_balance_metrics.generated_gcode_count++;);
     last_emitted_uncomp[X_AXIS] = curr.x;
     last_emitted_uncomp[Y_AXIS] = curr.y;
@@ -977,8 +989,11 @@ void CompensationPreprocessor::clear()
         uncomp_ring[i].i = 0.0f;
         uncomp_ring[i].j = 0.0f;
         uncomp_ring[i].feedrate = 0.0f;
+        uncomp_ring[i].s_value = 0.0f;
+        uncomp_ring[i].line = 0;
         uncomp_ring[i].motion_g = 0;
         uncomp_ring[i].has_feedrate = false;
+        uncomp_ring[i].has_s_value = false;
         comp_ring[i].x = 0.0f;
         comp_ring[i].y = 0.0f;
         comp_ring[i].z = 0.0f;
