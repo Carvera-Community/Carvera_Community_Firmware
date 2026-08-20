@@ -159,6 +159,7 @@ Robot::Robot()
 void Robot::on_module_loaded()
 {
     this->register_for_event(ON_GCODE_RECEIVED);
+    this->register_for_event(ON_HALT);
 
     // Configuration
     this->load_config();
@@ -189,6 +190,21 @@ void Robot::on_module_loaded()
         this->cos_r[wcs_index] = cos(this->r[wcs_index] * PI / 180.0);
         this->sin_r[wcs_index] = sin(this->r[wcs_index] * PI / 180.0);
     }
+}
+
+void Robot::on_halt(void* argument)
+{
+    // Purge all compensation runtime state on both halt entry and halt clear.
+    // This prevents stale buffered moves/offsets from leaking across alarm recovery.
+    (void)argument;
+    compensation_preprocessor->clear();
+    compensation_preprocessor->set_compensation(CompensationType::NONE, 0.0f);
+    this->comp_suspended = false;
+    this->suspended_comp_type = CompensationType::NONE;
+    this->suspended_comp_radius = 0.0f;
+    this->comp_frozen_offset[X_AXIS] = 0.0f;
+    this->comp_frozen_offset[Y_AXIS] = 0.0f;
+    this->next_command_is_MCS = false;
 }
 
 #define ACTUATOR_CHECKSUMS(X) {     \

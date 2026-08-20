@@ -35,6 +35,7 @@ class Robot : public Module {
         Robot();
         void on_module_loaded();
         void on_gcode_received(void* argument);
+        void on_halt(void* argument);
         void process_buffered_command(Gcode* gcode);  // Process command from buffer
 
         void reset_axis_position(float position, int axis);
