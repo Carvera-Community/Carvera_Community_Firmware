@@ -66,9 +66,8 @@
 #define XBUFF_LENGTH	8208
 extern unsigned char xbuff[XBUFF_LENGTH];
 extern unsigned char fbuff[4096];
-enum { MAKERA_CMD_QUEUE_DEPTH = 3, MAKERA_CMD_MAX_LEN = 510, MAKERA_MAX_RECEIVE_CALLS = 10 };
+enum { MAKERA_MAX_RECEIVE_CALLS = 10 };
 static makera::Packet makera_packet LOCATED_IN_AHBSRAM;
-static makera::CommandQueue<MAKERA_CMD_QUEUE_DEPTH, MAKERA_CMD_MAX_LEN> makera_commands LOCATED_IN_AHBSRAM;
 
 
 
@@ -79,12 +78,11 @@ WifiProvider::WifiProvider()
 	udp_link_no = 1;
 	wifi_init_ok = false;
 	has_data_flag = false;
-	makera_file_pending = false;
 	makera_file_cancel = false;
+	processing_makera_input = false;
+	deferred_makera_command.clear();
 	makera_remote_port = 0;
 	makera_remote_known = false;
-	makera_error = makera::QueueResult::accepted;
-	makera_commands.clear();
 	connection_fail_count = 0;
 	sta_down_seconds = 0;
 	last_sta_connection_status = 0xff;
@@ -262,9 +260,11 @@ void WifiProvider::receive_wifi_data() {
 	int frames = 0;
 	int receive_calls = 0;
 	uint16_t header_errors = 0;
-	while (frames < max_frames && receive_calls < MAKERA_MAX_RECEIVE_CALLS && !makera_file_pending) {
-		if (!makera_frame_decoder.has_header() && makera_commands.full()) return;
-
+	// The M8266 receive side buffers six TCP segments (8,760 bytes, measured on
+	// hardware) and closes its advertised window when they fill. Leave unread
+	// commands there and let TCP apply backpressure instead of duplicating that
+	// buffer in the LPC's limited RAM.
+	while (frames < max_frames && receive_calls < MAKERA_MAX_RECEIVE_CALLS && deferred_makera_command.empty()) {
 		uint16_t wanted = static_cast<uint16_t>(makera_frame_decoder.bytes_wanted());
 		if (wanted > WIFI_DATA_MAX_SIZE) wanted = WIFI_DATA_MAX_SIZE;
 		if (frames > 0 && !makera_frame_decoder.has_header() && !M8266WIFI_SPI_Has_DataReceived()) return;
@@ -322,18 +322,24 @@ void WifiProvider::receive_wifi_data() {
 
 			if (packet.type != PTYPE_CTRL_MULTI && packet.type != PTYPE_FILE_START) continue;
 
-			const makera::QueueResult queued = makera_commands.push(
-				reinterpret_cast<const char *>(packet.data), packet.data_length);
-			if (queued == makera::QueueResult::accepted) {
-				if (packet.type == PTYPE_FILE_START) makera_file_pending = true;
-			} else if (queued == makera::QueueResult::empty) {
+			if (packet.data_length == 0) {
 				if (packet.type == PTYPE_FILE_START) makera_file_cancel = true;
-			} else {
-				makera_error = queued;
-				if (packet.type == PTYPE_FILE_START) makera_file_cancel = true;
+				continue;
 			}
 
-			if (makera_file_pending) return;
+			if (packet.type == PTYPE_CTRL_MULTI && makera::is_deferred_command(
+					reinterpret_cast<const char *>(packet.data), packet.data_length)) {
+				deferred_makera_command.assign(reinterpret_cast<const char *>(packet.data), packet.data_length);
+				return;
+			}
+
+			struct SerialMessage message;
+			message.message.assign(reinterpret_cast<const char *>(packet.data), packet.data_length);
+			message.stream = this;
+			message.line = 0;
+
+			THEKERNEL->call_event(ON_CONSOLE_LINE_RECEIVED, &message);
+			if (packet.type == PTYPE_FILE_START) return;
 		}
 	}
 
@@ -539,17 +545,12 @@ void WifiProvider::on_idle(void *argument)
 	if (THEKERNEL->is_uploading()) return;
 
 	// FILE_START leaves the following file data for Player::gets().
-	if (!makera_file_pending && (has_data_flag || M8266WIFI_SPI_Has_DataReceived())) {
+	if (!processing_makera_input && deferred_makera_command.empty() &&
+			(has_data_flag || M8266WIFI_SPI_Has_DataReceived())) {
 		has_data_flag = false;
+		processing_makera_input = true;
 		receive_wifi_data();
-	}
-
-	if (makera_error != makera::QueueResult::accepted) {
-		const char *message = makera_error == makera::QueueResult::too_large
-			? "ERROR: command discarded, longer than the 510 byte limit\r\n"
-			: "ERROR: command discarded, command queue full\r\n";
-		makera_error = makera::QueueResult::accepted;
-		PacketMessage(PTYPE_NORMAL_INFO, message, 0);
+		processing_makera_input = false;
 	}
 
 	if (makera_file_cancel) {
@@ -593,17 +594,15 @@ void WifiProvider::on_idle(void *argument)
 void WifiProvider::on_main_loop(void *argument)
 {
 	if (communication_protocol == PROTOCOL_MAKERA) {
-		size_t payload_length = 0;
-		const char *payload = makera_commands.front(payload_length);
-		if (payload != nullptr) {
+		if (!deferred_makera_command.empty()) {
 			struct SerialMessage message;
-			message.message.assign(payload, payload_length);
+			message.message.swap(deferred_makera_command);
 			message.stream = this;
 			message.line = 0;
 
-			makera_commands.pop();
+			processing_makera_input = true;
 			THEKERNEL->call_event(ON_CONSOLE_LINE_RECEIVED, &message);
-			if (makera_file_pending && makera_commands.empty()) makera_file_pending = false;
+			processing_makera_input = false;
 		}
 		return;
 	}
@@ -634,11 +633,10 @@ void WifiProvider::on_protocol_changed()
 	query_flag = false;
 	halt_flag = false;
 	diagnose_flag = false;
-	makera_file_pending = false;
 	makera_file_cancel = false;
+	processing_makera_input = false;
+	deferred_makera_command.clear();
 	makera_remote_known = false;
-	makera_error = makera::QueueResult::accepted;
-	makera_commands.clear();
 	makera_frame_decoder.reset();
 	reset();
 }
