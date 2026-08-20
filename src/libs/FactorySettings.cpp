@@ -50,7 +50,7 @@ FactorySettings::LineResult FactorySettings::apply_line(std::string_view line) {
   const unsigned char value = parse_value(setting.value());
   switch (get_checksum(setting.key())) {
     case machine_model_checksum:
-      values_.MachineModel = value;
+      values_.MachineModel = static_cast<Machine>(value);
       break;
     case a_axis_home_checksum:
       set_bit(0, value == 1);

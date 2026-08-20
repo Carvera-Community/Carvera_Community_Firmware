@@ -172,10 +172,17 @@ Result receive_config(SerialConsole& serial, RemoteConfigSource& source, ConfigC
 
 Result receive_factory_settings(SerialConsole& serial, const FACTORY_SET& current, FACTORY_SET& received) {
   FACTORY_SET candidate = current;
+  const auto valid_machine = [&] {
+#if defined(MACHINE_FAMILY_Z1)
+    return candidate.MachineModel == Z1 || candidate.MachineModel == Z1PRO;
+#else
+    return candidate.MachineModel == CARVERA || candidate.MachineModel == CARVERA_AIR;
+#endif
+  };
   const Result result = receive_records(
       serial, factory_packets,
-      [&](const uint8_t* data, std::size_t size) { return store_factory_record(candidate, data, size); },
-      [] { return true; }, false);
+      [&](const uint8_t* data, std::size_t size) { return store_factory_record(candidate, data, size); }, valid_machine,
+      false);
   if (result == Result::success) received = candidate;
   return result;
 }

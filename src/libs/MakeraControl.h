@@ -1,6 +1,8 @@
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
+#include <cstring>
 
 namespace makera {
 
@@ -25,6 +27,16 @@ constexpr ControlAction decode_control(uint8_t control) {
     default:
       return ControlAction::none;
   }
+}
+
+inline bool is_diagnostic_request(const uint8_t* data, std::size_t length) {
+  constexpr char command[] = "diagnose";
+  constexpr std::size_t command_length = sizeof(command) - 1;
+  if (data == nullptr || length < command_length || std::memcmp(data, command, command_length) != 0) return false;
+  for (std::size_t i = command_length; i < length; ++i) {
+    if (data[i] != ' ' && data[i] != '\t' && data[i] != '\r' && data[i] != '\n') return false;
+  }
+  return true;
 }
 
 ControlAction handle_control(uint8_t control);
