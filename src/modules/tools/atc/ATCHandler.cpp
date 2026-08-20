@@ -145,6 +145,9 @@ void ATCHandler::clear_script_queue(){
 }
 
 void ATCHandler::load_custom_tool_slots() {
+#if defined(NO_SD_CARD)
+    return;
+#else
     // Clear existing tool slots
     this->atc_tools.clear();
 
@@ -260,6 +263,7 @@ void ATCHandler::load_custom_tool_slots() {
         atc_tools[tool_num].set_mz_mm(z_mm);
     }
     fwfs::fclose(fp);
+#endif
 }
 
 bool ATCHandler::is_custom_tool_defined(int tool_num) {
@@ -355,6 +359,10 @@ void ATCHandler::remove_custom_tool_slot(int tool_num) {
 }
 
 void ATCHandler::save_custom_tool_slots_to_file() {
+#if defined(NO_SD_CARD)
+    THEKERNEL->streams->printf("ERROR: File storage is not available on this machine\n");
+    return;
+#else
     // Write to SD card
     string filename = "/sd/custom_tool_slots.txt";
     FILE *fp = fwfs::fopen(filename.c_str(), "w");
@@ -387,6 +395,7 @@ void ATCHandler::save_custom_tool_slots_to_file() {
     } else {
         THEKERNEL->streams->printf("No custom tool slot config to save\n");
     }
+#endif
 }
 
 
@@ -3211,6 +3220,10 @@ void ATCHandler::on_gcode_received(void *argument)
 				}
 			}
 		} else if ( gcode->m == 890 ) {
+#if defined(NO_SD_CARD)
+			gcode->stream->printf("ERROR: File storage is not available on this machine\n");
+			return;
+#else
 			// M890 - Add or update custom tool slot and save to file
 			// Usage: M890 T<tool_number> X<x_mm> Y<y_mm> [Z<z_mm>]
 			// Z is optional - if not provided, uses the previous slot's Z position
@@ -3227,7 +3240,12 @@ void ATCHandler::on_gcode_received(void *argument)
 			
 			this->add_custom_tool_slot(tool_num, x_mm, y_mm, z_mm);
 			this->save_custom_tool_slots_to_file();
+#endif
 		} else if ( gcode->m == 891 ) {
+#if defined(NO_SD_CARD)
+			gcode->stream->printf("ERROR: File storage is not available on this machine\n");
+			return;
+#else
 			// M891 - Remove custom tool slot and save to file
 			// Usage: M891 T<tool_number>
 			if (!gcode->has_letter('T')) {
@@ -3239,6 +3257,7 @@ void ATCHandler::on_gcode_received(void *argument)
 			int tool_num = (int)gcode->get_value('T');
 			this->remove_custom_tool_slot(tool_num);
 			this->save_custom_tool_slots_to_file();
+#endif
 		}
 
     } else if (gcode->has_g && gcode->g == 28 && gcode->subcode == 0) {

@@ -270,6 +270,10 @@ bool CartGridStrategy::handleConfig()
 
 void CartGridStrategy::save_grid(StreamOutput *stream)
 {
+#if defined(NO_SD_CARD)
+    stream->printf("ERROR: File storage is not available on this machine\n");
+    return;
+#else
     if(isnan(grid[0])) {
         stream->printf("error:No grid to save\n");
         return;
@@ -333,10 +337,15 @@ void CartGridStrategy::save_grid(StreamOutput *stream)
     }
     stream->printf("grid saved to %s\n", filename);
     fwfs::fclose(fp);
+#endif
 }
 
 bool CartGridStrategy::load_grid(StreamOutput *stream)
 {
+#if defined(NO_SD_CARD)
+    stream->printf("ERROR: File storage is not available on this machine\n");
+    return false;
+#else
     // we use a different file format depending on whether it is square or not
     const char *filename= (this->new_file_format) ? GRIDFILE_NM : GRIDFILE;
 
@@ -429,6 +438,7 @@ bool CartGridStrategy::load_grid(StreamOutput *stream)
     stream->printf("grid loaded, grid: (%f, %f), size: %d x %d\n", x_size, y_size, load_grid_x_size, load_grid_y_size);
     fwfs::fclose(fp);
     return true;
+#endif
 }
 
 bool CartGridStrategy::handleGcode(Gcode *gcode)
@@ -530,10 +540,14 @@ bool CartGridStrategy::handleGcode(Gcode *gcode)
 
         } else if(gcode->m == 374) { // M374: Save grid, M374.1: delete saved grid
             if(gcode->subcode == 1) {
+#if defined(NO_SD_CARD)
+                gcode->stream->printf("ERROR: File storage is not available on this machine\n");
+#else
                 // we use a different file format depending on whether it is square or not
                 const char *filename= (this->new_file_format) ? GRIDFILE_NM : GRIDFILE;
                 fwfs::remove(filename);
                 gcode->stream->printf("%s deleted\n", filename);
+#endif
             } else {
                 __disable_irq();
                 save_grid(gcode->stream);
@@ -573,8 +587,12 @@ bool CartGridStrategy::handleGcode(Gcode *gcode)
                 }
             } else if(gcode->subcode == 4) {
                 // Delete flex compensation data
+#if defined(NO_SD_CARD)
+                gcode->stream->printf("ERROR: File storage is not available on this machine\n");
+#else
                 fwfs::remove(FLEX_COMPENSATION_FILE);
                 gcode->stream->printf("Flex compensation data deleted\n");
+#endif
             }else if(gcode->subcode == 5) {
                 // Enable Debugging
                 this->force_debug = true;
@@ -1290,6 +1308,10 @@ void CartGridStrategy::print_flex_compensation_data(StreamOutput *stream)
 
 void CartGridStrategy::save_flex_compensation_data(StreamOutput *stream)
 {
+#if defined(NO_SD_CARD)
+    stream->printf("ERROR: File storage is not available on this machine\n");
+    return;
+#else
     // Check if we have valid compensation data to save
     if(flex_compensation_data == nullptr || flex_current_x_points == 0) {
         stream->printf("error: No flex compensation data to save\n");
@@ -1363,10 +1385,15 @@ void CartGridStrategy::save_flex_compensation_data(StreamOutput *stream)
     stream->printf("Saved: flex_x_start=%.3f, flex_grid_size=%d, flex_x_size=%.3f\n", 
                    flex_x_start, flex_current_x_points, flex_x_size);
     fwfs::fclose(fp);
+#endif
 }
 
 bool CartGridStrategy::load_flex_compensation_data(StreamOutput *stream)
 {
+#if defined(NO_SD_CARD)
+    stream->printf("ERROR: File storage is not available on this machine\n");
+    return false;
+#else
     FILE *fp = fwfs::fopen(FLEX_COMPENSATION_FILE, "r");
     if(fp == NULL) {
         stream->printf("error: Failed to open flex compensation file %s\n", FLEX_COMPENSATION_FILE);
@@ -1450,6 +1477,7 @@ bool CartGridStrategy::load_flex_compensation_data(StreamOutput *stream)
                    flex_x_start, flex_current_x_points, flex_x_size);
     fwfs::fclose(fp);
     return true;
+#endif
 }
 
 void CartGridStrategy::reset_flex_compensation()
