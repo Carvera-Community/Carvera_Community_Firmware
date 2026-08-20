@@ -21,7 +21,9 @@
 #include "checksumm.h"
 #include "Config.h"
 #include "ConfigValue.h"
+#if !defined(NO_SD_CARD)
 #include "SDFAT.h"
+#endif
 #include "md5.h"
 
 #include "modules/robot/Conveyor.h"
@@ -54,7 +56,9 @@
 #define spindle_suspend_restore_enable_checksum CHECKSUM("spindle_suspend_restore_enable")
 #define laser_module_clustering_checksum 	  CHECKSUM("laser_module_clustering")
 
+#if !defined(NO_SD_CARD)
 extern SDFAT mounter;
+#endif
 
 #define XBUFF_LENGTH	8208
 unsigned char xbuff[XBUFF_LENGTH]; /* 2 for data length, 8192 for XModem + 3 head chars + 2 crc + nul */
@@ -369,6 +373,17 @@ void Player::on_gcode_received(void *argument)
     Gcode *gcode = static_cast<Gcode *>(argument);
     string args = get_arguments(gcode->get_command());
     if (gcode->has_m) {
+#if defined(NO_SD_CARD)
+        if (gcode->m == 23 || gcode->m == 26 || gcode->m == 32 || gcode->m == 97 || gcode->m == 98 ||
+            gcode->m == 99) {
+            gcode->stream->printf("ERROR: File storage is not available on this machine\r\n");
+#if defined(STREAMED_JOB_PLAYBACK)
+            if (this->streamed_session_active())
+                this->abort_command("1", gcode->stream);
+#endif
+            return;
+        }
+#endif
         // Track spindle state from the job stream so suspend/resume can work
         if (gcode->m == 3) {
             this->last_spindle_on = true;
@@ -393,7 +408,9 @@ void Player::on_gcode_received(void *argument)
 
         }      
         else if (gcode->m == 21) { // Dummy code; makes Octoprint happy -- supposed to initialize SD card
+#if !defined(NO_SD_CARD)
             mounter.remount();
+#endif
             gcode->stream->printf("SD card ok\r\n");
 
 #if !defined(STREAMED_JOB_PLAYBACK)
@@ -1342,7 +1359,17 @@ void Player::on_main_loop(void *argument)
                 message.message = buf;
                 message.stream = this->current_stream == nullptr ? &(StreamOutput::NullStream) : this->current_stream;
 
-#if !defined(STREAMED_JOB_PLAYBACK)
+#if defined(NO_SD_CARD)
+                const char* command = buf;
+                while (*command == ' ' || *command == '\t') ++command;
+                if (*command == 'O' || *command == 'o') {
+                    THEKERNEL->streams->printf("ERROR: O-codes are not available without local file storage\r\n");
+#if defined(STREAMED_JOB_PLAYBACK)
+                    this->abort_command("1", THEKERNEL->streams);
+#endif
+                    return;
+                }
+#elif !defined(STREAMED_JOB_PLAYBACK)
                 if (this->line_source.file() != nullptr &&
                     this->ocode_handler.process_line(buf, this->line_source.file(), message.stream, this->file_line)) {
                     this->sync_progress_max();

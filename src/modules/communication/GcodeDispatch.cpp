@@ -236,6 +236,13 @@ try_again:
 				}
 
 				if(gcode->has_m) {
+#if defined(NO_SD_CARD)
+					if (gcode->m == 28 || (gcode->m >= 500 && gcode->m <= 504 && gcode->m != 503)) {
+						new_message.stream->printf("ERROR: File storage is not available on this machine\r\n");
+						delete gcode;
+						continue;
+					}
+#endif
 					switch (gcode->m) {
 						case 28: // start upload command
 							delete gcode;
@@ -408,6 +415,7 @@ try_again:
 							continue;
 
 						case 503: { // M503 display live settings and indicates if there is an override file
+#if !defined(NO_SD_CARD)
 							FILE *fd = fwfs::fopen(THEKERNEL->config_override_filename(), "r");
 							if(fd != NULL) {
 								fwfs::fclose(fd);
@@ -416,6 +424,7 @@ try_again:
 							} else {
 								new_message.stream->printf("; No config override\n");
 							}
+#endif
 							gcode->add_nl= true;
 							break; // fall through to process by modules
 						}

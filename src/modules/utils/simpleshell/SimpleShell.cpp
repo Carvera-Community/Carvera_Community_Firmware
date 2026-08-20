@@ -47,7 +47,9 @@
 #include "heap/heap_debug.h"
 #include "heap/heap_5.h"
 #include "SwitchPublicAccess.h"
+#if !defined(NO_SD_CARD)
 #include "SDFAT.h"
+#endif
 #include "FATFileSystem.h"
 #include "Thermistor.h"
 #include "md5.h"
@@ -392,6 +394,16 @@ void SimpleShell::on_console_line_received( void *argument )
         //new_message.stream->printf("Received %s\r\n", possible_command.c_str());
         string cmd = shift_parameter(possible_command);
 
+#if defined(NO_SD_CARD)
+        if (cmd == "ls" || cmd == "cd" || cmd == "cat" ||
+            cmd == "rm" || cmd == "mv" || cmd == "mkdir" || cmd == "ftype" || cmd == "load" ||
+            cmd == "save" || cmd == "remount" || cmd == "md5sum" || cmd == "config-get-all" ||
+            cmd == "config-restore" || cmd == "config-default") {
+            new_message.stream->printf("ERROR: File storage is not available on this machine\r\n");
+            return;
+        }
+#endif
+
         // Configurator commands
         if (cmd == "config-get"){
             THEKERNEL->configurator->config_get_command(  possible_command, new_message.stream );
@@ -529,16 +541,22 @@ void SimpleShell::ls_command( string parameters, StreamOutput *stream )
     }
 }
 
+#if !defined(NO_SD_CARD)
 extern SDFAT mounter;
+#endif
 
 void SimpleShell::remount_command( string parameters, StreamOutput *stream )
 {
+#if !defined(NO_SD_CARD)
     mounter.remount();
     if (communication_protocol == PROTOCOL_SMOOTHIE) {
         stream->printf("remounted\r\n");
     } else {
         PacketMessage(PTYPE_NORMAL_INFO, "remounted\r\n", 0, stream);
     }
+#else
+    stream->printf("ERROR: SD card is not available\r\n");
+#endif
 }
 
 // Delete a file

@@ -27,7 +27,14 @@ option(REMOTE_SETTINGS_TRANSFER "Load machine settings through the Makera serial
 option(STREAMED_JOB_PLAYBACK "Play jobs streamed through the Makera serial link" OFF)
 option(NO_MODBUS_SPINDLE "Exclude the Modbus spindle drivers" ON)
 option(NO_VESC_SPINDLE "Exclude the VESC USB spindle driver" OFF)
+option(NO_USB_HOST "Exclude USB host support" OFF)
+option(NO_SD_CARD "Exclude local SD card support" OFF)
+option(NO_WIRELESS_PROBE "Exclude the wireless probe UART" OFF)
+option(NO_WIFI_PROVIDER "Exclude the Wi-Fi module" OFF)
 set(STACK_SIZE "4096" CACHE STRING "Reserved stack size in bytes; use 0 to disable the limit")
+if(NO_USB_HOST)
+    set(NO_VESC_SPINDLE ON)
+endif()
 if(CMAKE_BUILD_TYPE STREQUAL "Debug")
     set(_default_optimization "g")
 else()
@@ -163,7 +170,6 @@ add_custom_command(TARGET firmware POST_BUILD
 )
 target_link_libraries(firmware PRIVATE
     carvera_sources
-    "${CMAKE_SOURCE_DIR}/build/M8266WIFIDrv_LPC17xx.a"
     "$<$<CONFIG:Debug>:carvera_mri>"
     carvera_mbed
     stdc++
@@ -176,7 +182,6 @@ target_link_libraries(firmware PRIVATE
 set_property(TARGET firmware APPEND PROPERTY LINK_DEPENDS
     "${_firmware_linker_script}"
     "${CMAKE_SOURCE_DIR}/build/startfile.spec"
-    "${CMAKE_SOURCE_DIR}/build/M8266WIFIDrv_LPC17xx.a"
 )
 
 set(_firmware_bin "${_firmware_output_dir}/firmware.bin")

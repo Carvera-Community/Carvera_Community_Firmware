@@ -148,12 +148,14 @@ void MainButton::switch_power_24(int state)
 
 void MainButton::on_second_tick(void *)
 {
+#if !defined(NO_SD_CARD)
     // check if sd card is ok
 	if (!this->sd_ok && !THEKERNEL->is_halted()) {
         THEKERNEL->set_halt_reason(SD_ERROR);
 		THEKERNEL->streams->printf("ERROR: SD card error\n");
         THEKERNEL->call_event(ON_HALT, nullptr);
 	}
+#endif
 
 	bool vacuum_on = false;
 	bool toolsensor_on = false;

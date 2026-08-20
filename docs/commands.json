@@ -801,6 +801,17 @@
       "description": "Report playback progress (Marlin-style), used to sync the controller display.",
       "parameters": {}
     },
+    "M28": {
+      "type": "mcode",
+      "description": "Start writing following G-code lines to an SD-card file. End with M29. Unavailable when local file storage is disabled.",
+      "parameters": {
+        "filename": {
+          "required": true,
+          "description": "File to create.",
+          "default": null
+        }
+      }
+    },
     "M30": {
       "type": "mcode",
       "description": "End of program in grbl-style mode. As an SD command it can also delete a file; on Carvera treat M2 as the normal program end.",
