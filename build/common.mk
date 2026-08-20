@@ -98,6 +98,14 @@ DEFINES += -DSERIAL_RX_DMA
 else
 CPPSRCS1 := $(filter-out $(SRC)/modules/communication/UartRxDma.cpp,$(CPPSRCS1))
 endif
+ifeq "$(REMOTE_SETTINGS_TRANSFER)" "1"
+DEFINES += -DREMOTE_SETTINGS_TRANSFER
+else
+CPPSRCS1 := $(filter-out \
+	$(SRC)/libs/ConfigSources/RemoteConfigSource.cpp \
+	$(SRC)/modules/communication/RemoteTransfer.cpp \
+,$(CPPSRCS1))
+endif
 ifeq "$(NONETWORK)" "1"
 	CPPSRCS2 = $(filter-out $(SRC)/libs/Network/%,$(CPPSRCS1))
 else

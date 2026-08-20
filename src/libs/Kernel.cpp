@@ -44,6 +44,9 @@
 #include "mbed.h"
 #include "utils.h"
 #include "WifiPublicAccess.h"
+#if defined(REMOTE_SETTINGS_TRANSFER)
+#include "modules/communication/RemoteTransfer.h"
+#endif
 
 #include <algorithm>
 
@@ -146,8 +149,31 @@ Kernel::Kernel()
     this->factory_set = new FACTORY_SET();
     // read Factory setting data from eeprom
     this->read_Factory_data();
+#if defined(REMOTE_SETTINGS_TRANSFER)
+    const FACTORY_SET previous = *this->factory_set;
+    FACTORY_SET received = previous;
+    const remote::Result factory_result = remote::receive_factory_settings(*this->serial, previous, received);
+    const bool factory_changed = received.MachineModel != previous.MachineModel ||
+                                 received.FuncSetting != previous.FuncSetting ||
+                                 received.reserve1 != previous.reserve1 || received.reserve2 != previous.reserve2;
+    if (factory_result == remote::Result::success) {
+        bool stored = true;
+        if (factory_changed) {
+            *this->factory_set = received;
+            stored = write_Factory_data();
+            if (!stored) *this->factory_set = previous;
+        }
+        remote::finish_factory_settings(*this->serial, stored);
+        if (stored && factory_changed) system_reset(false);
+    } else if (factory_result != remote::Result::cancelled) {
+        this->streams->printf(
+            "ERROR: factory settings transfer failed (%u); using stored settings\n",
+            static_cast<unsigned>(factory_result));
+    }
+#else
     // read Factory settings data from sd
     this->read_Factroy_SD();
+#endif
 
 
     // Config next, but does not load cache yet
