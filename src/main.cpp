@@ -80,6 +80,8 @@ GPIO leds[4] = {
 
 void init() {
 
+    SCB->VTOR = 0x4000;
+
     // Default pins to low status
     for (int i = 0; i < 4; i++){
         leds[i].output();
