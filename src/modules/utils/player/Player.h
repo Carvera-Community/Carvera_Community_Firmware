@@ -65,7 +65,6 @@ class Player : public Module {
         int inbytes(StreamOutput *stream, char **buf, int size, unsigned int timeout_ms);
         void flush_input(StreamOutput *stream); //smoothie
         void cancel_transfer(StreamOutput *stream); //smoothie
-        unsigned int crc16_ccitt(unsigned char *data, unsigned int len);
         int check_crc(int crc, unsigned char *data, unsigned int len);
 		
 		int decompress(string sfilename, string dfilename, uint32_t sfilesize, StreamOutput* stream);
