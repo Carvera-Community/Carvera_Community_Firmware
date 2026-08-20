@@ -83,12 +83,21 @@ SDFileSystem sd(P0_18, P0_17, P0_15, P0_16, 12000000);
 SDFAT mounter("sd", &sd);
 #endif
 
+#if defined(MACHINE_FAMILY_Z1)
+GPIO leds[4] = {
+    GPIO(P1_17),
+    GPIO(P4_29),
+    GPIO(P4_28),
+    GPIO(P1_16)
+};
+#else
 GPIO leds[4] = {
     GPIO(P4_29),
     GPIO(P4_28),
 	GPIO(P0_4),
     GPIO(P1_17)
 };
+#endif
 
 void init() {
 
@@ -101,9 +110,14 @@ void init() {
     }
 
 
+#if defined(MACHINE_FAMILY_Z1)
+    GPIO beep = GPIO(P1_15);
+#else
     GPIO beep = GPIO(P1_14);
+#endif
     beep.output();
     beep = 0;
+#if defined(MACHINE_FAMILY_CARVERA)
     GPIO extout = GPIO(P0_29);
     extout.output();
     extout = 0;
@@ -113,6 +127,7 @@ void init() {
     extout = GPIO(P1_19);
     extout.output();
     extout = 0;
+#endif
 
     // open 12V
     // GPIO v12 = GPIO(P0_11);

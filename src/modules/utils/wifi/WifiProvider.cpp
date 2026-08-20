@@ -316,6 +316,11 @@ void WifiProvider::receive_wifi_data() {
 				continue;
 			}
 
+			if (packet.type == PTYPE_CTRL_MULTI && makera::is_diagnostic_request(packet.data, packet.data_length)) {
+				diagnose_flag = true;
+				continue;
+			}
+
 			if (packet.type != PTYPE_CTRL_MULTI && packet.type != PTYPE_FILE_START) continue;
 
 			if (packet.data_length == 0) {

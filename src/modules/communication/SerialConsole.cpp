@@ -31,6 +31,9 @@ using std::string;
 #if defined(SERIAL_RX_DMA)
 #include "UartRxDma.h"
 #endif
+#if defined(MACHINE_FAMILY_Z1)
+#include "version.h"
+#endif
 
 #define uart_checksum CHECKSUM("uart")
 #define XBUFF_LENGTH 8208
@@ -42,6 +45,10 @@ static RingBuffer<char, 1024> makera_rx_bytes;
 // Let a back-to-back burst finish before command handlers reply on the same UART.
 constexpr uint32_t makera_rx_quiet_ms = 2;
 constexpr int uart_rx_error = -2;
+#if defined(MACHINE_FAMILY_Z1)
+static uint32_t last_version_us;
+constexpr uint32_t version_interval_us = 5 * 1000 * 1000;
+#endif
 
 // Serial reading module
 // Treats every received line as a command and passes it ( via event call ) to the command dispatcher.
@@ -64,7 +71,7 @@ SerialConsole::SerialConsole( PinName tx_pin, PinName rx_pin, int baud_rate )
     this->rx_dispatch_enabled = false;
     this->rx_lookahead = -1;
     this->serial->attach(nullptr, mbed::Serial::RxIrq);
-    uart_rx_dma::initialize();
+    uart2_rx_dma::initialize();
 #endif
 }
 
@@ -80,11 +87,13 @@ void SerialConsole::on_module_loaded() {
     diagnose_flag = false;
     makera_file_cancel = false;
 
+#if defined(MACHINE_FAMILY_CARVERA)
     default_baud_rate = THEKERNEL->config->value(uart_checksum, baud_rate_setting_checksum)->as_number(current_baud_rate);
     if (default_baud_rate != current_baud_rate) {
         this->serial->baud(default_baud_rate);
         this->current_baud_rate = default_baud_rate;
     }
+#endif
 
     this->set_rx_enabled(true);
 
@@ -225,6 +234,7 @@ void SerialConsole::on_idle(void * argument)
         }
     }
 
+#if defined(MACHINE_FAMILY_CARVERA)
     if (temp_baud_rate != 0) {
         if ((now_ms - last_activity_ms) >= 15000) {
             this->serial->baud(default_baud_rate);
@@ -232,6 +242,7 @@ void SerialConsole::on_idle(void * argument)
             this->temp_baud_rate = 0;
         }
     }
+#endif
 
     if (makera_rx_overflow) {
         makera_rx_overflow = false;
@@ -275,6 +286,15 @@ void SerialConsole::on_idle(void * argument)
         }
         THEKERNEL->call_event(ON_HALT, nullptr);
     }
+
+#if defined(MACHINE_FAMILY_Z1)
+    const uint32_t now_us = us_ticker_read();
+    if (now_us - last_version_us > version_interval_us) {
+        Version version;
+        PacketMessage(PTYPE_FIRM_VER, version.get_build(), 0);
+        last_version_us = now_us;
+    }
+#endif
 }
 
 // Actual event calling must happen in the main loop because if it happens in the interrupt we will loose data
@@ -407,6 +427,11 @@ void SerialConsole::process_makera_byte(uint8_t received)
         return;
     }
 
+    if (packet.type == PTYPE_CTRL_MULTI && makera::is_diagnostic_request(packet.data, packet.data_length)) {
+        diagnose_flag = true;
+        return;
+    }
+
     if (packet.type == PTYPE_CTRL_MULTI || packet.type == PTYPE_FILE_START) {
         if (packet.data_length == 0) {
             if (packet.type == PTYPE_FILE_START) makera_file_cancel = true;
@@ -519,7 +544,7 @@ int SerialConsole::_getc()
         return result;
     }
     uint8_t byte = 0;
-    return uart_rx_dma::try_get(byte) ? byte : -1;
+    return uart2_rx_dma::try_get(byte) ? byte : -1;
 #else
     return this->serial->getc();
 #endif
@@ -531,7 +556,7 @@ bool SerialConsole::ready()
 #if defined(SERIAL_RX_DMA)
     if (rx_lookahead >= 0) return true;
     uint8_t byte = 0;
-    if (!uart_rx_dma::try_get(byte)) return false;
+    if (!uart2_rx_dma::try_get(byte)) return false;
     rx_lookahead = byte;
     return true;
 #else
@@ -542,11 +567,16 @@ bool SerialConsole::ready()
 #if defined(SERIAL_RX_DMA)
 bool SerialConsole::handle_rx_error()
 {
-    if (!uart_rx_dma::take_error()) return false;
+    if (!uart2_rx_dma::take_error()) return false;
 
+    rx_lookahead = -1;
+    makera_rx_bytes.tail = makera_rx_bytes.head;
+    makera_rx_overflow = false;
+    buffer.tail = buffer.head;
+    previous_char = 0;
     makera_frame_decoder.reset();
     reset_file_parser();
-    THEKERNEL->streams->printf("ERROR: UART RX DMA error or overflow; input resynchronized\n");
+    THEKERNEL->streams->printf("ERROR: UART receive error or overflow; buffered input discarded\n");
     return true;
 }
 #endif

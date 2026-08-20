@@ -3,8 +3,10 @@
 #include <cstdint>
 #include <string_view>
 
+#include "MachineModel.h"
+
 struct FACTORY_SET {
-  char MachineModel;
+  Machine MachineModel;
   char FuncSetting;
   char reserve1;
   char reserve2;

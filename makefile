@@ -3,6 +3,28 @@
 DIRS = mbed mri src
 DIRSCLEAN = $(addsuffix .clean,$(DIRS))
 
+MACHINE ?= carvera
+
+ifeq "$(MACHINE)" "z1"
+ifneq "$(strip $(Z1_REPACK))" ""
+ifeq "$(strip $(VERSION))" ""
+$(error VERSION is required when Z1_REPACK is set)
+endif
+Z1_REPACK_SCRIPT := build/repack-z1-firmware.py
+Z1_BUILD_DIR := LPC1768-z1
+Z1_ESP_VERSION := $(shell python3 $(Z1_REPACK_SCRIPT) --esp-version "$(Z1_REPACK)")
+ifeq "$(strip $(Z1_ESP_VERSION))" ""
+$(error Unable to read the ESP version from Z1_REPACK '$(Z1_REPACK)')
+endif
+Z1_BUNDLE_ID := $(shell python3 $(Z1_REPACK_SCRIPT) --bundle-id "$(Z1_REPACK)")
+ifeq "$(strip $(Z1_BUNDLE_ID))" ""
+$(error Unable to identify Z1_REPACK '$(Z1_REPACK)')
+endif
+Z1_STOCK_BUNDLE := $(Z1_BUILD_DIR)/stock-firmware-$(Z1_BUNDLE_ID).bin
+Z1_REPACKED_BUNDLE := $(Z1_BUILD_DIR)/firmware-v$(VERSION).$(Z1_ESP_VERSION).bin
+endif
+endif
+
 # Set to non zero value if you want checks to be enabled which reserve a
 # specific amount of space for the stack.  The heap's growth will be
 # constrained to reserve this much space for the stack and the stack won't be
@@ -83,6 +105,24 @@ all:
 	@ $(MAKE) -C mri arm
 	@echo Building Smoothie
 	@ $(MAKE) -C src
+ifeq "$(MACHINE)" "z1"
+ifneq "$(strip $(Z1_REPACK))" ""
+	@ $(MAKE) z1-repack MACHINE="$(MACHINE)" VERSION="$(VERSION)" Z1_REPACK="$(Z1_REPACK)"
+endif
+endif
+
+ifeq "$(MACHINE)" "z1"
+ifneq "$(strip $(Z1_REPACK))" ""
+.PHONY: z1-repack
+z1-repack: $(Z1_REPACKED_BUNDLE)
+
+$(Z1_STOCK_BUNDLE): $(Z1_REPACK) $(Z1_REPACK_SCRIPT)
+	python3 $(Z1_REPACK_SCRIPT) --copy "$@" "$(Z1_REPACK)"
+
+$(Z1_REPACKED_BUNDLE): $(Z1_STOCK_BUNDLE) $(Z1_BUILD_DIR)/main.bin $(Z1_REPACK_SCRIPT)
+	python3 $(Z1_REPACK_SCRIPT) --lpc "$(Z1_BUILD_DIR)/main.bin" --version "$(VERSION)" --output "$@" "$(Z1_STOCK_BUNDLE)"
+endif
+endif
 
 # Explicit build targets for release and debug profiles.
 # 'make build-release' is equivalent to the default 'make all'.
