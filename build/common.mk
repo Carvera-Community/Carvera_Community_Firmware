@@ -106,6 +106,9 @@ CPPSRCS1 := $(filter-out \
 	$(SRC)/modules/communication/RemoteTransfer.cpp \
 ,$(CPPSRCS1))
 endif
+ifeq "$(NO_SD_CARD)" "1"
+DEFINES += -DNO_SD_CARD
+endif
 ifeq "$(STREAMED_JOB_PLAYBACK)" "1"
 DEFINES += -DSTREAMED_JOB_PLAYBACK
 endif
@@ -174,11 +177,39 @@ DEFINES += -DNO_MODBUS_SPINDLE
 endif
 
 # NO_VESC_SPINDLE: exclude VESC USB spindle driver
+ifdef NO_USB_HOST
+NO_VESC_SPINDLE := 1
+endif
+
 ifdef NO_VESC_SPINDLE
 CPPSRCS3 := $(filter-out \
   $(SRC)/modules/tools/spindle/VESCSpindleControl.cpp \
   ,$(CPPSRCS3))
 DEFINES += -DNO_VESC_SPINDLE
+endif
+
+ifdef NO_USB_HOST
+CPPSRCS3 := $(filter-out \
+  $(SRC)/libs/USBDevice/MSCFileSystem.cpp \
+  $(SRC)/libs/USBDevice/USBHostCDC.cpp \
+  $(SRC)/libs/USBDevice/USBHostLite/usbhost_lpc17xx.cpp \
+  $(SRC)/libs/USBDevice/USBHostLite/usbhost_ms.cpp \
+  ,$(CPPSRCS3))
+DEFINES += -DNO_USB_HOST
+endif
+
+ifdef NO_WIRELESS_PROBE
+CPPSRCS3 := $(filter-out \
+  $(SRC)/modules/communication/SerialConsole2.cpp \
+  ,$(CPPSRCS3))
+DEFINES += -DNO_WIRELESS_PROBE
+endif
+
+ifdef NO_WIFI_PROVIDER
+CPPSRCS3 := $(filter-out \
+  $(SRC)/modules/utils/wifi/WifiProvider.cpp \
+  ,$(CPPSRCS3))
+DEFINES += -DNO_WIFI_PROVIDER
 endif
 
 # NO_PID_AUTOTUNE: exclude PID autotuner (not needed when no heaters are connected)

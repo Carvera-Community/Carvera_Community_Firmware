@@ -47,7 +47,9 @@
 #include "heap/heap_debug.h"
 #include "heap/heap_5.h"
 #include "SwitchPublicAccess.h"
+#if !defined(NO_SD_CARD)
 #include "SDFAT.h"
+#endif
 #include "FATFileSystem.h"
 #include "Thermistor.h"
 #include "md5.h"
@@ -88,22 +90,28 @@ extern unsigned char fbuff[4096];
 
 // command lookup table
 const SimpleShell::ptentry_t SimpleShell::commands_table[] = {
+#if !defined(NO_SD_CARD)
     {"ls",       SimpleShell::ls_command},
     {"cd",       SimpleShell::cd_command},
     {"pwd",      SimpleShell::pwd_command},
     {"cat",      SimpleShell::cat_command},
-    {"echo",     SimpleShell::echo_command},
     {"rm",       SimpleShell::rm_command},
     {"mv",       SimpleShell::mv_command},
     {"mkdir",    SimpleShell::mkdir_command},
     // {"upload",   SimpleShell::upload_command},
 	// {"download", SimpleShell::download_command},
+    {"ftype",    SimpleShell::ftype_command},
+    {"load",     SimpleShell::load_command},
+    {"save",     SimpleShell::save_command},
+    {"remount",  SimpleShell::remount_command},
+    {"md5sum",   SimpleShell::md5sum_command},
+#endif
+    {"echo",     SimpleShell::echo_command},
     {"reset",    SimpleShell::reset_command},
     {"dfu",      SimpleShell::dfu_command},
     {"break",    SimpleShell::break_command},
     {"help",     SimpleShell::help_command},
     {"?",        SimpleShell::help_command},
-	{"ftype",	 SimpleShell::ftype_command},
     {"version",  SimpleShell::version_command},
     {"mem",      SimpleShell::mem_command},
     {"get",      SimpleShell::get_command},
@@ -115,12 +123,8 @@ const SimpleShell::ptentry_t SimpleShell::commands_table[] = {
 	{"diagnose",   SimpleShell::diagnose_command},
 	{"sleep",   SimpleShell::sleep_command},
 	{"power",   SimpleShell::power_command},
-    {"load",     SimpleShell::load_command},
-    {"save",     SimpleShell::save_command},
-    {"remount",  SimpleShell::remount_command},
     {"calc_thermistor", SimpleShell::calc_thermistor_command},
     {"thermistors", SimpleShell::print_thermistors_command},
-    {"md5sum",   SimpleShell::md5sum_command},
 	{"time",   SimpleShell::time_command},
     {"test",     SimpleShell::test_command},
     {"model",  SimpleShell::model_command},
@@ -165,6 +169,7 @@ void SimpleShell::on_gcode_received(void *argument)
     string args = get_arguments(gcode->get_command());
 
     if (gcode->has_m) {
+#if !defined(NO_SD_CARD)
         if (gcode->m == 20) { // list sd card
             if (communication_protocol == PROTOCOL_SMOOTHIE) {
                 gcode->stream->printf("Begin file list\r\n");
@@ -187,7 +192,14 @@ void SimpleShell::on_gcode_received(void *argument)
                 // M576 / M576.1 -- walk all files that have a stored MD5
                 md5check_command(args, gcode->stream);
             }
-        } else if (gcode->m == 331) { // change to vacuum mode
+		}
+#else
+        if (gcode->m == 20 || gcode->m == 576 ||
+            (gcode->m == 30 && !args.empty() && !THEKERNEL->is_grbl_mode())) {
+            gcode->stream->printf("ERROR: File storage is not available on this machine\r\n");
+        }
+#endif
+        if (gcode->m == 331) { // change to vacuum mode
         	if (gcode->subcode == 0) {
 				THEKERNEL->set_vacuum_mode(true);
 			    // get spindle state
@@ -421,6 +433,16 @@ void SimpleShell::on_console_line_received( void *argument )
         //new_message.stream->printf("Received %s\r\n", possible_command.c_str());
         string cmd = shift_parameter(possible_command);
 
+#if defined(NO_SD_CARD)
+        if (cmd == "ls" || cmd == "cd" || cmd == "pwd" || cmd == "cat" ||
+            cmd == "rm" || cmd == "mv" || cmd == "mkdir" || cmd == "ftype" || cmd == "load" ||
+            cmd == "save" || cmd == "remount" || cmd == "md5sum" || cmd == "config-get-all" ||
+            cmd == "config-restore" || cmd == "config-default") {
+            new_message.stream->printf("ERROR: File storage is not available on this machine\r\n");
+            return;
+        }
+#endif
+
         // Configurator commands
         if (cmd == "config-get"){
             THEKERNEL->configurator->config_get_command(  possible_command, new_message.stream );
@@ -558,16 +580,22 @@ void SimpleShell::ls_command( string parameters, StreamOutput *stream )
     }
 }
 
+#if !defined(NO_SD_CARD)
 extern SDFAT mounter;
+#endif
 
 void SimpleShell::remount_command( string parameters, StreamOutput *stream )
 {
+#if !defined(NO_SD_CARD)
     mounter.remount();
     if (communication_protocol == PROTOCOL_SMOOTHIE) {
         stream->printf("remounted\r\n");
     } else {
         PacketMessage(PTYPE_NORMAL_INFO, "remounted\r\n", 0, stream);
     }
+#else
+    stream->printf("ERROR: SD card is not available\r\n");
+#endif
 }
 
 // Delete a file
@@ -3168,6 +3196,7 @@ void SimpleShell::help_command( string parameters, StreamOutput *stream )
     stream->printf("Commands:\r\n");
     stream->printf("version\r\n");
     stream->printf("mem [-v]\r\n");
+#if !defined(NO_SD_CARD)
     stream->printf("ls [-s] [-e] [folder]\r\n");
     stream->printf("cd folder\r\n");
     stream->printf("pwd\r\n");
@@ -3175,6 +3204,11 @@ void SimpleShell::help_command( string parameters, StreamOutput *stream )
     stream->printf("rm file [-e]\r\n");
     stream->printf("mv file newfile [-e]\r\n");
     stream->printf("remount\r\n");
+    stream->printf("load [file] - loads a configuration override file from soecified name or config-override\r\n");
+    stream->printf("save [file] - saves a configuration override file as specified filename or as config-override\r\n");
+    stream->printf("upload filename - saves a stream of text to the named file\r\n");
+    stream->printf("md5sum file - prints md5 sum of the given file\r\n");
+#endif
     stream->printf("play file [-v]\r\n");
     stream->printf("progress - shows progress of current play\r\n");
     stream->printf("abort - abort currently playing file\r\n");
@@ -3192,12 +3226,8 @@ void SimpleShell::help_command( string parameters, StreamOutput *stream )
     stream->printf("ap [channel]\r\n");
     stream->printf("wlan [ssid] [password] [-d] [-e]\r\n");
     stream->printf("diagnose\r\n");
-    stream->printf("load [file] - loads a configuration override file from soecified name or config-override\r\n");
-    stream->printf("save [file] - saves a configuration override file as specified filename or as config-override\r\n");
-    stream->printf("upload filename - saves a stream of text to the named file\r\n");
     stream->printf("calc_thermistor [-s0] T1,R1,T2,R2,T3,R3 - calculate the Steinhart Hart coefficients for a thermistor\r\n");
     stream->printf("thermistors - print out the predefined thermistors\r\n");
-    stream->printf("md5sum file - prints md5 sum of the given file\r\n");
 }
 
 // output all configs

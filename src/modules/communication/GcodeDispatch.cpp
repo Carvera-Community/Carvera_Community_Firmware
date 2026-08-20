@@ -236,7 +236,15 @@ try_again:
 				}
 
 				if(gcode->has_m) {
+#if defined(NO_SD_CARD)
+					if (gcode->m == 28 || (gcode->m >= 500 && gcode->m <= 504 && gcode->m != 503)) {
+						new_message.stream->printf("ERROR: File storage is not available on this machine\r\n");
+						delete gcode;
+						continue;
+					}
+#endif
 					switch (gcode->m) {
+#if !defined(NO_SD_CARD)
 						case 28: // start upload command
 							delete gcode;
 
@@ -255,6 +263,7 @@ try_again:
 
 							//printf("Start Uploading file: %s, %p\n", upload_filename.c_str(), upload_fd);
 							continue;
+#endif
 
 						case 30: // end of program
 							if(!THEKERNEL->is_grbl_mode()) break; // Special case M30 as it is also delete sd card file so only do this if in grbl mode
@@ -369,6 +378,7 @@ try_again:
 							new_message.stream->printf("ok\r\n");
 							return;
 
+#if !defined(NO_SD_CARD)
 						case 500: // M500 save volatile settings to config-override
 							THEKERNEL->conveyor->wait_for_idle(); //just to be safe as it can take a while to run
 							//remove(THEKERNEL->config_override_filename()); // seems to cause a hang every now and then
@@ -406,8 +416,10 @@ try_again:
 							delete gcode;
 							new_message.stream->printf("config override file deleted %s, reboot needed\r\nok\r\n", THEKERNEL->config_override_filename());
 							continue;
+#endif
 
 						case 503: { // M503 display live settings and indicates if there is an override file
+#if !defined(NO_SD_CARD)
 							FILE *fd = fwfs::fopen(THEKERNEL->config_override_filename(), "r");
 							if(fd != NULL) {
 								fwfs::fclose(fd);
@@ -416,6 +428,7 @@ try_again:
 							} else {
 								new_message.stream->printf("; No config override\n");
 							}
+#endif
 							gcode->add_nl= true;
 							break; // fall through to process by modules
 						}
@@ -470,6 +483,7 @@ try_again:
 
 				delete gcode;
 
+#if !defined(NO_SD_CARD)
 			} else {
 				// we are uploading and it is the upload stream so so save it
 				if(single_command.substr(0, 3) == "M29") {
@@ -501,6 +515,7 @@ try_again:
 					 new_message.stream->printf("ok\r\n");
 					//printf("uploading file write ok\n");
 				}
+#endif
 			}
 		}
     } else if ( first_char == ';' || first_char == '(' || first_char == '\n' || first_char == '\r' ) {
