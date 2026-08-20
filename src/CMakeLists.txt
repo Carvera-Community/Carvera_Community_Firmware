@@ -22,6 +22,11 @@ set(_firmware_definitions
     STACK_SIZE=${STACK_SIZE}
     "__GITVERSIONSTRING__=\"${CARVERA_FIRMWARE_VERSION}\""
 )
+if(MACHINE STREQUAL "z1")
+    list(APPEND _firmware_definitions MACHINE_FAMILY_Z1)
+else()
+    list(APPEND _firmware_definitions MACHINE_FAMILY_CARVERA)
+endif()
 foreach(_optional_definition
         SERIAL_RX_DMA
         REMOTE_SETTINGS_TRANSFER

@@ -31,6 +31,9 @@ using std::string;
 #if defined(SERIAL_RX_DMA)
 #include "UartRxDma.h"
 #endif
+#if defined(MACHINE_FAMILY_Z1)
+#include "version.h"
+#endif
 
 #define uart_checksum CHECKSUM("uart")
 #define XBUFF_LENGTH 8208
@@ -42,6 +45,10 @@ static RingBuffer<char, 1024> makera_rx_bytes;
 // Let a back-to-back burst finish before command handlers reply on the same UART.
 constexpr uint32_t makera_rx_quiet_ms = 2;
 constexpr int uart_rx_error = -2;
+#if defined(MACHINE_FAMILY_Z1)
+static uint32_t last_version_us;
+constexpr uint32_t version_interval_us = 5 * 1000 * 1000;
+#endif
 
 // Serial reading module
 // Treats every received line as a command and passes it ( via event call ) to the command dispatcher.
@@ -80,11 +87,13 @@ void SerialConsole::on_module_loaded() {
     diagnose_flag = false;
     makera_file_cancel = false;
 
+#if defined(MACHINE_FAMILY_CARVERA)
     default_baud_rate = THEKERNEL->config->value(uart_checksum, baud_rate_setting_checksum)->as_number(current_baud_rate);
     if (default_baud_rate != current_baud_rate) {
         this->serial->baud(default_baud_rate);
         this->current_baud_rate = default_baud_rate;
     }
+#endif
 
     this->set_rx_enabled(true);
 
@@ -225,6 +234,7 @@ void SerialConsole::on_idle(void * argument)
         }
     }
 
+#if defined(MACHINE_FAMILY_CARVERA)
     if (temp_baud_rate != 0) {
         if ((now_ms - last_activity_ms) >= 15000) {
             this->serial->baud(default_baud_rate);
@@ -232,6 +242,7 @@ void SerialConsole::on_idle(void * argument)
             this->temp_baud_rate = 0;
         }
     }
+#endif
 
     if (makera_rx_overflow) {
         makera_rx_overflow = false;
@@ -275,6 +286,15 @@ void SerialConsole::on_idle(void * argument)
         }
         THEKERNEL->call_event(ON_HALT, nullptr);
     }
+
+#if defined(MACHINE_FAMILY_Z1)
+    const uint32_t now_us = us_ticker_read();
+    if (now_us - last_version_us > version_interval_us) {
+        Version version;
+        PacketMessage(PTYPE_FIRM_VER, version.get_build(), 0);
+        last_version_us = now_us;
+    }
+#endif
 }
 
 // Actual event calling must happen in the main loop because if it happens in the interrupt we will loose data
@@ -404,6 +424,11 @@ void SerialConsole::process_makera_byte(uint8_t received)
             case makera::ControlAction::halt: halt_flag = true; break;
             default: break;
         }
+        return;
+    }
+
+    if (packet.type == PTYPE_CTRL_MULTI && makera::is_diagnostic_request(packet.data, packet.data_length)) {
+        diagnose_flag = true;
         return;
     }
 

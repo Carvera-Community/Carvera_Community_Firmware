@@ -78,6 +78,13 @@ static float local_params_storage[30];
 #define	EEP_MAX_PAGE_SIZE	32
 #define EEPROM_DATA_STARTPAGE	1
 #define EEPROM_FACTORYSET_PAGE	16
+#if defined(MACHINE_FAMILY_Z1)
+constexpr int boot_serial_baud = 230400;
+constexpr FACTORY_SET default_factory_settings{Z1, 0, 0, 0};
+#else
+constexpr int boot_serial_baud = 115200;
+constexpr FACTORY_SET default_factory_settings{CARVERA, 0x04, 0, 0};
+#endif
 
 namespace {
 struct StockEepromData {
@@ -139,11 +146,9 @@ Kernel::Kernel()
     this->i2c = new mbed::I2C(P0_27, P0_28);
     this->i2c->frequency(200000);
 
-    // Bring up streams + serial console first so factory and config parser
-    // errors are visible on the host link. Baud is hard-coded here and gets
-    // re-applied from config later in SerialConsole::on_module_loaded().
+    // Bring up serial output first so factory and config errors are visible.
     this->streams = new StreamOutputPool();
-    this->serial  = new SerialConsole(P2_8, P2_9, 115200);
+    this->serial = new SerialConsole(P2_8, P2_9, boot_serial_baud);
     this->streams->append_stream(this->serial);
 
     this->factory_set = new FACTORY_SET();
@@ -214,8 +219,8 @@ Kernel::Kernel()
         delete this->serial;
         this->serial = nullptr;
     } else {
-        // add_module() runs SerialConsole::on_module_loaded() which re-reads
-        // uart.baud_rate from config and applies it to the hardware.
+        // add_module() runs SerialConsole::on_module_loaded(). Carvera applies
+        // uart.baud_rate there; the Z1 serial link remains fixed.
         this->add_module( this->serial );
     }
 
@@ -546,7 +551,9 @@ std::string Kernel::get_query_string()
     }
     
     // machine state
-    n = snprintf(buf, sizeof(buf), "|C:%d,%d,%d,%d", THEKERNEL->factory_set->MachineModel,THEKERNEL->factory_set->FuncSetting,THEROBOT->inch_mode,THEROBOT->absolute_mode);
+    n = snprintf(buf, sizeof(buf), "|C:%u,%d,%d,%d",
+                 static_cast<unsigned>(THEKERNEL->factory_set->MachineModel),
+                 THEKERNEL->factory_set->FuncSetting, THEROBOT->inch_mode, THEROBOT->absolute_mode);
     if(n > sizeof(buf)) n = sizeof(buf);
     str.append(buf, n);
 
@@ -1028,14 +1035,10 @@ void Kernel::read_Factory_data()
     }
     else
     {
-    	this->factory_set->MachineModel = 1;
-    	this->factory_set->FuncSetting = 0x04;
-    	this->factory_set->reserve1 = 0;
-    	this->factory_set->reserve2 = 0;
-    	
+        *this->factory_set = default_factory_settings;
     }
     
-    if(this->factory_set->MachineModel == 1)
+    if(this->factory_set->MachineModel == Machine::carvera)
     {
     	this->factory_set->FuncSetting |= 0x04;
     }

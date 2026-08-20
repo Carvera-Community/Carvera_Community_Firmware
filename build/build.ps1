@@ -136,6 +136,13 @@ $buildType = if ($Debug) { "Debug" } else { "Release" }
 Write-Host "Build type: $buildType" -ForegroundColor Cyan
 Write-Host "Using GCC version: $requestedGccVersion" -ForegroundColor Cyan
 Write-Host "Using $cpuCount parallel jobs for make." -ForegroundColor Cyan
+$machineFamily = if ([string]::IsNullOrWhiteSpace($env:MACHINE)) { "carvera" } else { $env:MACHINE }
+foreach ($arg in $MakeExtraArgs) {
+    if ($arg -match '^MACHINE=(.+)$') {
+        $machineFamily = $Matches[1]
+    }
+}
+
 if ($Clean) {
     Write-Host "Will run 'make clean' first." -ForegroundColor Cyan
 }
@@ -147,7 +154,7 @@ $exitCode = 0
 
 # --- Run Clean Step (if requested) ---
 if ($Clean) {
-    $cleanCommandArgs = @("make", "clean")
+    $cleanCommandArgs = @("make", "clean", "MACHINE=$machineFamily")
     Write-Host "Running: $($cleanCommandArgs -join ' ') (via gcc.ps1)..." -ForegroundColor Green
     try {
         & $GccScriptPath -GccVersion $requestedGccVersion -CommandToRun $cleanCommandArgs
@@ -186,7 +193,8 @@ try {
 
     # --- Handle Output Copy --- 
     if ($exitCode -eq 0 -and $PSBoundParameters.ContainsKey('OutputPath') -and -not [string]::IsNullOrWhiteSpace($OutputPath)) {
-        $sourceFile = Join-Path $ProjectRoot "LPC1768/main.bin"
+        $artifactDir = if ($machineFamily -eq "z1") { "LPC1768-z1" } else { "LPC1768" }
+        $sourceFile = Join-Path $ProjectRoot "$artifactDir/main.bin"
         if (-not (Test-Path $sourceFile -PathType Leaf)) {
             Write-Error "Build artifact not found at $sourceFile"
             exit 1
@@ -231,4 +239,4 @@ try {
 }
 
 # Exit with the final exit code from the build (or clean if build didn't run/succeeded)
-exit $exitCode 
+exit $exitCode

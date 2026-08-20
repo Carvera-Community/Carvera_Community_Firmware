@@ -33,6 +33,7 @@ EOF
 main() {
     local gcc_version="$DEFAULT_GCC_VERSION"
     local build_type="Release"
+    local machine="carvera"
     local run_clean=false
     local output_path=""
     local extra_cmake_args=()
@@ -89,6 +90,9 @@ main() {
                 exit 1
                 ;;
             *=*)
+                if [[ "$1" == MACHINE=* ]]; then
+                    machine="${1#MACHINE=}"
+                fi
                 extra_cmake_args+=("-D$1")
                 shift
                 ;;
@@ -107,8 +111,11 @@ main() {
         exit 1
     fi
 
-    local build_dir="$PROJECT_ROOT/build/cmake/gcc-${gcc_version}/${build_type}"
-    local artifact="$build_dir/LPC1768/firmware.bin"
+    [[ "$machine" == "carvera" || "$machine" == "z1" ]] || { echo "Error: unsupported MACHINE '$machine'." >&2; exit 1; }
+    local build_dir="$PROJECT_ROOT/build/cmake/gcc-${gcc_version}/${machine}/${build_type}"
+    local artifact_dir="LPC1768"
+    [[ "$machine" == "z1" ]] && artifact_dir="LPC1768-z1"
+    local artifact="$build_dir/$artifact_dir/firmware.bin"
     local jobs=1
     local generator_args=()
     case "$(uname -s)" in
