@@ -228,8 +228,8 @@ private:
     uint8_t resolve_motion_g(const Gcode* gcode) const;
     bool is_arc_motion(uint8_t motion_g) const { return motion_g == 2 || motion_g == 3; }
     bool get_motion_direction(const float start[3], const UncompPoint& end, bool use_segment_end, float dir[2]) const;
-    void format_compensated_gcode(const float uncomp_start[3], const float comp_start[3], const UncompPoint& curr,
-        const float comp_end[3], char* gcode_str, size_t gcode_str_size) const;
+    bool format_compensated_gcode(const float uncomp_start[3], const float comp_start[3], const UncompPoint& curr,
+        float comp_end[3], char* gcode_str, size_t gcode_str_size) const;
     
     /**
      * Compute compensated coordinates and output
