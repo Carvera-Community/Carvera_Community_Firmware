@@ -776,6 +776,17 @@ void Robot::on_gcode_received(void *argument)
         THEKERNEL->call_event(ON_HALT, nullptr);
         return;
     }
+
+    // Compensated path reconstruction models XY(Z) + IJ/F/S only.
+    // Reject A-axis motion words while compensation is active to avoid silently
+    // dropping non-modeled axis intent from buffered output.
+    if (gcode->has_letter('A')) {
+        THEKERNEL->streams->printf("ERROR: A-axis words are not supported with G41/G42 compensation. Issue G40 first.\n");
+        clear_comp_state_for_halt();
+        THEKERNEL->set_halt_reason(MANUAL);
+        THEKERNEL->call_event(ON_HALT, nullptr);
+        return;
+    }
     
     // Buffer commands when compensation is ON
     COMPENSATION_TRACE_PRINTF(gcode->stream, ">>BUFFER: %s (count=%d, comp=%s)\n", 

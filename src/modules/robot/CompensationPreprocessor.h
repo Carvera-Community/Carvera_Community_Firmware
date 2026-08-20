@@ -175,8 +175,11 @@ private:
         float i;
         float j;
         float feedrate;
+        float s_value;
+        unsigned int line;
         uint8_t motion_g;
         bool has_feedrate;
+        bool has_s_value;
     };
     
     // Compensated buffer: Stores offset path coordinates and Gcode pointer
