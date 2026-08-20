@@ -420,6 +420,35 @@ void SerialConsole::process_makera_byte(uint8_t received)
     }
 }
 
+int SerialConsole::receive_packet(makera::Packet& packet, uint32_t timeout_ms)
+{
+    makera_frame_decoder.reset();
+    const uint32_t start_us = us_ticker_read();
+    const uint32_t timeout_us = timeout_ms * 1000;
+    while (us_ticker_read() - start_us < timeout_us) {
+        const int byte = read_byte();
+        if (byte == uart_rx_error) {
+            makera_frame_decoder.reset();
+            return -4;
+        }
+        if (byte < 0) continue;
+
+        const makera::DecodeResult result = makera_frame_decoder.decode_byte(
+            static_cast<uint8_t>(byte), us_ticker_read() / 1000);
+        if (result == makera::DecodeResult::invalid_crc) {
+            makera_frame_decoder.reset();
+            return -3;
+        }
+        if (result != makera::DecodeResult::complete) continue;
+        packet = makera_frame_decoder.packet();
+        makera_frame_decoder.reset();
+        return 0;
+    }
+
+    makera_frame_decoder.reset();
+    return -1;
+}
+
 void SerialConsole::reset_file_parser()
 {
     file_parse_state = FILE_WAIT_HEADER;

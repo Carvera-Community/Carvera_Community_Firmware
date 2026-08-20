@@ -22,7 +22,9 @@ set(_firmware_definitions
     STACK_SIZE=${STACK_SIZE}
     "__GITVERSIONSTRING__=\"${CARVERA_FIRMWARE_VERSION}\""
 )
-foreach(_optional_definition SERIAL_RX_DMA)
+foreach(_optional_definition
+        SERIAL_RX_DMA
+        REMOTE_SETTINGS_TRANSFER)
     if(${_optional_definition})
         list(APPEND _firmware_definitions ${_optional_definition})
     endif()

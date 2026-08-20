@@ -46,6 +46,7 @@ class SerialConsole : public Module, public StreamOutput {
 
         int get_baud() const { return current_baud_rate; }
         void set_baud_temporary(int new_baud);
+        int receive_packet(makera::Packet& packet, uint32_t timeout_ms = 100);
 
         //string receive_buffer;                 // Received chars are stored here until a newline character is received
         //vector<std::string> received_lines;    // Received lines are stored here until they are requested
