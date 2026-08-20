@@ -194,8 +194,8 @@ bool CompensationPreprocessor::get_motion_direction(const float start[3], const 
     return true;
 }
 
-void CompensationPreprocessor::format_compensated_gcode(const float uncomp_start[3], const float comp_start[3], const UncompPoint& curr,
-    const float comp_end[3], char* gcode_str, size_t gcode_str_size) const
+bool CompensationPreprocessor::format_compensated_gcode(const float uncomp_start[3], const float comp_start[3], const UncompPoint& curr,
+    float comp_end[3], char* gcode_str, size_t gcode_str_size) const
 {
     char feedrate_suffix[32] = {0};
     if (curr.has_feedrate) {
@@ -224,6 +224,14 @@ void CompensationPreprocessor::format_compensated_gcode(const float uncomp_start
                        (curr.motion_g == 3 && comp_type == CompensationType::RIGHT);
         float eff_radius = outward ? (uncomp_radius + comp_radius)
                                    : (uncomp_radius - comp_radius);
+        if (!outward && eff_radius <= epsilon) {
+            THEKERNEL->streams->printf(
+                "ERROR: G41/G42 inward arc compensation collapsed the effective radius (arc=%.3f, comp=%.3f).\n",
+                uncomp_radius, comp_radius);
+            THEKERNEL->set_halt_reason(MANUAL);
+            THEKERNEL->call_event(ON_HALT, nullptr);
+            return false;
+        }
         if (eff_radius < 0.0f) eff_radius = 0.0f;
         // Direction from world center toward the uncompensated endpoint
         float ex = curr.x - center_x;
@@ -239,6 +247,11 @@ void CompensationPreprocessor::format_compensated_gcode(const float uncomp_start
             arc_end_y = center_y + (ey / em) * eff_radius;
         }
 
+        // Persist the corrected arc endpoint so downstream state uses
+        // the same endpoint actually emitted to the motion pipeline.
+        comp_end[X_AXIS] = arc_end_x;
+        comp_end[Y_AXIS] = arc_end_y;
+
         snprintf(gcode_str, gcode_str_size, "G%d X%.3f Y%.3f Z%.3f I%.3f J%.3f%s",
             curr.motion_g,
             arc_end_x,
@@ -247,7 +260,7 @@ void CompensationPreprocessor::format_compensated_gcode(const float uncomp_start
             new_i,
             new_j,
             feedrate_suffix);
-        return;
+        return true;
     }
 
     snprintf(gcode_str, gcode_str_size, "G%d X%.3f Y%.3f Z%.3f%s",
@@ -256,6 +269,7 @@ void CompensationPreprocessor::format_compensated_gcode(const float uncomp_start
         comp_end[Y_AXIS],
         comp_end[Z_AXIS],
         feedrate_suffix);
+    return true;
 }
 
 CompensationPreprocessor::CompensationPreprocessor()
@@ -546,7 +560,9 @@ void CompensationPreprocessor::compute_and_output()
     float comp_end[3] = { comp_ring[comp_idx].x, comp_ring[comp_idx].y, comp_ring[comp_idx].z };
 
     char gcode_str[128];
-    format_compensated_gcode(uncomp_start, comp_start, b, comp_end, gcode_str, sizeof(gcode_str));
+    if (!format_compensated_gcode(uncomp_start, comp_start, b, comp_end, gcode_str, sizeof(gcode_str))) {
+        return;
+    }
 
     print_output(gcode_str);
 
@@ -615,7 +631,9 @@ bool CompensationPreprocessor::compute_terminal_output()
         float comp_end[3]     = { comp_ring[comp_idx].x, comp_ring[comp_idx].y, comp_ring[comp_idx].z };
 
         char gcode_str[128];
-        format_compensated_gcode(uncomp_start, comp_start, curr, comp_end, gcode_str, sizeof(gcode_str));
+        if (!format_compensated_gcode(uncomp_start, comp_start, curr, comp_end, gcode_str, sizeof(gcode_str))) {
+            return false;
+        }
 
         comp_ring[comp_idx].gcode = gcode_pool[comp_idx];
         gcode_pool[comp_idx]->reset(gcode_str);
@@ -689,7 +707,9 @@ bool CompensationPreprocessor::compute_terminal_output()
     float comp_end[3] = { comp_ring[comp_idx].x, comp_ring[comp_idx].y, comp_ring[comp_idx].z };
 
     char gcode_str[128];
-    format_compensated_gcode(uncomp_start, comp_start, curr, comp_end, gcode_str, sizeof(gcode_str));
+    if (!format_compensated_gcode(uncomp_start, comp_start, curr, comp_end, gcode_str, sizeof(gcode_str))) {
+        return false;
+    }
 
     comp_ring[comp_idx].gcode = gcode_pool[comp_idx];
     gcode_pool[comp_idx]->reset(gcode_str);
@@ -764,6 +784,7 @@ bool CompensationPreprocessor::calculate_corner_intersection(
     float output[2])
 {
     const float epsilon = 0.0001f;
+    const float near_reversal_dot = -0.9990f;
 
     float start_in[3] = { a.x, a.y, a.z };
     float start_out[3] = { b.x, b.y, b.z };
@@ -787,6 +808,8 @@ bool CompensationPreprocessor::calculate_corner_intersection(
         u_out[1] = u_in[1];
     }
 
+    float dot = u_in[0] * u_out[0] + u_in[1] * u_out[1];
+
     float n_in[2];
     float n_out[2];
     if (comp_type == CompensationType::LEFT) {
@@ -804,6 +827,14 @@ bool CompensationPreprocessor::calculate_corner_intersection(
     float p1[2] = { b.x + n_in[0] * comp_radius, b.y + n_in[1] * comp_radius };
     float p2[2] = { b.x + n_out[0] * comp_radius, b.y + n_out[1] * comp_radius };
 
+    // Near-180 direction reversals produce an unbounded miter intersection.
+    // Fall back to a bounded offset point to avoid large spikes.
+    if (dot <= near_reversal_dot) {
+        output[0] = p1[0];
+        output[1] = p1[1];
+        return true;
+    }
+
     float denom = u_in[0] * u_out[1] - u_in[1] * u_out[0];
     if (fabsf(denom) < epsilon) {
         output[0] = p1[0];
@@ -813,6 +844,14 @@ bool CompensationPreprocessor::calculate_corner_intersection(
 
     float p2_minus_p1[2] = { p2[0] - p1[0], p2[1] - p1[1] };
     float s = cross_product_2d(p2_minus_p1, u_out) / denom;
+
+    // Additional bounded-miter guard for near-reversal geometry where |s|
+    // can grow very large without hitting the denom epsilon branch.
+    if (comp_radius > epsilon && fabsf(s) > (10.0f * comp_radius)) {
+        output[0] = p1[0];
+        output[1] = p1[1];
+        return true;
+    }
 
     output[0] = p1[0] + s * u_in[0];
     output[1] = p1[1] + s * u_in[1];
