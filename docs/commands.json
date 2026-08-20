@@ -2873,6 +2873,11 @@
       "description": "Erase EEPROM data. Do not run unless you intend to wipe stored offsets.",
       "parameters": {}
     },
+    "M498.3": {
+      "type": "mcode",
+      "description": "Dump the complete EEPROM as hexadecimal data followed by its CRC16-CCITT.",
+      "parameters": {}
+    },
     "M499": {
       "type": "mcode",
       "description": "Print current tool information.",

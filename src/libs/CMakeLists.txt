@@ -7,6 +7,7 @@ target_sources(carvera_sources PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/ConfigCache.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/ConfigSource.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/ConfigValue.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/FactorySettings.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/FirmwareFileSystem.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/gpio.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/Hook.cpp"

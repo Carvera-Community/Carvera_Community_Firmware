@@ -3164,6 +3164,8 @@ void ATCHandler::on_gcode_received(void *argument)
 			} else if (gcode->subcode == 2) {
 				// Show EEPROM DATA
 				THEKERNEL->erase_eeprom_data();
+			} else if (gcode->subcode == 3) {
+				THEKERNEL->dump_eeprom(gcode->stream);
 			}
 		} else if ( gcode->m == 499 ) {
 			if (gcode->subcode == 0 || gcode->subcode == 1) {
