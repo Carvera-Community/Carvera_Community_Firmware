@@ -29,6 +29,13 @@ constexpr ControlAction decode_control(uint8_t control) {
   }
 }
 
+inline bool is_jog_command(const char* command, std::size_t length) {
+  if (command == nullptr || length < 2 || std::memcmp(command, "$J", 2) != 0) return false;
+  if (length == 2) return true;
+  const char next = command[2];
+  return next == ' ' || next == '\t' || next == '\r' || next == '\n';
+}
+
 inline bool is_deferred_command(const char* command, std::size_t length) {
   if (command == nullptr) return false;
   const auto starts_with_token = [command, length](const char* token, std::size_t token_length, bool subcodes = false) {
@@ -39,7 +46,8 @@ inline bool is_deferred_command(const char* command, std::size_t length) {
   };
 
   return starts_with_token("suspend", 7) || starts_with_token("abort", 5) || starts_with_token("resume", 6) ||
-         starts_with_token("M600", 4, true) || starts_with_token("M601", 4, true) || starts_with_token("goto", 4);
+         starts_with_token("M600", 4, true) || starts_with_token("M601", 4, true) || starts_with_token("goto", 4) ||
+         is_jog_command(command, length);
 }
 
 ControlAction handle_control(uint8_t control);
