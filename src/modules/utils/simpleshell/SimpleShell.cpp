@@ -804,7 +804,7 @@ void SimpleShell::cat_command( string parameters, StreamOutput *stream )
             // if (sentcnt < strlen()(int)buffer.size()) {
             if (sentcnt < (int)strlen(buffer)) {
             	fwfs::fclose(lp);
-            	stream->printf("Caching error, line: %d, size: %d, sent: %d", newlines, strlen(buffer), sentcnt);
+            	stream->printf("Caching error, line: %d, size: %d, sent: %d\n", newlines, strlen(buffer), sentcnt);
             	return;
             }
             // buffer.clear();
@@ -825,6 +825,9 @@ void SimpleShell::cat_command( string parameters, StreamOutput *stream )
     if (strlen(buffer) > 0) {
     	// stream->puts(buffer.c_str());
     	stream->puts(buffer);
+        if (buffer[strlen(buffer) - 1] != '\n') {
+            stream->printf("\n");
+        }
     }
 }
 
@@ -856,6 +859,10 @@ void SimpleShell::load_command( string parameters, StreamOutput *stream )
         stream->printf("Loading config override file: %s...\n", filename.c_str());
         while(fwfs::fgets(buf, sizeof buf, fp) != NULL) {
             stream->printf("  %s", buf);
+            size_t len = strlen(buf);
+            if (len == 0 || buf[len - 1] != '\n') {
+                stream->printf("\n");
+            }
             if(buf[0] == ';') continue; // skip the comments
             // NOTE only Gcodes and Mcodes can be in the config-override
             Gcode *gcode = new Gcode(buf, &StreamOutput::NullStream);
@@ -2516,8 +2523,7 @@ void SimpleShell::md5check_file_command( string parameters, StreamOutput *stream
 
     char stored[33];
     if (!read_stored_md5(md5_path, stored)) {
-        stream->printf("ERROR: No MD5 hash found for ");
-        stream->printf("%s\n", filename.c_str());
+        stream->printf("ERROR: No MD5 hash found for %s\n", filename.c_str());
         return;
     }
 
