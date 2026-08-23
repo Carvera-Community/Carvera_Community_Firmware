@@ -112,6 +112,8 @@ private:
     	volatile bool diagnose_flag:1;
     	volatile bool has_data_flag:1;
     	bool makera_remote_known:1;
+		bool makera_controls_only:1;
+		bool makera_command_rejected:1;
     };
     bool makera_file_cancel;
     bool processing_makera_input;

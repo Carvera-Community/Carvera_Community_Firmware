@@ -80,6 +80,8 @@ WifiProvider::WifiProvider()
 	has_data_flag = false;
 	makera_file_cancel = false;
 	processing_makera_input = false;
+	makera_controls_only = false;
+	makera_command_rejected = false;
 	deferred_makera_command.clear();
 	makera_remote_port = 0;
 	makera_remote_known = false;
@@ -264,7 +266,8 @@ void WifiProvider::receive_wifi_data() {
 	// hardware) and closes its advertised window when they fill. Leave unread
 	// commands there and let TCP apply backpressure instead of duplicating that
 	// buffer in the LPC's limited RAM.
-	while (frames < max_frames && receive_calls < MAKERA_MAX_RECEIVE_CALLS && deferred_makera_command.empty()) {
+	while (frames < max_frames && receive_calls < MAKERA_MAX_RECEIVE_CALLS &&
+			(makera_controls_only || deferred_makera_command.empty())) {
 		uint16_t wanted = static_cast<uint16_t>(makera_frame_decoder.bytes_wanted());
 		if (wanted > WIFI_DATA_MAX_SIZE) wanted = WIFI_DATA_MAX_SIZE;
 		if (frames > 0 && !makera_frame_decoder.has_header() && !M8266WIFI_SPI_Has_DataReceived()) return;
@@ -324,6 +327,17 @@ void WifiProvider::receive_wifi_data() {
 
 			if (packet.data_length == 0) {
 				if (packet.type == PTYPE_FILE_START) makera_file_cancel = true;
+				continue;
+			}
+
+			if (makera_controls_only) {
+				if (packet.type == PTYPE_FILE_START) {
+					makera_file_cancel = true;
+				} else if (deferred_makera_command.empty()) {
+					deferred_makera_command.assign(reinterpret_cast<const char *>(packet.data), packet.data_length);
+				} else {
+					makera_command_rejected = true;
+				}
 				continue;
 			}
 
@@ -545,7 +559,7 @@ void WifiProvider::on_idle(void *argument)
 	if (THEKERNEL->is_uploading()) return;
 
 	// FILE_START leaves the following file data for Player::gets().
-	if (!processing_makera_input && deferred_makera_command.empty() &&
+	if (!processing_makera_input && (makera_controls_only || deferred_makera_command.empty()) &&
 			(has_data_flag || M8266WIFI_SPI_Has_DataReceived())) {
 		has_data_flag = false;
 		processing_makera_input = true;
@@ -557,6 +571,11 @@ void WifiProvider::on_idle(void *argument)
 		makera_file_cancel = false;
 		static const char cancel_payload[] = "ok\r\n";
 		PacketMessage(PTYPE_FILE_CAN, cancel_payload, sizeof(cancel_payload));
+	}
+
+	if (makera_command_rejected) {
+		makera_command_rejected = false;
+		PacketMessage(PTYPE_NORMAL_INFO, "ERROR: command rejected while continuous jog is active\r\n", 0);
 	}
 
     if (query_flag) {
@@ -600,8 +619,11 @@ void WifiProvider::on_main_loop(void *argument)
 			message.stream = this;
 			message.line = 0;
 
-			processing_makera_input = true;
+			const bool jog_command = makera::is_jog_command(message.message.data(), message.message.size());
+			processing_makera_input = !jog_command;
+			makera_controls_only = jog_command;
 			THEKERNEL->call_event(ON_CONSOLE_LINE_RECEIVED, &message);
+			makera_controls_only = false;
 			processing_makera_input = false;
 		}
 		return;
@@ -635,6 +657,8 @@ void WifiProvider::on_protocol_changed()
 	diagnose_flag = false;
 	makera_file_cancel = false;
 	processing_makera_input = false;
+	makera_controls_only = false;
+	makera_command_rejected = false;
 	deferred_makera_command.clear();
 	makera_remote_known = false;
 	makera_frame_decoder.reset();

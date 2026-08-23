@@ -53,6 +53,8 @@ SerialConsole::SerialConsole( PinName tx_pin, PinName rx_pin, int baud_rate )
     this->last_activity_ms = 0;
     this->makera_rx_overflow = false;
     this->processing_makera_input = false;
+    this->makera_controls_only = false;
+    this->makera_command_rejected = false;
     this->makera_frame_decoder.reset();
     this->deferred_makera_command.clear();
     makera_rx_bytes.tail = makera_rx_bytes.head;
@@ -197,7 +199,8 @@ void SerialConsole::on_idle(void * argument)
     if (communication_protocol == PROTOCOL_MAKERA && !processing_makera_input &&
         now_ms - last_activity_ms >= makera_rx_quiet_ms) {
         processing_makera_input = true;
-        while (deferred_makera_command.empty() && makera_rx_bytes.tail != makera_rx_bytes.head) {
+        while ((makera_controls_only || deferred_makera_command.empty()) &&
+               makera_rx_bytes.tail != makera_rx_bytes.head) {
             char received;
             makera_rx_bytes.pop_front(received);
             process_makera_byte(static_cast<uint8_t>(received));
@@ -217,6 +220,11 @@ void SerialConsole::on_idle(void * argument)
     if (makera_rx_overflow) {
         makera_rx_overflow = false;
         PacketMessage(PTYPE_NORMAL_INFO, "ERROR: serial receive buffer full\r\n", 0);
+    }
+
+    if (makera_command_rejected) {
+        makera_command_rejected = false;
+        PacketMessage(PTYPE_NORMAL_INFO, "ERROR: command rejected while continuous jog is active\r\n", 0);
     }
 
     if (makera_file_cancel) {
@@ -267,8 +275,11 @@ void SerialConsole::on_main_loop(void * argument){
             message.stream = this;
             message.line = 0;
 
-            processing_makera_input = true;
+            const bool jog_command = makera::is_jog_command(message.message.data(), message.message.size());
+            processing_makera_input = !jog_command;
+            makera_controls_only = jog_command;
             THEKERNEL->call_event(ON_CONSOLE_LINE_RECEIVED, &message);
+            makera_controls_only = false;
             processing_makera_input = false;
         }
         return;
@@ -386,6 +397,17 @@ void SerialConsole::process_makera_byte(uint8_t received)
         return;
     }
 
+    if (makera_controls_only && (packet.type == PTYPE_CTRL_MULTI || packet.type == PTYPE_FILE_START)) {
+        if (packet.type == PTYPE_FILE_START || packet.data_length == 0) {
+            if (packet.type == PTYPE_FILE_START) makera_file_cancel = true;
+        } else if (deferred_makera_command.empty()) {
+            deferred_makera_command.assign(reinterpret_cast<const char *>(packet.data), packet.data_length);
+        } else {
+            makera_command_rejected = true;
+        }
+        return;
+    }
+
     if (packet.type == PTYPE_CTRL_MULTI && makera::is_deferred_command(
             reinterpret_cast<const char *>(packet.data), packet.data_length)) {
         deferred_makera_command.assign(reinterpret_cast<const char *>(packet.data), packet.data_length);
@@ -456,6 +478,8 @@ void SerialConsole::on_protocol_changed()
     makera_file_cancel = false;
     makera_rx_overflow = false;
     processing_makera_input = false;
+    makera_controls_only = false;
+    makera_command_rejected = false;
     deferred_makera_command.clear();
     makera_rx_bytes.tail = makera_rx_bytes.head;
     makera_frame_decoder.reset();
