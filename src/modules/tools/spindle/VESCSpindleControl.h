@@ -51,7 +51,6 @@ class VESCSpindleControl : public SpindleControl {
   void report_settings() override {}
   void set_factor(float f) override;
 
-  static uint16_t vesc_crc16(const uint8_t *buf, uint16_t len);
   static uint16_t vesc_build_packet(uint8_t *out, const uint8_t *payload, uint16_t plen);
   static bool extract_vesc_payload(const uint8_t *frame, uint16_t frame_len, const uint8_t **payload,
                                    uint16_t *payload_len);
