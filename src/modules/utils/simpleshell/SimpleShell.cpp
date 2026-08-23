@@ -12,6 +12,7 @@
 #include "rtc_time.h"
 #include "../mainbutton/MainButtonPublicAccess.h"
 #include "libs/Kernel.h"
+#include "libs/CRC16.h"
 #include "libs/nuts_bolts.h"
 #include "libs/utils.h"
 #include "libs/SerialMessage.h"
@@ -64,7 +65,6 @@
 #include <vector>
 
 extern unsigned int g_maximumHeapAddress;
-extern const unsigned short crc_table[256];
 #define XBUFF_LENGTH	8208
 extern unsigned char xbuff[XBUFF_LENGTH];
 extern unsigned char fbuff[4096];
@@ -804,7 +804,7 @@ void SimpleShell::cat_command( string parameters, StreamOutput *stream )
             // if (sentcnt < strlen()(int)buffer.size()) {
             if (sentcnt < (int)strlen(buffer)) {
             	fwfs::fclose(lp);
-            	stream->printf("Caching error, line: %d, size: %d, sent: %d", newlines, strlen(buffer), sentcnt);
+            	stream->printf("Caching error, line: %d, size: %d, sent: %d\n", newlines, strlen(buffer), sentcnt);
             	return;
             }
             // buffer.clear();
@@ -825,6 +825,9 @@ void SimpleShell::cat_command( string parameters, StreamOutput *stream )
     if (strlen(buffer) > 0) {
     	// stream->puts(buffer.c_str());
     	stream->puts(buffer);
+        if (buffer[strlen(buffer) - 1] != '\n') {
+            stream->printf("\n");
+        }
     }
 }
 
@@ -856,6 +859,10 @@ void SimpleShell::load_command( string parameters, StreamOutput *stream )
         stream->printf("Loading config override file: %s...\n", filename.c_str());
         while(fwfs::fgets(buf, sizeof buf, fp) != NULL) {
             stream->printf("  %s", buf);
+            size_t len = strlen(buf);
+            if (len == 0 || buf[len - 1] != '\n') {
+                stream->printf("\n");
+            }
             if(buf[0] == ';') continue; // skip the comments
             // NOTE only Gcodes and Mcodes can be in the config-override
             Gcode *gcode = new Gcode(buf, &StreamOutput::NullStream);
@@ -2516,8 +2523,7 @@ void SimpleShell::md5check_file_command( string parameters, StreamOutput *stream
 
     char stored[33];
     if (!read_stored_md5(md5_path, stored)) {
-        stream->printf("ERROR: No MD5 hash found for ");
-        stream->printf("%s\n", filename.c_str());
+        stream->printf("ERROR: No MD5 hash found for %s\n", filename.c_str());
         return;
     }
 
@@ -3316,21 +3322,10 @@ void SimpleShell::PacketMessage(char cmd, const char* s, int size, StreamOutput 
 	len = total_length + 3;
 	fbuff[2] = (len>>8)&0xFF;
 	fbuff[3] = len&0xFF;
-	crc = crc16_ccitt(&fbuff[2], len);
+	crc = crc16::ccitt(&fbuff[2], len);
 	fbuff[total_length+5] = (crc>>8)&0xFF;
 	fbuff[total_length+6] = crc&0xFF;
 	fbuff[total_length+7] = (FOOTER>>8)&0xFF;
 	fbuff[total_length+8] = FOOTER&0xFF;
 	stream->puts((char *)fbuff, len+6);
-}
-
-unsigned int SimpleShell::crc16_ccitt(unsigned char *data, unsigned int len)
-{
-	unsigned char tmp;
-	unsigned short crc = 0;
-	for (unsigned int i = 0; i < len; i ++) {
-        tmp = ((crc >> 8) ^ data[i]) & 0xff;
-        crc = ((crc << 8) ^ crc_table[tmp]) & 0xffff;
-	}
-	return crc & 0xffff;
 }

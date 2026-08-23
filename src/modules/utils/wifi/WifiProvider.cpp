@@ -6,6 +6,7 @@
  */
 
 #include "WifiProvider.h"
+#include "libs/CRC16.h"
 
 #include <cstdarg>
 #include "brd_cfg.h"
@@ -37,6 +38,8 @@
 
 #include "platform_memory.h" // Needed for AHB allocator
 #include "libs/compiler.h"
+#include "libs/MakeraControl.h"
+#include "libs/MakeraFrame.h"
 
 #include "port_api.h"
 #include "InterruptIn.h"
@@ -63,53 +66,25 @@
 #define XBUFF_LENGTH	8208
 extern unsigned char xbuff[XBUFF_LENGTH];
 extern unsigned char fbuff[4096];
-char WifiSerialbuff[544] LOCATED_IN_AHBSRAM;
+enum { MAKERA_MAX_RECEIVE_CALLS = 10 };
+static makera::Packet makera_packet LOCATED_IN_AHBSRAM;
 
 
-
-unsigned short crc_table[] = {
-	0x0000, 0x1021, 0x2042, 0x3063, 0x4084, 0x50a5, 0x60c6, 0x70e7,
-	0x8108, 0x9129, 0xa14a, 0xb16b, 0xc18c, 0xd1ad, 0xe1ce, 0xf1ef,
-	0x1231, 0x0210, 0x3273, 0x2252, 0x52b5, 0x4294, 0x72f7, 0x62d6,
-	0x9339, 0x8318, 0xb37b, 0xa35a, 0xd3bd, 0xc39c, 0xf3ff, 0xe3de,
-	0x2462, 0x3443, 0x0420, 0x1401, 0x64e6, 0x74c7, 0x44a4, 0x5485,
-	0xa56a, 0xb54b, 0x8528, 0x9509, 0xe5ee, 0xf5cf, 0xc5ac, 0xd58d,
-	0x3653, 0x2672, 0x1611, 0x0630, 0x76d7, 0x66f6, 0x5695, 0x46b4,
-	0xb75b, 0xa77a, 0x9719, 0x8738, 0xf7df, 0xe7fe, 0xd79d, 0xc7bc,
-	0x48c4, 0x58e5, 0x6886, 0x78a7, 0x0840, 0x1861, 0x2802, 0x3823,
-	0xc9cc, 0xd9ed, 0xe98e, 0xf9af, 0x8948, 0x9969, 0xa90a, 0xb92b,
-	0x5af5, 0x4ad4, 0x7ab7, 0x6a96, 0x1a71, 0x0a50, 0x3a33, 0x2a12,
-	0xdbfd, 0xcbdc, 0xfbbf, 0xeb9e, 0x9b79, 0x8b58, 0xbb3b, 0xab1a,
-	0x6ca6, 0x7c87, 0x4ce4, 0x5cc5, 0x2c22, 0x3c03, 0x0c60, 0x1c41,
-	0xedae, 0xfd8f, 0xcdec, 0xddcd, 0xad2a, 0xbd0b, 0x8d68, 0x9d49,
-	0x7e97, 0x6eb6, 0x5ed5, 0x4ef4, 0x3e13, 0x2e32, 0x1e51, 0x0e70,
-	0xff9f, 0xefbe, 0xdfdd, 0xcffc, 0xbf1b, 0xaf3a, 0x9f59, 0x8f78,
-	0x9188, 0x81a9, 0xb1ca, 0xa1eb, 0xd10c, 0xc12d, 0xf14e, 0xe16f,
-	0x1080, 0x00a1, 0x30c2, 0x20e3, 0x5004, 0x4025, 0x7046, 0x6067,
-	0x83b9, 0x9398, 0xa3fb, 0xb3da, 0xc33d, 0xd31c, 0xe37f, 0xf35e,
-	0x02b1, 0x1290, 0x22f3, 0x32d2, 0x4235, 0x5214, 0x6277, 0x7256,
-	0xb5ea, 0xa5cb, 0x95a8, 0x8589, 0xf56e, 0xe54f, 0xd52c, 0xc50d,
-	0x34e2, 0x24c3, 0x14a0, 0x0481, 0x7466, 0x6447, 0x5424, 0x4405,
-	0xa7db, 0xb7fa, 0x8799, 0x97b8, 0xe75f, 0xf77e, 0xc71d, 0xd73c,
-	0x26d3, 0x36f2, 0x0691, 0x16b0, 0x6657, 0x7676, 0x4615, 0x5634,
-	0xd94c, 0xc96d, 0xf90e, 0xe92f, 0x99c8, 0x89e9, 0xb98a, 0xa9ab,
-	0x5844, 0x4865, 0x7806, 0x6827, 0x18c0, 0x08e1, 0x3882, 0x28a3,
-	0xcb7d, 0xdb5c, 0xeb3f, 0xfb1e, 0x8bf9, 0x9bd8, 0xabbb, 0xbb9a,
-	0x4a75, 0x5a54, 0x6a37, 0x7a16, 0x0af1, 0x1ad0, 0x2ab3, 0x3a92,
-	0xfd2e, 0xed0f, 0xdd6c, 0xcd4d, 0xbdaa, 0xad8b, 0x9de8, 0x8dc9,
-	0x7c26, 0x6c07, 0x5c64, 0x4c45, 0x3ca2, 0x2c83, 0x1ce0, 0x0cc1,
-	0xef1f, 0xff3e, 0xcf5d, 0xdf7c, 0xaf9b, 0xbfba, 0x8fd9, 0x9ff8,
-	0x6e17, 0x7e36, 0x4e55, 0x5e74, 0x2e93, 0x3eb2, 0x0ed1, 0x1ef0,
-};
 
 WifiProvider::WifiProvider()
+    : makera_frame_decoder(makera_packet)
 {
 	tcp_link_no = 0;
 	udp_link_no = 1;
 	wifi_init_ok = false;
 	has_data_flag = false;
-	makera_command_pending = false;
-	makera_pending_payload_len = 0;
+	makera_file_cancel = false;
+	processing_makera_input = false;
+	makera_controls_only = false;
+	makera_command_rejected = false;
+	deferred_makera_command.clear();
+	makera_remote_port = 0;
+	makera_remote_known = false;
 	connection_fail_count = 0;
 	sta_down_seconds = 0;
 	last_sta_connection_status = 0xff;
@@ -209,15 +184,8 @@ void WifiProvider::on_pin_rise()
 
 void WifiProvider::receive_wifi_data() {
 	u8 link_no;
-	u16 revcnt = 0;
 	u16 status;
-	u16 errorcnt = 0;
-	uint8_t headerBuffer[2];	
     uint32_t received = 0;
-    uint32_t timeout_ms = 100000;	//100 ms
-    uint32_t starttime = 0;
-    u8 RecvData;
-    
 
 	if (communication_protocol == PROTOCOL_SMOOTHIE) {
 		while (true)
@@ -287,153 +255,110 @@ void WifiProvider::receive_wifi_data() {
 				return;
 			}
 		}
-	} else {
-		// wait head
-		starttime = us_ticker_read();
-		while ((received < 2) && ((us_ticker_read() - starttime) < timeout_ms) ) {
-			revcnt = M8266WIFI_SPI_RecvData(&RecvData, 1, WIFI_DATA_TIMEOUT_MS, &link_no, &status);
-			if ((link_no == udp_link_no) || (revcnt == 0)) {
+		return;
+	}
+
+	const int max_frames = 16;
+	int frames = 0;
+	int receive_calls = 0;
+	uint16_t header_errors = 0;
+	// The M8266 receive side buffers six TCP segments (8,760 bytes, measured on
+	// hardware) and closes its advertised window when they fill. Leave unread
+	// commands there and let TCP apply backpressure instead of duplicating that
+	// buffer in the LPC's limited RAM.
+	while (frames < max_frames && receive_calls < MAKERA_MAX_RECEIVE_CALLS &&
+			(makera_controls_only || deferred_makera_command.empty())) {
+		uint16_t wanted = static_cast<uint16_t>(makera_frame_decoder.bytes_wanted());
+		if (wanted > WIFI_DATA_MAX_SIZE) wanted = WIFI_DATA_MAX_SIZE;
+		if (frames > 0 && !makera_frame_decoder.has_header() && !M8266WIFI_SPI_Has_DataReceived()) return;
+
+		u8 remote_ip[4];
+		u16 remote_port = 0;
+		++receive_calls;
+		uint16_t count = M8266WIFI_SPI_RecvData_ex(
+			WifiData, wanted, WIFI_DATA_TIMEOUT_MS, &link_no, remote_ip, &remote_port, &status);
+		if (count == 0) return;
+		if (count > wanted) count = wanted;
+		if (link_no == udp_link_no) return;
+		if (!makera_remote_known || remote_port != makera_remote_port ||
+			memcmp(remote_ip, makera_remote_ip, sizeof(makera_remote_ip)) != 0) {
+			makera_frame_decoder.reset();
+			memcpy(makera_remote_ip, remote_ip, sizeof(makera_remote_ip));
+			makera_remote_port = remote_port;
+			makera_remote_known = true;
+		}
+
+		const uint32_t now_ms = us_ticker_read() / 1000;
+		for (uint16_t i = 0; i < count; ++i) {
+			const bool looking_for_header = !makera_frame_decoder.has_header();
+			const makera::DecodeResult result = makera_frame_decoder.decode_byte(WifiData[i], now_ms);
+			if (result == makera::DecodeResult::incomplete) {
+				if (looking_for_header && !makera_frame_decoder.has_header() && ++header_errors >= 20) {
+					puts("ERROR: no valid frame found. If this is a Community Controller "
+					     "older than 2.2.0, please update it.\r\n", 0);
+					makera_frame_decoder.reset();
+					return;
+				}
 				continue;
 			}
-			
-			headerBuffer[0] = headerBuffer[1];
-			received++;
-			headerBuffer[1] = RecvData;
-			if (received >= 2 && (headerBuffer[0] != ((HEADER >> 8) & 0xFF) || 
-								headerBuffer[1] != (HEADER & 0xFF))) {
-				received = 1;
-				errorcnt ++;
-			}
-		}
-		if( errorcnt > 20)
-		{
-			THEKERNEL->streams->puts("Please use Controller version V0.9.12 or later to connect.\r\n", 124); 
-			return;
-		}
-			
-		if (received < 2){
-	//	    PacketMessage(PTYPE_NORMAL_INFO, "ALARM: Abort receive header\r\n", 0);
-			return;
-		}
-		
-		// receive length	    
-		starttime = us_ticker_read();
-		while ((received < 4) && ((us_ticker_read() - starttime) < timeout_ms) ) {
-			revcnt = M8266WIFI_SPI_RecvData(&RecvData, 1, WIFI_DATA_TIMEOUT_MS, &link_no, &status);
-			if ((link_no == udp_link_no) || (revcnt == 0)) {
+
+			++frames;
+			header_errors = 0;
+			if (result != makera::DecodeResult::complete) continue;
+
+			const makera::Packet &packet = makera_frame_decoder.packet();
+			if (packet.type == PTYPE_CTRL_SINGLE && packet.data_length > 0) {
+				const makera::ControlAction action = makera::decode_control(packet.data[0]);
+				if (action == makera::ControlAction::stop) {
+					THEKERNEL->set_stop_request(true);
+				} else {
+					makera::handle_control(packet.data[0]);
+				}
+				switch (action) {
+					case makera::ControlAction::query: query_flag = true; break;
+					case makera::ControlAction::diagnose: diagnose_flag = true; break;
+					case makera::ControlAction::halt: halt_flag = true; break;
+					default: break;
+				}
 				continue;
 			}
-			WifiSerialbuff[received] = RecvData;
-			received ++;
-		}
-		
-		if (received < 4){
-	//	    	PacketMessage(PTYPE_NORMAL_INFO, "ALARM: Abort receive length\r\n", 0);
-			return;
-		}
-		
-		uint16_t data_len = (WifiSerialbuff[2]<<8) | WifiSerialbuff[3];
-		uint16_t total_len = 4 + data_len + 2; // header + data + crc + tail
-		
-		if (data_len > 513 || total_len > sizeof(WifiSerialbuff)){
-	//	    	PacketMessage(PTYPE_NORMAL_INFO, "ALARM: Abort receive datalen error\r\n", 0);
-			return; 
-		}
-		
-		starttime = us_ticker_read();
-		while ((received < total_len) && ((us_ticker_read() - starttime) < timeout_ms) ) {	    	
-			revcnt = M8266WIFI_SPI_RecvData(&RecvData, 1, WIFI_DATA_TIMEOUT_MS, &link_no, &status);
-			if ((link_no == udp_link_no) || (revcnt == 0)) {
+
+			if (packet.type != PTYPE_CTRL_MULTI && packet.type != PTYPE_FILE_START) continue;
+
+			if (packet.data_length == 0) {
+				if (packet.type == PTYPE_FILE_START) makera_file_cancel = true;
 				continue;
 			}
-			WifiSerialbuff[received] = RecvData;
-			received ++;
-		}
-		
-		if (received < total_len) {
-	//	    PacketMessage(PTYPE_NORMAL_INFO, "ALARM: Abort receive data body\r\n", 0);
-			return;
-		}    
-			
-		// check tail
-		uint16_t tail = (WifiSerialbuff[total_len-2]<<8) | WifiSerialbuff[total_len-1];
-		if (tail != FOOTER) {
-	//	    	PacketMessage(PTYPE_NORMAL_INFO, "ALARM: Abort receive footer\r\n", 0);
-			return;
-		}
-		
-	/*	    
-		// check CRC
-		uint16_t received_crc = (WifiSerialbuff[total_len-4] << 8) | WifiSerialbuff[total_len-3];
-		uint16_t calculated_crc = crc16_ccitt((unsigned char *)&WifiSerialbuff[2], data_len);
-		if (received_crc != calculated_crc) {
-	//	    	PacketMessage(PTYPE_NORMAL_INFO, "ALARM: Abort receive wrong crc\r\n", 0);
-			return;
-		}
-	*/
-		uint8_t cmdType = WifiSerialbuff[4];
-		switch(cmdType) {
-			case PTYPE_CTRL_SINGLE: { 
-				if(WifiSerialbuff[5] == '?') {
-					query_flag = true;
+
+			if (makera_controls_only) {
+				if (packet.type == PTYPE_FILE_START) {
+					makera_file_cancel = true;
+				} else if (deferred_makera_command.empty()) {
+					deferred_makera_command.assign(reinterpret_cast<const char *>(packet.data), packet.data_length);
+				} else {
+					makera_command_rejected = true;
 				}
-				else if(WifiSerialbuff[5] == 'X' - 'A' + 1) {
-					halt_flag = true;
-				}
-				else if(WifiSerialbuff[5] == 'Y' - 'A' + 1) { // ^Y
-					THEKERNEL->set_stop_request(true); // generic stop what you are doing request
-				}
-				else if(WifiSerialbuff[5] == 'Z' - 'A' + 1) { // ^Z
-					THEKERNEL->set_keep_alive_request(true);
-				}
-				bool at_line_start;
-				at_line_start = (this->buffer.head == this->buffer.tail);
-				if (!at_line_start) {
-					int last_idx = this->buffer.prev_block_index(this->buffer.head);
-					at_line_start = (this->buffer.buffer[last_idx] == '\n' || this->buffer.buffer[last_idx] == '\r');
-				}
-				else if(THEKERNEL->is_feed_hold_enabled()) {
-					if(WifiSerialbuff[5] == '!') { // safe pause
-						THEKERNEL->set_feed_hold(true);
-					}
-					else if(WifiSerialbuff[5] == '~') { // safe resume
-						THEKERNEL->set_feed_hold(false);
-					}
-				}
-				break;
+				continue;
 			}
-			case PTYPE_CTRL_MULTI:
-			case PTYPE_FILE_START:
-				// Defer to on_main_loop — same as SerialConsole. Commands like
-				// suspend/abort call wait_for_idle(), which re-enters ON_IDLE; handling
-				// them here would nest receive_wifi_data/puts on shared SPI buffers and
-				// drop the controller connection.
-				if (data_len >= 3) {
-					makera_pending_payload_len = data_len - 3;
-					makera_command_pending = true;
-				}
-				break;
-				
-			default:
-				break;
+
+			if (packet.type == PTYPE_CTRL_MULTI && makera::is_deferred_command(
+					reinterpret_cast<const char *>(packet.data), packet.data_length)) {
+				deferred_makera_command.assign(reinterpret_cast<const char *>(packet.data), packet.data_length);
+				return;
+			}
+
+			struct SerialMessage message;
+			message.message.assign(reinterpret_cast<const char *>(packet.data), packet.data_length);
+			message.stream = this;
+			message.line = 0;
+
+			THEKERNEL->call_event(ON_CONSOLE_LINE_RECEIVED, &message);
+			if (packet.type == PTYPE_FILE_START) return;
 		}
 	}
 
 }
 
-
-unsigned int WifiProvider::crc16_ccitt(unsigned char *data, unsigned int len)
-{
-	unsigned char tmp;
-	unsigned short crc = 0;
-
-	for (unsigned int i = 0; i < len; i ++) {
-        tmp = ((crc >> 8) ^ data[i]) & 0xff;
-        crc = ((crc << 8) ^ crc_table[tmp]) & 0xffff;
-	}
-
-	return crc & 0xffff;
-}
 
 bool WifiProvider::ready() {
 	return M8266WIFI_SPI_Has_DataReceived();
@@ -633,10 +558,24 @@ void WifiProvider::on_idle(void *argument)
  {
 	if (THEKERNEL->is_uploading()) return;
 
-	// Do not receive another Makera frame while a deferred command still owns WifiSerialbuff
-	if (!makera_command_pending && (has_data_flag || M8266WIFI_SPI_Has_DataReceived())) {
+	// FILE_START leaves the following file data for Player::gets().
+	if (!processing_makera_input && (makera_controls_only || deferred_makera_command.empty()) &&
+			(has_data_flag || M8266WIFI_SPI_Has_DataReceived())) {
 		has_data_flag = false;
+		processing_makera_input = true;
 		receive_wifi_data();
+		processing_makera_input = false;
+	}
+
+	if (makera_file_cancel) {
+		makera_file_cancel = false;
+		static const char cancel_payload[] = "ok\r\n";
+		PacketMessage(PTYPE_FILE_CAN, cancel_payload, sizeof(cancel_payload));
+	}
+
+	if (makera_command_rejected) {
+		makera_command_rejected = false;
+		PacketMessage(PTYPE_NORMAL_INFO, "ERROR: command rejected while continuous jog is active\r\n", 0);
 	}
 
     if (query_flag) {
@@ -674,15 +613,18 @@ void WifiProvider::on_idle(void *argument)
 void WifiProvider::on_main_loop(void *argument)
 {
 	if (communication_protocol == PROTOCOL_MAKERA) {
-		if (makera_command_pending) {
+		if (!deferred_makera_command.empty()) {
 			struct SerialMessage message;
-			message.message.assign(WifiSerialbuff + 5, makera_pending_payload_len);
+			message.message.swap(deferred_makera_command);
 			message.stream = this;
 			message.line = 0;
 
-			makera_command_pending = false;
-			makera_pending_payload_len = 0;
+			const bool jog_command = makera::is_jog_command(message.message.data(), message.message.size());
+			processing_makera_input = !jog_command;
+			makera_controls_only = jog_command;
 			THEKERNEL->call_event(ON_CONSOLE_LINE_RECEIVED, &message);
+			makera_controls_only = false;
+			processing_makera_input = false;
 		}
 		return;
 	}
@@ -707,6 +649,22 @@ void WifiProvider::on_main_loop(void *argument)
 	}
 }
 
+void WifiProvider::on_protocol_changed()
+{
+	buffer.tail = buffer.head;
+	query_flag = false;
+	halt_flag = false;
+	diagnose_flag = false;
+	makera_file_cancel = false;
+	processing_makera_input = false;
+	makera_controls_only = false;
+	makera_command_rejected = false;
+	deferred_makera_command.clear();
+	makera_remote_known = false;
+	makera_frame_decoder.reset();
+	reset();
+}
+
 void WifiProvider::PacketMessage(char cmd, const char* s, int size)
 {
 	int crc = 0;
@@ -721,7 +679,7 @@ void WifiProvider::PacketMessage(char cmd, const char* s, int size)
 	len = total_length + 3;
 	fbuff[2] = (len>>8)&0xFF;
 	fbuff[3] = len&0xFF;
-	crc = crc16_ccitt(&fbuff[2], len);
+	crc = crc16::ccitt(&fbuff[2], len);
 	fbuff[total_length+5] = (crc>>8)&0xFF;
 	fbuff[total_length+6] = crc&0xFF;
 	fbuff[total_length+7] = (FOOTER>>8)&0xFF;
@@ -970,7 +928,7 @@ int WifiProvider::CheckFilePacket(char** buf) {
 	// CRC校验
     uint16_t calcCRC = 0;
     uint16_t receivedCRC = 0;
-    calcCRC = crc16_ccitt(xbuff, this->ptr_xbuff-2); // 最后两个字节是CRC
+    calcCRC = crc16::ccitt(xbuff, this->ptr_xbuff-2); // 最后两个字节是CRC
     receivedCRC = (xbuff[this->ptr_xbuff-2] << 8) | xbuff[this->ptr_xbuff-1];
     this->ptr_xbuff = 0;
     
@@ -1878,5 +1836,3 @@ int WifiProvider::type() {
 ProtocolMode WifiProvider::protocol(){
 	return communication_protocol;
 }
-
-
