@@ -34,16 +34,6 @@
           "description": "Target or offset on A (rotary), if present.",
           "default": null
         },
-        "B": {
-          "required": false,
-          "description": "Target or offset on B, if present.",
-          "default": null
-        },
-        "C": {
-          "required": false,
-          "description": "Target or offset on C, if present.",
-          "default": null
-        },
         "F": {
           "required": false,
           "description": "Feed for this G0 line only.",
@@ -75,16 +65,6 @@
         "A": {
           "required": false,
           "description": "Target or offset on A (rotary), if present.",
-          "default": null
-        },
-        "B": {
-          "required": false,
-          "description": "Target or offset on B, if present.",
-          "default": null
-        },
-        "C": {
-          "required": false,
-          "description": "Target or offset on C, if present.",
           "default": null
         },
         "F": {
@@ -120,16 +100,6 @@
           "description": "Target or offset on A (rotary), if present.",
           "default": null
         },
-        "B": {
-          "required": false,
-          "description": "Target or offset on B, if present.",
-          "default": null
-        },
-        "C": {
-          "required": false,
-          "description": "Target or offset on C, if present.",
-          "default": null
-        },
         "I": {
           "required": false,
           "description": "Arc center offset along the first plane axis.",
@@ -156,7 +126,7 @@
     },
     "G3": {
       "type": "gcode",
-      "description": "Counter-clockwise arc. Same parameters as G2.",
+      "description": "Counter-clockwise arc.",
       "parameters": {
         "X": {
           "required": false,
@@ -176,16 +146,6 @@
         "A": {
           "required": false,
           "description": "Target or offset on A (rotary), if present.",
-          "default": null
-        },
-        "B": {
-          "required": false,
-          "description": "Target or offset on B, if present.",
-          "default": null
-        },
-        "C": {
-          "required": false,
-          "description": "Target or offset on C, if present.",
           "default": null
         },
         "I": {
@@ -220,7 +180,7 @@
           "required": true,
           "description": "Dwell time.",
           "default": null,
-          "unit": "s"
+          "unit": "seconds"
         }
       }
     },
@@ -288,24 +248,48 @@
     },
     "G28": {
       "type": "gcode",
-      "description": "On Carvera this goes to the configured clearance position, not a full home unless a homing subcode is used.",
-      "parameters": {},
-      "notes": "G28.2 forces a homing cycle in grbl-style $H."
+      "description": "Go to the configured clearance position.",
+      "parameters": {}
+    },
+    "G28.2": {
+      "type": "gcode",
+      "description": "Homing cycle",
+      "parameters": {}
     },
     "G29": {
       "type": "gcode",
-      "description": "Bed-level / probe-strategy command. On Carvera cartesian machines this is handled by the loaded leveling strategy if one is configured.",
+      "description": "Probe a grid starting at the current XY position. Not used for level compensation.",
       "parameters": {
-        "P": {
+        "X": {
+          "required": true,
+          "description": "Distance of grid in X direction",
+          "unit": "mm"
+        },
+        "Y": {
+          "required": true,
+          "description": "Distance of grid in Y direction",
+          "unit": "mm"
+        },
+        "I": {
           "required": false,
-          "description": "Optional strategy index if more than one strategy is loaded.",
-          "default": 0
+          "description": "Number of grid points in X",
+          "default": 15
+        },
+        "J": {
+          "required": false,
+          "description": "Number of grid points in Y",
+          "default": 15
+        },
+        "H": {
+          "required": false,
+          "description": "Probe height",
+          "unit": "mm"
         }
       }
     },
     "G30": {
       "type": "gcode",
-      "description": "Simple Z probe. Probes down (or reverse if R is set) and reports the trigger position.",
+      "description": "Simple Z probe. Probes downwards and reports the trigger position.",
       "parameters": {
         "Z": {
           "required": false,
@@ -328,18 +312,12 @@
     },
     "G31": {
       "type": "gcode",
-      "description": "Grid or strategy probe report, forwarded to the loaded leveling strategy (same family as G32).",
-      "parameters": {
-        "P": {
-          "required": false,
-          "description": "Optional strategy index.",
-          "default": 0
-        }
-      }
+      "description": "Grid probe report, and enable leveling compensation (same family as G32).",
+      "parameters": {}
     },
     "G32": {
       "type": "gcode",
-      "description": "Probe a grid and enable bed compensation until reset or M370. X/Y are the start, A/B the size, I/J the grid, H the probe height.",
+      "description": "Probe a grid and enable bed compensation until reset or M370.",
       "parameters": {
         "X": {
           "required": false,
@@ -354,12 +332,14 @@
         "A": {
           "required": false,
           "description": "Grid width.",
-          "default": null
+          "default": null,
+          "unit": "mm"
         },
         "B": {
           "required": false,
           "description": "Grid length.",
-          "default": null
+          "default": null,
+          "unit": "mm"
         },
         "I": {
           "required": false,
@@ -373,18 +353,9 @@
         },
         "H": {
           "required": false,
-          "description": "Probe height / plunge.",
-          "default": null
-        },
-        "R": {
-          "required": false,
-          "description": "Optional strategy-specific flag.",
-          "default": null
-        },
-        "P": {
-          "required": false,
-          "description": "Optional strategy index.",
-          "default": 0
+          "description": "Probe height.",
+          "default": null,
+          "unit": "mm"
         }
       }
     },
@@ -394,8 +365,9 @@
       "parameters": {
         "X": {
           "required": false,
-          "description": "Travel length along X.",
-          "default": null
+          "description": "Travel distance along X.",
+          "default": null,
+          "unit": "mm"
         },
         "Y": {
           "required": false,
@@ -433,16 +405,6 @@
           "description": "Target or offset on A (rotary), if present.",
           "default": null
         },
-        "B": {
-          "required": false,
-          "description": "Target or offset on B, if present.",
-          "default": null
-        },
-        "C": {
-          "required": false,
-          "description": "Target or offset on C, if present.",
-          "default": null
-        },
         "F": {
           "required": false,
           "description": "Probe feed rate.",
@@ -473,16 +435,6 @@
         "A": {
           "required": false,
           "description": "Target or offset on A (rotary), if present.",
-          "default": null
-        },
-        "B": {
-          "required": false,
-          "description": "Target or offset on B, if present.",
-          "default": null
-        },
-        "C": {
-          "required": false,
-          "description": "Target or offset on C, if present.",
           "default": null
         },
         "F": {
@@ -517,16 +469,6 @@
           "description": "Target or offset on A (rotary), if present.",
           "default": null
         },
-        "B": {
-          "required": false,
-          "description": "Target or offset on B, if present.",
-          "default": null
-        },
-        "C": {
-          "required": false,
-          "description": "Target or offset on C, if present.",
-          "default": null
-        },
         "F": {
           "required": false,
           "description": "Probe feed rate.",
@@ -557,16 +499,6 @@
         "A": {
           "required": false,
           "description": "Target or offset on A (rotary), if present.",
-          "default": null
-        },
-        "B": {
-          "required": false,
-          "description": "Target or offset on B, if present.",
-          "default": null
-        },
-        "C": {
-          "required": false,
-          "description": "Target or offset on C, if present.",
           "default": null
         },
         "F": {
@@ -665,16 +597,6 @@
           "required": false,
           "description": "Target or offset on A (rotary), if present.",
           "default": null
-        },
-        "B": {
-          "required": false,
-          "description": "Target or offset on B, if present.",
-          "default": null
-        },
-        "C": {
-          "required": false,
-          "description": "Target or offset on C, if present.",
-          "default": null
         }
       }
     },
@@ -707,19 +629,9 @@
           "description": "Target or offset on A (rotary), if present.",
           "default": null
         },
-        "B": {
-          "required": false,
-          "description": "Target or offset on B, if present.",
-          "default": null
-        },
-        "C": {
-          "required": false,
-          "description": "Target or offset on C, if present.",
-          "default": null
-        },
         "S": {
           "required": false,
-          "description": "With A0, shrink the A axis into 0–360.",
+          "description": "With A0, shrink the A axis into 0–360 range.",
           "default": null
         }
       }
@@ -741,26 +653,25 @@
     },
     "M2": {
       "type": "mcode",
-      "description": "End of program. Stops the spindle and air and ends playback.",
+      "description": "End of program. Stops the spindle and air assist and ends playback.",
       "parameters": {}
     },
     "M3": {
       "type": "mcode",
-      "description": "Start the spindle clockwise. S sets RPM; if omitted the last target RPM is used, which starts at spindle.default_rpm. Requires a valid tool in the spindle. In laser mode this turns the laser on instead.",
+      "description": "Start the spindle clockwise. Requires a valid tool in the spindle. In laser mode this turns the laser on instead.",
       "parameters": {
         "S": {
           "required": false,
-          "description": "Spindle speed in RPM. If omitted, the existing target RPM is kept (initialized from spindle.default_rpm at boot).",
+          "description": "Spindle speed in RPM.",
           "default": 10000,
           "unit": "rpm",
           "default_source": "spindle.default_rpm"
         }
-      },
-      "notes": "PWM spindle code falls back to 15000 RPM only if spindle.default_rpm is missing from config. Built-in C1 and CA1 configs set 10000."
+      }
     },
     "M4": {
       "type": "mcode",
-      "description": "Start the spindle counter-clockwise when the spindle implementation supports direction. Same S handling as M3. Used by suspend/resume to restore a CCW spindle.",
+      "description": "Start the spindle counter-clockwise when the spindle implementation supports direction.",
       "parameters": {
         "S": {
           "required": false,
@@ -782,7 +693,7 @@
       "parameters": {
         "T": {
           "required": true,
-          "description": "Tool number: 0 probe, -1 none, 1+ tool slot.",
+          "description": "Tool number to change to. Special numbers are 0 probe, -1 none, 999990 3D Probe",
           "default": null
         },
         "S": {
@@ -792,7 +703,7 @@
         },
         "R": {
           "required": false,
-          "description": "TLO measurement repeats (for example rotate a face mill between taps).",
+          "description": "Repeat TLO measurement to find lowest point (for example on a face mill).",
           "default": 1
         },
         "H": {
@@ -804,23 +715,23 @@
         "C": {
           "required": false,
           "description": "1 run automatic TLO after the change, 0 skip it.",
-          "default": null
+          "default": 1
         }
       }
     },
     "M7": {
       "type": "mcode",
-      "description": "Start airflow (switch.air on command).",
+      "description": "Start air flow on air assist.",
       "parameters": {}
     },
     "M9": {
       "type": "mcode",
-      "description": "Stop airflow (switch.air off command).",
+      "description": "Stop airflow on air assist.",
       "parameters": {}
     },
     "M17": {
       "type": "mcode",
-      "description": "Enable all stepper drivers.",
+      "description": "Enable all stepper drivers for debug purposes",
       "parameters": {}
     },
     "M18": {
@@ -950,16 +861,6 @@
           "required": false,
           "description": "Target or offset on A (rotary), if present.",
           "default": null
-        },
-        "B": {
-          "required": false,
-          "description": "Target or offset on B, if present.",
-          "default": null
-        },
-        "C": {
-          "required": false,
-          "description": "Target or offset on C, if present.",
-          "default": null
         }
       }
     },
@@ -991,7 +892,7 @@
     },
     "M105": {
       "type": "mcode",
-      "description": "Report temperatures. On Carvera this is used for spindle temperature where that sensor exists.",
+      "description": "Report spindle temperature.",
       "parameters": {}
     },
     "M112": {
@@ -1027,7 +928,7 @@
       "parameters": {
         "text": {
           "required": false,
-          "description": "Text after M118.",
+          "description": "Text after M118, no space",
           "default": null
         }
       }
@@ -1075,16 +976,6 @@
           "required": false,
           "description": "Target or offset on A (rotary), if present.",
           "default": null
-        },
-        "B": {
-          "required": false,
-          "description": "Target or offset on B, if present.",
-          "default": null
-        },
-        "C": {
-          "required": false,
-          "description": "Target or offset on C, if present.",
-          "default": null
         }
       }
     },
@@ -1110,16 +1001,6 @@
         "A": {
           "required": false,
           "description": "Target or offset on A (rotary), if present.",
-          "default": null
-        },
-        "B": {
-          "required": false,
-          "description": "Target or offset on B, if present.",
-          "default": null
-        },
-        "C": {
-          "required": false,
-          "description": "Target or offset on C, if present.",
           "default": null
         }
       }
@@ -1198,16 +1079,6 @@
           "required": false,
           "description": "Target or offset on A (rotary), if present.",
           "default": null
-        },
-        "B": {
-          "required": false,
-          "description": "Target or offset on B, if present.",
-          "default": null
-        },
-        "C": {
-          "required": false,
-          "description": "Target or offset on C, if present.",
-          "default": null
         }
       }
     },
@@ -1278,7 +1149,7 @@
     },
     "M321": {
       "type": "mcode",
-      "description": "Enter laser mode. Drops the current tool and calibrates the collet so the laser offset matches the work surface.",
+      "description": "Enter laser mode. Drops the current tool and calibrates TLO against the collet so the laser offset matches the work surface.",
       "parameters": {}
     },
     "M322": {
@@ -1288,7 +1159,7 @@
     },
     "M323": {
       "type": "mcode",
-      "description": "Enter laser test mode with very low power, used for refocusing.",
+      "description": "Enter laser test mode with very low power, used for refocusing the laser's lense.",
       "parameters": {}
     },
     "M324": {
@@ -1310,7 +1181,7 @@
     },
     "M331": {
       "type": "mcode",
-      "description": "Enable auto vacuum mode so the vacuum follows the spindle.",
+      "description": "Enable auto vacuum mode on the Carvera C1 so the vacuum follows the spindle.",
       "parameters": {}
     },
     "M332": {
@@ -1340,7 +1211,7 @@
     },
     "M337": {
       "type": "mcode",
-      "description": "Set the LED bar color.",
+      "description": "Set the LED bar color. (Works on all machines except for Carvera C1)",
       "parameters": {
         "R": {
           "required": false,
@@ -1349,7 +1220,7 @@
         },
         "U": {
           "required": false,
-          "description": "Green 0–255 (U is used for green).",
+          "description": "Green 0–255.",
           "default": null
         },
         "B": {
@@ -1416,7 +1287,7 @@
     },
     "M460": {
       "type": "mcode",
-      "description": "Calibrate the 3D probe tip. Default is a bore; .2 uses a boss; .3 uses the anchor-2 bracket. Result is stored in #150.",
+      "description": "Calibrate the 3D probe tip. Default is against a bore of known diameter.",
       "parameters": {
         "X": {
           "required": true,
@@ -2361,7 +2232,7 @@
     },
     "M480.1": {
       "type": "mcode",
-      "description": "Outside corner, top-left. Makera-compatible wrapper; same D/X/Y/Z as M480.",
+      "description": "Outside corner, top-left. Makera-compatible wrapper.",
       "parameters": {
         "D": {
           "required": false,
@@ -2391,7 +2262,7 @@
     },
     "M480.2": {
       "type": "mcode",
-      "description": "Outside corner, top-right. Makera-compatible wrapper; same D/X/Y/Z as M480.",
+      "description": "Outside corner, top-right. Makera-compatible wrapper.",
       "parameters": {
         "D": {
           "required": false,
@@ -2451,7 +2322,7 @@
     },
     "M480.4": {
       "type": "mcode",
-      "description": "Outside corner, bottom-left. Makera-compatible wrapper; same D/X/Y/Z as M480.",
+      "description": "Outside corner, bottom-left. Makera-compatible wrapper.",
       "parameters": {
         "D": {
           "required": false,
@@ -2481,7 +2352,7 @@
     },
     "M480.5": {
       "type": "mcode",
-      "description": "Inside corner, top-left. Makera-compatible wrapper; same D/X/Y/Z as M480.",
+      "description": "Inside corner, top-left. Makera-compatible wrapper.",
       "parameters": {
         "D": {
           "required": false,
@@ -2541,7 +2412,7 @@
     },
     "M480.7": {
       "type": "mcode",
-      "description": "Inside corner, bottom-right. Makera-compatible wrapper; same D/X/Y/Z as M480.",
+      "description": "Inside corner, bottom-right. Makera-compatible wrapper.",
       "parameters": {
         "D": {
           "required": false,
@@ -2571,7 +2442,7 @@
     },
     "M480.8": {
       "type": "mcode",
-      "description": "Inside corner, bottom-left. Makera-compatible wrapper; same D/X/Y/Z as M480.",
+      "description": "Inside corner, bottom-left. Makera-compatible wrapper.",
       "parameters": {
         "D": {
           "required": false,
@@ -2601,7 +2472,7 @@
     },
     "M480.9": {
       "type": "mcode",
-      "description": "Inside pocket / bore centre. Makera-compatible wrapper; same D/X/Y/Z as M480.",
+      "description": "Inside pocket / bore centre. Makera-compatible wrapper.",
       "parameters": {
         "D": {
           "required": false,
@@ -2631,7 +2502,7 @@
     },
     "M480.10": {
       "type": "mcode",
-      "description": "Outside boss centre. Makera-compatible wrapper; same D/X/Y/Z as M480.",
+      "description": "Outside boss centre. Makera-compatible wrapper.",
       "parameters": {
         "D": {
           "required": false,
@@ -2676,12 +2547,22 @@
     },
     "M485": {
       "type": "mcode",
-      "description": "Switch communication protocol. M485.1 Smoothie, M485.2 Makera. With no subcode, report the current protocol.",
+      "description": "Report the current communication protocol mode.",
+      "parameters": {}
+    },
+    "M485.1": {
+      "type": "mcode",
+      "description": "Switch communication protocol to Smoothie.",
+      "parameters": {}
+    },
+    "M485.2": {
+      "type": "mcode",
+      "description": "Switch communication protocol to Makera.",
       "parameters": {}
     },
     "M489": {
       "type": "mcode",
-      "description": "Query Wi-Fi module status. Prefer diagnose or wlan.",
+      "description": "Query Wi-Fi module status. Prefer diagnose or wlan commands.",
       "parameters": {}
     },
     "M490": {
@@ -2823,7 +2704,7 @@
     },
     "M495": {
       "type": "mcode",
-      "description": "Controller automation: margin, Z-probe, and/or auto-level from a path origin. Machine must be homed. R uses a rotary-safe approach.",
+      "description": "Controller automation: Runs one or more of these: margin, Z-probe, and/or auto-level from a path origin.",
       "parameters": {
         "X": {
           "required": true,
@@ -2883,7 +2764,7 @@
         },
         "R": {
           "required": false,
-          "description": "If present, use the rotary-safe path to work origin.",
+          "description": "If present, use the rotary-safe path movement to work origin.",
           "default": null
         },
         "P": {
@@ -2918,19 +2799,8 @@
     },
     "M496.2": {
       "type": "mcode",
-      "description": "Go to work origin. X and Y are offsets from Anchor 1.",
-      "parameters": {
-        "X": {
-          "required": false,
-          "description": "Offset from Anchor 1 X.",
-          "default": 0
-        },
-        "Y": {
-          "required": false,
-          "description": "Offset from Anchor 1 Y.",
-          "default": 0
-        }
-      }
+      "description": "Go to work origin.",
+      "parameters": {}
     },
     "M496.3": {
       "type": "mcode",
@@ -3010,7 +2880,7 @@
     },
     "M499.1": {
       "type": "mcode",
-      "description": "Print current tool information (alias).",
+      "description": "Print current tool information.",
       "parameters": {}
     },
     "M499.2": {
@@ -3049,27 +2919,6 @@
         }
       }
     },
-    "M557": {
-      "type": "mcode",
-      "description": "Set a three-point leveling probe point. Only used if that strategy is loaded.",
-      "parameters": {
-        "P": {
-          "required": true,
-          "description": "Point index 0–2.",
-          "default": null
-        },
-        "X": {
-          "required": false,
-          "description": "X of the point.",
-          "default": null
-        },
-        "Y": {
-          "required": false,
-          "description": "Y of the point.",
-          "default": null
-        }
-      }
-    },
     "M561": {
       "type": "mcode",
       "description": "Clear bed compensation / set identity transform. Same idea as M370.",
@@ -3098,11 +2947,11 @@
     },
     "M575": {
       "type": "mcode",
-      "description": "Endstop repeatability test. Homes, taps each selected endstop, and reports trigger scatter. Cannot run while halted or playing.",
+      "description": "Endstop repeatability test. Homes, taps each selected endstop, and reports trigger scatter.",
       "parameters": {
         "X": {
           "required": false,
-          "description": "Include X if this letter is present.",
+          "description": "Include X",
           "default": null
         },
         "Y": {
@@ -3145,7 +2994,7 @@
     },
     "M576": {
       "type": "mcode",
-      "description": "Verify MD5 sidecars for uploaded files under /sd/gcodes/. Cannot run while halted. M576.1 is the same.",
+      "description": "Verify MD5 sidecars for uploaded files under /sd/gcodes/.",
       "parameters": {}
     },
     "M576.1": {
@@ -3155,12 +3004,12 @@
     },
     "M600": {
       "type": "mcode",
-      "description": "Suspend playback (controlled pause). M600.1 leaves heaters on; M600.5 is an internal ATC suspend marker.",
+      "description": "Suspend playback (controlled pause).",
       "parameters": {}
     },
     "M600.1": {
       "type": "mcode",
-      "description": "Suspend playback and leave heaters on.",
+      "description": "Suspend playback and leave heaters on. Doesn't do anything special on non-3D Printers",
       "parameters": {}
     },
     "M600.5": {
@@ -3221,7 +3070,7 @@
     },
     "M801": {
       "type": "mcode",
-      "description": "Turn on the internal vacuum (C1) or the PSU fan (CA1). S is PWM duty.",
+      "description": "Turn on the internal vacuum (C1) or the PSU fan (CA1).",
       "parameters": {
         "S": {
           "required": false,
@@ -3238,7 +3087,7 @@
     },
     "M811": {
       "type": "mcode",
-      "description": "Turn on the spindle cooling fan. S is PWM duty.",
+      "description": "Turn on the spindle cooling fan.",
       "parameters": {
         "S": {
           "required": false,
@@ -3285,7 +3134,7 @@
     },
     "M851": {
       "type": "mcode",
-      "description": "Turn on the extended output / external vacuum. S sets PWM duty.",
+      "description": "Turn on the extended output / external vacuum.",
       "parameters": {
         "S": {
           "required": false,
@@ -3302,7 +3151,7 @@
     },
     "M861": {
       "type": "mcode",
-      "description": "Beep on Carvera Air. This is a sound pulse, not a master enable.",
+      "description": "Beep on Carvera Air.",
       "parameters": {}
     },
     "M862": {
@@ -3363,7 +3212,7 @@
     },
     "M956": {
       "type": "mcode",
-      "description": "Report spindle speed (alias used in some tables). Prefer M957.",
+      "description": "Report spindle speed. Prefer M957.",
       "parameters": {}
     },
     "M957": {
@@ -3373,7 +3222,7 @@
     },
     "M958": {
       "type": "mcode",
-      "description": "Set spindle PID terms and report the current settings.",
+      "description": "Set spindle PID terms and report the current settings. Doesn't seem to actually be implemented",
       "parameters": {
         "P": {
           "required": false,
@@ -3541,11 +3390,6 @@
       "description": "Reboot the controller board.",
       "parameters": {}
     },
-    "dfu": {
-      "type": "shell",
-      "description": "Reboot into the DFU bootloader for firmware flashing.",
-      "parameters": {}
-    },
     "break": {
       "type": "shell",
       "description": "Break into the debugger (MRI), if enabled in the build.",
@@ -3600,27 +3444,6 @@
           "required": false,
           "description": "For fk/ik: comma-separated coordinates.",
           "default": null
-        },
-        "heater": {
-          "required": false,
-          "description": "For temp: optional heater name, or omit to list all.",
-          "default": null
-        }
-      }
-    },
-    "set_temp": {
-      "type": "shell",
-      "description": "Set a heater target. Not used in normal Carvera milling.",
-      "parameters": {
-        "heater": {
-          "required": true,
-          "description": "bed or hotend.",
-          "default": null
-        },
-        "temperature": {
-          "required": true,
-          "description": "Target temperature.",
-          "default": null
         }
       }
     },
@@ -3630,7 +3453,7 @@
       "parameters": {
         "name": {
           "required": true,
-          "description": "Switch name.",
+          "description": "Switch name (light, vacuum, air, and others).",
           "default": null
         },
         "value": {
@@ -3678,7 +3501,7 @@
     },
     "wlan": {
       "type": "shell",
-      "description": "Scan, connect, or disconnect station Wi-Fi.",
+      "description": "Scan, connect, or disconnect to a Wi-Fi network.",
       "parameters": {
         "ssid": {
           "required": false,
@@ -3704,7 +3527,7 @@
     },
     "diagnose": {
       "type": "shell",
-      "description": "Print diagnostic status including spindle, laser, switches, endstops, probe, ATC pins, e-stop, and Wi-Fi RSSI as |RSSI:<dBm>.",
+      "description": "Print diagnostic status including spindle, laser, switches, endstops, probe, ATC pins, e-stop, and Wi-Fi.",
       "parameters": {}
     },
     "sleep": {
@@ -3804,12 +3627,7 @@
     },
     "model": {
       "type": "shell",
-      "description": "Print or identify the machine model (C1 vs CA1).",
-      "parameters": {}
-    },
-    "check_5th": {
-      "type": "shell",
-      "description": "Factory/service test for a 5th-axis channel.",
+      "description": "Print or identify the machine model.",
       "parameters": {}
     },
     "check_4th": {
@@ -3851,7 +3669,7 @@
     },
     "debugmode": {
       "type": "shell",
-      "description": "Enable firmware diagnostic output.",
+      "description": "Enable firmware diagnostic output as real time console messages.",
       "parameters": {
         "mode": {
           "required": false,
@@ -3871,7 +3689,7 @@
         },
         "setting": {
           "required": true,
-          "description": "Key name, for example acceleration.",
+          "description": "Settings key name, for example acceleration.",
           "default": null
         }
       }
@@ -3977,21 +3795,21 @@
     },
     "suspend": {
       "type": "shell",
-      "description": "Suspend playback (same family as M600).",
+      "description": "Suspend playback.",
       "parameters": {}
     },
     "resume": {
       "type": "shell",
-      "description": "Resume a suspended program (same family as M601).",
+      "description": "Resume a suspended program.",
       "parameters": {}
     },
     "goto": {
       "type": "shell",
-      "description": "After pausing a job, jump playback to a line number, then resume. Watch Z height.",
+      "description": "After pausing a job, jump playback to a line number in the file.",
       "parameters": {
         "line": {
           "required": true,
-          "description": "1-based line number.",
+          "description": "line number.",
           "default": null
         }
       }
@@ -4087,7 +3905,7 @@
     },
     "$F": {
       "type": "shell",
-      "description": "Feed override (same idea as M220).",
+      "description": "Feed override.",
       "parameters": {
         "S": {
           "required": false,
@@ -4099,7 +3917,7 @@
     },
     "$O": {
       "type": "shell",
-      "description": "Spindle-speed override (same idea as M223).",
+      "description": "Spindle-speed override.",
       "parameters": {
         "S": {
           "required": false,
@@ -4111,7 +3929,7 @@
     },
     "$S": {
       "type": "shell",
-      "description": "Switch helper used as $S <name> [value]; same family as switch.",
+      "description": "Switch helper used as $S <name> [value].",
       "parameters": {}
     }
   }
