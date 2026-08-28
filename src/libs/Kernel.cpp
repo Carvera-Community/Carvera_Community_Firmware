@@ -15,6 +15,7 @@
 #include "libs/Adc.h"
 #include "libs/compiler.h"
 #include "libs/StreamOutputPool.h"
+#include "libs/SerialMessage.h"
 #include <mri.h>
 #include "checksumm.h"
 #include "ConfigValue.h"
@@ -105,6 +106,7 @@ Kernel::Kernel()
     keep_alive_request = false;
     flex_compensation_load_error = false;
     config_load_error = false;
+    dispatching_console_line = false;
 
     // Point the variable arrays at their AHBSRAM-backed storage
     local_vars   = ahb_local_vars;
@@ -674,6 +676,16 @@ void Kernel::add_module(Module* module)
 void Kernel::register_for_event(_EVENT_ENUM id_event, Module *mod)
 {
     this->hooks[id_event].push_back(mod);
+}
+
+bool Kernel::dispatch_console_line(SerialMessage& message)
+{
+    if (dispatching_console_line) return false;
+
+    dispatching_console_line = true;
+    call_event(ON_CONSOLE_LINE_RECEIVED, &message);
+    dispatching_console_line = false;
+    return true;
 }
 
 // Call a specific event with an argument
