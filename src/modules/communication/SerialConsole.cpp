@@ -52,11 +52,8 @@ SerialConsole::SerialConsole( PinName tx_pin, PinName rx_pin, int baud_rate )
     this->temp_baud_rate = 0;
     this->last_activity_ms = 0;
     this->makera_rx_overflow = false;
-    this->processing_makera_input = false;
-    this->makera_controls_only = false;
-    this->makera_command_rejected = false;
+    this->command_waiting = false;
     this->makera_frame_decoder.reset();
-    this->deferred_makera_command.clear();
     makera_rx_bytes.tail = makera_rx_bytes.head;
     this->reset_file_parser();
 }
@@ -196,17 +193,14 @@ void SerialConsole::on_idle(void * argument)
 	if (THEKERNEL->is_uploading()) return;
 
     const uint32_t now_ms = us_ticker_read() / 1000;
-    if (communication_protocol == PROTOCOL_MAKERA && !processing_makera_input &&
+    if (communication_protocol == PROTOCOL_MAKERA && !command_waiting &&
         now_ms - last_activity_ms >= makera_rx_quiet_ms) {
-        processing_makera_input = true;
-        while ((makera_controls_only || deferred_makera_command.empty()) &&
-               makera_rx_bytes.tail != makera_rx_bytes.head) {
+        while (!command_waiting && makera_rx_bytes.tail != makera_rx_bytes.head) {
             char received;
             makera_rx_bytes.pop_front(received);
             process_makera_byte(static_cast<uint8_t>(received));
             if (THEKERNEL->is_uploading()) break;
         }
-        processing_makera_input = false;
     }
 
     if (temp_baud_rate != 0) {
@@ -220,11 +214,6 @@ void SerialConsole::on_idle(void * argument)
     if (makera_rx_overflow) {
         makera_rx_overflow = false;
         PacketMessage(PTYPE_NORMAL_INFO, "ERROR: serial receive buffer full\r\n", 0);
-    }
-
-    if (makera_command_rejected) {
-        makera_command_rejected = false;
-        PacketMessage(PTYPE_NORMAL_INFO, "ERROR: command rejected while continuous jog is active\r\n", 0);
     }
 
     if (makera_file_cancel) {
@@ -269,18 +258,15 @@ void SerialConsole::on_idle(void * argument)
 // Actual event calling must happen in the main loop because if it happens in the interrupt we will loose data
 void SerialConsole::on_main_loop(void * argument){
     if (communication_protocol == PROTOCOL_MAKERA) {
-        if (!deferred_makera_command.empty()) {
+        if (command_waiting && !THEKERNEL->is_dispatching_console_line()) {
+            const makera::Packet &packet = makera_frame_decoder.packet();
             struct SerialMessage message;
-            message.message.swap(deferred_makera_command);
+            message.message.assign(reinterpret_cast<const char *>(packet.data), packet.data_length);
             message.stream = this;
             message.line = 0;
 
-            const bool jog_command = makera::is_jog_command(message.message.data(), message.message.size());
-            processing_makera_input = !jog_command;
-            makera_controls_only = jog_command;
-            THEKERNEL->call_event(ON_CONSOLE_LINE_RECEIVED, &message);
-            makera_controls_only = false;
-            processing_makera_input = false;
+            command_waiting = false;
+            THEKERNEL->dispatch_console_line(message);
         }
         return;
     }
@@ -397,23 +383,6 @@ void SerialConsole::process_makera_byte(uint8_t received)
         return;
     }
 
-    if (makera_controls_only && (packet.type == PTYPE_CTRL_MULTI || packet.type == PTYPE_FILE_START)) {
-        if (packet.type == PTYPE_FILE_START || packet.data_length == 0) {
-            if (packet.type == PTYPE_FILE_START) makera_file_cancel = true;
-        } else if (deferred_makera_command.empty()) {
-            deferred_makera_command.assign(reinterpret_cast<const char *>(packet.data), packet.data_length);
-        } else {
-            makera_command_rejected = true;
-        }
-        return;
-    }
-
-    if (packet.type == PTYPE_CTRL_MULTI && makera::is_deferred_command(
-            reinterpret_cast<const char *>(packet.data), packet.data_length)) {
-        deferred_makera_command.assign(reinterpret_cast<const char *>(packet.data), packet.data_length);
-        return;
-    }
-
     if (packet.type == PTYPE_CTRL_MULTI || packet.type == PTYPE_FILE_START) {
         if (packet.data_length == 0) {
             if (packet.type == PTYPE_FILE_START) makera_file_cancel = true;
@@ -424,7 +393,7 @@ void SerialConsole::process_makera_byte(uint8_t received)
         message.message.assign(reinterpret_cast<const char *>(packet.data), packet.data_length);
         message.stream = this;
         message.line = 0;
-        THEKERNEL->call_event(ON_CONSOLE_LINE_RECEIVED, &message);
+        if (!THEKERNEL->dispatch_console_line(message)) command_waiting = true;
     }
 }
 
@@ -477,10 +446,7 @@ void SerialConsole::on_protocol_changed()
     diagnose_flag = false;
     makera_file_cancel = false;
     makera_rx_overflow = false;
-    processing_makera_input = false;
-    makera_controls_only = false;
-    makera_command_rejected = false;
-    deferred_makera_command.clear();
+    command_waiting = false;
     makera_rx_bytes.tail = makera_rx_bytes.head;
     makera_frame_decoder.reset();
     reset_file_parser();
