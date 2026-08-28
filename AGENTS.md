@@ -43,6 +43,12 @@ Keep changes narrowly tied to the request. Do not clean up nearby legacy code,
 reformat unrelated files, or make a generic Smoothieware improvement as part of
 a Carvera change.
 
+`docs/commands.json` is the structured reference for G-codes, M-codes, and
+console commands. When you add or change a command, update that file so the
+command ID, parameters, and defaults match the firmware. CI requires new
+command IDs in a pull request to appear there. The text must be consise in this
+file as it's used for "tooltip" like guidance, it's not a exhaustive guide.
+
 This is an embedded project. Flash, AHB SRAM, and regular SRAM are limited
 resources. Treat increases in any of them as a cost that must be understood and
 justified. Consider resource use when choosing an implementation.
