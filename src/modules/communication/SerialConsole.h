@@ -57,8 +57,6 @@ class SerialConsole : public Module, public StreamOutput {
         int temp_baud_rate;                       // non-zero = temporary baud active
         uint32_t last_activity_ms;                // for 15s timeout revert
         makera::FrameDecoder makera_frame_decoder;
-        std::string deferred_makera_command;
-        bool processing_makera_input;
 
         enum FileParseState {
             FILE_WAIT_HEADER,
@@ -78,8 +76,7 @@ class SerialConsole : public Module, public StreamOutput {
           volatile bool query_flag:1;
           volatile bool halt_flag:1;
           volatile bool diagnose_flag:1;
-          bool makera_controls_only:1;
-          bool makera_command_rejected:1;
+          bool command_waiting:1;
         };
         volatile bool makera_file_cancel;
         volatile bool makera_rx_overflow;
