@@ -68,9 +68,11 @@ bool Planner::append_block( ActuatorCoordinates &actuator_pos, uint8_t n_motors,
 
     for (size_t i = 0; i < n_motors; i++) {
         int32_t steps = THEROBOT->actuators[i]->steps_to_target(actuator_pos[i]);
-        // Update current position
+        // Keep last_milestone mm in sync with the commanded position even when
+        // this axis takes no steps. Step counts still only advance when steps
+        // != 0, so a later move can still accumulate into a full step.
+        THEROBOT->actuators[i]->update_last_milestones(actuator_pos[i], steps);
         if(steps != 0) {
-            THEROBOT->actuators[i]->update_last_milestones(actuator_pos[i], steps);
             has_steps = true;
         }
 
