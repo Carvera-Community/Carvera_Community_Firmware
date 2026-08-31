@@ -123,7 +123,17 @@ set(_link_lto -flto=auto)
 if(WIN32)
     set(_link_lto -flto)
 endif()
-set(_wraps --wrap=_isatty --wrap=malloc --wrap=realloc --wrap=free)
+set(_wraps
+    --wrap=_isatty
+    --wrap=malloc
+    --wrap=calloc
+    --wrap=realloc
+    --wrap=free
+    --wrap=_malloc_r
+    --wrap=_calloc_r
+    --wrap=_realloc_r
+    --wrap=_free_r
+)
 if(CMAKE_BUILD_TYPE STREQUAL "Debug")
     list(APPEND _wraps --wrap=_read --wrap=_write --wrap=semihost_connected)
 endif()
