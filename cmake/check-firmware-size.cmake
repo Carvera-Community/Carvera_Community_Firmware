@@ -7,8 +7,8 @@ endif()
 if(NOT DEFINED ELF OR NOT EXISTS "${ELF}")
     message(FATAL_ERROR "Firmware ELF not found: ${ELF}")
 endif()
-if(NOT DEFINED SIZE_TOOL OR NOT EXISTS "${SIZE_TOOL}")
-    message(FATAL_ERROR "ARM size tool not found: ${SIZE_TOOL}")
+if(NOT DEFINED NM_TOOL OR NOT EXISTS "${NM_TOOL}")
+    message(FATAL_ERROR "ARM symbol table tool not found: ${NM_TOOL}")
 endif()
 
 file(SIZE "${INPUT}" _firmware_size)
@@ -21,28 +21,6 @@ if(_remaining LESS 0)
     )
 endif()
 
-execute_process(
-    COMMAND "${SIZE_TOOL}" -A -d "${ELF}"
-    RESULT_VARIABLE _size_result
-    OUTPUT_VARIABLE _size_output
-    ERROR_VARIABLE _size_error
-)
-if(_size_result)
-    message(FATAL_ERROR "Unable to inspect firmware memory usage: ${_size_error}")
-endif()
-
-function(_read_section_size section_regex section_name output_variable)
-    string(REGEX MATCH "(^|\n)${section_regex}[ \t]+([0-9]+)" _match "${_size_output}")
-    if(NOT _match)
-        if(ARGC EQUAL 4)
-            set(${output_variable} "${ARGV3}" PARENT_SCOPE)
-            return()
-        endif()
-        message(FATAL_ERROR "Section ${section_name} is missing from the firmware size report")
-    endif()
-    set(${output_variable} "${CMAKE_MATCH_2}" PARENT_SCOPE)
-endfunction()
-
 function(_format_usage used total output_variable)
     math(EXPR _tenths "(${used} * 1000 + ${total} / 2) / ${total}")
     math(EXPR _whole "${_tenths} / 10")
@@ -50,19 +28,39 @@ function(_format_usage used total output_variable)
     set(${output_variable} "${used}/${total} bytes (${_whole}.${_fraction}%)" PARENT_SCOPE)
 endfunction()
 
-_read_section_size("\\.data" ".data" _data_size)
-_read_section_size("\\.bss" ".bss" _bss_size)
-_read_section_size("\\.stack_dummy" ".stack_dummy" _stack_size 0)
-_read_section_size("\\.AHBSRAM" ".AHBSRAM" _ahb_ram_used)
+execute_process(
+    COMMAND "${NM_TOOL}" -P "${ELF}"
+    RESULT_VARIABLE _nm_result
+    OUTPUT_VARIABLE _nm_output
+    ERROR_VARIABLE _nm_error
+)
+if(_nm_result)
+    message(FATAL_ERROR "Unable to inspect firmware linker symbols: ${_nm_error}")
+endif()
 
-math(EXPR _regular_ram_used "${_data_size} + ${_bss_size} + ${_stack_size}")
-set(_ram_capacity 32768)
-set(_ahb_ram_capacity 32768)
+function(_read_symbol_address symbol output_variable)
+    string(REGEX MATCH "(^|\n)${symbol} [^ ]+ ([0-9a-fA-F]+)" _match "${_nm_output}")
+    if(NOT _match)
+        message(FATAL_ERROR "Linker symbol ${symbol} is missing from the firmware")
+    endif()
+    math(EXPR _address "0x${CMAKE_MATCH_2}")
+    set(${output_variable} "${_address}" PARENT_SCOPE)
+endfunction()
+
+_read_symbol_address("__MainHeapStart" _main_heap_start)
+_read_symbol_address("__MainHeapEnd" _main_heap_end)
+_read_symbol_address("__GeneralAHBStart" _ahb_heap_start)
+_read_symbol_address("__GeneralAHBEnd" _ahb_heap_end)
+
+math(EXPR _heap_capacity
+    "${_main_heap_end} - ${_main_heap_start} + ${_ahb_heap_end} - ${_ahb_heap_start}")
+set(_sram_capacity 65536)
+math(EXPR _reserved_sram "${_sram_capacity} - ${_heap_capacity}")
 
 _format_usage(${_firmware_size} ${MAX_SIZE} _flash_summary)
-_format_usage(${_regular_ram_used} ${_ram_capacity} _ram_summary)
-_format_usage(${_ahb_ram_used} ${_ahb_ram_capacity} _ahb_ram_summary)
+_format_usage(${_reserved_sram} ${_sram_capacity} _reserved_sram_summary)
+_format_usage(${_heap_capacity} ${_sram_capacity} _heap_summary)
 
 message(STATUS "Flash: ${_flash_summary}")
-message(STATUS "Static RAM: ${_ram_summary}")
-message(STATUS "Static AHB RAM: ${_ahb_ram_summary}")
+message(STATUS "SRAM reserved by firmware and stack: ${_reserved_sram_summary}")
+message(STATUS "SRAM available to heap: ${_heap_summary}")
