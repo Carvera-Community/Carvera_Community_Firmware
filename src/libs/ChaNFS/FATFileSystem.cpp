@@ -124,7 +124,14 @@ FileHandle *FATFileSystem::open(const char* name, int flags) {
 }
 
 int FATFileSystem::remove(const char *filename) {
-    FRESULT res = f_unlink(filename);
+    char path[FATFS_PATH_MAX];
+    int path_len = snprintf(path, sizeof(path), "%d:/%s", _fsid, filename);
+    if(path_len < 0 || path_len >= (int)sizeof(path)) {
+        FFSDEBUG("remove() path too long\n");
+        return -1;
+    }
+
+    FRESULT res = f_unlink(path);
     if(res) {
         FFSDEBUG("f_unlink() failed (%d, %s)\n", res, FR_ERRORS[res]);
         return -1;
@@ -133,7 +140,14 @@ int FATFileSystem::remove(const char *filename) {
 }
 
 int FATFileSystem::rename(const char *filename1, const char *filename2) {
-    FRESULT res = f_rename(filename1, filename2);
+    char path1[FATFS_PATH_MAX];
+    int path1_len = snprintf(path1, sizeof(path1), "%d:/%s", _fsid, filename1);
+    if(path1_len < 0 || path1_len >= (int)sizeof(path1)) {
+        FFSDEBUG("rename() path too long\n");
+        return -1;
+    }
+
+    FRESULT res = f_rename(path1, filename2);
     if(res) {
         FFSDEBUG("f_rename() failed (%d, %s)\n", res, FR_ERRORS[res]);
         return -1;

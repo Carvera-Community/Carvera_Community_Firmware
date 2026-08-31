@@ -100,10 +100,10 @@
 #include "ZProbe.h"
 #include "nuts_bolts.h"
 #include "utils.h"
-#include "platform_memory.h"
 
 #include <string>
 #include <algorithm>
+#include <new>
 #include <cstdlib>
 #include <cmath>
 #include <fastmath.h>
@@ -149,8 +149,8 @@ CartGridStrategy::CartGridStrategy(ZProbe *zprobe) : LevelingStrategy(zprobe)
 
 CartGridStrategy::~CartGridStrategy()
 {
-    if(grid != nullptr) AHB.dealloc(grid);
-    if(flex_compensation_data != nullptr) AHB.dealloc(flex_compensation_data);
+    delete [] grid;
+    delete [] flex_compensation_data;
 }
 
 bool CartGridStrategy::handleConfig()
@@ -230,8 +230,7 @@ bool CartGridStrategy::handleConfig()
     std::replace(before_probe.begin(), before_probe.end(), '_', ' '); // replace _ with space
     std::replace(after_probe.begin(), after_probe.end(), '_', ' '); // replace _ with space
 
-    // allocate in AHB
-    grid = (float *)AHB.alloc(configured_grid_x_size * configured_grid_y_size * sizeof(float));
+    grid = new(std::nothrow) float[configured_grid_x_size * configured_grid_y_size];
 
     if(grid == nullptr) {
         THEKERNEL->streams->printf("Error: Not enough memory\n");
@@ -244,7 +243,7 @@ bool CartGridStrategy::handleConfig()
 
     // Allocate memory for flex compensation data
     flex_data_size = flex_x_points * sizeof(float);
-    flex_compensation_data = (float *)AHB.alloc(flex_data_size);
+    flex_compensation_data = new(std::nothrow) float[flex_x_points];
 
     if(flex_compensation_data == nullptr) {
         THEKERNEL->streams->printf("Error: Not enough memory for flex compensation data\n");
@@ -255,27 +254,18 @@ bool CartGridStrategy::handleConfig()
     reset_flex_compensation();
     reset_bed_level();
 
-    // Flex file load is deferred until after_config_cache_clear(): fopen/std::function
-    // and long printf paths allocate on the main heap, which must not grow into the
-    // fixed config-cache region while the cache is still live.
+    if(flex_compensation_always_active) {
+        if(load_flex_compensation_data(THEKERNEL->streams)) {
+            flex_compensation_active = true;
+            updateCompensationTransform();
+        } else {
+            THEKERNEL->set_flex_compensation_load_error(true);
+            flex_compensation_active = false;
+            updateCompensationTransform();
+        }
+    }
 
     return true;
-}
-
-void CartGridStrategy::after_config_cache_clear()
-{
-    if(!flex_compensation_always_active) {
-        return;
-    }
-
-    if(load_flex_compensation_data(THEKERNEL->streams)) {
-        flex_compensation_active = true;
-        updateCompensationTransform();
-    } else {
-        THEKERNEL->set_flex_compensation_load_error(true);
-        flex_compensation_active = false;
-        updateCompensationTransform();
-    }
 }
 
 void CartGridStrategy::save_grid(StreamOutput *stream)

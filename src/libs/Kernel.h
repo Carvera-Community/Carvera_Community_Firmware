@@ -270,10 +270,6 @@ class Kernel {
         float  probe_tip_diameter = 1.6;
         bool disable_endstops = false;
 
-        // #1–#30 (local_params) and #101–#120 (local_vars) are stored in static
-        // AHBSRAM arrays and referenced here through pointers, so they do not add
-        // to the size of the heap-allocated Kernel object.
-        // The arrays and their initialisation live in Kernel.cpp.
         float* local_params;      // #1–#30: subroutine call parameters
         float* local_vars;        // #101–#120: user defined variables
 

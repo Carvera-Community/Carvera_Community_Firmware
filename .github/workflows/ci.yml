@@ -150,17 +150,6 @@ jobs:
             tar czf firmware-debug-symbols-${{ steps.set-version.outputs.VERSION }}.tar.gz LPC1768/main.elf LPC1768/main.map
           fi
 
-      - name: Check AHB memory budget for known configs
-        run: |
-          # Arm's gdb needs libncurses.so.5 (gone on Ubuntu 24.04). Host
-          # gdb-multiarch is enough for DWARF sizeof() against the ELF.
-          sudo apt-get update
-          sudo apt-get install -y gdb-multiarch
-          python3 build/check-ahb-budget.py \
-            --map LPC1768/main.map \
-            --elf LPC1768/main.elf \
-            --configs-dir tests/TEST_memory_budget/configs
-
       - name: Upload firmware artifacts
         uses: actions/upload-artifact@v4
         with:

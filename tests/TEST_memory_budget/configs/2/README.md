@@ -1,1 +1,0 @@
-This config represents a relatively stock C1 machine

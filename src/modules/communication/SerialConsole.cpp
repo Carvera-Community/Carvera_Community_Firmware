@@ -33,7 +33,6 @@ using std::string;
 
 extern unsigned char xbuff[XBUFF_LENGTH];
 
-// SerialConsole is AHB-allocated, so keep the larger Makera receive buffer in main RAM.
 static makera::Packet makera_packet;
 static RingBuffer<char, 1024> makera_rx_bytes;
 // Let a back-to-back burst finish before command handlers reply on the same UART.

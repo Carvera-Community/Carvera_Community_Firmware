@@ -13,18 +13,8 @@ using namespace std;
 #include <stdint.h>
 
 #include "ConfigValue.h"
-#include "libs/compiler.h"
 
 class StreamOutput;
-
-// Config cache lives in a fixed region of RAM between the heap and stack,
-// avoiding any heap allocation. The address is computed as:
-//   __StackLimit - (capacity * sizeof(ConfigValue))
-// where __StackLimit is the linker-defined bottom of the stack area.
-// This memory is unused during boot (heap hasn't grown that high, stack
-// hasn't grown that low). After config_cache_clear(), it returns to being
-// ordinary free gap between heap and stack.
-#define CONFIG_CACHE_CAPACITY 350
 
 class ConfigCache {
     public:
@@ -46,10 +36,18 @@ class ConfigCache {
         // used for debugging, dumps the cache to a stream
         void dump(StreamOutput *stream);
 
-        uintptr_t start_address() const { return reinterpret_cast<uintptr_t>(store); }
-
     private:
-        ConfigValue *store;   // points into fixed RAM region, not heap
+        static const uint8_t VALUES_PER_CHUNK = 16;
+
+        struct Chunk {
+            Chunk() : next(NULL), used(0) {}
+            ConfigValue values[VALUES_PER_CHUNK];
+            Chunk *next;
+            uint8_t used;
+        };
+
+        Chunk *first;
+        Chunk *last;
         uint16_t count;
 };
 
