@@ -40,6 +40,60 @@ of adding a new toolchain, that is the right place to do it.
 
 # Compiling the firmware
 
+Make and CMake are both supported. They use the same ARM GCC download helpers,
+but keep their build products separate.
+
+## CMake
+
+CMake 3.20 or newer is required. The convenience scripts prefer Ninja and fall
+back to Make when Ninja is not installed:
+
+```bash
+# Unix
+./build/build-cmake.sh
+
+# Windows
+.\build\build-cmake.ps1
+```
+
+Add `--clean` on Unix or `-Clean` on Windows for a clean build. Use `--debug`
+or `-Debug` to link the MRI debug monitor; Release is the default. GCC 14.2 is
+used by default and another supported toolchain can be selected with
+`--gcc 4.8` or `-GccVersion 4.8`.
+
+The scripts accept Make-style variables as trailing arguments:
+
+```bash
+./build/build-cmake.sh --clean VERSION=my-build AXIS=5 PAXIS=3 CNC=1
+.\build\build-cmake.ps1 -Clean VERSION=my-build AXIS=5 PAXIS=3 CNC=1
+```
+
+The output is located at:
+
+```text
+build/cmake/gcc-14.2/Release/LPC1768/firmware.bin
+```
+
+CMake builds fail when `firmware.bin` exceeds the LPC1768's 507,904-byte
+application region (512 KiB flash minus the 16 KiB bootloader).
+
+### CLion
+
+Download the GCC toolchain once before opening the project
+(or simply run the build script):
+
+```bash
+# Unix
+./build/gcc.sh --gcc 14.2 --env >/dev/null
+
+# Windows PowerShell
+.\build\gcc.ps1 -GccVersion 14.2 -Env | Out-Null
+```
+
+Then open the project in CLion and enable the CMake presets (`Firmware Release`
+and `Firmware Debug`).
+
+## Make
 
 Simply run:
 
@@ -84,12 +138,14 @@ here](https://smoothieware.github.io/Webif-pack/documentation/web/html/compiling
 
 # Flashing the firmware
 
-The build process will output `LPC1768/main.bin`. It should be approximately
-500KB in size. There are several strategies to load this onto the machine.
+The Make build outputs `LPC1768/main.bin`. The CMake build outputs an
+SD-card-ready `firmware.bin` under its selected build tree. There are several
+strategies to load either binary onto the machine.
 
 ## Carvera Controller
 
-0. Copy `LP1768/main.bin` to `firmware.bin`
+0. For Make builds, copy `LPC1768/main.bin` to `firmware.bin`. CMake builds are
+   already named `firmware.bin`.
 1. Connect to the machine (note: USB will be quite slow)
 2. Select the hamburger menu (top right)
 3. Choose update (up arrow)

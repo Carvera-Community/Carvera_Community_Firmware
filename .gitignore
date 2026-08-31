@@ -35,6 +35,8 @@
 /make*/
 /gcc-arm-none-eabi*
 /LPC1768
+/build/cmake/
+/CMakeUserPresets.json
 /mbed/drop
 /mbed/src/Debug
 /mbed/src/Release
@@ -48,4 +50,5 @@ gcc-arm-none-eabi*
 .analzyer
 .analyzer/**
 .cursor
+.idea
 __pycache__/
