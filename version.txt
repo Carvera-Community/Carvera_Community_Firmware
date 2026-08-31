@@ -1,4 +1,5 @@
 [unreleased]
+- Enhancement: Add CMake support for better IDE integration
 - Removed: The spindle PWM value from the status response (? command)
 
 [2.2.0c-RC3]
