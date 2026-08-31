@@ -184,7 +184,7 @@ add_custom_command(
     COMMAND "${CMAKE_COMMAND}"
             "-DINPUT=${_firmware_bin}"
             "-DELF=$<TARGET_FILE:firmware>"
-            "-DSIZE_TOOL=${CMAKE_SIZE}"
+            "-DNM_TOOL=${CMAKE_NM}"
             "-DMAX_SIZE=${_firmware_max_size}"
             -P "${CMAKE_SOURCE_DIR}/cmake/check-firmware-size.cmake"
     COMMAND "${CMAKE_OBJCOPY}" -R .stack -O ihex "$<TARGET_FILE:firmware>" "${_firmware_hex}"
