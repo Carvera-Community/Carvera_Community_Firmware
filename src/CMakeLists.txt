@@ -67,7 +67,7 @@ if(CMAKE_CXX_COMPILER_VERSION VERSION_GREATER_EQUAL 10.3)
 endif()
 target_compile_options(carvera_sources PUBLIC
     "$<$<COMPILE_LANGUAGE:C,CXX>:${_firmware_compile_options}>"
-    "$<$<COMPILE_LANGUAGE:CXX>:-fno-rtti;-std=gnu++11>"
+    "$<$<COMPILE_LANGUAGE:CXX>:-fno-rtti;-std=gnu++17>"
 )
 
 add_subdirectory(libs)

@@ -11,12 +11,12 @@ target_sources(carvera_sources PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/gpio.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/Hook.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/Kernel.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/MakeraControl.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/MakeraFrame.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/md5.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/MemoryPool.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/Module.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/MRI_Hooks.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/Pin.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/platform_memory.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/PublicData.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/Pwm.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/SDFAT.cpp"
@@ -27,6 +27,9 @@ target_sources(carvera_sources PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/StreamOutput.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/utils.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/Watchdog.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/heap/heap_5.c"
+    "${CMAKE_CURRENT_SOURCE_DIR}/heap/heap_api.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/heap/heap_debug.cpp"
 )
 
 add_subdirectory(ADC)
