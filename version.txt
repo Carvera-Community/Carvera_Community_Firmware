@@ -1,5 +1,15 @@
 [unreleased]
 - Enhancement: Add a tool to check or fix the code formatting according to Google C/C++ style guide.
+- Enhancement: Add CMake support for better IDE integration
+- Removed: The spindle PWM value from the status response (? command)
+
+[2.2.0c-RC3]
+- Fixed: A-axis position tracking no longer lags the commanded angle when a move is smaller than one stepper step
+- Fixed: Makera protocol realtime control commands were not immediately processed under certain conditions
+
+[2.2.0c-RC2]
+- Fixed: Makera commands received over Wi-Fi no longer block reception while an earlier command is running.
+- Fixed: Added newline chars to the end of SimpleShell commands without them
 
 [2.2.0c-RC1]
 - Enhancement: AnalogSpindleControl now supports optional RPM feedback and Alarm pin functionality, same as PWMSpindleControl. Same configuration keys (spindle.feedback_pin, spindle.pulses_per_rev, spindle.acc_ratio, and spindle.control_smoothing, spindle.alarm_pin)

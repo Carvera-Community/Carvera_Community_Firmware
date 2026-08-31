@@ -15,6 +15,7 @@
  */
 
 #include "SDFileSystem.h"
+#include "libs/CRC16.h"
 #include "diskio.h"
 #include "pinmap.h"
 #include "SDCRC.h"
@@ -645,13 +646,15 @@ bool SDFileSystem::readData(char* buffer, int length)
     }
 
     //Return the validity of the CRC16 checksum (if enabled)
-    return (!m_Crc || crc == SDCRC::crc16(buffer, length));
+    return (!m_Crc || crc == crc16::ccitt(
+        reinterpret_cast<const uint8_t *>(buffer), length));
 }
 
 char SDFileSystem::writeData(const char* buffer, char token)
 {
     //Calculate the CRC16 checksum for the data block (if enabled)
-    unsigned short crc = (m_Crc) ? SDCRC::crc16(buffer, 512) : 0xFFFF;
+    unsigned short crc = (m_Crc) ? crc16::ccitt(
+        reinterpret_cast<const uint8_t *>(buffer), 512) : 0xFFFF;
 
     //Wait for up to 500ms for the card to become ready
     if (!waitReady(500))

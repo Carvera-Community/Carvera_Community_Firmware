@@ -44,7 +44,6 @@ class StreamOutput {
 
         static NullStreamOutput NullStream;
         void PacketMessage(char cmd, const char* s, int size);
-        unsigned int crc16_ccitt(unsigned char *data, unsigned int len);
 };
 
 class NullStreamOutput : public StreamOutput {

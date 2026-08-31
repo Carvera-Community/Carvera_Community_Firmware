@@ -1,26 +1,14 @@
 #include "StreamOutput.h"
+#include "CRC16.h"
 
 extern unsigned char fbuff[4096];
 #define HEADER        0x8668
 #define FOOTER        0x55AA
 #define PTYPE_NORMAL_INFO	0x90
 
-extern const unsigned short crc_table[256];
 NullStreamOutput StreamOutput::NullStream;
 
 ProtocolMode communication_protocol = PROTOCOL_MAKERA;
-
-unsigned int StreamOutput::crc16_ccitt(unsigned char *data, unsigned int len)
-{
-	unsigned char tmp;
-	unsigned short crc = 0;
-	for (unsigned int i = 0; i < len; i ++) {
-        tmp = ((crc >> 8) ^ data[i]) & 0xff;
-        crc = ((crc << 8) ^ crc_table[tmp]) & 0xffff;
-	}
-	return crc & 0xffff;
-}
-
 
 void StreamOutput::PacketMessage(char cmd, const char* s, int size)
 {
@@ -34,7 +22,7 @@ void StreamOutput::PacketMessage(char cmd, const char* s, int size)
 	len = total_length + 3;
 	fbuff[2] = (len>>8)&0xFF;
 	fbuff[3] = len&0xFF;
-	crc = crc16_ccitt(&fbuff[2], len);
+	crc = crc16::ccitt(&fbuff[2], len);
 	fbuff[total_length+5] = (crc>>8)&0xFF;
 	fbuff[total_length+6] = crc&0xFF;
 	fbuff[total_length+7] = (FOOTER>>8)&0xFF;
