@@ -63,9 +63,6 @@ class OCodeHandler {
             int       jump_line;      // line to restore on loop-back or sub return (type-specific)
         };
 
-        // Fixed-capacity, vector-like view over externally owned storage. The
-        // backing array (frame_storage_) lives in AHBSRAM so the (potentially
-        // large, 30-float-per-frame) block stack stays off the main SRAM heap.
         // Exposes only the subset of the std::vector API used below; depth is
         // bounded by OCODE_MAX_STACK_DEPTH (push sites guard against overflow).
         struct FrameStack {
@@ -90,7 +87,7 @@ class OCodeHandler {
             int  line;   // 1-based line of first sub body line
         };
 
-        static Frame frame_storage_[OCODE_MAX_STACK_DEPTH]; // AHBSRAM-backed (see .cpp)
+        static Frame frame_storage_[OCODE_MAX_STACK_DEPTH];
         FrameStack stack_;
         std::map<int, SubEntry> sub_table_; // ocode_num -> sub body entry point
         bool pre_scanned_ = false;          // sub_table_ built lazily on first call

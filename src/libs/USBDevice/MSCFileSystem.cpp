@@ -116,16 +116,21 @@ int MSCFileSystem::disk_initialize()
 
 int MSCFileSystem::disk_write(const char *buffer, uint32_t block_number, uint32_t count)
 {
-    if ( OK == MS_BulkSend(block_number, 1, reinterpret_cast<const volatile USB_INT08U *>(buffer)) )
-        return 0;
-    return 1;
+    for(uint32_t i = 0; i < count; i++) {
+        const volatile USB_INT08U *sector =
+            reinterpret_cast<const volatile USB_INT08U *>(buffer + i * 512);
+        if(MS_BulkSend(block_number + i, 1, sector) != OK) return 1;
+    }
+    return 0;
 }
 
 int MSCFileSystem::disk_read(char *buffer, uint32_t block_number, uint32_t count)
 {
-    if ( OK == MS_BulkRecv(block_number, 1, (USB_INT08U *)buffer) )
-        return 0;
-    return 1;
+    for(uint32_t i = 0; i < count; i++) {
+        volatile USB_INT08U *sector = reinterpret_cast<volatile USB_INT08U *>(buffer + i * 512);
+        if(MS_BulkRecv(block_number + i, 1, sector) != OK) return 1;
+    }
+    return 0;
 }
 
 

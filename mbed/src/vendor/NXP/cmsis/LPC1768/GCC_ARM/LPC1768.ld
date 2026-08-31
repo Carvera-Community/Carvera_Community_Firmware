@@ -142,6 +142,9 @@ SECTIONS
      * size of stack_dummy section */
     __StackTop = ORIGIN(RAM) + LENGTH(RAM);
     __StackLimit = __StackTop - SIZEOF(.stack_dummy);
+    __MainHeapStart = ALIGN(__end__, 8);
+    /* Preserve the 32-byte no-access MPU guard below the fixed stack. */
+    __MainHeapEnd = __StackLimit - 32;
     PROVIDE(__stack = __StackTop);
     PROVIDE(__heapLimit = __HeapLimit);
     PROVIDE(__stackSize = __StackTop - __HeapLimit);
@@ -153,21 +156,18 @@ SECTIONS
     ASSERT(__StackLimit >= __HeapLimit, "region RAM overflowed with stack")
 
 
-    /* Code can explicitly ask for data to be 
-        placed in these higher RAM banks where
-        they will be left uninitialized.
-    */
-
-    .AHBSRAM (NOLOAD) :
+    .AHBSRAM ORIGIN(AHB_SRAM) (NOLOAD) :
     {
-        Image$$RW_IRAM1$$Base = . ;
-        PROVIDE(__AHB_block_start = .);
-
-        . = ALIGN(4);
-
+        PROVIDE(__AHBSRAM_start = .);
         *(AHBSRAM)
-        Image$$RW_IRAM1$$ZI$$Limit = .;
-        PROVIDE(__AHB_dyn_start = .);
-        PROVIDE(__AHB_end = ORIGIN(AHB_SRAM) + LENGTH(AHB_SRAM));
+        . = ALIGN(8);
+        PROVIDE(__AHBSRAM_end = .);
     } > AHB_SRAM
+
+    __GeneralAHBStart = __AHBSRAM_end;
+    __GeneralAHBEnd = ORIGIN(AHB_SRAM) + LENGTH(AHB_SRAM);
+
+    ASSERT(__MainHeapEnd > __MainHeapStart, "main heap is empty")
+    ASSERT(__GeneralAHBEnd > __GeneralAHBStart, "AHB heap is empty")
+    ASSERT(__AHBSRAM_end <= ORIGIN(AHB_SRAM) + LENGTH(AHB_SRAM), "AHB SRAM region overflowed")
 }

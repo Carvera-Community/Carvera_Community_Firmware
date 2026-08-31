@@ -49,8 +49,6 @@
 #include "Laser.h"
 #endif
 
-#include "platform_memory.h"
-
 #include <array>
 #include <string>
 
@@ -69,8 +67,8 @@
 #define protocol_checksum                           CHECKSUM("protocol")
 Kernel* Kernel::instance;
 
-static float ahb_local_vars[20] LOCATED_IN_AHBSRAM;
-static float ahb_local_params[30] LOCATED_IN_AHBSRAM;
+static float local_vars_storage[20];
+static float local_params_storage[30];
 
 #define	EEP_MAX_PAGE_SIZE	32
 #define EEPROM_DATA_STARTPAGE	1
@@ -108,9 +106,8 @@ Kernel::Kernel()
     config_load_error = false;
     dispatching_console_line = false;
 
-    // Point the variable arrays at their AHBSRAM-backed storage
-    local_vars   = ahb_local_vars;
-    local_params = ahb_local_params;
+    local_vars   = local_vars_storage;
+    local_params = local_params_storage;
 
     // Initialize user defined variables and subroutine call parameters.
     for(int i = 0; i < 20; ++i) local_vars[i]   = -1.0e6f;
@@ -126,7 +123,7 @@ Kernel::Kernel()
     // errors are visible on the host link. Baud is hard-coded here and gets
     // re-applied from config later in SerialConsole::on_module_loaded().
     this->streams = new StreamOutputPool();
-    this->serial  = new(AHB) SerialConsole(P2_8, P2_9, 115200);
+    this->serial  = new SerialConsole(P2_8, P2_9, 115200);
     this->streams->append_stream(this->serial);
 
     this->factory_set = new FACTORY_SET();
@@ -180,9 +177,9 @@ Kernel::Kernel()
     }
 
     // HAL stuff
-    add_module( this->slow_ticker = new(AHB) SlowTicker());
+    add_module( this->slow_ticker = new SlowTicker());
 
-    this->step_ticker = new(AHB) StepTicker();
+    this->step_ticker = new StepTicker();
     this->adc = new Adc();
 
     // TODO : These should go into platform-specific files
@@ -227,7 +224,7 @@ Kernel::Kernel()
 
     // Core modules
     this->add_module( this->simpleshell    = new SimpleShell()   );
-    this->add_module( this->conveyor       = new(AHB) Conveyor()      ); // must stay in AHB: shares volatile queue indices with step ISR
+    this->add_module( this->conveyor       = new Conveyor()      );
     this->add_module( this->gcode_dispatch = new GcodeDispatch() );
     this->add_module( this->robot          = new Robot()         );
 

@@ -36,11 +36,8 @@
 #include "libs/SerialMessage.h"
 #include "libs/StreamOutput.h"
 
-#include "platform_memory.h" // Needed for AHB allocator
-#include "libs/compiler.h"
 #include "libs/MakeraControl.h"
 #include "libs/MakeraFrame.h"
-
 #include "port_api.h"
 #include "InterruptIn.h"
 
@@ -67,7 +64,7 @@
 extern unsigned char xbuff[XBUFF_LENGTH];
 extern unsigned char fbuff[4096];
 enum { MAKERA_MAX_RECEIVE_CALLS = 10 };
-static makera::Packet makera_packet LOCATED_IN_AHBSRAM;
+static makera::Packet makera_packet;
 
 
 
@@ -1308,7 +1305,7 @@ void WifiProvider::on_get_public_data(void* argument) {
 						str.append("0\n");
 					}
 				}
-				char *temp_buf = (char *)AHB.alloc(str.length() + 1);
+				char *temp_buf = (char *)malloc(str.length() + 1);
 				if (temp_buf == nullptr) {
 					THEKERNEL->streams->printf("ERROR: Failed to allocate memory in on_get_public_data\n");
 					// Cannot proceed without buffer, return early.
@@ -1389,7 +1386,11 @@ void WifiProvider::on_get_public_data(void* argument) {
 							str.append("0\n");
 						}
 					}
-					char *temp_buf = (char *)AHB.alloc(str.length() + 1);
+					char *temp_buf = (char *)malloc(str.length() + 1);
+					if (temp_buf == nullptr) {
+						THEKERNEL->streams->printf("ERROR: Failed to allocate memory in on_get_public_data\n");
+						return;
+					}
 					memcpy(temp_buf, str.c_str(), str.length());
 					temp_buf[str.length()]= '\0';
 					pdr->set_data_ptr(temp_buf);

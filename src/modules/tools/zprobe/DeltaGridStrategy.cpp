@@ -78,10 +78,10 @@
 #include "ZProbe.h"
 #include "nuts_bolts.h"
 #include "utils.h"
-#include "platform_memory.h"
 
 #include <string>
 #include <algorithm>
+#include <new>
 #include <cstdlib>
 #include <cmath>
 #include <fastmath.h>
@@ -104,7 +104,7 @@ DeltaGridStrategy::DeltaGridStrategy(ZProbe *zprobe) : LevelingStrategy(zprobe)
 
 DeltaGridStrategy::~DeltaGridStrategy()
 {
-    if(grid != nullptr) AHB.dealloc(grid);
+    delete [] grid;
 }
 
 bool DeltaGridStrategy::handleConfig()
@@ -129,8 +129,7 @@ bool DeltaGridStrategy::handleConfig()
         }
     }
 
-    // allocate in AHB
-    grid = (float *)AHB.alloc(grid_size * grid_size * sizeof(float));
+    grid = new(std::nothrow) float[grid_size * grid_size];
 
     if(grid == nullptr) {
         THEKERNEL->streams->printf("Error: Not enough memory\n");

@@ -100,13 +100,14 @@ USB_INT32S MS_Enumerate(void)
         return (rc);
     }
 
-    rc = Host_ReadConfigurationDescriptor(0, NULL);
+    USB_INT16U descriptor_len = 0;
+    rc = Host_ReadConfigurationDescriptor(HOST_TD_BUFFER_SIZE, &descriptor_len);
     if (rc != OK) {
         PRINT_Err(rc);
         return (rc);
     }
 
-    rc = MS_ParseConfiguration();
+    rc = MS_ParseConfiguration(descriptor_len);
     if (rc != OK) {
         PRINT_Err(rc);
         return (rc);
@@ -134,59 +135,76 @@ USB_INT32S MS_Enumerate(void)
 **************************************************************************************************************
 */
 
-USB_INT32S  MS_ParseConfiguration (void)
+USB_INT32S  MS_ParseConfiguration (USB_INT16U descriptor_len)
 {
     volatile  USB_INT08U  *desc_ptr;
+    volatile  USB_INT08U  *desc_end;
               USB_INT08U   ms_int_found;
+              USB_INT08U   current_ms_interface;
+              USB_INT08U   bulk_in_found;
+              USB_INT08U   bulk_out_found;
 
 
     desc_ptr     = TDBuffer;
+    desc_end     = TDBuffer + descriptor_len;
     ms_int_found = 0;
+    current_ms_interface = 0;
+    bulk_in_found = 0;
+    bulk_out_found = 0;
 
-    if (desc_ptr[1] != USB_DESCRIPTOR_TYPE_CONFIGURATION) {    
+    if (descriptor_len < USB_CONFIGURATION_DESCRIPTOR_HEADER_SIZE ||
+        desc_ptr[1] != USB_DESCRIPTOR_TYPE_CONFIGURATION ||
+        desc_ptr[0] < USB_CONFIGURATION_DESCRIPTOR_HEADER_SIZE ||
+        desc_ptr[0] > descriptor_len) {
         return (ERR_BAD_CONFIGURATION);
     }
     desc_ptr += desc_ptr[0];
 
-    while (desc_ptr != TDBuffer + ReadLE16U(&TDBuffer[2])) {
+    while (desc_ptr < desc_end) {
+        USB_INT16U remaining = desc_end - desc_ptr;
+        if (remaining < 2 || desc_ptr[0] < 2 || desc_ptr[0] > remaining) {
+            return (ERR_BAD_CONFIGURATION);
+        }
 
         switch (desc_ptr[1]) {
 
-            case USB_DESCRIPTOR_TYPE_INTERFACE:                       /* If it is an interface descriptor   */
-                 if (desc_ptr[5] == MASS_STORAGE_CLASS &&             /* check if the class is mass storage */
-                     desc_ptr[6] == MASS_STORAGE_SUBCLASS_SCSI &&     /* check if the subclass is SCSI      */
-                     desc_ptr[7] == MASS_STORAGE_PROTOCOL_BO) {       /* check if the protocol is Bulk only */
+            case USB_DESCRIPTOR_TYPE_INTERFACE: {                     /* If it is an interface descriptor   */
+                 USB_INT08U is_ms_interface = desc_ptr[0] >= 8 &&
+                     desc_ptr[5] == MASS_STORAGE_CLASS &&
+                     desc_ptr[6] == MASS_STORAGE_SUBCLASS_SCSI &&
+                     desc_ptr[7] == MASS_STORAGE_PROTOCOL_BO;
+                 current_ms_interface = is_ms_interface && !ms_int_found;
+                 if (current_ms_interface) {
                      ms_int_found = 1;
-                     desc_ptr    += desc_ptr[0];                      /* Move to next descriptor start      */
                  }
                  break;
+            }
 
             case USB_DESCRIPTOR_TYPE_ENDPOINT:                        /* If it is an endpoint descriptor    */
-                 if ((desc_ptr[3] & 0x03) == 0x02) {                  /* If it is Bulk endpoint             */
+                 if (current_ms_interface && desc_ptr[0] >= 6 &&
+                     (desc_ptr[3] & USB_ENDPOINT_TRANSFER_TYPE_MASK) == USB_ENDPOINT_TRANSFER_TYPE_BULK) {
                      if (desc_ptr[2] & 0x80) {                        /* If it is In endpoint               */
                          EDBulkIn->Control =  1                             |      /* USB address           */
                                               ((desc_ptr[2] & 0x7F) << 7)   |      /* Endpoint address      */
                                               (2 << 11)                     |      /* direction             */
                                               (ReadLE16U(&desc_ptr[4]) << 16);     /* MaxPkt Size           */
-                         desc_ptr += desc_ptr[0];                     /* Move to next descriptor start      */
+                         bulk_in_found = 1;
                      } else {                                         /* If it is Out endpoint              */
                          EDBulkOut->Control = 1                             |      /* USB address           */
                                               ((desc_ptr[2] & 0x7F) << 7)   |      /* Endpoint address      */
                                               (1 << 11)                     |      /* direction             */
                                               (ReadLE16U(&desc_ptr[4]) << 16);     /* MaxPkt Size           */
-                         desc_ptr += desc_ptr[0];                     /* Move to next descriptor start      */
+                         bulk_out_found = 1;
                      }
-                 } else {                                             /* If it is not bulk end point        */
-                     desc_ptr += desc_ptr[0];                         /* Move to next descriptor start      */
                  }
                  break;
 
-            default:                                 /* If the descriptor is neither interface nor endpoint */
-                 desc_ptr += desc_ptr[0];                             /* Move to next descriptor start      */
+            default:
                  break;
         }
+        desc_ptr += desc_ptr[0];
     }
-    if (ms_int_found) {
+    if (ms_int_found && bulk_in_found && bulk_out_found) {
         PRINT_Log("Mass Storage device connected\n");
         return (OK);
     } else {
@@ -380,6 +398,7 @@ USB_INT32S  MS_BulkRecv (          USB_INT32U   block_number,
                                    USB_INT16U   num_blocks,
                          volatile  USB_INT08U  *user_buffer)
 {
+    if(num_blocks != 1 || MS_BlkSize > 0x200) return ERR_MS_CMD_FAILED;
     USB_INT32S  rc;
     unsigned int i;
     volatile USB_INT08U *c = user_buffer;
@@ -391,8 +410,9 @@ USB_INT32S  MS_BulkRecv (          USB_INT32U   block_number,
 
     rc = Host_ProcessTD(EDBulkOut, TD_OUT, TDBuffer, CBW_SIZE);
     if (rc == OK) {
-        rc = Host_ProcessTD(EDBulkIn, TD_IN, user_buffer, MS_BlkSize * num_blocks);
+        rc = Host_ProcessTD(EDBulkIn, TD_IN, MSBuffer, MS_BlkSize);
         if (rc == OK) {
+            for(i = 0; i < MS_BlkSize; i++) user_buffer[i] = MSBuffer[i];
             rc = Host_ProcessTD(EDBulkIn, TD_IN, TDBuffer, CSW_SIZE);
             if (rc == OK) {
                 if (TDBuffer[12] != 0) {
@@ -422,14 +442,16 @@ USB_INT32S  MS_BulkSend (          USB_INT32U   block_number,
                                    USB_INT16U   num_blocks,
                    const volatile  USB_INT08U  *user_buffer)
 {
+    if(num_blocks != 1 || MS_BlkSize > 0x200) return ERR_MS_CMD_FAILED;
     USB_INT32S  rc;
+    for(unsigned int i = 0; i < MS_BlkSize; i++) MSBuffer[i] = user_buffer[i];
 
 
     Fill_MSCommand(block_number, MS_BlkSize, num_blocks, MS_DATA_DIR_OUT, SCSI_CMD_WRITE_10, 10);
 
     rc = Host_ProcessTD(EDBulkOut, TD_OUT, TDBuffer, CBW_SIZE);
     if (rc == OK) {
-        rc = Host_ProcessTD(EDBulkOut, TD_OUT, user_buffer, MS_BlkSize * num_blocks);
+        rc = Host_ProcessTD(EDBulkOut, TD_OUT, MSBuffer, MS_BlkSize);
         if (rc == OK) {
             rc = Host_ProcessTD(EDBulkIn, TD_IN, TDBuffer, CSW_SIZE);
             if (rc == OK) {
