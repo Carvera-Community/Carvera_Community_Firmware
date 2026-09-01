@@ -1,8 +1,9 @@
 [unreleased]
-- Fixed: CMake builds include the merged SRAM allocator and Makera protocol sources and report the consolidated heap.
 - Enhancement: Add a tool to check or fix the code formatting according to Google C/C++ style guide.
 - Enhancement: Add CMake support for better IDE integration
 - Removed: The spindle PWM value from the status response (? command)
+- Fixed: CMake builds include the merged SRAM allocator and Makera protocol sources and report the consolidated heap.
+- Fixed: MD5 hashes for files other than config.txt in the SD card root were invalid. Now md5 is generated on-the-fly if not pre-calculated
 
 [2.2.0c-RC3]
 - Fixed: A-axis position tracking no longer lags the commanded angle when a move is smaller than one stepper step
