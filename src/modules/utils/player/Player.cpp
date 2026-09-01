@@ -552,9 +552,6 @@ void Player::on_console_line_received( void *argument )
     	this->upload_command( possible_command, new_message.stream );
     }else if (cmd == "download") {
         memset(md5_str, 0, sizeof(md5_str));
-    	if (possible_command.find("config.txt") != string::npos) {
-        	this->test_command( possible_command, new_message.stream );
-    	}
     	this->download_command( possible_command, new_message.stream );
     }
 }
@@ -2067,26 +2064,50 @@ upload_success:
 }
 
 
+static bool md5_digest_usable(const char *s)
+{
+    if (s == NULL) {
+        return false;
+    }
+    for (int i = 0; i < 32; i++) {
+        char c = s[i];
+        if (c >= 'A' && c <= 'F') {
+            c = static_cast<char>(c + 32);
+        }
+        if ((c < '0' || c > '9') && (c < 'a' || c > 'f')) {
+            return false;
+        }
+    }
+    return true;
+}
+
+static bool fill_md5_from_path(const char *path, char *out, size_t out_size)
+{
+    if (out == NULL || out_size < 33) {
+        return false;
+    }
+    memset(out, 0, out_size);
+    FILE *fd = fwfs::fopen(path, "rb");
+    if (fd == NULL) {
+        return false;
+    }
+    MD5 md5;
+    uint8_t buf[64];
+    do {
+        size_t n = fwfs::fread(buf, 1, sizeof(buf), fd);
+        if (n > 0) {
+            md5.update(buf, n);
+        }
+        THEKERNEL->call_event(ON_IDLE);
+    } while (!fwfs::feof(fd));
+    fwfs::fclose(fd);
+    strcpy(out, md5.finalize().hexdigest().c_str());
+    return md5_digest_usable(out);
+}
+
 void Player::test_command( string parameters, StreamOutput* stream ) {
     string filename = absolute_from_relative(shift_parameter(parameters));
-	FILE *fd = fwfs::fopen(filename.c_str(), "rb");
-	if (NULL != fd) {
-        MD5 md5;
-        uint8_t smoothie_md5_buf[64];
-        do {
-            if (communication_protocol == PROTOCOL_SMOOTHIE) { 
-                size_t n = fwfs::fread(smoothie_md5_buf, 1, sizeof(smoothie_md5_buf), fd);
-                if (n > 0) md5.update(smoothie_md5_buf, n);
-            } else {
-                size_t n = fwfs::fread(md5buf, 1, sizeof(md5buf), fd);
-                if (n > 0) md5.update(md5buf, n);
-            }
-            THEKERNEL->call_event(ON_IDLE);
-        } while (!fwfs::feof(fd));
-        strcpy(md5_str, md5.finalize().hexdigest().c_str());
-        fwfs::fclose(fd);
-        fd = NULL;
-	}
+    fill_md5_from_path(filename.c_str(), md5_str, sizeof(md5_str));
 }
 
 void Player::download_command( string parameters, StreamOutput *stream )
@@ -2165,19 +2186,23 @@ void Player::download_command( string parameters, StreamOutput *stream )
     
 
     FILE *fd = fwfs::fopen(md5_filename.c_str(), "rb");
+    bool have_digest = false;
     if (fd != NULL) {
         if (communication_protocol == PROTOCOL_SMOOTHIE) {
             fwfs::fread(md5, sizeof(char), 64, fd);
+            have_digest = md5_digest_usable(md5);
         } else {
             fwfs::fread(md5buf, sizeof(char), 64, fd);
+            have_digest = md5_digest_usable(md5buf);
         }
         fwfs::fclose(fd);
         fd = NULL;
-    } else {
+    }
+    if (!have_digest) {
         if (communication_protocol == PROTOCOL_SMOOTHIE) {
-            strcpy(md5, this->md5_str);
+            fill_md5_from_path(filename.c_str(), md5, sizeof(md5));
         } else {
-            strcpy(md5buf, this->md5_str);
+            fill_md5_from_path(filename.c_str(), md5buf, sizeof(md5buf));
         }
     }
 	
