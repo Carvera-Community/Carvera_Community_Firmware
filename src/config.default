@@ -87,6 +87,8 @@ epsilon_steps_per_mm						43200			# 1:27 rate may be steps per degree for exampl
 # wifi.tcp_timeout_s							10
 # wifi.machine_name							CARVERA_01001
 # wifi.ap_auto_disable							true			# false to keep AP enabled even when STA is connected
+# wifi.http_enable							false			# enable the read-only HTTP status API (GET /status)
+# wifi.http_port								8080			# TCP port for the HTTP status API
 
 # ATC
 # atc.enable									true

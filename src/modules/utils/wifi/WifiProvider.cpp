@@ -43,6 +43,8 @@
 
 #include "gpio.h"
 
+#include "StatusJson.h"
+
 #include <math.h>
 
 #define wifi_checksum                     CHECKSUM("wifi")
@@ -54,6 +56,26 @@
 #define udp_recv_port_checksum		      CHECKSUM("udp_recv_port")
 #define tcp_timeout_s_checksum			  CHECKSUM("tcp_timeout_s")
 #define ap_auto_disable_checksum          CHECKSUM("ap_auto_disable")
+#define http_enable_checksum              CHECKSUM("http_enable")
+#define http_port_checksum                CHECKSUM("http_port")
+
+// Read-only HTTP status API (GET /status). The response is built in place in
+// the shared WifiData buffer once the request has been parsed out of it, so
+// the feature costs no RAM: the AHB pool has almost no headroom left and
+// allocating from it at boot starves the motion block queue.
+#define HTTP_HDR_RESERVE   192
+#define HTTP_BODY_MAX_SIZE (WIFI_DATA_MAX_SIZE - HTTP_HDR_RESERVE)
+#define HTTP_TIMEOUT_S     5
+
+// request parser states / matched route
+#define HTTP_ST_METHOD     0
+#define HTTP_ST_PATH       1
+#define HTTP_ST_HEADERS    2
+#define HTTP_RT_NOT_FOUND  0
+#define HTTP_RT_STATUS     1
+#define HTTP_RT_ROOT       2
+#define HTTP_RT_BAD_METHOD 3
+#define HTTP_STATUS_PATH   "/status"   /* the only route with a payload */
 
 #define WIFI_AP_ON_DELAY_S           5
 #define WIFI_STA_FLAP_WINDOW_S       (5 * 60)   // count reconnect cycles in this window
@@ -73,6 +95,24 @@ WifiProvider::WifiProvider()
 {
 	tcp_link_no = 0;
 	udp_link_no = 1;
+	http_link_no = 2;
+	http_enable = false;
+	http_port = 8080;
+	tcp_client_num = 0;
+	http_parse_state = HTTP_ST_METHOD;
+	http_match_pos = 0;
+	http_route = HTTP_RT_NOT_FOUND;
+	http_eoh_run = 0;
+	http_client_port = 0;
+	http_pending = false;
+	// Only filled once the module reports an association. Anything that
+	// formats them before that (the status API answers from the first second
+	// of uptime) would otherwise run off the end of the buffer.
+	sta_address[0] = '\0';
+	sta_netmask[0] = '\0';
+	ap_address[0] = '\0';
+	ap_netmask[0] = '\0';
+	machine_name[0] = '\0';
 	wifi_init_ok = false;
 	has_data_flag = false;
 	makera_file_cancel = false;
@@ -109,6 +149,12 @@ void WifiProvider::on_module_loaded()
 	this->tcp_timeout_s = THEKERNEL->config->value(wifi_checksum, tcp_timeout_s_checksum)->as_int(10);
 	std::string config_name = THEKERNEL->config->value(wifi_checksum, machine_name_checksum)->as_string("CARVERA");
 	this->ap_auto_disable = THEKERNEL->config->value(wifi_checksum, ap_auto_disable_checksum)->as_bool(true);
+	this->http_enable = THEKERNEL->config->value(wifi_checksum, http_enable_checksum)->as_bool(false);
+	this->http_port = THEKERNEL->config->value(wifi_checksum, http_port_checksum)->as_int(8080);
+	if (this->http_enable && this->http_port == this->tcp_port) {
+		THEKERNEL->streams->printf("WARNING: wifi.http_port equals wifi.tcp_port, HTTP status API disabled\n");
+		this->http_enable = false;
+	}
     strncpy(this->machine_name, config_name.c_str(), sizeof(this->machine_name) - 1);
     this->machine_name[sizeof(this->machine_name) - 1] = '\0'; // Ensure null termination
 
@@ -184,9 +230,25 @@ void WifiProvider::receive_wifi_data() {
 	if (communication_protocol == PROTOCOL_SMOOTHIE) {
 		while (true)
 		{
-			received = M8266WIFI_SPI_RecvData(WifiData, WIFI_DATA_MAX_SIZE, WIFI_DATA_TIMEOUT_MS, &link_no, &status);
+			u8 remote_ip[4];
+			u16 remote_port = 0;
+			received = M8266WIFI_SPI_RecvData_ex(WifiData, WIFI_DATA_MAX_SIZE, WIFI_DATA_TIMEOUT_MS, &link_no, remote_ip, &remote_port, &status);
+			if (received == 0) {
+				// nothing read, link_no would be stale, never dispatch on it
+				return;
+			}
 			if (link_no == udp_link_no) {
 				return;
+			}
+			if (http_enable && link_no == http_link_no) {
+				// parse only; the answer is sent from on_idle
+				for (uint32_t i = 0; i < received && !http_pending; i++) {
+					http_feed(WifiData[i], remote_ip, remote_port);
+				}
+				if (received < WIFI_DATA_MAX_SIZE) {
+					return;
+				}
+				continue;
 			}
 			for (uint32_t i = 0; i < received; i ++) {
 				if(THEKERNEL->is_cachewait()) {
@@ -273,6 +335,14 @@ void WifiProvider::receive_wifi_data() {
 		if (count == 0) return;
 		if (count > wanted) count = wanted;
 		if (link_no == udp_link_no) return;
+		if (http_enable && link_no == http_link_no) {
+			// status poll: parse it, never let its bytes reach the frame decoder
+			for (uint16_t i = 0; i < count && !http_pending; i++) {
+				http_feed(WifiData[i], remote_ip, remote_port);
+			}
+			if (http_pending) return;   // answer it from on_idle, then come back
+			continue;
+		}
 		if (!makera_remote_known || remote_port != makera_remote_port ||
 			memcmp(remote_ip, makera_remote_ip, sizeof(makera_remote_ip)) != 0) {
 			makera_frame_decoder.reset();
@@ -386,6 +456,7 @@ void WifiProvider::on_second_tick(void *)
 		if (!wifi_init_ok || THEKERNEL->is_uploading()) return;
 
 		M8266WIFI_SPI_List_Clients_On_A_TCP_Server(tcp_link_no, &client_num, RemoteClients, &status);
+		this->tcp_client_num = client_num;
 
 		M8266WIFI_SPI_Get_STA_Connection_Status(&connection_status, &status);
 		// THEKERNEL->streams->printf("M8266WIFI_SPI_Get_STA_Connection_Status: [%d]!\n", connection_status);
@@ -538,6 +609,12 @@ void WifiProvider::on_idle(void *argument)
 	if (!command_waiting && (has_data_flag || M8266WIFI_SPI_Has_DataReceived())) {
 		has_data_flag = false;
 		receive_wifi_data();
+	}
+
+	// answer a parsed status request outside the receive loops, so building a
+	// response can never stall a console frame mid-read
+	if (http_pending) {
+		serve_http();
 	}
 
 	if (makera_file_cancel) {
@@ -767,12 +844,177 @@ int WifiProvider::_putc(int c)
 	}
 }
 
+// Feed one received byte of an HTTP request through the parser. Nothing is
+// buffered: the method and the route are matched incrementally, so a request
+// may arrive in any number of TCP segments and the whole parser costs ~10
+// bytes of state. Sets http_pending when a complete request has been seen;
+// serve_http() answers it later, from on_idle.
+void WifiProvider::http_feed(u8 c, const u8 remote_ip[4], u16 remote_port)
+{
+	if (http_pending) return;   // previous answer not sent yet, ignore extra bytes
+
+	// A different client (or the first byte of a new request) restarts the parse:
+	// a client that opened a connection and never finished its request cannot
+	// then block the next one.
+	bool new_client = (remote_port != http_client_port) || memcmp(remote_ip, http_ip, 4) != 0;
+	if (new_client || (http_parse_state == HTTP_ST_METHOD && http_match_pos == 0)) {
+		memcpy(http_ip, remote_ip, 4);
+		http_client_port = remote_port;
+		http_parse_state = HTTP_ST_METHOD;
+		http_match_pos = 0;
+		http_route = HTTP_RT_STATUS;   // still on track to match "/status"
+		http_eoh_run = 0;
+	}
+
+	switch (http_parse_state) {
+	case HTTP_ST_METHOD: {
+		static const char method[] = "GET ";
+		if (c == method[http_match_pos]) {
+			if (++http_match_pos == 4) {
+				http_parse_state = HTTP_ST_PATH;
+				http_match_pos = 0;
+			}
+		} else {
+			http_route = HTTP_RT_BAD_METHOD;
+			http_parse_state = HTTP_ST_HEADERS;
+		}
+		break;
+	}
+	case HTTP_ST_PATH: {
+		static const char status_path[] = HTTP_STATUS_PATH;   // "/status"
+		const u8 status_len = sizeof(status_path) - 1;
+		// '?' ends the path too (a future ?token= check would hook in here)
+		if (c == ' ' || c == '\r' || c == '\n' || c == '?') {
+			if (http_route == HTTP_RT_STATUS && http_match_pos == status_len) {
+				/* exactly "/status" */
+			} else if (http_route == HTTP_RT_STATUS && http_match_pos == 1) {
+				http_route = HTTP_RT_ROOT;                    // just "/"
+			} else {
+				http_route = HTTP_RT_NOT_FOUND;
+			}
+			http_parse_state = HTTP_ST_HEADERS;
+			if (c == '\n') http_eoh_run = 1;
+		} else if (http_route == HTTP_RT_STATUS
+		           && (http_match_pos >= status_len || c != status_path[http_match_pos])) {
+			http_route = HTTP_RT_NOT_FOUND;                   // diverged from the only route
+		} else if (http_route == HTTP_RT_STATUS) {
+			http_match_pos++;
+		}
+		break;
+	}
+	case HTTP_ST_HEADERS:
+		// end of the header block: "\r\n\r\n" (a bare "\n\n" counts too)
+		if (c == '\n') {
+			if (++http_eoh_run >= 2) http_pending = true;
+		} else if (c != '\r') {
+			http_eoh_run = 0;
+		}
+		break;
+	default:
+		http_parse_state = HTTP_ST_METHOD;
+		break;
+	}
+}
+
+// Answer the parsed request. Called from on_idle, never from inside a receive
+// loop: the response is built in place in WifiData, so nothing here may call
+// puts()/printf-to-streams or pump events (they all reuse WifiData).
+void WifiProvider::serve_http()
+{
+	u16 status = 0;
+	char client_ip[16];
+	snprintf(client_ip, sizeof(client_ip), "%u.%u.%u.%u", http_ip[0], http_ip[1], http_ip[2], http_ip[3]);
+
+	const char *code = "200 OK";
+	const char *ctype = "application/json";
+	char *body = (char *)WifiData + HTTP_HDR_RESERVE;
+	size_t body_len = 0;
+
+	switch (http_route) {
+	case HTTP_RT_STATUS:
+		body_len = build_status_json(body, HTTP_BODY_MAX_SIZE, machine_name, sta_address, tcp_client_num);
+		break;
+	case HTTP_RT_ROOT:
+		ctype = "text/plain";
+		body_len = snprintf(body, HTTP_BODY_MAX_SIZE, "Carvera status API\nGET /status -> machine state as JSON\n");
+		break;
+	case HTTP_RT_BAD_METHOD:
+		code = "405 Method Not Allowed";
+		ctype = "text/plain";
+		body_len = snprintf(body, HTTP_BODY_MAX_SIZE, "GET only\n");
+		break;
+	default:
+		code = "404 Not Found";
+		ctype = "text/plain";
+		body_len = snprintf(body, HTTP_BODY_MAX_SIZE, "not found\n");
+		break;
+	}
+
+	// write the headers directly in front of the body so headers+body go out
+	// as one contiguous buffer without copying the body
+	char hdr[HTTP_HDR_RESERVE];
+	int hdr_len = snprintf(hdr, sizeof(hdr),
+			"HTTP/1.0 %s\r\nContent-Type: %s\r\nContent-Length: %u\r\nAccess-Control-Allow-Origin: *\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n",
+			code, ctype, (unsigned)body_len);
+	if (hdr_len >= (int)sizeof(hdr)) hdr_len = sizeof(hdr) - 1; // never copy past the reserve
+	char *frame = body - hdr_len;
+	memcpy(frame, hdr, hdr_len);
+	send_http_response(frame, hdr_len + body_len, client_ip, http_client_port);
+
+	// actively close the connection; if the client is already gone this is a no-op
+	u8 client_num = 0;
+	ClientInfo RemoteClients[15];
+	if (M8266WIFI_SPI_List_Clients_On_A_TCP_Server(http_link_no, &client_num, RemoteClients, &status) != 0) {
+		for (u8 i = 0; i < client_num; i++) {
+			if (memcmp(RemoteClients[i].remote_ip, http_ip, 4) == 0 && RemoteClients[i].remote_port == http_client_port) {
+				M8266WIFI_SPI_Disconnect_TcpClient(http_link_no, &RemoteClients[i], &status);
+				break;
+			}
+		}
+	}
+
+	// ready for the next request
+	http_pending = false;
+	http_parse_state = HTTP_ST_METHOD;
+	http_match_pos = 0;
+	http_client_port = 0;
+}
+
+void WifiProvider::send_http_response(const char *data, size_t total_len, char *client_ip, u16 client_port)
+{
+	u16 status = 0;
+	size_t sent_index = 0;
+	int guard = 0;
+	while (sent_index < total_len && guard++ < 8) {
+		u16 to_send = (total_len - sent_index) > WIFI_DATA_MAX_SIZE ? WIFI_DATA_MAX_SIZE : (total_len - sent_index);
+		u16 sent = M8266WIFI_SPI_Send_Data_to_TcpClient(reinterpret_cast<u8 *>(const_cast<char *>(data + sent_index)), to_send, http_link_no, client_ip, client_port, &status);
+		if (sent == 0) {
+			// client gone or module TX error, give up
+			return;
+		}
+		sent_index += sent;
+	}
+}
+
 int WifiProvider::_getc()
 {
+	// XMODEM reads its ACK/NAK/'C' handshake bytes through here one at a time.
+	// UDP or HTTP bytes must never leak into that stream: a status poll
+	// arriving mid-download would corrupt the handshake and its remnants would
+	// later be parsed as console commands.
 	u16 status;
-	u8 to_recv = 0, link_no;
-	M8266WIFI_SPI_RecvData(&to_recv, 1, WIFI_DATA_TIMEOUT_MS, &link_no, &status);
-	return to_recv;
+	u8 link_no;
+	while (true) {
+		u8 to_recv = 0;
+		u16 received = M8266WIFI_SPI_RecvData(&to_recv, 1, WIFI_DATA_TIMEOUT_MS, &link_no, &status);
+		if (received == 0) {
+			return 0;
+		}
+		if (link_no == udp_link_no || (http_enable && link_no == http_link_no)) {
+			continue;
+		}
+		return to_recv;
+	}
 }
 
 int WifiProvider::gets(char** buf, int size)
@@ -782,7 +1024,7 @@ int WifiProvider::gets(char** buf, int size)
 		u8 link_no;
 		u16 received = M8266WIFI_SPI_RecvData(WifiData,
 				(size == 0 || size > WIFI_DATA_MAX_SIZE) ? WIFI_DATA_MAX_SIZE : size, WIFI_DATA_TIMEOUT_MS, &link_no, &status);
-		if (link_no == udp_link_no) {
+		if (link_no == udp_link_no || (http_enable && link_no == http_link_no)) {
 			// THEKERNEL->streams->printf("gets, data from udp");
 			return 0;
 		}
@@ -805,7 +1047,7 @@ int WifiProvider::gets(char** buf, int size)
 		{
 			received = M8266WIFI_SPI_RecvData(WifiData,
 					(size == 0 || size > WIFI_DATA_MAX_SIZE) ? WIFI_DATA_MAX_SIZE : size, WIFI_DATA_TIMEOUT_MS, &link_no, &status);
-			if (link_no == udp_link_no) {
+			if (link_no == udp_link_no || (http_enable && link_no == http_link_no)) {
 				// THEKERNEL->streams->printf("gets, data from udp");
 				return 0;
 			}
@@ -1624,6 +1866,10 @@ void WifiProvider::init_wifi_module(bool reset) {
 		if (M8266WIFI_SPI_Delete_Connection( udp_link_no, &status) == 0){
 			THEKERNEL->streams->printf("M8266WIFI_SPI_Delete_Connection ERROR, status:%d, high: %d, low: %d!\n", status, int(status >> 8), int(status & 0xff));
 		}
+		if (http_enable) {
+			u16 http_status = 0;
+			M8266WIFI_SPI_Delete_Connection( http_link_no, &http_status);
+		}
 		if (M8266WIFI_SPI_Delete_Connection( tcp_link_no, &status) == 0){
 			THEKERNEL->streams->printf("M8266WIFI_SPI_Delete_Connection ERROR, status:%d, high: %d, low: %d!\n", status, int(status >> 8), int(status & 0xff));
 		}
@@ -1649,6 +1895,23 @@ void WifiProvider::init_wifi_module(bool reset) {
 	snprintf(address, sizeof(address), "192.168.4.255");
 	if (M8266WIFI_SPI_Setup_Connection(0, this->udp_recv_port, address, 0, udp_link_no, 3, &status) == 0) {
 		THEKERNEL->streams->printf("M8266WIFI_SPI_Setup_Connection ERROR, status:%d, high: %d, low: %d!\n", status, int(status >> 8), int(status & 0xff));
+	}
+
+	// setup TCP server for the read-only HTTP status API
+	if (http_enable) {
+		snprintf(address, sizeof(address), "0.0.0.0");
+		if (M8266WIFI_SPI_Setup_Connection(2, this->http_port, address, 0, http_link_no, 3, &status) == 0) {
+			THEKERNEL->streams->printf("HTTP M8266WIFI_SPI_Setup_Connection ERROR, status:%d, high: %d, low: %d!\n", status, int(status >> 8), int(status & 0xff));
+			// fail safe: never dispatch to a dead link
+			http_enable = false;
+		} else {
+			if (M8266WIFI_SPI_Config_Max_Clients_Allowed_To_A_Tcp_Server(http_link_no, 2, &status) == 0) {
+				THEKERNEL->streams->printf("HTTP M8266WIFI_SPI_Config_Max_Clients ERROR, status:%d\n", status);
+			}
+			if (M8266WIFI_SPI_Set_TcpServer_Auto_Discon_Timeout(http_link_no, HTTP_TIMEOUT_S, &status) == 0) {
+				THEKERNEL->streams->printf("HTTP M8266WIFI_SPI_Set_TcpServer_Auto_Discon_Timeout ERROR, status:%d\n", status);
+			}
+		}
 	}
 
 	// set timeout

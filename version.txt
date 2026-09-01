@@ -1,4 +1,6 @@
 [unreleased]
+- Enhancement: Optional read-only HTTP status API (GET /status) on a spare Wi-Fi link, off by default via wifi.http_enable / wifi.http_port
+- Fixed: Conveyor halts with a clear error instead of hard-faulting when the block queue cannot be allocated
 - Fixed: CMake builds include the merged SRAM allocator and Makera protocol sources and report the consolidated heap.
 - Enhancement: Add a tool to check or fix the code formatting according to Google C/C++ style guide.
 - Enhancement: Add CMake support for better IDE integration
