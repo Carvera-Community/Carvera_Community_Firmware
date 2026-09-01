@@ -162,6 +162,7 @@ private:
     bool tool_0_3axis;
     float dwell_before_probing;
     bool is_3dprobe_active;
+    bool enable_3dtoolsetter{false};
 
     Gcode* gcodeBuffer;
     char buff[100];
@@ -182,6 +183,7 @@ private:
     volatile bool tlo_calibrating;
     volatile bool probe_detected;
     volatile bool calibrate_detected;
+    volatile bool probe_only_calibration_active;
     volatile bool probe_triggered;
     volatile bool halt_pending;
 

@@ -865,11 +865,21 @@ void Kernel::check_eeprom_data()
 		this->eeprom_data->TOOLMZ = 0;
 		needrewtite = true;
 	}
-	if(isnan(this->eeprom_data->reserve))
+    if(isnan(this->eeprom_data->reserve))
+    {
+        this->eeprom_data->reserve = 0;
+        needrewtite = true;
+    }
+    if(isnan(this->eeprom_data->TOOL_DIA_WEAR))
 	{
-		this->eeprom_data->reserve = 0;
+        this->eeprom_data->TOOL_DIA_WEAR = 0;
 		needrewtite = true;
 	}
+    if(isnan(this->eeprom_data->TOOL_DIA))
+    {
+        this->eeprom_data->TOOL_DIA = 0;
+        needrewtite = true;
+    }
 	if(isnan(this->eeprom_data->TOOL))
 	{
 		this->eeprom_data->TOOL = 0;

@@ -186,7 +186,8 @@ void Switch::on_config_reload(void *argument)
             Pin *pin= new Pin();
             pin->from_string(THEKERNEL->config->value(switch_checksum, this->name_checksum, output_pin_checksum )->as_string("nc"))->as_output();
             if(pin->connected()) {
-                this->swpwm_pin= new SoftPWM(pin, !pin->is_inverting());
+                // Pin::set already applies '!' inversion, so keep SWPWM polarity fixed here.
+                this->swpwm_pin= new SoftPWM(pin, true);
                 if(failsafe == 1) {
                     set_high_on_debug(pin->port_number, pin->pin);
                 }else{
