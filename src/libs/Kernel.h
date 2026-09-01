@@ -99,14 +99,20 @@ typedef struct {
 //	float G54[5*MAX_WCS];
 	float REFMZ;
 	float TOOLMZ;
-	float reserve;
+    float reserve;
 	int TOOL;
     float perm_vars[20];
     bool tool_not_calibrated;
     int current_wcs;
     float WCScoord[6][4];
     float WCSrotation[6];
+    // TEMPORARY: TOOL_DIA_WEAR is EEPROM-backed in this PR cycle and should be replaced by SD tool-table storage.
+    float TOOL_DIA_WEAR;
+    // TEMPORARY: TOOL_DIA is EEPROM-backed in this PR cycle and should be replaced by SD tool-table storage.
+    float TOOL_DIA;
 } EEPROM_data;
+
+static_assert(sizeof(EEPROM_data) <= 480, "EEPROM_data exceeds 480-byte EEPROM page budget");
 
 typedef struct {
 	char  MachineModel;

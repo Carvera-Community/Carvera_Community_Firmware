@@ -2863,11 +2863,56 @@ void ATCHandler::on_gcode_received(void *argument)
 					this->set_tlo_by_offset(gcode->get_value('H'));
 					THEROBOT->set_tool_not_calibrated(false);
 				}
+				if (gcode->has_letter('D')) { //set stored tool diameter
+					// Immutability latch: diameter must not change while G41/G42 is modal
+					if (THEROBOT->is_compensation_active()) {
+						bool is_playing = false;
+						PublicData::get_value(player_checksum, is_playing_checksum, &is_playing);
+						if (is_playing) {
+							THEKERNEL->streams->printf("ALARM: Cannot change tool diameter while G41/G42 compensation is active\n");
+							THEKERNEL->call_event(ON_HALT, nullptr);
+							THEKERNEL->set_halt_reason(MANUAL);
+							return;
+						} else {
+							THEKERNEL->streams->printf("WARNING: Tool diameter not changed - G41/G42 compensation is active. Issue G40 first.\n");
+							return;
+						}
+					}
+					float diameter = gcode->get_value('D');
+					if (diameter > 0.0f) {
+						THEKERNEL->eeprom_data->TOOL_DIA = diameter;
+						THEKERNEL->write_eeprom_data();
+						THEKERNEL->streams->printf("Nominal tool diameter set to %.3fmm\n", diameter);
+					} else {
+						THEKERNEL->streams->printf("WARNING: Tool diameter not changed - value must be > 0 (got %.3f)\n", diameter);
+					}
+				}
+				if (gcode->has_letter('W')) { // set additive diameter wear
+					if (THEROBOT->is_compensation_active()) {
+						bool is_playing = false;
+						PublicData::get_value(player_checksum, is_playing_checksum, &is_playing);
+						if (is_playing) {
+							THEKERNEL->streams->printf("ALARM: Cannot change tool diameter wear while G41/G42 compensation is active\n");
+							THEKERNEL->call_event(ON_HALT, nullptr);
+							THEKERNEL->set_halt_reason(MANUAL);
+							return;
+						} else {
+							THEKERNEL->streams->printf("WARNING: Tool diameter wear not changed - G41/G42 compensation is active. Issue G40 first.\n");
+							return;
+						}
+					}
+					float wear = gcode->get_value('W');
+					THEKERNEL->eeprom_data->TOOL_DIA_WEAR = wear;
+					THEKERNEL->write_eeprom_data();
+					THEKERNEL->streams->printf("Tool diameter wear set to %.3fmm\n", wear);
+				}
 
 
 				THEKERNEL->streams->printf("current tool offset [%.3f] , reference tool offset [%.3f]\n",cur_tool_mz,ref_tool_mz);
 			} else if (gcode->subcode == 4) { //report current TLO
 				THEKERNEL->streams->printf("current tool offset [%.3f] , reference tool offset [%.3f]\n",cur_tool_mz,ref_tool_mz);
+				THEKERNEL->streams->printf("stored tool diameter [%.3f]\n", THEKERNEL->eeprom_data->TOOL_DIA);
+				THEKERNEL->streams->printf("stored tool diameter wear [%.3f]\n", THEKERNEL->eeprom_data->TOOL_DIA_WEAR);
 				if (this->probe_oneoff_configured) {
 					THEKERNEL->streams->printf("one-off tool setter position offsets: X[%.3f] Y[%.3f] Z[%.3f]\n", this->probe_oneoff_x, this->probe_oneoff_y, this->probe_oneoff_z);
 				} else {
