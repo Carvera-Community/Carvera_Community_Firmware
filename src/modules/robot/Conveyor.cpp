@@ -82,7 +82,13 @@ void Conveyor::on_module_loaded()
 void Conveyor::start(uint8_t n)
 {
     Block::init(n); // set the number of motors which determines how big the tick info vector is
-    queue.resize(queue_size);
+    if(!queue.resize(queue_size)) {
+        // without this halt the first append_block() would dereference the
+        // null ring and hard-fault the machine into a watchdog reboot loop
+        THEKERNEL->streams->printf("FATAL: block queue allocation failed (%d blocks), out of AHB memory - motion disabled, machine halted\n", queue_size);
+        THEKERNEL->call_event(ON_HALT, nullptr);
+        return;
+    }
     running = true;
 }
 
