@@ -70,6 +70,9 @@ private:
 
     void on_pin_rise();
     void receive_wifi_data();
+    void http_feed(u8 c, const u8 remote_ip[4], u16 remote_port);
+    void serve_http();
+    void send_http_response(const char *data, size_t total_len, char *client_ip, u16 client_port);
     int CheckFilePacket(char** buf);
 
     void PacketMessage(char cmd, const char* s, int size);
@@ -84,6 +87,17 @@ private:
 	int udp_send_port;
 	int udp_recv_port;
 	int tcp_timeout_s;
+	int http_port;
+	u8  tcp_client_num;     // clients on the console TCP server, refreshed each second
+	// HTTP request parser state. Requests are matched incrementally as bytes
+	// arrive - nothing is buffered, so this costs ~10 bytes instead of a
+	// request buffer, and a request may span any number of TCP segments.
+	u8  http_ip[4];
+	u16 http_client_port;
+	u8  http_parse_state;
+	u8  http_match_pos;
+	u8  http_route;
+	u8  http_eoh_run;       // consecutive newlines, for end-of-headers
 	int connection_fail_count;
 	int sta_down_seconds;
 	uint32_t wifi_seconds;
@@ -101,7 +115,10 @@ private:
     struct {
     	u8  tcp_link_no;
     	u8  udp_link_no;
+    	u8  http_link_no;
     	bool wifi_init_ok:1;
+    	bool http_enable:1;
+    	bool http_pending:1;   // a parsed request is waiting to be answered
     	bool ap_auto_disable:1;
     	bool ap_currently_on:1;
     	bool ap_manually_disabled:1; // sticky from `ap disable` until `ap enable`
