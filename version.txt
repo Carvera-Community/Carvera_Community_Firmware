@@ -1,4 +1,6 @@
 [unreleased]
+- Enhancement: M337 sets LED colour on the CA1 LED bar and also the C1 main button. Without R/U/B it reports the current colour. On CA1, I1–I5 select a single bar LED.
+- Enhancement: M338 restores the LEDs to the current machine status colour
 - Fixed: CMake builds include the merged SRAM allocator and Makera protocol sources and report the consolidated heap.
 - Enhancement: Add a tool to check or fix the code formatting according to Google C/C++ style guide.
 - Enhancement: Add CMake support for better IDE integration

@@ -49,6 +49,7 @@ class MainButton : public Module {
         uint32_t light_countdown_us;
 
         bool button_pressed;
+        bool led_override;
         volatile BUTTON_STATE button_state;
         
         bool stop_on_cover_open;
@@ -61,6 +62,10 @@ class MainButton : public Module {
         void switch_power_12(int state);
         void switch_power_24(int state);
         uint8_t old_state;
+        uint8_t led_px[5][3];
+        void apply_led_rgb(unsigned char r, unsigned char g, unsigned char b);
+        void apply_c1_status_leds(uint8_t state);
+        void set_led_pixel(uint8_t index, unsigned char r, unsigned char g, unsigned char b);
         void set_led_color(unsigned char R1, unsigned char G1, unsigned char B1,unsigned char R2, unsigned char G2, unsigned char B2,unsigned char R3, unsigned char G3, unsigned char B3,unsigned char R4, unsigned char G4, unsigned char B4,unsigned char R5, unsigned char G5, unsigned char B5);
         void set_led_colors(unsigned char R, unsigned char G, unsigned char B);
         void set_led_num(unsigned char ColorFR, unsigned char ColorFG, unsigned char ColorFB, unsigned char ColorBR, unsigned char ColorBG, unsigned char ColorBB, unsigned char num, bool row = false);
