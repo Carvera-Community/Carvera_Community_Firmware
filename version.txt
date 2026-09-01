@@ -3,7 +3,8 @@
 - Enhancement: Add CMake support for better IDE integration
 - Removed: The spindle PWM value from the status response (? command)
 - Fixed: CMake builds include the merged SRAM allocator and Makera protocol sources and report the consolidated heap.
-- Fixed: MD5 hashes for files other than config.txt in the SD card root were invalid. Now md5 is generated on-the-fly if not pre-calculated
+- Fixed: MD5 hashes for files other than config.txt in the SD card root were invalid
+- Changed: Files without a pre-calculated MD5 hash on the SD card now get a MD5 generated on-the-fly when downloaded
 
 [2.2.0c-RC3]
 - Fixed: A-axis position tracking no longer lags the commanded angle when a move is smaller than one stepper step
