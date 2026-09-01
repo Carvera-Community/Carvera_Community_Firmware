@@ -280,11 +280,28 @@ std::string absolute_from_relative( std::string path )
     return cwd + '/' + path;
 }
 
+// Name stored under /sd/gcodes/.md5 or .lz for a data file.
+// Paths under gcodes/ keep the relative path (including subdirs). Other
+// files use the basename, e.g. /sd/config.default -> config.default.
+static string sidecar_relative_name(const string& origin)
+{
+	static const char gcodes[] = "gcodes/";
+	const size_t gcodes_len = sizeof(gcodes) - 1;
+	size_t found = origin.find(gcodes);
+	if (found != string::npos) {
+		return origin.substr(found + gcodes_len);
+	}
+	size_t slash = origin.find_last_of('/');
+	if (slash != string::npos) {
+		return origin.substr(slash + 1);
+	}
+	return origin;
+}
+
 // Change from origin path to sub path
 std::string change_to_md5_path( std::string origin )
 {
-	unsigned found = origin.find("gcodes/");
-	string filename = origin.substr(found + 7);
+	string filename = sidecar_relative_name(origin);
 	string path = "/sd/gcodes";
 	DIR * d = fwfs::opendir(path.c_str());
 	if(NULL == d )
@@ -312,8 +329,7 @@ std::string change_to_md5_path( std::string origin )
 // Change from origin path to quicklz file sub path
 std::string change_to_lz_path( std::string origin )
 {
-	unsigned found = origin.find("gcodes/");
-	string filename = origin.substr(found + 7);	
+	string filename = sidecar_relative_name(origin);
 	string path = "/sd/gcodes/.lz";
 	DIR * d = fwfs::opendir(path.c_str());
 	if(NULL == d )
