@@ -1,6 +1,7 @@
 target_include_directories(carvera_sources PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
 
-target_sources(carvera_sources PRIVATE
+add_library(carvera_usb_host_sources INTERFACE)
+target_sources(carvera_usb_host_sources INTERFACE
     "${CMAKE_CURRENT_SOURCE_DIR}/MSCFileSystem.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/USBHostCDC.cpp"
 )

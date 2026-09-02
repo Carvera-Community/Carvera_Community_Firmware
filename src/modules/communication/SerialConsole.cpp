@@ -22,11 +22,18 @@ using std::string;
 #include "libs/StreamOutput.h"
 #include "libs/StreamOutputPool.h"
 #include "ATCHandlerPublicAccess.h"
+#include "modules/utils/player/PlayerPublicAccess.h"
 #include "PublicDataRequest.h"
 #include "PublicData.h"
 #include "libs/Config.h"
 #include "checksumm.h"
 #include "ConfigValue.h"
+#if defined(SERIAL_RX_DMA)
+#include "UartRxDma.h"
+#endif
+#if defined(MACHINE_FAMILY_Z1)
+#include "version.h"
+#endif
 
 #define uart_checksum CHECKSUM("uart")
 #define XBUFF_LENGTH 8208
@@ -37,6 +44,11 @@ static makera::Packet makera_packet;
 static RingBuffer<char, 1024> makera_rx_bytes;
 // Let a back-to-back burst finish before command handlers reply on the same UART.
 constexpr uint32_t makera_rx_quiet_ms = 2;
+constexpr int uart_rx_error = -2;
+#if defined(MACHINE_FAMILY_Z1)
+static uint32_t last_version_us;
+constexpr uint32_t version_interval_us = 5 * 1000 * 1000;
+#endif
 
 // Serial reading module
 // Treats every received line as a command and passes it ( via event call ) to the command dispatcher.
@@ -55,6 +67,12 @@ SerialConsole::SerialConsole( PinName tx_pin, PinName rx_pin, int baud_rate )
     this->makera_frame_decoder.reset();
     makera_rx_bytes.tail = makera_rx_bytes.head;
     this->reset_file_parser();
+#if defined(SERIAL_RX_DMA)
+    this->rx_dispatch_enabled = false;
+    this->rx_lookahead = -1;
+    this->serial->attach(nullptr, mbed::Serial::RxIrq);
+    uart_rx_dma::initialize();
+#endif
 }
 
 SerialConsole::~SerialConsole(){
@@ -69,13 +87,15 @@ void SerialConsole::on_module_loaded() {
     diagnose_flag = false;
     makera_file_cancel = false;
 
+#if defined(MACHINE_FAMILY_CARVERA)
     default_baud_rate = THEKERNEL->config->value(uart_checksum, baud_rate_setting_checksum)->as_number(current_baud_rate);
     if (default_baud_rate != current_baud_rate) {
         this->serial->baud(default_baud_rate);
         this->current_baud_rate = default_baud_rate;
     }
+#endif
 
-    this->attach_irq(true);
+    this->set_rx_enabled(true);
 
     // We only call the command dispatcher in the main loop, nowhere else
     this->register_for_event(ON_MAIN_LOOP);
@@ -93,12 +113,16 @@ void SerialConsole::set_baud_temporary(int new_baud) {
     this->last_activity_ms = us_ticker_read() / 1000;
 }
 
-void SerialConsole::attach_irq(bool enable_irq) {
-	if (enable_irq) {
+void SerialConsole::set_rx_enabled(bool enabled) {
+#if defined(SERIAL_RX_DMA)
+    this->rx_dispatch_enabled = enabled;
+#else
+	if (enabled) {
 	    this->serial->attach(this, &SerialConsole::on_serial_char_received, mbed::Serial::RxIrq);
 	} else {
 	    this->serial->attach(nullptr, mbed::Serial::RxIrq);
 	}
+#endif
 }
 
 void SerialConsole::on_set_public_data(void *argument) {
@@ -108,16 +132,17 @@ void SerialConsole::on_set_public_data(void *argument) {
 
     if(pdr->second_element_is(set_serial_rx_irq_checksum)) {
         bool enable_irq = *static_cast<bool *>(pdr->get_data_ptr());
-        this->attach_irq(enable_irq);
+        this->set_rx_enabled(enable_irq);
         pdr->set_taken();
     }
 }
 
 
-// Called on Serial::RxIrq interrupt, meaning we have received a char
+// Drain bytes supplied by the active IRQ- or DMA-backed transport.
 void SerialConsole::on_serial_char_received() {
-	while (this->serial->readable()) {
-		char received = this->serial->getc();
+	int received_byte;
+	while ((received_byte = this->read_byte()) >= 0) {
+		char received = static_cast<char>(received_byte);
 		last_activity_ms = us_ticker_read() / 1000;
 
 		if(THEKERNEL->is_cachewait()) {
@@ -189,7 +214,14 @@ void SerialConsole::on_serial_char_received() {
 
 void SerialConsole::on_idle(void * argument)
 {
+#if defined(SERIAL_RX_DMA)
+    if (!rx_dispatch_enabled) handle_rx_error();
+#endif
 	if (THEKERNEL->is_uploading()) return;
+
+#if defined(SERIAL_RX_DMA)
+    if (rx_dispatch_enabled) on_serial_char_received();
+#endif
 
     const uint32_t now_ms = us_ticker_read() / 1000;
     if (communication_protocol == PROTOCOL_MAKERA && !command_waiting &&
@@ -202,6 +234,7 @@ void SerialConsole::on_idle(void * argument)
         }
     }
 
+#if defined(MACHINE_FAMILY_CARVERA)
     if (temp_baud_rate != 0) {
         if ((now_ms - last_activity_ms) >= 15000) {
             this->serial->baud(default_baud_rate);
@@ -209,6 +242,7 @@ void SerialConsole::on_idle(void * argument)
             this->temp_baud_rate = 0;
         }
     }
+#endif
 
     if (makera_rx_overflow) {
         makera_rx_overflow = false;
@@ -252,6 +286,15 @@ void SerialConsole::on_idle(void * argument)
         }
         THEKERNEL->call_event(ON_HALT, nullptr);
     }
+
+#if defined(MACHINE_FAMILY_Z1)
+    const uint32_t now_us = us_ticker_read();
+    if (now_us - last_version_us > version_interval_us) {
+        Version version;
+        PacketMessage(PTYPE_FIRM_VER, version.get_build(), 0);
+        last_version_us = now_us;
+    }
+#endif
 }
 
 // Actual event calling must happen in the main loop because if it happens in the interrupt we will loose data
@@ -303,14 +346,16 @@ int SerialConsole::puts(const char* s, int size)
 int SerialConsole::gets(char** buf, int size)
 {
 	if (communication_protocol == PROTOCOL_MAKERA) {
-        while (makera_rx_bytes.tail != makera_rx_bytes.head || this->serial->readable()) {
+        while (makera_rx_bytes.tail != makera_rx_bytes.head || this->ready()) {
             uint8_t received;
             if (makera_rx_bytes.tail != makera_rx_bytes.head) {
                 char buffered;
                 makera_rx_bytes.pop_front(buffered);
                 received = static_cast<uint8_t>(buffered);
             } else {
-                received = static_cast<uint8_t>(this->serial->getc());
+                const int received_byte = this->read_byte();
+                if (received_byte < 0) break;
+                received = static_cast<uint8_t>(received_byte);
             }
             uint16_t checksum;
 
@@ -382,18 +427,56 @@ void SerialConsole::process_makera_byte(uint8_t received)
         return;
     }
 
+    if (packet.type == PTYPE_CTRL_MULTI && makera::is_diagnostic_request(packet.data, packet.data_length)) {
+        diagnose_flag = true;
+        return;
+    }
+
     if (packet.type == PTYPE_CTRL_MULTI || packet.type == PTYPE_FILE_START) {
         if (packet.data_length == 0) {
             if (packet.type == PTYPE_FILE_START) makera_file_cancel = true;
             return;
         }
-
         struct SerialMessage message;
         message.message.assign(reinterpret_cast<const char *>(packet.data), packet.data_length);
         message.stream = this;
         message.line = 0;
         if (!THEKERNEL->dispatch_console_line(message)) command_waiting = true;
+#if defined(STREAMED_JOB_PLAYBACK)
+    } else if (packet.type >= PTYPE_PLAY_VIEW && packet.type <= PTYPE_GOTO_LINES) {
+        player_link_packet link { packet.type, packet.data, packet.data_length };
+        PublicData::set_value(player_checksum, link_packet_checksum, &link);
+#endif
     }
+}
+
+int SerialConsole::receive_packet(makera::Packet& packet, uint32_t timeout_ms)
+{
+    makera_frame_decoder.reset();
+    const uint32_t start_us = us_ticker_read();
+    const uint32_t timeout_us = timeout_ms * 1000;
+    while (us_ticker_read() - start_us < timeout_us) {
+        const int byte = read_byte();
+        if (byte == uart_rx_error) {
+            makera_frame_decoder.reset();
+            return -4;
+        }
+        if (byte < 0) continue;
+
+        const makera::DecodeResult result = makera_frame_decoder.decode_byte(
+            static_cast<uint8_t>(byte), us_ticker_read() / 1000);
+        if (result == makera::DecodeResult::invalid_crc) {
+            makera_frame_decoder.reset();
+            return -3;
+        }
+        if (result != makera::DecodeResult::complete) continue;
+        packet = makera_frame_decoder.packet();
+        makera_frame_decoder.reset();
+        return 0;
+    }
+
+    makera_frame_decoder.reset();
+    return -1;
 }
 
 void SerialConsole::reset_file_parser()
@@ -458,13 +541,53 @@ int SerialConsole::_putc(int c)
 
 int SerialConsole::_getc()
 {
+#if defined(SERIAL_RX_DMA)
+    if (rx_lookahead >= 0) {
+        const int result = rx_lookahead;
+        rx_lookahead = -1;
+        return result;
+    }
+    uint8_t byte = 0;
+    return uart_rx_dma::try_get(byte) ? byte : -1;
+#else
     return this->serial->getc();
+#endif
 }
 
 bool SerialConsole::ready()
 {
-	return (communication_protocol == PROTOCOL_MAKERA && makera_rx_bytes.tail != makera_rx_bytes.head) ||
-           this->serial->readable();
+    if (communication_protocol == PROTOCOL_MAKERA && makera_rx_bytes.tail != makera_rx_bytes.head) return true;
+#if defined(SERIAL_RX_DMA)
+    if (rx_lookahead >= 0) return true;
+    uint8_t byte = 0;
+    if (!uart_rx_dma::try_get(byte)) return false;
+    rx_lookahead = byte;
+    return true;
+#else
+    return this->serial->readable();
+#endif
+}
+
+#if defined(SERIAL_RX_DMA)
+bool SerialConsole::handle_rx_error()
+{
+    if (!uart_rx_dma::take_error()) return false;
+
+    makera_frame_decoder.reset();
+    reset_file_parser();
+    THEKERNEL->streams->printf("ERROR: UART RX DMA error or overflow; input resynchronized\n");
+    return true;
+}
+#endif
+
+int SerialConsole::read_byte()
+{
+#if defined(SERIAL_RX_DMA)
+    if (handle_rx_error()) return uart_rx_error;
+    return _getc();
+#else
+    return this->serial->readable() ? this->serial->getc() : -1;
+#endif
 }
 
 // Does the queue have a given char ?

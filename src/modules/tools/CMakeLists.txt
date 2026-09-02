@@ -1,6 +1,10 @@
 target_include_directories(carvera_sources PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
 
+add_subdirectory(accessories)
 add_subdirectory(atc)
+if(CANOPEN_SUPPORT)
+    add_subdirectory(canopen)
+endif()
 add_subdirectory(drillingcycles)
 add_subdirectory(endstops)
 add_subdirectory(laser)

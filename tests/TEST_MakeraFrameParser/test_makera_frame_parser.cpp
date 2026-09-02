@@ -256,6 +256,15 @@ int main() {
     CHECK(makera::decode_control('x') == makera::ControlAction::none);
   }
 
+  {
+    TEST("text diagnostic requests use the realtime diagnostic path");
+    const char request[] = "diagnose\n";
+    CHECK(makera::is_diagnostic_request(reinterpret_cast<const uint8_t *>(request), sizeof(request) - 1));
+
+    const char other[] = "diagnose-now\n";
+    CHECK(!makera::is_diagnostic_request(reinterpret_cast<const uint8_t *>(other), sizeof(other) - 1));
+  }
+
   std::printf("\n%d checks, %d failures\n", checks, failures);
   return failures == 0 ? 0 : 1;
 }

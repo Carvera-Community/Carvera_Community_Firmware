@@ -67,8 +67,27 @@ endif
 
 MRI_INIT_PARAMETERS=$(MRI_UART)
 
-# Output Object Directory
-OUTDIR=../$(DEVICE)
+# Select the machine family at build time. Keep the existing Carvera output
+# directory as the default so current build and packaging paths remain valid.
+MACHINE ?= carvera
+ifeq "$(MACHINE)" "carvera"
+OUTDIR = ../$(DEVICE)
+DEFINES += -DMACHINE_FAMILY_CARVERA
+else ifeq "$(MACHINE)" "z1"
+OUTDIR = ../$(DEVICE)-z1
+DEFINES += -DMACHINE_FAMILY_Z1
+REMOTE_SETTINGS_TRANSFER := 1
+STREAMED_JOB_PLAYBACK := 1
+CANOPEN_SUPPORT := 1
+SERIAL_RX_DMA := 1
+NO_USB_HOST := 1
+NO_VESC_SPINDLE := 1
+NO_SD_CARD := 1
+NO_WIRELESS_PROBE := 1
+NO_WIFI_PROVIDER := 1
+else
+$(error Unsupported MACHINE '$(MACHINE)'; expected carvera or z1)
+endif
 
 # List of sources to be compiled/assembled
 CSRCS1 = $(wildcard $(SRC)/*.c $(SRC)/*/*.c $(SRC)/*/*/*.c $(SRC)/*/*/*/*.c $(SRC)/*/*/*/*/*.c $(SRC)/*/*/*/*/*/*.c)
@@ -93,6 +112,33 @@ ASRCS +=  $(wildcard $(SRC)/*.s $(SRC)/*/*.s $(SRC)/*/*/*.s $(SRC)/*/*/*/*.s $(S
 endif
 
 CPPSRCS1 = $(wildcard $(SRC)/*.cpp $(SRC)/*/*.cpp $(SRC)/*/*/*.cpp $(SRC)/*/*/*/*.cpp $(SRC)/*/*/*/*/*.cpp $(SRC)/*/*/*/*/*/*.cpp)
+ifeq "$(SERIAL_RX_DMA)" "1"
+DEFINES += -DSERIAL_RX_DMA
+else
+CPPSRCS1 := $(filter-out $(SRC)/modules/communication/UartRxDma.cpp,$(CPPSRCS1))
+endif
+ifeq "$(REMOTE_SETTINGS_TRANSFER)" "1"
+DEFINES += -DREMOTE_SETTINGS_TRANSFER
+else
+CPPSRCS1 := $(filter-out \
+	$(SRC)/libs/ConfigSources/RemoteConfigSource.cpp \
+	$(SRC)/modules/communication/RemoteTransfer.cpp \
+,$(CPPSRCS1))
+endif
+ifeq "$(NO_SD_CARD)" "1"
+DEFINES += -DNO_SD_CARD
+endif
+ifeq "$(STREAMED_JOB_PLAYBACK)" "1"
+DEFINES += -DSTREAMED_JOB_PLAYBACK
+endif
+ifeq "$(CANOPEN_SUPPORT)" "1"
+DEFINES += -DCANOPEN_SUPPORT
+else
+CPPSRCS1 := $(filter-out \
+	$(SRC)/modules/tools/canopen/CANBus.cpp \
+	$(SRC)/modules/tools/canopen/% \
+,$(CPPSRCS1))
+endif
 ifeq "$(NONETWORK)" "1"
 	CPPSRCS2 = $(filter-out $(SRC)/libs/Network/%,$(CPPSRCS1))
 else
@@ -158,11 +204,39 @@ DEFINES += -DNO_MODBUS_SPINDLE
 endif
 
 # NO_VESC_SPINDLE: exclude VESC USB spindle driver
+ifdef NO_USB_HOST
+NO_VESC_SPINDLE := 1
+endif
+
 ifdef NO_VESC_SPINDLE
 CPPSRCS3 := $(filter-out \
   $(SRC)/modules/tools/spindle/VESCSpindleControl.cpp \
   ,$(CPPSRCS3))
 DEFINES += -DNO_VESC_SPINDLE
+endif
+
+ifdef NO_USB_HOST
+CPPSRCS3 := $(filter-out \
+  $(SRC)/libs/USBDevice/MSCFileSystem.cpp \
+  $(SRC)/libs/USBDevice/USBHostCDC.cpp \
+  $(SRC)/libs/USBDevice/USBHostLite/usbhost_lpc17xx.cpp \
+  $(SRC)/libs/USBDevice/USBHostLite/usbhost_ms.cpp \
+  ,$(CPPSRCS3))
+DEFINES += -DNO_USB_HOST
+endif
+
+ifdef NO_WIRELESS_PROBE
+CPPSRCS3 := $(filter-out \
+  $(SRC)/modules/communication/SerialConsole2.cpp \
+  ,$(CPPSRCS3))
+DEFINES += -DNO_WIRELESS_PROBE
+endif
+
+ifdef NO_WIFI_PROVIDER
+CPPSRCS3 := $(filter-out \
+  $(SRC)/modules/utils/wifi/WifiProvider.cpp \
+  ,$(CPPSRCS3))
+DEFINES += -DNO_WIFI_PROVIDER
 endif
 
 # NO_PID_AUTOTUNE: exclude PID autotuner (not needed when no heaters are connected)
@@ -182,9 +256,13 @@ OBJECTS = $(patsubst %.c,$(OUTDIR)/%.o,$(CSRCS)) $(patsubst %.s,$(OUTDIR)/%.o,$(
 # Add in the MBED customization stubs which allow hooking in the MRI debug monitor.
 OBJECTS += $(OUTDIR)/mbed_custom.o
 
+ifeq "$(MACHINE)" "carvera"
 OBJECTS += $(OUTDIR)/configdefault.o
-
 OBJECTS += $(OUTDIR)/config2default.o
+else
+OBJECTS += $(OUTDIR)/config_z1default.o
+OBJECTS += $(OUTDIR)/config_z1prodefault.o
+endif
 
 # List of the header dependency files, one per object file.
 DEPFILES = $(patsubst %.o,%.d,$(OBJECTS))
@@ -411,5 +489,15 @@ $(OUTDIR)/config2default.o : config2.default $(BUILD_DIR)/minify-config.sh $(BUI
 	$(Q) $(MKDIR) $(call convert-slash,$(OUTDIR)/_minified) $(QUIET)
 	$(Q) $(MINIFY) $< $(OUTDIR)/_minified/config2.default
 	$(Q) cd $(OUTDIR)/_minified && $(OBJCOPY) -I binary -O elf32-littlearm -B arm --readonly-text --rename-section .data=.rodata.config2default config2.default ../config2default.o
+
+$(OUTDIR)/config_z1default.o : config_z1.default $(BUILD_DIR)/minify-config.sh $(BUILD_DIR)/minify-config.ps1
+	$(Q) $(MKDIR) $(call convert-slash,$(OUTDIR)/_minified) $(QUIET)
+	$(Q) $(MINIFY) $< $(OUTDIR)/_minified/config_z1.default
+	$(Q) cd $(OUTDIR)/_minified && $(OBJCOPY) -I binary -O elf32-littlearm -B arm --readonly-text --rename-section .data=.rodata.config_z1default config_z1.default ../config_z1default.o
+
+$(OUTDIR)/config_z1prodefault.o : config_z1pro.default $(BUILD_DIR)/minify-config.sh $(BUILD_DIR)/minify-config.ps1
+	$(Q) $(MKDIR) $(call convert-slash,$(OUTDIR)/_minified) $(QUIET)
+	$(Q) $(MINIFY) $< $(OUTDIR)/_minified/config_z1pro.default
+	$(Q) cd $(OUTDIR)/_minified && $(OBJCOPY) -I binary -O elf32-littlearm -B arm --readonly-text --rename-section .data=.rodata.config_z1prodefault config_z1pro.default ../config_z1prodefault.o
 
 #########################################################################

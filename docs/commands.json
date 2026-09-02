@@ -801,6 +801,17 @@
       "description": "Report playback progress (Marlin-style), used to sync the controller display.",
       "parameters": {}
     },
+    "M28": {
+      "type": "mcode",
+      "description": "Start writing following G-code lines to an SD-card file. End with M29. Unavailable when local file storage is disabled.",
+      "parameters": {
+        "filename": {
+          "required": true,
+          "description": "File to create.",
+          "default": null
+        }
+      }
+    },
     "M30": {
       "type": "mcode",
       "description": "End of program in grbl-style mode. As an SD command it can also delete a file; on Carvera treat M2 as the normal program end.",
@@ -1181,12 +1192,50 @@
     },
     "M331": {
       "type": "mcode",
-      "description": "Enable auto vacuum mode on the Carvera C1 so the vacuum follows the spindle.",
+      "description": "Enable auto chip clearing following the spindle on/off state. On C1 this is the vacuum; on CA1 and Z1 it is the external output.",
+      "parameters": {}
+    },
+    "M331.1": {
+      "type": "mcode",
+      "description": "Enable auto blow on Z1. The spindle fan will always run with this minimum power while the spindle is on.",
+      "parameters": {
+        "S": {
+          "required": false,
+          "description": "Fan power while blowing.",
+          "default": 30,
+          "unit": "%",
+          "default_source": "accessory.auto_blowing_power"
+        }
+      }
+    },
+    "M331.2": {
+      "type": "mcode",
+      "description": "Runs a cleaning cycle when gcode playback finishes.",
+      "parameters": {}
+    },
+    "M331.4": {
+      "type": "mcode",
+      "description": "Turn on the ionizer on Z1.",
       "parameters": {}
     },
     "M332": {
       "type": "mcode",
-      "description": "Disable auto vacuum mode.",
+      "description": "Disable auto chip clearing (C1: vacuum, CA1/Z1: External Output pin).",
+      "parameters": {}
+    },
+    "M332.1": {
+      "type": "mcode",
+      "description": "Disable auto blow.",
+      "parameters": {}
+    },
+    "M332.2": {
+      "type": "mcode",
+      "description": "Disable automatic bed cleaning after jobs.",
+      "parameters": {}
+    },
+    "M332.4": {
+      "type": "mcode",
+      "description": "Turn off the ionizer.",
       "parameters": {}
     },
     "M333": {
@@ -2560,6 +2609,25 @@
       "description": "Switch communication protocol to Makera.",
       "parameters": {}
     },
+    "M486.1": {
+      "type": "mcode",
+      "description": "Run a bed-cleaning cycle on Z1.",
+      "parameters": {
+        "N": {
+          "required": false,
+          "description": "Number of sweep cycles (1–10).",
+          "default": 1,
+          "default_source": "bed_cleaning.cycles"
+        },
+        "T": {
+          "required": false,
+          "description": "Distance between successive sweep rows.",
+          "default": 40,
+          "unit": "mm",
+          "default_source": "bed_cleaning.spacing"
+        }
+      }
+    },
     "M489": {
       "type": "mcode",
       "description": "Query Wi-Fi module status. Prefer diagnose or wlan commands.",
@@ -2871,6 +2939,11 @@
     "M498.2": {
       "type": "mcode",
       "description": "Erase EEPROM data. Do not run unless you intend to wipe stored offsets.",
+      "parameters": {}
+    },
+    "M498.3": {
+      "type": "mcode",
+      "description": "Dump the complete EEPROM as hexadecimal data followed by its CRC16-CCITT.",
       "parameters": {}
     },
     "M499": {
@@ -3210,6 +3283,37 @@
       "description": "ATC/public-data helper related to home or tool checks.",
       "parameters": {}
     },
+    "M940": {
+      "type": "mcode",
+      "description": "Report CANopen configuration, bus state, and remote-device status.",
+      "parameters": {}
+    },
+    "M941": {
+      "type": "mcode",
+      "description": "Send a raw CAN frame, or use M941.1 through M941.8 to access a CANopen object.",
+      "parameters": {
+        "N": {
+          "required": true,
+          "description": "CAN node ID.",
+          "default": null
+        },
+        "X": {
+          "required": false,
+          "description": "CANopen object index for M941.1 through M941.8.",
+          "default": null
+        },
+        "L": {
+          "required": false,
+          "description": "CANopen object sub-index for M941.1 through M941.8.",
+          "default": 0
+        },
+        "A-H": {
+          "required": false,
+          "description": "Raw CAN payload bytes.",
+          "default": null
+        }
+      }
+    },
     "M956": {
       "type": "mcode",
       "description": "Report spindle speed. Prefer M957.",
@@ -3528,6 +3632,11 @@
     "diagnose": {
       "type": "shell",
       "description": "Print diagnostic status including spindle, laser, switches, endstops, probe, ATC pins, e-stop, and Wi-Fi.",
+      "parameters": {}
+    },
+    "laserabort": {
+      "type": "shell",
+      "description": "Stop engraving-laser output during playback abort handling.",
       "parameters": {}
     },
     "sleep": {

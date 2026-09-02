@@ -106,6 +106,7 @@
 #define xmin_checksum                      CHECKSUM("x_min")
 #define ymin_checksum                      CHECKSUM("y_min")
 #define zmin_checksum                      CHECKSUM("z_min")
+#define rotary_y_min_checksum              CHECKSUM("rotary_y_min")
 
 #define load_last_wcs_checksum             CHECKSUM("load_last_wcs")
 
@@ -378,6 +379,8 @@ void Robot::load_config()
     soft_endstop_min[X_AXIS] = THEKERNEL->config->value(soft_endstop_checksum, xmin_checksum)->as_number(-371.0F);
     soft_endstop_min[Y_AXIS] = THEKERNEL->config->value(soft_endstop_checksum, ymin_checksum)->as_number(-250.0F);
     soft_endstop_min[Z_AXIS] = THEKERNEL->config->value(soft_endstop_checksum, zmin_checksum)->as_number(-135.0F);
+    rotary_clearance_y_min = THEKERNEL->config->value(
+        soft_endstop_checksum, rotary_y_min_checksum)->as_number(NAN);
 }
 
 uint8_t Robot::register_motor(StepperMotor *motor)
@@ -1553,6 +1556,8 @@ void Robot::process_move(Gcode *gcode, enum MOTION_MODE_T motion_mode)
             break;
     }
 
+    if (THECONVEYOR->motion_abort_requested()) return;
+
     // needed to act as start of next arc command
     memcpy(arc_milestone, target, sizeof(arc_milestone));
 
@@ -1682,6 +1687,8 @@ void Robot::reset_compensated_machine_position()
 // all transforms and is what we actually convert to actuator positions
 bool Robot::append_milestone(const float target[], float feed_rate, unsigned int line)
 {
+    if (THECONVEYOR->motion_abort_requested()) return false;
+
     float deltas[n_motors];
     float transformed_target[n_motors]; // adjust target for bed compensation
     float unit_vec[N_PRIMARY_AXIS];
@@ -1711,10 +1718,17 @@ bool Robot::append_milestone(const float target[], float feed_rate, unsigned int
 
     // check soft endstops only for homed axis that are enabled
     if(soft_endstop_enabled && !THEKERNEL->is_zprobing()) {
+        const bool rotary_installed = THEKERNEL->axis_is_on[A_AXIS];
+        float effective_y_min = soft_endstop_min[Y_AXIS];
+        if (rotary_installed && !isnan(rotary_clearance_y_min) &&
+            (isnan(effective_y_min) || rotary_clearance_y_min > effective_y_min)) {
+            effective_y_min = rotary_clearance_y_min;
+        }
         for (int i = 0; i <= Z_AXIS; ++i) {
             if(!is_homed(i)) continue;
+            const float minimum = i == Y_AXIS ? effective_y_min : soft_endstop_min[i];
             if( 
-                ( (!isnan(soft_endstop_min[i]) && transformed_target[i] < soft_endstop_min[i]) && deltas[i] < 0 ) 
+                ( (!isnan(minimum) && transformed_target[i] < minimum) && deltas[i] < 0 )
                 || 
                 ( (!isnan(soft_endstop_max[i]) && transformed_target[i] > soft_endstop_max[i]) && deltas[i] > 0 )
             ) {
@@ -1923,7 +1937,7 @@ bool Robot::append_milestone(const float target[], float feed_rate, unsigned int
     while(THEKERNEL->get_feed_hold()) {
         THEKERNEL->call_event(ON_IDLE, this);
         // if we also got a HALT then break out of this
-        if(THEKERNEL->is_halted()) return false;
+        if(THEKERNEL->is_halted() || THECONVEYOR->motion_abort_requested()) return false;
     }
 
     // Append the block to the planner
@@ -1944,7 +1958,7 @@ bool Robot::append_milestone(const float target[], float feed_rate, unsigned int
 // Used to plan a single move used by things like endstops when homing, zprobe, extruder firmware retracts etc.
 bool Robot::delta_move(const float *delta, float rate_mm_s, uint8_t naxis)
 {
-    if(THEKERNEL->is_halted()) return false;
+    if(THEKERNEL->is_halted() || THECONVEYOR->motion_abort_requested()) return false;
 
     // catch negative or zero feed rates
     if(rate_mm_s <= 0.0F) {
@@ -2056,7 +2070,7 @@ bool Robot::append_line(Gcode *gcode, const float target[], float feed_rate, flo
         // segment 0 is already done - it's the end point of the previous move so we start at segment 1
         // We always add another point after this loop so we stop at segments-1, ie i < segments
         for (int i = 1; i < segments; i++) {
-            if(THEKERNEL->is_halted()) return false; // don't queue any more segments
+            if(THEKERNEL->is_halted() || THECONVEYOR->motion_abort_requested()) return false;
             for (int j = 0; j < n_motors; j++)
                 segment_end[j] += segment_delta[j];
 
@@ -2218,7 +2232,7 @@ bool Robot::append_arc(Gcode * gcode, const float target[], const float rotated_
         arc_target[this->plane_axis_2] = this->machine_position[this->plane_axis_2];
 
         for (i = 1; i < segments; i++) { // Increment (segments-1)
-            if(THEKERNEL->is_halted()) return false; // don't queue any more segments
+            if(THEKERNEL->is_halted() || THECONVEYOR->motion_abort_requested()) return false;
 
             if (count < this->arc_correction ) {
                 // Apply vector rotation matrix
@@ -2361,7 +2375,7 @@ bool Robot::is_homed_all_axes()
     }
     for (int i = X_AXIS; i <= Z_AXIS; ++i) {
         if (!this->is_homed(i)){
-            THEKERNEL->streams->printf("ERROR: Machine has not been homed. Use M888 to disable homed check\n");
+            THEKERNEL->streams->printf("ERROR: Machine has not been homed. Use M887 to disable homed check\n");
             THEKERNEL->set_halt_reason(HOME_FAIL);
             THEKERNEL->call_event(ON_HALT, nullptr);
             return false;

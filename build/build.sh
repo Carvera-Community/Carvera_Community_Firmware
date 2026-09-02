@@ -65,6 +65,7 @@ print_help() {
 
 # --- Main Execution ---
 main() {
+    local machine_family="${MACHINE:-carvera}"
     local requested_gcc_version_user="$DEFAULT_GCC_VERSION"
     local run_clean=false
     local show_help=false
@@ -135,6 +136,12 @@ main() {
         exit 0
     fi
 
+    for arg in "${make_extra_args[@]}"; do
+        if [[ "$arg" == MACHINE=* ]]; then
+            machine_family="${arg#MACHINE=}"
+        fi
+    done
+
     # --- Environment and Build Setup ---
     os=$(detect_os)
     cpu_count=$(get_cpu_count "$os")
@@ -170,8 +177,8 @@ main() {
         cd "$PROJECT_ROOT"
 
         if [[ "$run_clean" == true ]]; then
-            echo "Running: make clean" >&2
-            if ! make clean; then
+            echo "Running: make clean MACHINE=$machine_family" >&2
+            if ! make clean "MACHINE=$machine_family"; then
                 echo "Error: 'make clean' failed." >&2
                 exit 1
             fi
@@ -188,7 +195,11 @@ main() {
 
         # --- Handle Output Copy ---
         if [[ -n "$output_path" ]]; then
-            local source_file="$PROJECT_ROOT/LPC1768/main.bin"
+            local artifact_dir="LPC1768"
+            if [[ "$machine_family" == "z1" ]]; then
+                artifact_dir="LPC1768-z1"
+            fi
+            local source_file="$PROJECT_ROOT/$artifact_dir/main.bin"
             local dest_path
             local dest_dir
 

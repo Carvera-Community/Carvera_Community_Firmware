@@ -41,9 +41,16 @@
 #include "SwitchPublicAccess.h"
 #include "ZProbePublicAccess.h"
 #include "MainButtonPublicAccess.h"
+#include "modules/tools/accessories/BedCleaning.h"
+#include "modules/tools/accessories/SpindleAccessories.h"
 #include "mbed.h"
 #include "utils.h"
 #include "WifiPublicAccess.h"
+#if defined(REMOTE_SETTINGS_TRANSFER)
+#include "modules/communication/RemoteTransfer.h"
+#endif
+
+#include <algorithm>
 
 #ifndef NO_TOOLS_LASER
 #include "Laser.h"
@@ -73,6 +80,28 @@ static float local_params_storage[30];
 #define	EEP_MAX_PAGE_SIZE	32
 #define EEPROM_DATA_STARTPAGE	1
 #define EEPROM_FACTORYSET_PAGE	16
+#if defined(MACHINE_FAMILY_Z1)
+constexpr int boot_serial_baud = 230400;
+constexpr FACTORY_SET default_factory_settings{Z1, 0, 0, 0};
+#else
+constexpr int boot_serial_baud = 115200;
+constexpr FACTORY_SET default_factory_settings{CARVERA, 0x04, 0, 0};
+#endif
+
+namespace {
+struct StockEepromData {
+    float TLO;
+    float G54[3];
+    float REFMZ;
+    float TOOLMZ;
+    float reserve;
+    int TOOL;
+    float G54AB[2];
+};
+
+static_assert(sizeof(StockEepromData) == 40, "Unexpected stock EEPROM record size");
+} // namespace
+
 // The kernel is the central point in Smoothie : it stores modules, and handles event calls
 Kernel::Kernel()
 {
@@ -83,8 +112,6 @@ Kernel::Kernel()
     stop_request = false;
     uploading = false;
     laser_mode = false;
-    vacuum_mode = false;
-    extout_mode = false;
     optional_stop_mode = false;
     line_by_line_exec_mode = false;
     sleeping = false;
@@ -98,6 +125,7 @@ Kernel::Kernel()
     probe_addr = 0;
     checkled = false;
     spindleon = false;
+    for (bool &axis_on : axis_is_on) axis_on = false;
     debug_flags = {};
     cachewait = false;
     disable_serial_console = false;
@@ -105,6 +133,10 @@ Kernel::Kernel()
     flex_compensation_load_error = false;
     config_load_error = false;
     dispatching_console_line = false;
+    steppers_powered = false;
+    steppers_powered_at_us = 0;
+    bed_cleaning = nullptr;
+    spindle_accessories = nullptr;
 
     local_vars   = local_vars_storage;
     local_params = local_params_storage;
@@ -119,18 +151,39 @@ Kernel::Kernel()
     this->i2c = new mbed::I2C(P0_27, P0_28);
     this->i2c->frequency(200000);
 
-    // Bring up streams + serial console first so factory and config parser
-    // errors are visible on the host link. Baud is hard-coded here and gets
-    // re-applied from config later in SerialConsole::on_module_loaded().
+    // Bring up serial output first so factory and config errors are visible.
     this->streams = new StreamOutputPool();
-    this->serial  = new SerialConsole(P2_8, P2_9, 115200);
+    this->serial = new SerialConsole(P2_8, P2_9, boot_serial_baud);
     this->streams->append_stream(this->serial);
 
     this->factory_set = new FACTORY_SET();
     // read Factory setting data from eeprom
     this->read_Factory_data();
+#if defined(REMOTE_SETTINGS_TRANSFER)
+    const FACTORY_SET previous = *this->factory_set;
+    FACTORY_SET received = previous;
+    const remote::Result factory_result = remote::receive_factory_settings(*this->serial, previous, received);
+    const bool factory_changed = received.MachineModel != previous.MachineModel ||
+                                 received.FuncSetting != previous.FuncSetting ||
+                                 received.reserve1 != previous.reserve1 || received.reserve2 != previous.reserve2;
+    if (factory_result == remote::Result::success) {
+        bool stored = true;
+        if (factory_changed) {
+            *this->factory_set = received;
+            stored = write_Factory_data();
+            if (!stored) *this->factory_set = previous;
+        }
+        remote::finish_factory_settings(*this->serial, stored);
+        if (stored && factory_changed) system_reset(false);
+    } else if (factory_result != remote::Result::cancelled) {
+        this->streams->printf(
+            "ERROR: factory settings transfer failed (%u); using stored settings\n",
+            static_cast<unsigned>(factory_result));
+    }
+#else
     // read Factory settings data from sd
     this->read_Factroy_SD();
+#endif
 
 
     // Config next, but does not load cache yet
@@ -171,8 +224,8 @@ Kernel::Kernel()
         delete this->serial;
         this->serial = nullptr;
     } else {
-        // add_module() runs SerialConsole::on_module_loaded() which re-reads
-        // uart.baud_rate from config and applies it to the hardware.
+        // add_module() runs SerialConsole::on_module_loaded(). Carvera applies
+        // uart.baud_rate there; the Z1 serial link remains fixed.
         this->add_module( this->serial );
     }
 
@@ -230,6 +283,18 @@ Kernel::Kernel()
 
     this->planner = new Planner();
     this->configurator = new Configurator();
+}
+
+void Kernel::on_steppers_powered(bool powered, uint32_t now_us)
+{
+    steppers_powered = powered;
+    if (powered)
+        steppers_powered_at_us = now_us;
+}
+
+bool Kernel::stepper_alarms_enabled(uint32_t now_us, uint32_t settle_us) const
+{
+    return steppers_powered && (settle_us == 0 || now_us - steppers_powered_at_us >= settle_us);
 }
 
 void Kernel::protocol_from_name(const std::string& name, ProtocolMode& protocol)
@@ -332,8 +397,9 @@ std::string Kernel::get_query_string()
 #endif
 
         // work space position
-        mpos[A_AXIS] = robot->actuators[A_AXIS]->get_current_position();
-        mpos[B_AXIS] = robot->actuators[B_AXIS]->get_current_position();
+        const int motor_count = robot->get_number_registered_motors();
+        mpos[A_AXIS] = motor_count > A_AXIS ? robot->actuators[A_AXIS]->get_current_position() : 0.0F;
+        mpos[B_AXIS] = motor_count > B_AXIS ? robot->actuators[B_AXIS]->get_current_position() : 0.0F;
         
         Robot::wcs_t pos = robot->mcs2wcs(mpos);
         n = snprintf(buf, sizeof(buf), "%1.4f,%1.4f,%1.4f", robot->from_millimeters(std::get<X_AXIS>(pos)), robot->from_millimeters(std::get<Y_AXIS>(pos)), robot->from_millimeters(std::get<Z_AXIS>(pos)));
@@ -400,7 +466,8 @@ std::string Kernel::get_query_string()
     struct spindle_status ss;
     ok = PublicData::get_value(pwm_spindle_control_checksum, get_spindle_status_checksum, &ss);
     if (ok) {
-        n= snprintf(buf, sizeof(buf), "|S:%1.1f,%1.1f,%1.1f,%d", ss.current_rpm, ss.target_rpm, ss.factor, int(this->get_vacuum_mode()));
+        n = snprintf(buf, sizeof(buf), "|S:%1.1f,%1.1f,%1.1f,%d", ss.current_rpm, ss.target_rpm, ss.factor,
+                     int(this->spindle_accessories->chip_clear_enabled()));
         if(n > sizeof(buf)) n= sizeof(buf);
         str.append(buf, n);
     }
@@ -420,8 +487,16 @@ std::string Kernel::get_query_string()
     n= snprintf(buf, sizeof(buf), ",%1.1f", temp.current_temperature);
     if(n > sizeof(buf)) n= sizeof(buf);
     str.append(buf, n);
-	// get extout_mode 
-	n= snprintf(buf, sizeof(buf), ",%d,%d,%d", 0, 0, int(this->get_extout_mode()));
+#if defined(MACHINE_FAMILY_Z1)
+    laser_status accessory_laser{};
+    PublicData::get_value(laser_checksum, get_laser_status_checksum, &accessory_laser);
+    n = snprintf(buf, sizeof(buf), ",%d,%d,%d,%d",
+        int(this->spindle_accessories->auto_blowing_enabled()),
+        int(this->bed_cleaning->automatic_cleaning_enabled()), 0,
+        int(accessory_laser.static_removal));
+#else
+	n = snprintf(buf, sizeof(buf), ",%d,%d,%d", 0, 0, int(this->spindle_accessories->extendout_enabled()));
+#endif
     if(n > sizeof(buf)) n= sizeof(buf);
     str.append(buf, n);
 
@@ -503,7 +578,9 @@ std::string Kernel::get_query_string()
     }
     
     // machine state
-    n = snprintf(buf, sizeof(buf), "|C:%d,%d,%d,%d", THEKERNEL->factory_set->MachineModel,THEKERNEL->factory_set->FuncSetting,THEROBOT->inch_mode,THEROBOT->absolute_mode);
+    n = snprintf(buf, sizeof(buf), "|C:%u,%d,%d,%d",
+                 static_cast<unsigned>(THEKERNEL->factory_set->MachineModel),
+                 THEKERNEL->factory_set->FuncSetting, THEROBOT->inch_mode, THEROBOT->absolute_mode);
     if(n > sizeof(buf)) n = sizeof(buf);
     str.append(buf, n);
 
@@ -769,7 +846,25 @@ void Kernel::read_eeprom_data()
 
     wait(0.05);
 
-    memcpy(this->eeprom_data, i2c_buffer, size);
+    const bool stock_layout = std::all_of(i2c_buffer + sizeof(StockEepromData), i2c_buffer + size,
+                                          [](char byte) { return static_cast<unsigned char>(byte) == 0xff; });
+    if (!stock_layout) {
+        memcpy(this->eeprom_data, i2c_buffer, size);
+        return;
+    }
+
+    StockEepromData stored;
+    memcpy(&stored, i2c_buffer, sizeof(stored));
+    memset(this->eeprom_data, 0xff, sizeof(*this->eeprom_data));
+    this->eeprom_data->TLO = stored.TLO;
+    this->eeprom_data->REFMZ = stored.REFMZ;
+    this->eeprom_data->TOOLMZ = stored.TOOLMZ;
+    this->eeprom_data->reserve = stored.reserve;
+    this->eeprom_data->TOOL = stored.TOOL;
+    this->eeprom_data->WCScoord[0][0] = stored.G54[0];
+    this->eeprom_data->WCScoord[0][1] = stored.G54[1];
+    this->eeprom_data->WCScoord[0][2] = stored.G54[2];
+    this->eeprom_data->WCScoord[0][3] = stored.G54AB[0];
 }
 
 void Kernel::write_eeprom_data()
@@ -903,6 +998,39 @@ void Kernel::check_eeprom_data()
 		this->write_eeprom_data();
 }
 
+void Kernel::dump_eeprom(StreamOutput *stream)
+{
+    constexpr uint16_t eeprom_size = 4096;
+    constexpr uint16_t row_size = 16;
+    unsigned char data[row_size];
+    uint16_t crc = 0;
+
+    for (uint16_t address = 0; address < eeprom_size; address += row_size) {
+        this->i2c->is_timed_out();
+        this->i2c->start();
+        bool ok = this->i2c->write(0xA0) && this->i2c->write(address >> 8) && this->i2c->write(address & 0xff);
+        if (ok) {
+            this->i2c->start();
+            ok = this->i2c->write(0xA1);
+        }
+        for (uint16_t i = 0; ok && i < row_size; ++i)
+            data[i] = this->i2c->read(i + 1 < row_size ? mbed::I2C::ACK : mbed::I2C::NoACK);
+        this->i2c->stop();
+        ok = ok && !this->i2c->is_timed_out();
+        if (!ok) {
+            stream->printf("ERROR: EEPROM read failed at %04X\r\n", address);
+            return;
+        }
+
+        crc = crc16::ccitt_update(crc, data, row_size);
+        stream->printf("%04X:", address);
+        for (unsigned char byte : data)
+            stream->printf("%02X", byte);
+        stream->printf("\r\n");
+    }
+    stream->printf("CRC16-CCITT:%04X\r\n", crc);
+}
+
 void Kernel::read_Factory_data()
 {
 	unsigned int size = sizeof(FACTORY_SET)+4;	//0x5A 0xA5 DATA CRC(2byte)
@@ -934,20 +1062,16 @@ void Kernel::read_Factory_data()
     }
     else
     {
-    	this->factory_set->MachineModel = 1;
-    	this->factory_set->FuncSetting = 0x04;
-    	this->factory_set->reserve1 = 0;
-    	this->factory_set->reserve2 = 0;
-    	
+        *this->factory_set = default_factory_settings;
     }
     
-    if(this->factory_set->MachineModel == 1)
+    if(this->factory_set->MachineModel == Machine::carvera)
     {
     	this->factory_set->FuncSetting |= 0x04;
     }
 }
 
-void Kernel::write_Factory_data()
+bool Kernel::write_Factory_data()
 {
 	unsigned int size = sizeof(FACTORY_SET);
 	unsigned int datalen = size + 4;
@@ -986,7 +1110,9 @@ void Kernel::write_Factory_data()
 	}
 	if (result != 0) {
 		this->streams->printf("ERROR: FACTORY setting data write error:%d\n",pagenum);
-	} 
+		return false;
+	}
+	return true;
 }
 
 void Kernel::erase_Factory_data()
@@ -1025,17 +1151,12 @@ void Kernel::erase_Factory_data()
 	}
 }
 
-#define Machine_Model_checksum             		CHECKSUM("Machine_Model")
-#define A_Axis_home_enable_checksum             CHECKSUM("A_Axis_home_enable")
-#define C_Axis_home_enable_checksum             CHECKSUM("C_Axis_home_enable")
-#define ATC_enable_checksum             		CHECKSUM("Atc_enable")
-#define CE1_Expand								CHECKSUM("CE1_Expand")
-
 void Kernel::read_Factroy_SD()
 {
 	string file_name = "/sd/factory.ini";
 	FILE *lp = fwfs::fopen(file_name.c_str(), "r");
 	bool bneedwrite = false;
+    FactorySettings settings(*factory_set);
     int ln= 1;
     if(lp) {
         // For each line
@@ -1043,58 +1164,12 @@ void Kernel::read_Factroy_SD()
         	string line;
         	if(Factroy_readLine(line, ln++, lp)) 
         	{ 
-        		uint16_t keychecksum;
-        		unsigned char value;
-        		if(process_line(line, &keychecksum, &value))
-        		{
-        			switch(keychecksum)
-        			{
-        				case Machine_Model_checksum:
-        					this->factory_set->MachineModel = value;
-        					bneedwrite = true;
-        					break;
-        				case A_Axis_home_enable_checksum:
-        					if( 1 == value )
-        						this->factory_set->FuncSetting |= 1<<0;
-        					else
-        						this->factory_set->FuncSetting &= ~(1<<0);
-        					
-        					bneedwrite = true;
-        					break;
-        				case C_Axis_home_enable_checksum:
-        					if( 1 == value )
-        						this->factory_set->FuncSetting |= 1<<1;
-        					else
-        						this->factory_set->FuncSetting &= ~(1<<1);
-        						
-        					bneedwrite = true;
-        					break;
-        				case ATC_enable_checksum:
-        					if( 1 == value )
-        						this->factory_set->FuncSetting |= 1<<2;
-        					else
-        						this->factory_set->FuncSetting &= ~(1<<2);
-        					
-        					bneedwrite = true;
-        					break;
-        				case CE1_Expand:
-        					if( 1 == value )
-        						this->factory_set->FuncSetting |= 1<<3;
-        					else
-        						this->factory_set->FuncSetting &= ~(1<<3);
-        					
-        					bneedwrite = true;
-        					break;
-        				default:
-        					break;
-        					
-        			}
-        			
-        		}
-        		else
-        		{
-        			continue;	
-        		}
+				const FactorySettings::LineResult result = settings.apply_line(line);
+				if (result == FactorySettings::LineResult::missing_pair)
+					streams->printf("ERROR: factory file line %s is invalid, no key value pair found\r\n", line.c_str());
+				else if (result == FactorySettings::LineResult::missing_value)
+					streams->printf("ERROR: factory file line %s has no value\r\n", line.c_str());
+				bneedwrite = result == FactorySettings::LineResult::applied || bneedwrite;
         	}
         	else
         	{
@@ -1135,42 +1210,6 @@ bool Kernel::Factroy_readLine(string& line, int lineno, FILE *fp)
     return false;
 }
 
-bool Kernel::process_line(const string &buffer, uint16_t *check_sum, unsigned char *value)
-{
-	if( buffer[0] == '#' ) {
-        return false;
-    }
-    if( buffer.length() < 3 ) {
-        return false;
-    }
-
-    size_t begin_key = buffer.find_first_not_of(" \t");
-    if(begin_key == string::npos || buffer[begin_key] == '#') return false; // comment line or blank line
-    
-    size_t end_key = buffer.find_first_of(" \t", begin_key);
-    if(end_key == string::npos) {
-        THEKERNEL->streams->printf("ERROR: factory file line %s is invalid, no key value pair found\r\n", buffer.c_str());
-        return false;
-    }
-
-    size_t begin_value = buffer.find_first_not_of(" \t", end_key);
-    if(begin_value == string::npos || buffer[begin_value] == '#') {
-        THEKERNEL->streams->printf("ERROR: factory file line %s has no value\r\n", buffer.c_str());
-        return false;
-    }
-    
-    string key= buffer.substr(begin_key,  end_key - begin_key);
-    *check_sum = get_checksum(key);
-    
-    size_t end_value = buffer.find_first_of("\r\n# \t", begin_value + 1);
-    size_t vsize = end_value == string::npos ? end_value : end_value - begin_value;
-    char* endPtr;
-    string sValue = buffer.substr(begin_value, vsize);
-    *value = std::strtol(sValue.c_str(), &endPtr, 10);
-    return true;
-}
-
-
 bool Kernel::Check_Factory_Data(unsigned char *data, unsigned int len)
 {
 	if((data[0] == 0x5A) && (data[1] == 0xA5))
@@ -1193,11 +1232,9 @@ bool Kernel::Check_Factory_Data(unsigned char *data, unsigned int len)
 
 int Kernel::iic_page_write(unsigned char u8PageNum, unsigned char u8len, unsigned char *pu8Array)
 {
-	unsigned char   i;
 	unsigned int  	u16ByteAdd;
 	unsigned char   u8HighAdd;
 	unsigned char   u8LowAdd;
-	unsigned char   *pu8ByteArray;
 
 	u16ByteAdd = (unsigned int)u8PageNum;
 	u16ByteAdd = (u16ByteAdd<<5);
@@ -1210,25 +1247,13 @@ int Kernel::iic_page_write(unsigned char u8PageNum, unsigned char u8len, unsigne
 	}
 
 
+	this->i2c->is_timed_out();
 	this->i2c->start();
-	this->i2c->write(0xA0);
-
-	this->i2c->write(u8HighAdd);
-	this->i2c->write(u8LowAdd);
-
-	pu8ByteArray = pu8Array;
-
-	/* write the array to eeprom */
-	for(i=0;i<u8len;i++)
-	{
-		this->i2c->write(*pu8ByteArray);
-		pu8ByteArray++;
-	}
-
+	bool ok = this->i2c->write(0xA0) && this->i2c->write(u8HighAdd) && this->i2c->write(u8LowAdd);
+	for(unsigned char i = 0; ok && i < u8len; ++i)
+		ok = this->i2c->write(pu8Array[i]);
 	this->i2c->stop();
-	this->i2c->stop();
-
-	return 0;
+	return ok && !this->i2c->is_timed_out() ? 0 : 1;
 }
 
 

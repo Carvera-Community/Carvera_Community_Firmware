@@ -12,12 +12,13 @@
 
 class SpindleControl: public Module {
     public:
-        SpindleControl() {};
+        SpindleControl() : spindle_on(false), handling_gcode(false) {};
         virtual ~SpindleControl() {};
         virtual void on_module_loaded() {};
 
     protected:
         bool spindle_on;
+        bool handling_gcode;
 
     private:
         void on_gcode_received(void *argument);
