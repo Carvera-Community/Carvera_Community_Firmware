@@ -1,4 +1,5 @@
 [unreleased]
+- Fixed: Arcs start at the current position after jogging, direct moves, and coordinate resets.
 - Fixed: CMake builds include the merged SRAM allocator and Makera protocol sources and report the consolidated heap.
 - Enhancement: Add a tool to check or fix the code formatting according to Google C/C++ style guide.
 - Enhancement: Add CMake support for better IDE integration
