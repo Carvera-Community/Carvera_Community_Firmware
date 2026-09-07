@@ -267,14 +267,43 @@ void SimpleShell::on_gcode_received(void *argument)
 			THEKERNEL->set_line_by_line_exec_mode(true);
 			gcode->stream->printf("turning line by line execute mode on.\r\nPlaying file will pause after every valid gcode line, skipping empty and commented lines\r\n");
 		}else if (gcode->m == 337){
-            struct led_rgb colors;
-            colors.r = 0;
-            colors.g = 0;
-            colors.b = 0;
-            if (gcode->has_letter('R')) colors.r = gcode->get_value('R');
-            if (gcode->has_letter('U')) colors.g = gcode->get_value('U');
-            if (gcode->has_letter('B')) colors.b = gcode->get_value('B');
-            PublicData::set_value(main_button_checksum, set_led_bar_checksum, &colors);
+            int index = 0;
+            if (gcode->has_letter('I')) index = gcode->get_int('I');
+            if (gcode->has_letter('R') || gcode->has_letter('U') || gcode->has_letter('B')) {
+                struct led_rgb colors;
+                colors.r = 0;
+                colors.g = 0;
+                colors.b = 0;
+                colors.i = index;
+                if (gcode->has_letter('R')) colors.r = gcode->get_value('R');
+                if (gcode->has_letter('U')) colors.g = gcode->get_value('U');
+                if (gcode->has_letter('B')) colors.b = gcode->get_value('B');
+                PublicData::set_value(main_button_checksum, set_led_bar_checksum, &colors);
+            } else {
+                struct led_bar_state bar;
+                if (PublicData::get_value(main_button_checksum, get_led_bar_checksum, &bar)) {
+                    if (index >= 1 && index <= bar.n) {
+                        gcode->stream->printf("I%d R:%dG:%dB:%d\r\n", index, bar.r[index - 1], bar.g[index - 1], bar.b[index - 1]);
+                    } else {
+                        bool same = true;
+                        for (uint8_t i = 1; i < bar.n; i++) {
+                            if (bar.r[i] != bar.r[0] || bar.g[i] != bar.g[0] || bar.b[i] != bar.b[0]) {
+                                same = false;
+                                break;
+                            }
+                        }
+                        if (same || bar.n == 1) {
+                            gcode->stream->printf("R:%dG:%dB:%d\r\n", bar.r[0], bar.g[0], bar.b[0]);
+                        } else {
+                            for (uint8_t i = 0; i < bar.n; i++) {
+                                gcode->stream->printf("I%d R:%dG:%dB:%d\r\n", i + 1, bar.r[i], bar.g[i], bar.b[i]);
+                            }
+                        }
+                    }
+                }
+            }
+        } else if (gcode->m == 338) {
+            PublicData::set_value(main_button_checksum, restore_led_bar_checksum, nullptr);
         } else if (gcode->m == 485) { //swap communication protocols
             if (gcode->subcode == 1) {
                 gcode->stream->printf("setting to smoothie communication protocol\n");

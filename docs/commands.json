@@ -1211,7 +1211,7 @@
     },
     "M337": {
       "type": "mcode",
-      "description": "Set the LED bar color. (Works on all machines except for Carvera C1)",
+      "description": "Set LED colour. Without R/U/B, reports the current colour",
       "parameters": {
         "R": {
           "required": false,
@@ -1227,8 +1227,18 @@
           "required": false,
           "description": "Blue 0–255.",
           "default": null
+        },
+        "I": {
+          "required": false,
+          "description": "LED index 1–5. Omit to address all the leds.",
+          "default": null
         }
       }
+    },
+    "M338": {
+      "type": "mcode",
+      "description": "Restore the LEDs to the current machine status colour.",
+      "parameters": {}
     },
     "M370": {
       "type": "mcode",
