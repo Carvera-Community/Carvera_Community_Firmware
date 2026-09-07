@@ -1,3 +1,6 @@
+[unreleased]
+- Fixed: Arcs start at the current position after jogging, direct moves, and coordinate resets.
+
 [2.2.0c-RC3]
 - Fixed: A-axis position tracking no longer lags the commanded angle when a move is smaller than one stepper step
 - Fixed: Makera protocol realtime control commands were not immediately processed under certain conditions
