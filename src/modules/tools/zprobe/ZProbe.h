@@ -184,6 +184,7 @@ private:
     volatile bool calibrate_detected;
     volatile bool probe_triggered;
     volatile bool halt_pending;
+    volatile uint32_t probe_crash_count;
 
     PROBING_CYCLES probing_cycle;
 
