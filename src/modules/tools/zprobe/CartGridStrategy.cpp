@@ -1184,7 +1184,7 @@ bool CartGridStrategy::doFlexMeasurement(Gcode *gc)
             zprobe->coordinated_move(probe_x, NAN, NAN, params.rapid_rate / 60);
             
             // Use ZProbe's internal fast_slow_probe_sequence for Y-axis
-            zprobe->fast_slow_probe_sequence_public(Y_AXIS, 1); // Probe in positive Y direction
+            if (!zprobe->fast_slow_probe_sequence_public(Y_AXIS, 1)) return false;
             
             // Get the result from ZProbe's output coordinates
             xy_output_coordinates& coords = zprobe->get_output_coordinates();
