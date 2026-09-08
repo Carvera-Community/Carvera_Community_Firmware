@@ -1,5 +1,6 @@
 [unreleased]
 - Fixed: Arcs start at the current position after jogging, direct moves, and coordinate resets.
+- Fixed: Prevent compressed file corruption during decompression.
 
 [2.2.0c-RC3]
 - Fixed: A-axis position tracking no longer lags the commanded angle when a move is smaller than one stepper step
