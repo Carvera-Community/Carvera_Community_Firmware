@@ -1,0 +1,296 @@
+# Makera Z1 embedded defaults
+# Factory calibration and user settings override these values.
+
+# Motion planner
+new_status_format true
+default_seek_rate 2000
+junction_deviation 0.01
+acceleration 150
+
+# Axes
+# X axis
+alpha_step_pin 1.28
+alpha_dir_pin 1.29
+alpha_en_pin 1.27
+alpha_max_rate 1200.0
+alpha_steps_per_mm 1600
+alpha_min_endstop 0.24^
+alpha_max_endstop 0.24^
+alpha_homing_direction home_to_max
+alpha_max 0
+alpha_fast_homing_rate_mm_s 15
+alpha_slow_homing_rate_mm_s 3
+alpha_limit_enable true
+alpha_homing_retract_mm 1
+alpha_motor_alarm_pin nc
+
+# Y axis
+beta_step_pin 1.25
+beta_dir_pin 1.26!
+beta_en_pin 1.24
+beta_max_rate 1200.0
+beta_steps_per_mm 1600
+beta_min_endstop 0.25^
+beta_max_endstop 0.25^
+beta_homing_direction home_to_max
+beta_max 0
+beta_max_travel 380
+beta_fast_homing_rate_mm_s 15
+beta_slow_homing_rate_mm_s 3
+beta_limit_enable true
+beta_homing_retract_mm 1
+beta_motor_alarm_pin nc
+
+# Z axis
+gamma_step_pin 1.22
+gamma_dir_pin 1.23
+gamma_en_pin 1.21
+gamma_max_rate 600.0
+gamma_steps_per_mm 3200
+gamma_min_endstop 1.1^
+gamma_max_endstop 1.1^
+gamma_homing_direction home_to_max
+gamma_max 0
+gamma_max_travel 150
+gamma_fast_homing_rate_mm_s 10
+gamma_slow_homing_rate_mm_s 3
+gamma_limit_enable true
+gamma_homing_retract_mm 1
+gamma_motor_alarm_pin nc
+
+# Rotary A axis
+delta_step_pin 1.19
+delta_dir_pin 1.20!
+delta_en_pin 1.18
+delta_max_rate 3600.0
+delta_steps_per_mm 88.888889
+delta_acceleration 360.0
+delta_min_endstop 1.4^
+delta_max_endstop 1.4^
+delta_min -0.5
+delta_max 0
+delta_max_travel 380
+delta_fast_homing_rate_mm_s 50
+delta_limit_enable true
+delta_homing_retract_mm 0.5
+
+# Unused B axis
+epsilon_step_pin 1.22
+epsilon_dir_pin 1.0
+epsilon_en_pin 1.10
+epsilon_max_rate 100.0
+epsilon_steps_per_mm 888.88888
+epsilon_acceleration 10.0
+
+# Controller link and switched outputs
+wifi.enable false
+laser_module_pin 0.11
+laser_module_static_removal_enable true
+accessory.chip_clear_switch extendout
+accessory.chip_clear_power 80
+accessory.auto_blowing_switch spindlefan
+accessory.auto_blowing_power 30
+switch.vacuum.enable true
+switch.vacuum.output_pin 2.2
+switch.vacuum.output_type hwpwm
+switch.spindlefan.enable true
+switch.spindlefan.input_on_command M811
+switch.spindlefan.input_off_command M812
+switch.spindlefan.output_pin 2.0
+switch.spindlefan.output_type hwpwm
+switch.spindlefan.failsafe_set_to 1
+switch.light.enable true
+switch.light.output_pin 3.25
+switch.light.input_on_command M821
+switch.light.input_off_command M822
+switch.light.ignore_on_halt true
+switch.toolsensor.enable true
+switch.toolsensor.output_pin 2.13
+switch.toolsensor.input_on_command M831
+switch.toolsensor.input_off_command M832
+switch.probecharger.enable true
+switch.probecharger.output_pin 0.23
+switch.probecharger.input_on_command M841
+switch.probecharger.input_off_command M842
+switch.probecharger.ignore_on_halt true
+switch.probecharger.startup_state true
+switch.extendout.enable true
+switch.extendout.output_pin 2.2
+switch.extendout.output_type hwpwm
+switch.extendout.input_on_command M851
+switch.extendout.input_off_command M852
+
+# Temperature monitoring
+temperature_control.spindle.enable true
+temperature_control.spindle.thermistor_pin 1.31
+temperature_control.spindle.beta 3950
+temperature_control.spindle.designator M
+temperatureswitch.spindle.enable true
+temperatureswitch.spindle.switch spindlefan
+
+# Homing and travel limits
+cover_endstop 1.9!v
+stepper_alarm_settle_ms 300
+
+# Probing and bed leveling
+zprobe.debounce_ms 1
+zprobe.calibrate_pin 1.10^
+# Stop probe TLO calibration when the electronic tool setter triggers.
+zprobe.require_probe_trigger_for_calibration false
+leveling-strategy.rectangular-grid.enable true
+leveling-strategy.rectangular-grid.size 15
+leveling-strategy.rectangular-grid.x_size 50
+leveling-strategy.rectangular-grid.y_size 50
+leveling-strategy.rectangular-grid.human_readable true
+leveling-strategy.rectangular-grid.only_by_two_corners true
+
+# Board controls and status light
+second_usb_serial_enable false
+main_button_pin 1.8!^
+e_stop_pin 0.20^
+ps12_pin 2.12
+ps24_pin 3.26
+main_button_LED_R_pin nc
+main_button_LED_G_pin 0.22
+main_button_LED_B_pin nc
+main_button_long_press_enable None
+
+# Spindle control
+spindle.pwm_pin 2.5
+spindle.pwm_period 10000
+spindle.max_pwm 0.9
+spindle.feedback_pin 2.7
+spindle.pulses_per_rev 4
+spindle.control_P 0.00001
+spindle.control_I 0.00005
+spindle.control_D 0.00005
+spindle.control_P_scale 0.37
+spindle.control_D_scale 0.95
+spindle.delayed_D_control true
+spindle.min_running_pwm 0.1
+spindle.acc_ratio 1
+spindle.alarm_pin 0.19^
+
+# User-adjustable defaults
+user_setting_start true
+switch.vacuum.default_on_value 80
+switch.light.startup_state true
+light.turn_off_min 0.0
+power.auto_sleep false
+power.auto_sleep_min 5
+
+# Calibrated machine coordinates
+coordinate.anchor1_x -192.4
+coordinate.anchor1_y -194.3
+coordinate.anchor2_offset_x 88.5
+coordinate.anchor2_offset_y 45.0
+coordinate.toolrack_offset_x 48.78
+coordinate.toolrack_offset_y 179.74
+coordinate.toolrack_z -108
+coordinate.rotation_offset_x 12.0
+coordinate.rotation_offset_y 85.5
+coordinate.rotation_offset_z 23.0
+coordinate.anchor_length 100.0
+coordinate.worksize_x 300.0
+coordinate.worksize_y 200.0
+coordinate.clearance_x -11.6
+coordinate.clearance_y -14.6
+coordinate.clearance_z -1.0
+
+# Software limits and motion tuning
+soft_endstop.enable false
+soft_endstop.x_min -206.0
+soft_endstop.y_min -206.0
+soft_endstop.rotary_y_min -160.0
+soft_endstop.z_min -102.0
+
+# Controller link and manual tool handling
+protocol makera
+wifi.machine_name CARVERA_AIR_01001
+atc.homing_retract_mm 0.4
+atc.action_mm 1.6
+atc.detector.detect_rate_mm_s 20
+atc.detector.detect_travel_mm 5
+atc.safe_z_mm -20.0
+atc.safe_z_empty_mm -50.0
+atc.safe_z_offset_mm 15.0
+atc.fast_z_rate_mm_m 1000
+atc.slow_z_rate_mm_m 200
+atc.probe.fast_rate_mm_m 500
+atc.probe.slow_rate_mm_m 100
+atc.probe.retract_mm 1
+
+# Laser and probe defaults
+laser_module_test_power 0.01
+laser_module_offset_x 0
+laser_module_offset_y 0
+laser_module_offset_z -7.0
+temperatureswitch.spindle.cooldown_power_laser 30.0
+zprobe.slow_feedrate 1.5
+zprobe.fast_feedrate 5
+zprobe.return_feedrate 20
+zprobe.probe_height 2
+zprobe.max_z 100
+spindle.default_rpm 10000
+temperature_control.spindle.max_temp 70
+
+# Additional outputs and power-board cooling
+switch.powerfan.enable true
+switch.powerfan.input_on_command M801
+switch.powerfan.input_off_command M802
+switch.powerfan.output_pin 2.3
+switch.powerfan.output_type hwpwm
+switch.powerfan.default_on_value 30
+switch.beep.enable true
+switch.beep.output_pin 1.15
+switch.beep.output_type digital
+switch.beep.input_on_command M861
+switch.beep.input_off_command M862
+switch.beep.ignore_on_halt true
+switch.beep.startup_state false
+switch.extendin.enable true
+switch.extendin.input_pin 0.21
+switch.extendin.input_pin_behavior freq_count
+temperature_control.power.enable true
+temperature_control.power.thermistor_pin 1.30
+temperature_control.power.heater_pin nc
+temperature_control.power.beta 3950
+temperature_control.power.get_m_code 106
+temperature_control.power.designator M
+temperature_control.power.max_temp 60
+temperatureswitch.power.enable true
+temperatureswitch.power.switch powerfan
+temperatureswitch.power.threshold_temp 20.0
+temperatureswitch.power.cooldown_power_init 20.0
+temperatureswitch.power.cooldown_power_step 2.5
+temperatureswitch.power.cooldown_delay 180
+
+# Enclosure and shutdown timing
+cover_endstop2 1.14!v
+spindle.delay_on_s 8.0
+spindle.delay_off_s 4.0
+light.ledBrightness 15
+
+# Automatic bed cleaning
+# The external output lowers the brush. The spindle fan blows chips away.
+accessory.bed_cleaning_switch extendout
+accessory.bed_cleaning_fan_switch spindlefan
+accessory.bed_cleaning_fan_power 100
+temperatureswitch.spindle.temperature_source module
+bed_cleaning.enable true
+# Sweep from the rear-left corner to the front-right edge, then park clear of the work area.
+bed_cleaning.x_min -192.4
+bed_cleaning.x_max -11.6
+bed_cleaning.y_min -194.3
+bed_cleaning.y_max -1.0
+bed_cleaning.park_y -14.6
+bed_cleaning.front_x -2.0
+bed_cleaning.cycles 1
+bed_cleaning.spacing 40 # Distance between successive sweep rows, in mm
+
+# CANopen
+canopen.can_enable true
+canopen.can_bitrate 1000000
+canopen.can_node_id 10
+canopen.slave_node_id 1 # Remote node; the setting name is retained for compatibility
+canopen.can_heartbeat_ms 1000

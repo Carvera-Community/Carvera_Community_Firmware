@@ -19,6 +19,7 @@ enum _EVENT_ENUM {
     ON_SECOND_TICK,
     ON_GET_PUBLIC_DATA,
     ON_SET_PUBLIC_DATA,
+    ON_ABORT,
     ON_HALT,
     ON_ENABLE,
     NUMBER_OF_DEFINED_EVENTS
@@ -48,6 +49,7 @@ public:
     virtual void on_second_tick(void *) {};
     virtual void on_get_public_data(void *) {};
     virtual void on_set_public_data(void *) {};
+    virtual void on_abort(void *) {};
     virtual void on_halt(void *) {};
     virtual void on_enable(void *) {};
 

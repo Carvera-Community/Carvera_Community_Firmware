@@ -51,10 +51,13 @@ class Endstops : public Module{
         uint32_t debounce_count;
         uint32_t  debounce_ms;
         axis_bitmap_t axis_to_home;
+        float rotary_clearance_y_min;
+        uint32_t stepper_alarm_settle_us;
 
         float trim_mm[3];
 
         Pin cover_endstop_pin;
+        Pin cover_endstop2_pin;
 
         // per endstop settings
         using endstop_info_t = struct {
