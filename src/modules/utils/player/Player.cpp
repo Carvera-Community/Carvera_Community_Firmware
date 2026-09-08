@@ -1542,8 +1542,6 @@ int Player::decompress(string sfilename, string dfilename, uint32_t sfilesize, S
 		{
 			u16Sum += fbuff[j];
 		}
-		// Set the file write system buffer 4096 Byte
-		setvbuf(f_out, (char*)&xbuff[4096], _IOFBF, 4096);
 		fwfs::fwrite(fbuff, sizeof(char),u32DcmprsSize, f_out);
 		u32TotalDcmprsSize += u32DcmprsSize;
 		u32BlockNum += 1;
