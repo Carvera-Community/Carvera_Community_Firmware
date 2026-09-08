@@ -59,11 +59,17 @@ MainButton::MainButton()
 	this->hold_toggle = 0;
     this->button_state = NONE;
     this->button_pressed = false;
+    this->led_override = false;
     this->stop_on_cover_open = false;
     this->sleep_countdown_us = us_ticker_read();
     this->light_countdown_us = us_ticker_read();
     this->power_fan_countdown_us = us_ticker_read();
     this->old_state = IDLE;
+    for (uint8_t i = 0; i < 5; i++) {
+        this->led_px[i][0] = 0;
+        this->led_px[i][1] = 0;
+        this->led_px[i][2] = 0;
+    }
 }
 
 void MainButton::on_module_loaded()
@@ -382,72 +388,14 @@ void MainButton::on_idle(void *argument)
     		// update led status
 		    if(CARVERA == THEKERNEL->factory_set->MachineModel)
 		    {
-	    		switch (state) {
-	    			case IDLE:
-	    			    this->main_button_LED_R.set(0);
-	    			    this->main_button_LED_G.set(0);
-	    			    this->main_button_LED_B.set(1);
-	    				break;
-	    			case RUN:
-	    			    this->main_button_LED_R.set(0);
-	    			    this->main_button_LED_G.set(1);
-	    			    this->main_button_LED_B.set(0);
-	    				break;
-	    			case HOME:
-	    			    this->main_button_LED_R.set(1);
-	    			    this->main_button_LED_G.set(1);
-	    			    this->main_button_LED_B.set(0);
-	    				break;
-	    			case HOLD:
-	    				this->hold_toggle ++;
-	    			    this->main_button_LED_R.set(0);
-	    			    this->main_button_LED_G.set(this->hold_toggle % 4  < 2 ? 1 : 0);
-	    			    this->main_button_LED_B.set(0);
-	    				break;
-	    			case ALARM:
-	    			    this->main_button_LED_R.set(1);
-	    			    this->main_button_LED_G.set(0);
-	    			    this->main_button_LED_B.set(0);
-	    			    break;
-	    			case SLEEP:
-	    			    this->main_button_LED_R.set(1);
-	    			    this->main_button_LED_G.set(1);
-	    			    this->main_button_LED_B.set(1);
-	    				break;
-	    			case SUSPEND:
-	    				this->hold_toggle ++;
-	    			    this->main_button_LED_R.set(0);
-	    			    this->main_button_LED_G.set(0);
-	    			    this->main_button_LED_B.set(this->hold_toggle % 4  < 2 ? 1 : 0);
-	    				break;
-	    			case WAIT:
-	    				this->hold_toggle ++;
-	    			    this->main_button_LED_R.set(this->hold_toggle % 4  < 2 ? 1 : 0);
-	    			    this->main_button_LED_G.set(this->hold_toggle % 4  < 2 ? 1 : 0);
-	    			    this->main_button_LED_B.set(0);
-	    				break;
-					case TOOL:
-						this->hold_toggle ++;
-						struct tool_status tool;
-						PublicData::get_value( atc_handler_checksum, get_tool_status_checksum, &tool );
-						uint8_t r = 0;
-						uint8_t g = 0;
-						uint8_t b = 0;
-						if (tool.target_collet_type == 0){
-							r = 0;
-							g = 1;
-							b = 1;
-						}else{
-							r = 1;
-							g = 1;
-							b = 0;
-						}
-						this->main_button_LED_R.set(this->hold_toggle % 4  < 2 ? r : 0);
-						this->main_button_LED_G.set(this->hold_toggle % 4  < 2 ? g : 0);
-						this->main_button_LED_B.set(this->hold_toggle % 4  < 2 ? b : 0);
-						break;
-	    		}
-
+				const bool blinking = (state == HOLD || state == SUSPEND || state == WAIT || state == TOOL);
+				if (this->led_override && !blinking && state == this->old_state) {
+					this->apply_led_rgb(this->led_px[0][0], this->led_px[0][1], this->led_px[0][2]);
+				} else {
+					this->led_override = false;
+					this->old_state = state;
+					this->apply_c1_status_leds(state);
+				}
 	    	}
 /*			else if(CARVERA_AIR == THEKERNEL->factory_set->MachineModel)
 		    {
@@ -634,6 +582,15 @@ void MainButton::on_get_public_data(void* argument)
 			// e-stop status
 			data[0] = (char)this->e_stop.get();
 			pdr->set_taken();
+    	} else if (pdr->second_element_is(get_led_bar_checksum)) {
+			struct led_bar_state *bar = static_cast<led_bar_state *>(pdr->get_data_ptr());
+			bar->n = (CARVERA == THEKERNEL->factory_set->MachineModel) ? 1 : 5;
+			for (uint8_t i = 0; i < 5; i++) {
+				bar->r[i] = this->led_px[i][0];
+				bar->g[i] = this->led_px[i][1];
+				bar->b[i] = this->led_px[i][2];
+			}
+			pdr->set_taken();
     	}
     }
 }
@@ -653,9 +610,32 @@ void MainButton::on_set_public_data(void* argument)
 			pdr->set_taken();
 		} else if (pdr->second_element_is(set_led_bar_checksum)) {
 			struct led_rgb *colors = static_cast<led_rgb *>(pdr->get_data_ptr());
-			THEKERNEL->streams->printf("R: %dG:%dB:%d", colors->r, colors->g, colors->b);
+			if (colors->i > 0) {
+				THEKERNEL->streams->printf("I%d R: %dG:%dB:%d", colors->i, colors->r, colors->g, colors->b);
+			} else {
+				THEKERNEL->streams->printf("R: %dG:%dB:%d", colors->r, colors->g, colors->b);
+			}
 			if (colors->r <= 255 && colors->g <= 255 && colors->b <= 255){
-				this->set_led_colors(colors->r, colors->g, colors->b);
+				if (CARVERA == THEKERNEL->factory_set->MachineModel) {
+					this->led_override = true;
+					this->old_state = THEKERNEL->get_state();
+					this->apply_led_rgb(colors->r, colors->g, colors->b);
+				} else if (colors->i >= 1 && colors->i <= 5) {
+					this->set_led_pixel(static_cast<uint8_t>(colors->i - 1), colors->r, colors->g, colors->b);
+				} else {
+					this->apply_led_rgb(colors->r, colors->g, colors->b);
+				}
+			}
+			pdr->set_taken();
+		} else if (pdr->second_element_is(restore_led_bar_checksum)) {
+			this->led_override = false;
+			this->old_state = 0xFF;
+			if (CARVERA == THEKERNEL->factory_set->MachineModel) {
+				uint8_t state = THEKERNEL->get_state();
+				this->old_state = state;
+				this->apply_c1_status_leds(state);
+			} else if (CARVERA_AIR == THEKERNEL->factory_set->MachineModel) {
+				this->led_tick(0);
 			}
 			pdr->set_taken();
     	}
@@ -819,8 +799,82 @@ uint32_t MainButton::led_tick(uint32_t dummy)
 	return 0;
 }
 
+void MainButton::apply_led_rgb(unsigned char r, unsigned char g, unsigned char b)
+{
+	if (CARVERA == THEKERNEL->factory_set->MachineModel) {
+		this->led_px[0][0] = r;
+		this->led_px[0][1] = g;
+		this->led_px[0][2] = b;
+		this->main_button_LED_R.set(r != 0);
+		this->main_button_LED_G.set(g != 0);
+		this->main_button_LED_B.set(b != 0);
+	} else {
+		this->set_led_colors(r, g, b);
+	}
+}
+
+void MainButton::apply_c1_status_leds(uint8_t state)
+{
+	switch (state) {
+		case IDLE:
+			this->apply_led_rgb(0, 0, 255);
+			break;
+		case RUN:
+			this->apply_led_rgb(0, 255, 0);
+			break;
+		case HOME:
+			this->apply_led_rgb(255, 255, 0);
+			break;
+		case HOLD:
+			this->hold_toggle++;
+			this->apply_led_rgb(0, this->hold_toggle % 4 < 2 ? 255 : 0, 0);
+			break;
+		case ALARM:
+			this->apply_led_rgb(255, 0, 0);
+			break;
+		case SLEEP:
+			this->apply_led_rgb(255, 255, 255);
+			break;
+		case SUSPEND:
+			this->hold_toggle++;
+			this->apply_led_rgb(0, 0, this->hold_toggle % 4 < 2 ? 255 : 0);
+			break;
+		case WAIT:
+			this->hold_toggle++;
+			this->apply_led_rgb(this->hold_toggle % 4 < 2 ? 255 : 0, this->hold_toggle % 4 < 2 ? 255 : 0, 0);
+			break;
+		case TOOL: {
+			this->hold_toggle++;
+			struct tool_status tool;
+			PublicData::get_value(atc_handler_checksum, get_tool_status_checksum, &tool);
+			uint8_t r = 0;
+			uint8_t g = 0;
+			uint8_t b = 0;
+			if (tool.target_collet_type == 0) {
+				g = 255;
+				b = 255;
+			} else {
+				r = 255;
+				g = 255;
+			}
+			if (this->hold_toggle % 4 >= 2) {
+				r = 0;
+				g = 0;
+				b = 0;
+			}
+			this->apply_led_rgb(r, g, b);
+			break;
+		}
+	}
+}
+
 void MainButton::set_led_color(unsigned char R1, unsigned char G1, unsigned char B1,unsigned char R2, unsigned char G2, unsigned char B2,unsigned char R3, unsigned char G3, unsigned char B3,unsigned char R4, unsigned char G4, unsigned char B4,unsigned char R5, unsigned char G5, unsigned char B5)
 {
+	this->led_px[0][0] = R1; this->led_px[0][1] = G1; this->led_px[0][2] = B1;
+	this->led_px[1][0] = R2; this->led_px[1][1] = G2; this->led_px[1][2] = B2;
+	this->led_px[2][0] = R3; this->led_px[2][1] = G3; this->led_px[2][2] = B3;
+	this->led_px[3][0] = R4; this->led_px[3][1] = G4; this->led_px[3][2] = B4;
+	this->led_px[4][0] = R5; this->led_px[4][1] = G5; this->led_px[4][2] = B5;
 	mainbutton_led_write_strip(R1, G1, B1, R2, G2, B2, R3, G3, B3, R4, G4, B4, R5, G5, B5);
 }
 
@@ -885,6 +939,24 @@ void MainButton::set_led_colors(unsigned char R, unsigned char G, unsigned char 
     //__enable_irq();
     NVIC_EnableIRQ(TIMER0_IRQn);     // Enable interrupt handler
 	NVIC_EnableIRQ(TIMER1_IRQn);     // Enable interrupt handler
+}
+
+void MainButton::set_led_pixel(uint8_t index, unsigned char r, unsigned char g, unsigned char b)
+{
+	if (index >= 5) return;
+	this->led_px[index][0] = r;
+	this->led_px[index][1] = g;
+	this->led_px[index][2] = b;
+	NVIC_DisableIRQ(TIMER0_IRQn);
+	NVIC_DisableIRQ(TIMER1_IRQn);
+	set_led_color(
+		this->led_px[0][0], this->led_px[0][1], this->led_px[0][2],
+		this->led_px[1][0], this->led_px[1][1], this->led_px[1][2],
+		this->led_px[2][0], this->led_px[2][1], this->led_px[2][2],
+		this->led_px[3][0], this->led_px[3][1], this->led_px[3][2],
+		this->led_px[4][0], this->led_px[4][1], this->led_px[4][2]);
+	NVIC_EnableIRQ(TIMER0_IRQn);
+	NVIC_EnableIRQ(TIMER1_IRQn);
 }
 
 void MainButton::set_led_num(unsigned char ColorFR, unsigned char ColorFG, unsigned char ColorFB, unsigned char ColorBR, unsigned char ColorBG, unsigned char ColorBB, unsigned char num, bool row)
