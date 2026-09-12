@@ -118,7 +118,6 @@ void ZProbe::config_load()
     this->probe_calibration_safety_margin = THEKERNEL->config->value(zprobe_checksum, probe_calibration_safety_margin_checksum)->as_number(0.1F);
     this->halt_pending = false;
     this->probe_triggered = false;
-    this->probe_crash_count = 0;
 
     // get strategies to load
     vector<uint16_t> modules;
