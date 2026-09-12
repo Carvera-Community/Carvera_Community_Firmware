@@ -10,7 +10,7 @@
 ### Carvera settings which are fixed ###
 new_status_format							true
 
-#sd_ok										false
+sd_ok											true
 
 #dfu_enable									false
 #msd_disable								true			# Disable the MSD (USB SDCARD)
@@ -97,6 +97,7 @@ epsilon_steps_per_mm						43200			# 1:27 rate may be steps per degree for exampl
 # atc.homing_rate_mm_s						0.4
 #atc.action_mm								2.0
 # atc.action_rate_mm_s						0.25
+# atc.3dtoolsetter						false			# opt-in: enable 3D toolsetter diameter touch-off script extensions
 
 # atc.detector.detect_pin						0.20^
 # atc.detector.detect_rate_mm_s				20				# Tool detect speed (mm / second)	
@@ -170,7 +171,7 @@ switch.probecharger.startup_state			true			# wireless probe startup state
 
 
 switch.extendout.enable						true			# Enable this module
-switch.extendout.output_pin					0.29			# Pin this module controls
+switch.extendout.output_pin					2.2				# Pin this module controls
 switch.extendout.output_type				swpwm			# Digital means this is just an on or off pin
 switch.extendout.input_on_command			M851			# Command that will turn this switch on
 switch.extendout.input_off_command			M852			# Command that will turn this switch off
@@ -268,6 +269,9 @@ zprobe.debounce_ms							1				# Set if noisy
 # zprobe.calibrate_pin						0.5^			# calibrate_pin
 zprobe.probe_tip_diameter					1.6				#3 axis probe tip diamter
 # zprobe.calibration_safety_margin              0.1             # max distance to move after calibrate pin but before probe pin detected
+# zprobe.3dtoolsetter                           false           # opt-in: for 3D probe tools, probe trigger alone completes tool calibration
+# zprobe.three_axis_probe_tdo_correction        0.0             # additive correction (mm) applied to 3-axis diameter touch-off measurement
+# zprobe.calibration_safety_margin              0.1             # max distance to move after calibrate pin but before probe pin detected
 
 # Leveling strategy
 leveling-strategy.rectangular-grid.enable					true
@@ -326,7 +330,8 @@ e_stop_pin									0.26!^			# Emergency stop pin
 # Spindle configuration
 #spindle.enable								true			# set this to false to disable the spindle module
 #spindle.type								pwm				# sets the spindle module to PWM mode
-# spindle_suspend_restore_enable              true            # On suspend: if spindle is running, stop it and remember RPM. On resume: restore only if it was running.
+spindle.3dtoolsetter					false			# opt-in: enable M4 handling and EXT direction mapping for 3D toolsetter workflow
+spindle_suspend_restore_enable              true            # On suspend: if spindle is running, stop it and remember RPM. On resume: restore only if it was running.
 spindle.pwm_pin								2.5				# Big Mosfet Q7. Pin must be hardware PWM capable.
 # spindle.pwm_period							1000			# default 1000, sets the PWM frequency
 spindle.feedback_pin						2.7				# Pin must be interrupt capable. 
@@ -362,7 +367,7 @@ spindle.alarm_pin							0.19^			# spindle alarm trigger pin
 user_setting_start true				# Indicate user settings start
 
 ## fixed Settings ##
-# sd_ok false								# Indicate SD card is corrected read
+sd_ok true								# Indicate SD card is corrected read
 
 ## Basic Settings ##
 # Vacuum

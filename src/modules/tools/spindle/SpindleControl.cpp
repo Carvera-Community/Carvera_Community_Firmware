@@ -10,10 +10,27 @@
 #include "Gcode.h"
 #include "Conveyor.h"
 #include "SpindleControl.h"
+#include "Config.h"
+#include "ConfigValue.h"
 #include "libs/StreamOutputPool.h"
 #include "libs/PublicData.h"
 #include "SwitchPublicAccess.h"
 #include "ATCHandlerPublicAccess.h"
+
+#define spindle_checksum CHECKSUM("spindle")
+#define three_d_toolsetter_checksum CHECKSUM("3dtoolsetter")
+
+static void send_internal_command(const char *cmd)
+{
+    string g(cmd);
+    Gcode gc(g, &(StreamOutput::NullStream));
+    THEKERNEL->call_event(ON_GCODE_RECEIVED, &gc);
+}
+
+void SpindleControl::load_3dtoolsetter_config()
+{
+    this->enable_3dtoolsetter = THEKERNEL->config->value(spindle_checksum, three_d_toolsetter_checksum)->as_bool(false);
+}
 
 void SpindleControl::on_gcode_received(void *argument) 
 {
@@ -41,9 +58,24 @@ void SpindleControl::on_gcode_received(void *argument)
             report_settings();
           
         }
-        else if (gcode->m == 3)
+        else if (gcode->m == 4 && this->supports_3dtoolsetter_m4 && !this->enable_3dtoolsetter)
         {
-        	if(THEKERNEL->is_halted()) return; // if in halted state ignore any commands
+            THEKERNEL->streams->printf("ERROR: M4 is disabled unless spindle.3dtoolsetter is true\n");
+            return;
+        }
+        else if (gcode->m == 3 || gcode->m == 4)
+        {
+            if(THEKERNEL->is_halted()) {
+                THEKERNEL->streams->printf("ERROR: Cannot start spindle while machine is halted\n");
+                return;
+            }
+
+            // In 3dtoolsetter mode, keep M3 unmodified and apply direction override only on M4.
+            // M5 clears this override back to default state.
+            if (this->supports_3dtoolsetter_m4 && this->enable_3dtoolsetter && gcode->m == 4) {
+                send_internal_command("M851 S100");
+            }
+
         	if (!THEKERNEL->get_laser_mode()) {
                 // current tool number and tool offset
                 struct tool_status tool;
@@ -61,12 +93,12 @@ void SpindleControl::on_gcode_received(void *argument)
 
                 THECONVEYOR->wait_for_idle();
 
-                // M3 with S value provided: set speed
+                // M3/M4 with S value provided: set speed
                 if (gcode->has_letter('S'))
                 {
                     set_speed(gcode->get_value('S'));
                 }
-                // M3: Spindle on
+                // M3/M4: Spindle on
                 if (!spindle_on) {
                     turn_on();
                 }
@@ -78,20 +110,6 @@ void SpindleControl::on_gcode_received(void *argument)
         		// open vacuum
         		bool b = true;
         		PublicData::set_value( switch_checksum, vacuum_checksum, state_checksum, &b );
-        	}
-            // open extout if set
-        	if (THEKERNEL->get_extout_mode()) {
-        		// open extout
-        		bool b = true;
-        		struct pad_switch pad;
-			    bool ok = false;
-            	PublicData::set_value( switch_checksum, extendout_checksum, state_checksum, &b );
-			    ok = PublicData::get_value(switch_checksum, vacuum_checksum, 0, &pad);
-			    if (ok) {
-			    	pad.state = true;
-			    	pad.value = pad.defaultvalue;
-			    	PublicData::set_value( switch_checksum, extendout_checksum, state_value_checksum, &pad );
-			    }
         	}
         }
         else if (gcode->m == 5)
@@ -111,11 +129,9 @@ void SpindleControl::on_gcode_received(void *argument)
                 PublicData::set_value( switch_checksum, vacuum_checksum, state_checksum, &b );
         	}
             // close extout if set
-        	if (THEKERNEL->get_extout_mode()) {
-        		// close extout
-        		bool b = false;
-                PublicData::set_value( switch_checksum, extendout_checksum, state_checksum, &b );
-        	}
+            if (this->enable_3dtoolsetter) {
+                send_internal_command("M852");
+            }
         }
         else if (gcode->m == 223)
         {	// M222 - rpm override percentage

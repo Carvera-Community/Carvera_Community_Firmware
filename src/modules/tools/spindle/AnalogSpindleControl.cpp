@@ -38,6 +38,8 @@
 
 void AnalogSpindleControl::on_module_loaded()
 {
+    this->load_3dtoolsetter_config();
+
     spindle_on = false;
     target_rpm = 0;
     current_rpm = 0;

@@ -23,6 +23,8 @@
 void ModbusSpindleControl::on_module_loaded()
 {
 
+    this->load_3dtoolsetter_config();
+
     spindle_on = false;
     PinName rx_pin;
     PinName tx_pin;
