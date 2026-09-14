@@ -388,11 +388,7 @@ void SerialConsole::process_makera_byte(uint8_t received)
             return;
         }
 
-        struct SerialMessage message;
-        message.message.assign(reinterpret_cast<const char *>(packet.data), packet.data_length);
-        message.stream = this;
-        message.line = 0;
-        if (!THEKERNEL->dispatch_console_line(message)) command_waiting = true;
+        command_waiting = true;
     }
 }
 
