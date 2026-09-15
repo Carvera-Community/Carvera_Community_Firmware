@@ -89,18 +89,22 @@ jobs:
         if: matrix.os != 'windows-2022'
         run: |
           ./build/build.sh --gcc ${{ env.GCC_VERSION }} --clean
+          ./build/build.sh --gcc ${{ env.GCC_VERSION }} --clean MACHINE=z1
       
       - name: Build firmware (Windows)
         if: matrix.os == 'windows-2022'
         shell: pwsh
         run: |
           ./build/build.ps1 --GccVersion ${{ env.GCC_VERSION }} --Clean
+          ./build/build.ps1 --GccVersion ${{ env.GCC_VERSION }} --Clean MACHINE=z1
       
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
           name: firmware-pr-${{ matrix.os }}-${{ matrix.arch }}
-          path: LPC1768/main.bin
+          path: |
+            LPC1768/main.bin
+            LPC1768-z1/main.bin
           compression-level: 0
   build:
     runs-on: ubuntu-24.04-arm
@@ -149,19 +153,26 @@ jobs:
             cp LPC1768/main.bin firmware-${{ steps.set-version.outputs.VERSION }}.bin      
             tar czf firmware-debug-symbols-${{ steps.set-version.outputs.VERSION }}.tar.gz LPC1768/main.elf LPC1768/main.map
           fi
+          ./build/build.sh --gcc ${{ env.GCC_VERSION }} --clean MACHINE=z1 VERSION=${{ steps.set-version.outputs.VERSION }}
+          cp LPC1768-z1/main.bin firmware-z1-${{ steps.set-version.outputs.VERSION }}.bin
+          tar czf firmware-z1-debug-symbols-${{ steps.set-version.outputs.VERSION }}.tar.gz LPC1768-z1/main.elf LPC1768-z1/main.map
 
       - name: Upload firmware artifacts
         uses: actions/upload-artifact@v4
         with:
           name: firmware-${{ steps.set-version.outputs.VERSION }}-${{ runner.arch }}
-          path: firmware-${{ steps.set-version.outputs.VERSION }}.bin
+          path: |
+            firmware-${{ steps.set-version.outputs.VERSION }}.bin
+            firmware-z1-${{ steps.set-version.outputs.VERSION }}.bin
           compression-level: 0
           
       - name: Upload debug symbols artifacts
         uses: actions/upload-artifact@v4
         with:
           name: firmware-debug-symbols-${{ steps.set-version.outputs.VERSION }}-${{ runner.arch }}
-          path: firmware-debug-symbols-${{ steps.set-version.outputs.VERSION }}.tar.gz
+          path: |
+            firmware-debug-symbols-${{ steps.set-version.outputs.VERSION }}.tar.gz
+            firmware-z1-debug-symbols-${{ steps.set-version.outputs.VERSION }}.tar.gz
           compression-level: 0
   release:
     needs: build
@@ -192,7 +203,9 @@ jobs:
           draft: true
           files: |
             release-assets/firmware-${{ needs.build.outputs.version }}.bin
+            release-assets/firmware-z1-${{ needs.build.outputs.version }}.bin
             release-assets/firmware-debug-symbols-${{ needs.build.outputs.version }}.tar.gz
+            release-assets/firmware-z1-debug-symbols-${{ needs.build.outputs.version }}.tar.gz
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
   dev-release:
@@ -245,6 +258,8 @@ jobs:
           prerelease: true
           files: |
             release-assets/firmware-${{ needs.build.outputs.version }}.bin
+            release-assets/firmware-z1-${{ needs.build.outputs.version }}.bin
             release-assets/firmware-debug-symbols-${{ needs.build.outputs.version }}.tar.gz
+            release-assets/firmware-z1-debug-symbols-${{ needs.build.outputs.version }}.tar.gz
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
