@@ -14,11 +14,12 @@ void StreamOutput::PacketMessage(char cmd, const char* s, int size)
 {
 	int crc = 0;
     unsigned int len = 0;
-	size_t total_length = size == 0 ? strlen(s) : size;
+	size_t total_length = size == 0 ? (s == nullptr ? 0 : strlen(s)) : size;
 	fbuff[0] = (HEADER>>8)&0xFF;
 	fbuff[1] = HEADER&0xFF;
 	fbuff[4] = cmd;
-	memcpy(&fbuff[5], s, total_length);
+	if (total_length != 0)
+		memcpy(&fbuff[5], s, total_length);
 	len = total_length + 3;
 	fbuff[2] = (len>>8)&0xFF;
 	fbuff[3] = len&0xFF;

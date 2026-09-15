@@ -36,8 +36,14 @@
 #define spindle_control_P_checksum          CHECKSUM("control_P")
 #define spindle_control_I_checksum          CHECKSUM("control_I")
 #define spindle_control_D_checksum          CHECKSUM("control_D")
+#define spindle_control_P_scale_checksum    CHECKSUM("control_P_scale")
+#define spindle_control_D_scale_checksum    CHECKSUM("control_D_scale")
+#define spindle_delayed_D_control_checksum  CHECKSUM("delayed_D_control")
+#define spindle_min_running_pwm_checksum    CHECKSUM("min_running_pwm")
 #define spindle_control_smoothing_checksum  CHECKSUM("control_smoothing")
 #define spindle_delay_s_checksum			CHECKSUM("delay_s")
+#define spindle_delay_on_s_checksum         CHECKSUM("delay_on_s")
+#define spindle_delay_off_s_checksum        CHECKSUM("delay_off_s")
 #define spindle_acc_ratio_checksum			CHECKSUM("acc_ratio")
 #define spindle_alarm_pin_checksum			CHECKSUM("alarm_pin")
 #define spindle_stall_s_checksum			CHECKSUM("stall_s")
@@ -75,8 +81,14 @@ void PWMSpindleControl::on_module_loaded()
     control_P_term = THEKERNEL->config->value(spindle_checksum, spindle_control_P_checksum)->as_number(0.0001f);
     control_I_term = THEKERNEL->config->value(spindle_checksum, spindle_control_I_checksum)->as_number(0.0001f);
     control_D_term = THEKERNEL->config->value(spindle_checksum, spindle_control_D_checksum)->as_number(0.0001f);
+    control_P_scale = THEKERNEL->config->value(spindle_checksum, spindle_control_P_scale_checksum)->as_number(1.0f);
+    control_D_scale = THEKERNEL->config->value(spindle_checksum, spindle_control_D_scale_checksum)->as_number(1.0f);
+    delayed_D_control = THEKERNEL->config->value(spindle_checksum, spindle_delayed_D_control_checksum)->as_bool(false);
+    min_running_pwm = THEKERNEL->config->value(spindle_checksum, spindle_min_running_pwm_checksum)->as_number(0.0f);
 
-    delay_s        = THEKERNEL->config->value(spindle_checksum, spindle_delay_s_checksum)->as_number(3);
+    const int delay_s = THEKERNEL->config->value(spindle_checksum, spindle_delay_s_checksum)->as_int(3);
+    delay_on_s     = THEKERNEL->config->value(spindle_checksum, spindle_delay_on_s_checksum)->as_int(delay_s);
+    delay_off_s    = THEKERNEL->config->value(spindle_checksum, spindle_delay_off_s_checksum)->as_int(delay_s);
     stall_s        = THEKERNEL->config->value(spindle_checksum, spindle_stall_s_checksum)->as_number(100);
     stall_count_rpm = THEKERNEL->config->value(spindle_checksum, spindle_stall_count_rpm_checksum)->as_number(8000);
     stall_alarm_rpm = THEKERNEL->config->value(spindle_checksum, spindle_stall_alarm_rpm_checksum)->as_number(5000);
@@ -167,7 +179,7 @@ uint32_t PWMSpindleControl::on_update_speed(uint32_t dummy)
 	        current_rpm = smoothing_decay * new_rpm + (1.0f - smoothing_decay) * current_rpm;
 	    }
 	}
-	if(CARVERA_AIR == THEKERNEL->factory_set->MachineModel)
+	if(delayed_D_control)
     {
 		if( fabs(target_rpm - last_rpm) > 500 )
 		{
@@ -179,24 +191,26 @@ uint32_t PWMSpindleControl::on_update_speed(uint32_t dummy)
     	if (update_count > UPDATE_FREQ / 5) {
     		update_count = 0;
             float error = target_rpm * (factor / 100) - current_rpm;
-            float acc_pwm = control_P_term * error;
+            float acc_pwm = control_P_term * error * control_P_scale;
             
-            if(CARVERA_AIR == THEKERNEL->factory_set->MachineModel)
+            if(delayed_D_control)
             {
             	if(target_change_count>UPDATE_FREQ*5)	//when speed changed time < 7s,we didn't use D_ter,to rapid speed up/down
 	            {
+	            error *= control_D_scale;
 	            	acc_pwm += control_D_term * (error - prev_error);
 	            	target_change_count = UPDATE_FREQ*5;
             	}
             }
             float new_pwm = current_pwm_value + acc_pwm;
-            new_pwm = confine(new_pwm, 0.0f, max_pwm);
+            const float lower_limit = target_rpm > 1000 ? min_running_pwm : 0.0F;
+            new_pwm = confine(new_pwm, lower_limit, max_pwm);
 
             prev_error = error;
             current_pwm_value = new_pwm;
     	}
     	update_count ++;
-    	if(CARVERA_AIR == THEKERNEL->factory_set->MachineModel)
+		if(delayed_D_control)
         {
 			target_change_count ++;
 		}
@@ -220,9 +234,9 @@ uint32_t PWMSpindleControl::on_update_speed(uint32_t dummy)
 void PWMSpindleControl::turn_on() {
     spindle_on = true;
     THEKERNEL->spindleon = true;
-    if (delay_s > 0) {
+    if (delay_on_s > 0) {
         char buf[80];
-        size_t n = snprintf(buf, sizeof(buf), "G4P%d", delay_s);
+        size_t n = snprintf(buf, sizeof(buf), "G4P%d", delay_on_s);
         if(n > sizeof(buf)) n= sizeof(buf);
         string g(buf, n);
         Gcode gcode(g, &(StreamOutput::NullStream));
@@ -233,9 +247,9 @@ void PWMSpindleControl::turn_on() {
 void PWMSpindleControl::turn_off() {
     spindle_on = false;
     THEKERNEL->spindleon = false;
-    if (delay_s > 0) {
+    if (delay_off_s > 0) {
         char buf[80];
-        size_t n = snprintf(buf, sizeof(buf), "G4P%d", delay_s);
+        size_t n = snprintf(buf, sizeof(buf), "G4P%d", delay_off_s);
         if(n > sizeof(buf)) n= sizeof(buf);
         string g(buf, n);
         Gcode gcode(g, &(StreamOutput::NullStream));
@@ -365,4 +379,3 @@ void PWMSpindleControl::on_idle(void *argument)
     }*/
 
 }
-

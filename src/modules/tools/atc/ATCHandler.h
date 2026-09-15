@@ -19,6 +19,7 @@ public:
     void on_gcode_received(void *argument);
     void on_get_public_data(void *argument);
     void on_set_public_data(void *argument);
+    void on_abort(void *argument);
     void on_main_loop( void* argument );
     void on_halt(void *argument);
     int get_active_tool() const { return active_tool; }
@@ -98,14 +99,15 @@ private:
     void set_tool_offset(uint8_t repeat_count = 1);
 
     //
-    void fill_change_scripts(int new_tool, bool clear_z, int old_tool, bool wait_after_empty, uint8_t colletIndex, float custom_TLO);
+    void fill_change_scripts(int new_tool, bool clear_z, int old_tool, bool wait_after_empty, uint8_t colletIndex, float custom_TLO, bool activate_tool = true);
     void fill_drop_scripts(int old_tool);
     void fill_pick_scripts(int new_tool, bool clear_z);
-    void fill_cali_scripts(bool is_probe, bool clear_z, int repeat_count = 1);
+    void fill_cali_scripts(bool is_probe, bool clear_z, int repeat_count = 1, int pending_tool = -1);
 
     //
     void fill_manual_drop_scripts(int old_tool);
     void fill_manual_pickup_scripts(int new_tool, bool clear_z, bool auto_calibrate, float custom_TLO);
+    void queue_manual_tool_change_position(bool force_absolute);
 
     //
     void fill_margin_scripts(float x_pos, float y_pos, float x_pos_max, float y_pos_max);
@@ -194,6 +196,7 @@ private:
     float probe_retract_mm;
     float probe_height_mm;
     float three_axis_probe_tlo_correction;
+    bool require_probe_trigger_for_calibration;
 
     // Configurable probe position (absolute Machine Coordinate System)
     float probe_mcs_x;
@@ -246,6 +249,9 @@ private:
     float toolrack_offset_x;
     float toolrack_offset_y;
     float toolrack_z;
+    float manual_tool_change_x;
+    float manual_tool_change_y;
+    float manual_probe_z;
 
     float clearance_x;
     float clearance_y;

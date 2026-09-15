@@ -1,6 +1,9 @@
 #ifndef PLAYERPUBLICACCESS_H
 #define PLAYERPUBLICACCESS_H
 
+#include <cstdint>
+#include <string>
+
 #define player_checksum           CHECKSUM("player")
 #define is_playing_checksum       CHECKSUM("is_playing")
 #define is_suspended_checksum     CHECKSUM("is_suspended")
@@ -10,6 +13,13 @@
 #define restart_job_checksum    CHECKSUM("restart_job")
 #define suspend_play_checksum   CHECKSUM("suspend_play")
 #define resume_play_checksum    CHECKSUM("resume_play")
+#define link_packet_checksum    CHECKSUM("link_packet")
+
+struct player_link_packet {
+    uint8_t type;
+    const uint8_t* data;
+    uint16_t data_length;
+};
 
 struct pad_progress {
     unsigned int percent_complete;

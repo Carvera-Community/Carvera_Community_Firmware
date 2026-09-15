@@ -64,13 +64,21 @@ The scripts accept Make-style variables as trailing arguments:
 
 ```bash
 ./build/build-cmake.sh --clean VERSION=my-build AXIS=5 PAXIS=3 CNC=1
+./build/build-cmake.sh --clean MACHINE=z1 VERSION=2.3.0c-my-build
 .\build\build-cmake.ps1 -Clean VERSION=my-build AXIS=5 PAXIS=3 CNC=1
+.\build\build-cmake.ps1 -Clean MACHINE=z1 VERSION=2.3.0c-my-build
 ```
 
-The output is located at:
+The Carvera and Carvera Air output is located at:
 
 ```text
-build/cmake/gcc-14.2/Release/LPC1768/firmware.bin
+build/cmake/gcc-14.2/carvera/Release/LPC1768/firmware.bin
+```
+
+The Z1 and Z1 Pro output is located at:
+
+```text
+build/cmake/gcc-14.2/z1/Release/LPC1768-z1/firmware.bin
 ```
 
 CMake builds fail when `firmware.bin` exceeds the LPC1768's 507,904-byte
@@ -116,9 +124,11 @@ The remaining arguments are passed verbatim to the make invocation. Meaning one 
 ```bash
 # Unix
 ./build/build.sh --clean VERBOSE=1
+./build/build.sh --clean MACHINE=z1
 
 # Windows
 .\build\build.ps1 -Clean VERBOSE=1
+.\build\build.ps1 -Clean MACHINE=z1
 ```
 
 A useful flag is `VERSION=string`. This sets the version string as reported by
@@ -132,14 +142,35 @@ if you lose track of what you're running, for instance:
 
 ... will timestamp the version string in your firmware.
 
+The default build produces firmware for Carvera and Carvera Air. Setting
+`MACHINE=z1` produces one firmware image for Z1 and Z1 Pro; the machine model
+is selected from its factory settings at runtime.
+
+To produce a complete Z1 update bundle, set `Z1_REPACK` to an official Makera
+Z1 firmware bundle and set a version that fits the Makera bundle format:
+
+```bash
+./build/build.sh --clean MACHINE=z1 VERSION=2.3.0c-my-build \
+    Z1_REPACK=/path/to/official-z1-firmware.bin
+```
+
+The build retains the ESP firmware from the official bundle, replaces its LPC
+firmware, updates the LPC version and checksums, and writes the resulting
+`firmware-v*.bin` beside `LPC1768-z1/main.bin`.
+
 Additional guides related to building Smoothieware [can be found
 here](https://smoothieware.github.io/Webif-pack/documentation/web/html/compiling-smoothie.html).
 
 # Flashing the firmware
 
-The Make build outputs `LPC1768/main.bin`. The CMake build outputs an
-SD-card-ready `firmware.bin` under its selected build tree. There are several
-strategies to load either binary onto the machine.
+The Make build outputs `LPC1768/main.bin` for Carvera and Carvera Air, or
+`LPC1768-z1/main.bin` for Z1 and Z1 Pro. The CMake build outputs a
+`firmware.bin` under its selected build tree.
+
+The direct LPC firmware installation methods below apply to Carvera and
+Carvera Air. For Z1 and Z1 Pro, build a complete bundle with `Z1_REPACK` and
+install that file through the normal Z1 firmware update process. The bare
+`LPC1768-z1/main.bin` image is intended for SWD programming and development.
 
 ## Carvera Controller
 

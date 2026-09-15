@@ -199,6 +199,7 @@ class Robot : public Module {
         bool tool_not_calibrated;
         bool load_last_wcs;
         float soft_endstop_min[3], soft_endstop_max[3];
+        float rotary_clearance_y_min;
 
         uint8_t n_motors;                                    //count of the motors/axis registered
 

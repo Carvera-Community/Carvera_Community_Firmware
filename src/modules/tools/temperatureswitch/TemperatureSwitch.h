@@ -48,10 +48,17 @@ class TemperatureSwitch : public Module
 
         // temperatureswitch.hotend.switch
         uint16_t temperatureswitch_switch_cs;
+        uint8_t temperature_source;
 
-
-        // our internal second counter
-        int cooldown_delay_counter;
+        enum class FanMode : uint8_t {
+            idle,
+            accessory,
+            laser,
+            thermal,
+            cooldown,
+        };
+        FanMode fan_mode;
+        uint32_t cooldown_elapsed_s;
 
 
 };

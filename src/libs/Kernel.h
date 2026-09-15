@@ -12,6 +12,7 @@
 #define THECONVEYOR THEKERNEL->conveyor
 #define THEROBOT THEKERNEL->robot
 
+#include "FactorySettings.h"
 #include "Module.h"
 #include "I2C.h" // mbed.h lib
 #include <array>
@@ -22,8 +23,6 @@
 
 // 9 WCS offsets
 #define MAX_WCS 9UL
-#define CARVERA		1
-#define CARVERA_AIR	2
 //Module manager
 class Config;
 class Module;
@@ -40,6 +39,8 @@ class PublicData;
 class SimpleShell;
 class Configurator;
 struct SerialMessage;
+class BedCleaning;
+class SpindleAccessories;
 
 enum STATE {
 	IDLE    = 0,
@@ -108,13 +109,6 @@ typedef struct {
     float WCSrotation[6];
 } EEPROM_data;
 
-typedef struct {
-	char  MachineModel;
-	char  FuncSetting;
-	char  reserve1;
-	char  reserve2;
-} FACTORY_SET;
-
 class Kernel {
     public:
         Kernel();
@@ -168,17 +162,11 @@ class Kernel {
         void set_laser_mode(bool f) { laser_mode = f; }
         bool get_laser_mode() const { return laser_mode; }
 
-        void set_vacuum_mode(bool f) { vacuum_mode = f; }
-        bool get_vacuum_mode() const { return vacuum_mode; }
-
         void set_optional_stop_mode(bool f) { optional_stop_mode = f; }
         bool get_optional_stop_mode() const { return optional_stop_mode; }
         void set_line_by_line_exec_mode(bool f) { line_by_line_exec_mode = f; }
         bool get_line_by_line_exec_mode() const { return line_by_line_exec_mode; }
         
-        void set_extout_mode(bool f) { extout_mode = f; }
-        bool get_extout_mode() const { return extout_mode; }
-
         void set_sleeping(bool f) { sleeping = f; }
         bool is_sleeping() const { return sleeping; }
 
@@ -211,6 +199,9 @@ class Kernel {
         uint8_t get_halt_reason() const { return halt_reason; }
         void set_halted(bool h) { halted = h; }
 
+        void on_steppers_powered(bool powered, uint32_t now_us);
+        bool stepper_alarms_enabled(uint32_t now_us, uint32_t settle_us) const;
+
         void set_atc_state(uint8_t state) { atc_state = state; }
         uint8_t get_atc_state() const { return atc_state; }        
         
@@ -221,14 +212,14 @@ class Kernel {
         void write_eeprom_data();
         void erase_eeprom_data();
         void check_eeprom_data();
+        void dump_eeprom(StreamOutput *stream);
         
         void read_Factory_data();
-        void write_Factory_data();
+        bool write_Factory_data();
         void erase_Factory_data();
         void read_Factroy_SD();
         bool Check_Factory_Data(unsigned char *data, unsigned int len);
         bool Factroy_readLine(std::string& line, int lineno, FILE *fp);
-        bool process_line(const std::string &buffer, uint16_t *check_sum, unsigned char *value);
         std::string get_query_string();
 
         std::string get_diagnose_string();
@@ -243,6 +234,8 @@ class Kernel {
         Conveyor*         conveyor;
         Configurator*     configurator;
         SimpleShell*      simpleshell;
+        BedCleaning* bed_cleaning;
+        SpindleAccessories* spindle_accessories;
 
         SlowTicker*       slow_ticker;
         StepTicker*       step_ticker;
@@ -261,6 +254,7 @@ class Kernel {
         uint16_t probe_addr;
         bool checkled;
         bool spindleon;
+        bool axis_is_on[6];
 
         struct {
             bool slowticker_profiling:1;
@@ -278,6 +272,7 @@ class Kernel {
         mbed::I2C* i2c;
         std::array<std::vector<Module*>, NUMBER_OF_DEFINED_EVENTS> hooks;
         uint32_t stop_request_time;
+        uint32_t steppers_powered_at_us;
         void protocol_from_name(const std::string& name, ProtocolMode& protocol);
         struct {
             bool use_leds:1;
@@ -292,8 +287,6 @@ class Kernel {
             bool keep_alive_request:1;
             volatile bool uploading:1;
             bool laser_mode:1;
-            bool vacuum_mode:1;
-            bool extout_mode:1;
             bool optional_stop_mode:1;
             bool line_by_line_exec_mode:1;
             bool sleeping:1;
@@ -310,9 +303,9 @@ class Kernel {
             bool flex_compensation_load_error:1;
             bool config_load_error:1;
             bool dispatching_console_line:1;
+            bool steppers_powered:1;
         };
         int iic_page_write(unsigned char u8PageNum, unsigned char u8len, unsigned char *pu8Array);
-
 };
 
 #endif

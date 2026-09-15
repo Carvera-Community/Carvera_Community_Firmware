@@ -24,7 +24,9 @@ add_library(carvera_mbed STATIC
     src/cpp/Timeout.cpp
     src/cpp/Timer.cpp
     src/cpp/TimerEvent.cpp
+    src/cpp/CAN.cpp
     src/vendor/NXP/capi/board.c
+    src/vendor/NXP/capi/can_api.c
     src/vendor/NXP/capi/gpio_api.c
     src/vendor/NXP/capi/gpio_irq_api.c
     src/vendor/NXP/capi/i2c_api.c

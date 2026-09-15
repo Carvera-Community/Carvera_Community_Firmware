@@ -8,10 +8,8 @@
 #define get_tool_status_checksum    CHECKSUM("get_tool_status")
 #define set_target_collet_type_checksum CHECKSUM("set_target_collet_type")
 #define get_machine_offsets_checksum CHECKSUM("get_machine_offsets")
-#define set_ref_tool_mz_checksum	CHECKSUM("set_ref_tool_mz")
 #define get_atc_pin_status_checksum	CHECKSUM("get_atc_pin_status")
 #define set_job_complete_checksum	CHECKSUM("set_job_complete")
-#define abort_checksum				CHECKSUM("abort")
 
 #define set_serial_rx_irq_checksum	CHECKSUM("set_serial_rx_irq")
 

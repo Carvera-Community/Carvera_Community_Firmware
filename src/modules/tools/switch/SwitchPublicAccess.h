@@ -20,6 +20,7 @@ struct pad_switch {
     bool state;
     float value;
     float defaultvalue;
+    float manual_value;
 };
 
 #endif // __SWITCHPUBLICACCESS_H
