@@ -1373,7 +1373,7 @@ void SimpleShell::model_command( string parameters, StreamOutput *stream )
 			stream->printf("model = %s, %u, %d, %d\n", "Z1", model_number, THEKERNEL->factory_set->FuncSetting, THEKERNEL->probe_addr);
 			break;
 		case Z1PRO:
-			stream->printf("model = %s, %u, %d, %d\n", "Z1Pro", model_number, THEKERNEL->factory_set->FuncSetting, THEKERNEL->probe_addr);
+			stream->printf("model = %s, %u, %d, %d\n", "Z1", model_number, THEKERNEL->factory_set->FuncSetting, THEKERNEL->probe_addr);
 			break;
 		default:
 			stream->printf("model = %s, %u, %d, %d\n", "Z1", model_number, THEKERNEL->factory_set->FuncSetting, THEKERNEL->probe_addr);
