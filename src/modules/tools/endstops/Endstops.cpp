@@ -1338,6 +1338,7 @@ void Endstops::process_home_command(Gcode* gcode)
 
     if(haxis.none()) {
         THEKERNEL->streams->printf("WARNING: Nothing to home\n");
+        THEROBOT->compensationTransform= savect;
         THEKERNEL->disable_endstops  = previous_disable_endstops;
         return;
     }
@@ -1375,11 +1376,9 @@ void Endstops::process_home_command(Gcode* gcode)
         home(haxis);
     }
 
-    // restore compensationTransform
-    THEROBOT->compensationTransform= savect;
-
     // check if on_halt (eg kill or fail)
     if(THEKERNEL->is_halted()) {
+        THEROBOT->compensationTransform= savect;
         if(!THEKERNEL->is_grbl_mode()) {
             THEKERNEL->streams->printf("ERROR: Homing cycle failed - check the max_travel settings\n");
         }else{
@@ -1395,7 +1394,6 @@ void Endstops::process_home_command(Gcode* gcode)
         // Here's where we would have been if the endstops were perfectly trimmed
         // NOTE on a rotary delta home_offset is actuator position in degrees when homed and
         // home_offset is the theta offset for each actuator, so M206 is used to set theta offset for each actuator in degrees
-        // FIXME not sure this will work with compensation transforms on.
         float ideal_position[3] = {
             homing_axis[X_AXIS].homing_position + homing_axis[X_AXIS].home_offset,
             homing_axis[Y_AXIS].homing_position + homing_axis[Y_AXIS].home_offset,
@@ -1448,9 +1446,8 @@ void Endstops::process_home_command(Gcode* gcode)
         }
 
     } else {
-        // Zero the ax(i/e)s position, add in the home offset
-        // NOTE that if compensation is active the Z will be set based on where XY are, so make sure XY are homed first then Z
-        // so XY are at a known consistent position.  (especially true if using a proximity probe)
+        // Declare home with compensation still disabled so MCS matches the physical
+        // endstop. Flex/grid stay active for subsequent moves after restore below.
         for (auto &p : homing_axis) {
             if (haxis[p.axis_index]) { // if we requested this axis to home
                 THEROBOT->reset_axis_position(p.homing_position + p.home_offset, p.axis_index);
@@ -1460,6 +1457,9 @@ void Endstops::process_home_command(Gcode* gcode)
         }
         
     }
+
+    // restore compensation for post-home moves and normal operation
+    THEROBOT->compensationTransform= savect;
 
     // on some systems where 0,0 is bed center it is nice to have home goto 0,0 after homing
     // default is off for cartesian and on for deltas
