@@ -17,7 +17,11 @@ namespace mbed {
     class InterruptIn;
 }
 
-// This module implements control of the spindle speed by seting a PWM from 0-100%
+class Gcode;
+class StreamOutput;
+
+// Open-loop PWM spindle. While running, duty = offset + scale * (rpm / max_rpm),
+// then limited to [deadzone_bottom, 1 - deadzone_top]. Off writes duty 0.
 class AnalogSpindleControl: public SpindleControl {
     public:
         AnalogSpindleControl() : feedback_pin(nullptr) {};
@@ -45,6 +49,14 @@ class AnalogSpindleControl: public SpindleControl {
         float factor;
         int min_rpm;
         int max_rpm;
+        // Duty added to the scaled command, and PWM change across 0..max_rpm.
+        float pwm_offset;
+        float pwm_scale;
+        // Lowest duty that turns the spindle, and unused duty at the top of the range.
+        float pwm_deadzone_bottom;
+        float pwm_deadzone_top;
+        bool tuning;
+        bool tune_cancel;
 
         float pulses_per_rev;
         float acc_ratio;
@@ -61,6 +73,15 @@ class AnalogSpindleControl: public SpindleControl {
         void report_speed(void);
         void update_pwm(float);
         void set_factor(float);
+        void on_analog_settings(Gcode *gcode) override;
+
+        void read_pwm_map(void);
+        void sanitize_pwm_map(void);
+        void report_map(StreamOutput *stream) const;
+        float pwm_for_rpm(float rpm) const;
+        float rpm_from_pwm(float duty) const;
+        void auto_tune(StreamOutput *stream, float step);
+        bool wait_for_stable_rpm(float &rpm, uint32_t min_ms, uint32_t max_ms);
 };
 
 #endif
