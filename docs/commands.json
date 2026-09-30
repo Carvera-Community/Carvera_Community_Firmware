@@ -3404,7 +3404,7 @@
     },
     "M959.1": {
       "type": "mcode",
-      "description": "Auto-tune the analog spindle PWM map from RPM feedback. The spindle runs from 0 to full duty. Requires spindle.feedback_pin. Halt or e-stop aborts and keeps the previous map. Prints config-set commands for the result.",
+      "description": "Auto-tune the analog spindle PWM map from RPM feedback. The spindle runs from 0 to full duty. Also measures delay_on_s, delay_off_s, and delay_s. Requires spindle.feedback_pin. Halt or e-stop aborts and keeps the previous map. Prints config-set commands for the result.",
       "parameters": {
         "P": {
           "required": false,

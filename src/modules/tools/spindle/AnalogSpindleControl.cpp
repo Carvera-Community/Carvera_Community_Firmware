@@ -27,7 +27,9 @@
 #include "utils.h"
 
 #include <cmath>
+#include <cstdio>
 #include <new>
+#include <string>
 
 #define spindle_checksum                    CHECKSUM("spindle")
 #define spindle_max_rpm_checksum            CHECKSUM("max_rpm")
@@ -40,6 +42,9 @@
 #define spindle_control_smoothing_checksum  CHECKSUM("control_smoothing")
 #define spindle_acc_ratio_checksum          CHECKSUM("acc_ratio")
 #define spindle_alarm_pin_checksum          CHECKSUM("alarm_pin")
+#define spindle_delay_s_checksum            CHECKSUM("delay_s")
+#define spindle_delay_on_s_checksum         CHECKSUM("delay_on_s")
+#define spindle_delay_off_s_checksum        CHECKSUM("delay_off_s")
 #define spindle_pwm_deadzone_bottom_checksum CHECKSUM("pwm_deadzone_bottom")
 #define spindle_pwm_deadzone_top_checksum    CHECKSUM("pwm_deadzone_top")
 #define spindle_pwm_offset_checksum          CHECKSUM("pwm_offset")
@@ -285,6 +290,8 @@ void AnalogSpindleControl::turn_on()
     spindle_on = true;
     THEKERNEL->spindleon = true;
     apply_pwm_from_targets();
+    if (!tuning)
+        dwell_seconds(delay_on_s);
 }
 
 void AnalogSpindleControl::turn_off()
@@ -296,6 +303,8 @@ void AnalogSpindleControl::turn_off()
     spindle_on = false;
     THEKERNEL->spindleon = false;
     update_pwm(0); // set the PWM value to 0 to make sure it stops
+    if (!tuning)
+        dwell_seconds(delay_off_s);
 }
 
 void AnalogSpindleControl::set_speed(int rpm)
@@ -375,6 +384,15 @@ void AnalogSpindleControl::read_pwm_map()
     pwm_deadzone_top = THEKERNEL->config->value(spindle_checksum, spindle_pwm_deadzone_top_checksum)->as_number(0.0f);
     pwm_offset = THEKERNEL->config->value(spindle_checksum, spindle_pwm_offset_checksum)->as_number(0.0f);
     pwm_scale = THEKERNEL->config->value(spindle_checksum, spindle_pwm_scale_checksum)->as_number(1.0f);
+    delay_s = THEKERNEL->config->value(spindle_checksum, spindle_delay_s_checksum)->as_int(0);
+    delay_on_s = THEKERNEL->config->value(spindle_checksum, spindle_delay_on_s_checksum)->as_int(delay_s);
+    delay_off_s = THEKERNEL->config->value(spindle_checksum, spindle_delay_off_s_checksum)->as_int(delay_s);
+    if (delay_s < 0)
+        delay_s = 0;
+    if (delay_on_s < 0)
+        delay_on_s = 0;
+    if (delay_off_s < 0)
+        delay_off_s = 0;
     sanitize_pwm_map();
 }
 
@@ -407,8 +425,8 @@ void AnalogSpindleControl::sanitize_pwm_map()
 
 void AnalogSpindleControl::report_map(StreamOutput *stream) const
 {
-    stream->printf("min_rpm: %d max_rpm: %d deadzone_bottom: %1.4f deadzone_top: %1.4f offset: %1.4f scale: %1.4f\n",
-                   min_rpm, max_rpm, pwm_deadzone_bottom, pwm_deadzone_top, pwm_offset, pwm_scale);
+    stream->printf("min_rpm: %d\nmax_rpm: %d\ndeadzone_bottom: %1.4f\ndeadzone_top: %1.4f\noffset: %1.4f\nscale: %1.4f\ndelay_s: %d\ndelay_on_s: %d\ndelay_off_s: %d\n",
+                   min_rpm, max_rpm, pwm_deadzone_bottom, pwm_deadzone_top, pwm_offset, pwm_scale, delay_s, delay_on_s, delay_off_s);
 }
 
 float AnalogSpindleControl::pwm_for_rpm(float rpm) const
@@ -633,8 +651,6 @@ void AnalogSpindleControl::auto_tune(StreamOutput *stream, float step, uint32_t 
         return;
     }
 
-    stream->printf("Analog spindle auto-tune, PWM step %1.3f, step time %1.1f s, %d sweeps. The spindle will run.\n",
-                   step, step_ms / 1000.0f, sweeps);
     tune_cancel = false;
     tuning = true;
     turn_on();
@@ -642,13 +658,51 @@ void AnalogSpindleControl::auto_tune(StreamOutput *stream, float step, uint32_t 
     if (THEKERNEL->spindle_accessories != nullptr)
         THEKERNEL->spindle_accessories->spindle_started();
 
+    const int old_delay_s = delay_s;
+    const int old_delay_on = delay_on_s;
+    const int old_delay_off = delay_off_s;
+    int new_delay_on = delay_on_s;
+    int new_delay_off = delay_off_s;
+    int new_delay = delay_s;
+    stream->printf("Measuring spindle start time\n");
+    bool delays_ok = measure_start_stop_times(stream, new_delay_on, new_delay_off);
+    if (delays_ok) {
+        new_delay = new_delay_on > new_delay_off ? new_delay_on : new_delay_off;
+        delay_on_s = new_delay_on;
+        delay_off_s = new_delay_off;
+        delay_s = new_delay;
+        stream->printf("delay_on_s: %d\ndelay_off_s: %d\ndelay_s: %d\n", new_delay_on, new_delay_off, new_delay);
+    } else if (!tune_cancel && !THEKERNEL->is_halted()) {
+        stream->printf("ERROR: Analog spindle auto-tune could not measure start and stop time\n");
+    }
+    if (!delays_ok) {
+        delete[] rpm_sum;
+        delete[] samples;
+        const bool needs_stop = spindle_on;
+        if (needs_stop)
+            turn_off();
+        tuning = false;
+        if (needs_stop && THEKERNEL->spindle_accessories != nullptr)
+            THEKERNEL->spindle_accessories->spindle_stopped();
+        return;
+    }
+
+    uint32_t on_hold_ms = step_ms;
+    uint32_t off_hold_ms = step_ms;
+    if (static_cast<uint32_t>(delay_on_s) * 1000u > on_hold_ms)
+        on_hold_ms = static_cast<uint32_t>(delay_on_s) * 1000u;
+    if (static_cast<uint32_t>(delay_off_s) * 1000u > off_hold_ms)
+        off_hold_ms = static_cast<uint32_t>(delay_off_s) * 1000u;
+    stream->printf("Analog spindle auto-tune, PWM step %1.3f, step time %1.1f s, %d sweeps. The spindle will run.\n",
+                   step, on_hold_ms / 1000.0f, sweeps);
+
     bool ok = true;
     for (int sweep = 0; sweep < sweeps && ok; sweep++) {
         stream->printf("sweep %d\n", sweep + 1);
         if (sweep > 0) {
             update_pwm(0.0f);
             float discarded = 0.0f;
-            if (!wait_for_stable_rpm(discarded, step_ms, step_ms))
+            if (!wait_for_stable_rpm(discarded, off_hold_ms, off_hold_ms))
                 ok = false;
         }
         for (int i = 0; i < count && ok; i++) {
@@ -661,7 +715,7 @@ void AnalogSpindleControl::auto_tune(StreamOutput *stream, float step, uint32_t 
                 pwm = 1.0f;
             update_pwm(pwm);
             float rpm = 0.0f;
-            if (!wait_for_stable_rpm(rpm, step_ms, step_ms)) {
+            if (!wait_for_stable_rpm(rpm, on_hold_ms, on_hold_ms)) {
                 ok = false;
                 break;
             }
@@ -701,7 +755,7 @@ void AnalogSpindleControl::auto_tune(StreamOutput *stream, float step, uint32_t 
     const float old_scale = pwm_scale;
     if (ok)
         stream->printf("Auto-tune fit error %5.0f rpm\n", fit_error);
-    if (ok && (apply || validate)) {
+    if (ok) {
         min_rpm = new_min;
         max_rpm = new_max;
         pwm_deadzone_bottom = new_bottom;
@@ -710,10 +764,22 @@ void AnalogSpindleControl::auto_tune(StreamOutput *stream, float step, uint32_t 
         pwm_scale = new_scale;
     }
 
+    if (tune_cancel || THEKERNEL->is_halted()) {
+        min_rpm = old_min;
+        max_rpm = old_max;
+        pwm_deadzone_bottom = old_bottom;
+        pwm_deadzone_top = old_top;
+        pwm_offset = old_offset;
+        pwm_scale = old_scale;
+        ok = false;
+    }
+
     float fluctuation = 0.0f;
     bool checked = false;
-    if (ok && validate)
-        checked = sample_commanded_speeds(stream, intervals, step_ms, step_ms, fluctuation);
+    if (ok && validate) {
+        stream->printf("Validating the calculated auto-tune values\n");
+        checked = sample_commanded_speeds(stream, intervals, on_hold_ms, on_hold_ms, fluctuation);
+    }
     if (ok && validate && !checked)
         stream->printf("ERROR: Analog spindle map validation aborted\n");
     if (ok && !apply) {
@@ -724,11 +790,16 @@ void AnalogSpindleControl::auto_tune(StreamOutput *stream, float step, uint32_t 
         pwm_offset = old_offset;
         pwm_scale = old_scale;
     }
+    if (!apply) {
+        delay_s = old_delay_s;
+        delay_on_s = old_delay_on;
+        delay_off_s = old_delay_off;
+    }
 
-    tuning = false;
     const bool needs_stop = spindle_on;
     if (needs_stop)
         turn_off();
+    tuning = false;
     if (needs_stop && THEKERNEL->spindle_accessories != nullptr)
         THEKERNEL->spindle_accessories->spindle_stopped();
     if (checked)
@@ -744,7 +815,89 @@ void AnalogSpindleControl::auto_tune(StreamOutput *stream, float step, uint32_t 
         stream->printf("config-set sd spindle.pwm_deadzone_top %1.4f\n", new_top);
         stream->printf("config-set sd spindle.pwm_offset %1.4f\n", new_offset);
         stream->printf("config-set sd spindle.pwm_scale %1.4f\n", new_scale);
+        if (delays_ok) {
+            stream->printf("config-set sd spindle.delay_s %d\n", new_delay);
+            stream->printf("config-set sd spindle.delay_on_s %d\n", new_delay_on);
+            stream->printf("config-set sd spindle.delay_off_s %d\n", new_delay_off);
+        }
     }
+}
+
+bool AnalogSpindleControl::measure_start_stop_times(StreamOutput *stream, int &on_s, int &off_s)
+{
+    update_pwm(1.0f);
+    const uint32_t start = us_ticker_read();
+    float window[4] = {};
+    int count = 0;
+    int idx = 0;
+    float peak = 0.0f;
+    while (true) {
+        safe_delay_ms(200);
+        if (tune_cancel || THEKERNEL->is_halted())
+            return false;
+        const uint32_t elapsed = us_ticker_read() - start;
+        window[idx] = current_rpm;
+        idx = (idx + 1) % 4;
+        if (count < 4)
+            count++;
+        if (current_rpm > peak)
+            peak = current_rpm;
+        if (count == 4 && elapsed >= 1000) {
+            float lo = window[0];
+            float hi = window[0];
+            float sum = 0.0f;
+            for (int i = 0; i < 4; i++) {
+                if (window[i] < lo)
+                    lo = window[i];
+                if (window[i] > hi)
+                    hi = window[i];
+                sum += window[i];
+            }
+            const float mean = sum / 4.0f;
+            float tol = mean * 0.04f;
+            if (tol < 80.0f)
+                tol = 80.0f;
+            if (hi - lo <= tol && peak >= 100.0f && mean >= peak * 0.90f) {
+                on_s = static_cast<int>((elapsed + 999999u) / 1000000u);
+                if (on_s < 1)
+                    on_s = 1;
+                break;
+            }
+        }
+        if (elapsed >= 30000000)
+            return false;
+    }
+
+    stream->printf("Measuring spindle stop time\n");
+    update_pwm(0.0f);
+    const uint32_t stop_start = us_ticker_read();
+    const float stopped = peak * 0.02f > 80.0f ? peak * 0.02f : 80.0f;
+    while (true) {
+        safe_delay_ms(200);
+        if (tune_cancel || THEKERNEL->is_halted())
+            return false;
+        const uint32_t elapsed = us_ticker_read() - stop_start;
+        if (current_rpm <= stopped) {
+            off_s = static_cast<int>((elapsed + 999999u) / 1000000u);
+            if (off_s < 1)
+                off_s = 1;
+            return true;
+        }
+        if (elapsed >= 30000000)
+            return false;
+    }
+}
+
+void AnalogSpindleControl::dwell_seconds(int seconds)
+{
+    if (seconds <= 0)
+        return;
+    char buf[16];
+    const int n = snprintf(buf, sizeof(buf), "G4P%d", seconds);
+    if (n <= 0 || n >= static_cast<int>(sizeof(buf)))
+        return;
+    Gcode gcode(std::string(buf, static_cast<size_t>(n)), &(StreamOutput::NullStream));
+    THEKERNEL->call_event(ON_GCODE_RECEIVED, &gcode);
 }
 
 bool AnalogSpindleControl::sample_commanded_speeds(StreamOutput *stream, int intervals, uint32_t min_ms, uint32_t max_ms, float &fluctuation)
