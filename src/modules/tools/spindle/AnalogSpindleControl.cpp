@@ -956,7 +956,18 @@ void AnalogSpindleControl::validate_map(StreamOutput *stream, float step)
     if (intervals > 50)
         intervals = 50;
 
-    stream->printf("Analog spindle map validation, PWM step %1.3f. The spindle will run.\n", step);
+    int hold_s = delay_on_s;
+    if (delay_s > hold_s)
+        hold_s = delay_s;
+    uint32_t min_ms = 1000;
+    uint32_t max_ms = 5000;
+    if (hold_s > 0) {
+        min_ms = static_cast<uint32_t>(hold_s) * 1000u;
+        max_ms = min_ms;
+        stream->printf("Analog spindle map validation, PWM step %1.3f, hold %d s. The spindle will run.\n", step, hold_s);
+    } else {
+        stream->printf("Analog spindle map validation, PWM step %1.3f. The spindle will run.\n", step);
+    }
     tune_cancel = false;
     tuning = true;
     turn_on();
@@ -964,7 +975,7 @@ void AnalogSpindleControl::validate_map(StreamOutput *stream, float step)
         THEKERNEL->spindle_accessories->spindle_started();
 
     float fluctuation = 0.0f;
-    const bool ok = sample_commanded_speeds(stream, intervals, 1000, 5000, fluctuation);
+    const bool ok = sample_commanded_speeds(stream, intervals, min_ms, max_ms, fluctuation);
 
     tuning = false;
     const bool needs_stop = spindle_on;

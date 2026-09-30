@@ -3437,7 +3437,7 @@
     },
     "M959.2": {
       "type": "mcode",
-      "description": "Check the current analog spindle PWM map against RPM feedback. The spindle runs from minimum to maximum RPM. Prints the largest speed error. Does not change the map.",
+      "description": "Check the current analog spindle PWM map against RPM feedback. The spindle runs from minimum to maximum RPM. Each speed is held for delay_on_s or delay_s, whichever is longer. Stopping waits for delay_off_s. Prints the largest speed error. Does not change the map.",
       "parameters": {
         "P": {
           "required": false,
