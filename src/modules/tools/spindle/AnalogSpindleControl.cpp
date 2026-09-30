@@ -806,7 +806,7 @@ void AnalogSpindleControl::auto_tune(StreamOutput *stream, float step, uint32_t 
         stream->printf("Validation fluctuation %5.0f rpm\n", fluctuation);
     if (ok) {
         if (apply)
-            stream->printf("These values are temporary\nand will need to be saved to the config file with\n");
+            stream->printf("These values are temporarily applied to the in-memory config\nand will need to be saved to the config file with\n");
         else
             stream->printf("These values were not applied\nTo save them run:\n");
         stream->printf("config-set sd spindle.min_rpm %d\n", new_min);
