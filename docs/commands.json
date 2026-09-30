@@ -3411,6 +3411,39 @@
           "description": "PWM step from 0 to 1. Clamped to 0.02–0.20.",
           "default": 0.05,
           "unit": "duty"
+        },
+        "D": {
+          "required": false,
+          "description": "Hold time at each PWM step. Clamped to 0.2–30.",
+          "default": 1,
+          "unit": "s"
+        },
+        "N": {
+          "required": false,
+          "description": "Number of sweeps. RPM readings are averaged before the fit. Clamped to 1–5.",
+          "default": 2
+        },
+        "A": {
+          "required": false,
+          "description": "Apply the fitted map in memory. 0 leaves the current map unchanged.",
+          "default": 1
+        },
+        "V": {
+          "required": false,
+          "description": "Run a map check after the sweeps and print the largest RPM error. 0 skips it.",
+          "default": 1
+        }
+      }
+    },
+    "M959.2": {
+      "type": "mcode",
+      "description": "Check the current analog spindle PWM map against RPM feedback. The spindle runs from minimum to maximum RPM. Prints the largest speed error. Does not change the map.",
+      "parameters": {
+        "P": {
+          "required": false,
+          "description": "Step through the speed range. 0.05 checks 21 speeds. Clamped to 0.02–0.20.",
+          "default": 0.05,
+          "unit": "duty"
         }
       }
     },

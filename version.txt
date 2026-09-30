@@ -1,5 +1,6 @@
 [unreleased]
-- Enhancement: Analog spindle PWM has configurable top and bottom dead zones, offset, and scale. M959 sets or reports the map. M959.1 measures it from RPM feedback and prints the config-set commands that store it.
+- Enhancement: Analog spindle PWM has configurable top and bottom dead zones, offset, and scale. M959 sets or reports the map.
+- Enhancement: M959.1 auto-tunes the analog spindle PWM map from RPM feedback. D sets the hold time, N the number of averaged sweeps, A whether the result is kept in memory, and V whether a check run prints the RPM error. It prints the config-set commands that store the result. M959.2 checks the current map against RPM feedback and reports the largest speed error.
 - Changed: Aborting playback stops queued motion immediately before turning off the spindle.
 - Enhancement: Add support for Makera Z1 and Makera Z1 Pro.
 - Fixed: Suspending file playback no longer caused a stackoverflow crash

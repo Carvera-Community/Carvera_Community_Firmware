@@ -479,7 +479,15 @@ bool AnalogSpindleControl::wait_for_stable_rpm(float &rpm, uint32_t min_ms, uint
             return true;
         }
     }
-    rpm = current_rpm;
+    if (count > 0) {
+        const int n = count < 4 ? count : 4;
+        float sum = 0.0f;
+        for (int i = 0; i < n; i++)
+            sum += window[i];
+        rpm = sum / static_cast<float>(n);
+    } else {
+        rpm = current_rpm;
+    }
     return !tune_cancel && !THEKERNEL->is_halted();
 }
 
@@ -580,7 +588,7 @@ bool fit_pwm_samples(const PwmRpmSample *samples, int count, StreamOutput *strea
 
 }
 
-void AnalogSpindleControl::auto_tune(StreamOutput *stream, float step)
+void AnalogSpindleControl::auto_tune(StreamOutput *stream, float step, uint32_t step_ms, int sweeps, bool apply, bool validate)
 {
     if (tuning)
         return;
@@ -609,14 +617,24 @@ void AnalogSpindleControl::auto_tune(StreamOutput *stream, float step)
         intervals = kMaxTuneSamples - 1;
     const int count = intervals + 1;
     step = 1.0f / static_cast<float>(intervals);
+    if (sweeps < 1)
+        sweeps = 1;
+    if (sweeps > 5)
+        sweeps = 5;
+    if (step_ms < 200)
+        step_ms = 200;
 
     PwmRpmSample *samples = new (std::nothrow) PwmRpmSample[count]();
-    if (samples == nullptr) {
+    float *rpm_sum = new (std::nothrow) float[count]();
+    if (samples == nullptr || rpm_sum == nullptr) {
+        delete[] samples;
+        delete[] rpm_sum;
         stream->printf("ERROR: Analog spindle auto-tune failed, not enough memory\n");
         return;
     }
 
-    stream->printf("Analog spindle auto-tune, PWM step %1.3f. The spindle will run.\n", step);
+    stream->printf("Analog spindle auto-tune, PWM step %1.3f, step time %1.1f s, %d sweeps. The spindle will run.\n",
+                   step, step_ms / 1000.0f, sweeps);
     tune_cancel = false;
     tuning = true;
     turn_on();
@@ -625,27 +643,40 @@ void AnalogSpindleControl::auto_tune(StreamOutput *stream, float step)
         THEKERNEL->spindle_accessories->spindle_started();
 
     bool ok = true;
-    for (int i = 0; i < count; i++) {
-        if (tune_cancel || THEKERNEL->is_halted()) {
-            ok = false;
-            break;
+    for (int sweep = 0; sweep < sweeps && ok; sweep++) {
+        stream->printf("sweep %d\n", sweep + 1);
+        if (sweep > 0) {
+            update_pwm(0.0f);
+            float discarded = 0.0f;
+            if (!wait_for_stable_rpm(discarded, step_ms, step_ms))
+                ok = false;
         }
-        float pwm = step * static_cast<float>(i);
-        if (i == count - 1)
-            pwm = 1.0f;
-        update_pwm(pwm);
-        float rpm = 0.0f;
-        const uint32_t max_ms = (i == 0) ? 8000 : 5000;
-        if (!wait_for_stable_rpm(rpm, 1000, max_ms)) {
-            ok = false;
-            break;
+        for (int i = 0; i < count && ok; i++) {
+            if (tune_cancel || THEKERNEL->is_halted()) {
+                ok = false;
+                break;
+            }
+            float pwm = step * static_cast<float>(i);
+            if (i == count - 1)
+                pwm = 1.0f;
+            update_pwm(pwm);
+            float rpm = 0.0f;
+            if (!wait_for_stable_rpm(rpm, step_ms, step_ms)) {
+                ok = false;
+                break;
+            }
+            samples[i].pwm = pwm;
+            samples[i].rpm = rpm;
+            rpm_sum[i] += rpm;
+            stream->printf("pwm %1.3f rpm %5.0f\n", pwm, rpm);
         }
-        samples[i].pwm = pwm;
-        samples[i].rpm = rpm;
-        stream->printf("pwm %1.3f rpm %5.0f\n", pwm, rpm);
     }
     if (ok && (tune_cancel || THEKERNEL->is_halted()))
         ok = false;
+    if (ok) {
+        for (int i = 0; i < count; i++)
+            samples[i].rpm = rpm_sum[i] / static_cast<float>(sweeps);
+    }
 
     int new_min = 0;
     int new_max = 0;
@@ -659,32 +690,139 @@ void AnalogSpindleControl::auto_tune(StreamOutput *stream, float step)
     } else {
         stream->printf("ERROR: Analog spindle auto-tune aborted\n");
     }
+    delete[] rpm_sum;
     delete[] samples;
 
-    tuning = false;
-    if (ok) {
+    const int old_min = min_rpm;
+    const int old_max = max_rpm;
+    const float old_bottom = pwm_deadzone_bottom;
+    const float old_top = pwm_deadzone_top;
+    const float old_offset = pwm_offset;
+    const float old_scale = pwm_scale;
+    if (ok)
+        stream->printf("Auto-tune fit error %5.0f rpm\n", fit_error);
+    if (ok && (apply || validate)) {
         min_rpm = new_min;
         max_rpm = new_max;
         pwm_deadzone_bottom = new_bottom;
         pwm_deadzone_top = new_top;
         pwm_offset = new_offset;
         pwm_scale = new_scale;
-        stream->printf("Auto-tune fit error %5.0f rpm\n", fit_error);
     }
-    bool needs_stop = spindle_on;
+
+    float fluctuation = 0.0f;
+    bool checked = false;
+    if (ok && validate)
+        checked = sample_commanded_speeds(stream, intervals, step_ms, step_ms, fluctuation);
+    if (ok && validate && !checked)
+        stream->printf("ERROR: Analog spindle map validation aborted\n");
+    if (ok && !apply) {
+        min_rpm = old_min;
+        max_rpm = old_max;
+        pwm_deadzone_bottom = old_bottom;
+        pwm_deadzone_top = old_top;
+        pwm_offset = old_offset;
+        pwm_scale = old_scale;
+    }
+
+    tuning = false;
+    const bool needs_stop = spindle_on;
     if (needs_stop)
         turn_off();
     if (needs_stop && THEKERNEL->spindle_accessories != nullptr)
         THEKERNEL->spindle_accessories->spindle_stopped();
+    if (checked)
+        stream->printf("Validation fluctuation %5.0f rpm\n", fluctuation);
     if (ok) {
-        stream->printf("These values are temporary\nand will need to be saved to the config file with\n");
-        stream->printf("config-set sd spindle.min_rpm %d\n", min_rpm);
-        stream->printf("config-set sd spindle.max_rpm %d\n", max_rpm);
-        stream->printf("config-set sd spindle.pwm_deadzone_bottom %1.4f\n", pwm_deadzone_bottom);
-        stream->printf("config-set sd spindle.pwm_deadzone_top %1.4f\n", pwm_deadzone_top);
-        stream->printf("config-set sd spindle.pwm_offset %1.4f\n", pwm_offset);
-        stream->printf("config-set sd spindle.pwm_scale %1.4f\n", pwm_scale);
+        if (apply)
+            stream->printf("These values are temporary\nand will need to be saved to the config file with\n");
+        else
+            stream->printf("These values were not applied\nTo save them run:\n");
+        stream->printf("config-set sd spindle.min_rpm %d\n", new_min);
+        stream->printf("config-set sd spindle.max_rpm %d\n", new_max);
+        stream->printf("config-set sd spindle.pwm_deadzone_bottom %1.4f\n", new_bottom);
+        stream->printf("config-set sd spindle.pwm_deadzone_top %1.4f\n", new_top);
+        stream->printf("config-set sd spindle.pwm_offset %1.4f\n", new_offset);
+        stream->printf("config-set sd spindle.pwm_scale %1.4f\n", new_scale);
     }
+}
+
+bool AnalogSpindleControl::sample_commanded_speeds(StreamOutput *stream, int intervals, uint32_t min_ms, uint32_t max_ms, float &fluctuation)
+{
+    float lo = static_cast<float>(min_rpm);
+    const float hi = static_cast<float>(max_rpm);
+    if (lo < 1.0f)
+        lo = 1.0f;
+    if (hi <= lo) {
+        stream->printf("ERROR: Analog spindle map validation failed, RPM range is empty\n");
+        return false;
+    }
+    float worst = 0.0f;
+    for (int i = 0; i <= intervals; i++) {
+        if (tune_cancel || THEKERNEL->is_halted())
+            return false;
+        const float cmd = lo + (hi - lo) * (static_cast<float>(i) / static_cast<float>(intervals));
+        update_pwm(pwm_for_rpm(cmd));
+        float measured = 0.0f;
+        if (!wait_for_stable_rpm(measured, min_ms, max_ms))
+            return false;
+        const float err = std::fabs(measured - cmd);
+        if (err > worst)
+            worst = err;
+        stream->printf("command %5.0f rpm %5.0f\n", cmd, measured);
+    }
+    fluctuation = worst;
+    return true;
+}
+
+void AnalogSpindleControl::validate_map(StreamOutput *stream, float step)
+{
+    if (tuning)
+        return;
+    if (THEKERNEL->is_halted()) {
+        stream->printf("ERROR: Analog spindle map validation ignored while halted\n");
+        return;
+    }
+    if (THEKERNEL->get_laser_mode()) {
+        stream->printf("ERROR: Analog spindle map validation is not available in laser mode\n");
+        return;
+    }
+    if (feedback_pin == NULL) {
+        stream->printf("ERROR: Analog spindle map validation requires spindle.feedback_pin\n");
+        return;
+    }
+    if (!(step > 0.0f))
+        step = 0.05f;
+    if (step < 0.02f)
+        step = 0.02f;
+    if (step > 0.20f)
+        step = 0.20f;
+    int intervals = static_cast<int>(1.0f / step + 0.5f);
+    if (intervals < 2)
+        intervals = 2;
+    if (intervals > 50)
+        intervals = 50;
+
+    stream->printf("Analog spindle map validation, PWM step %1.3f. The spindle will run.\n", step);
+    tune_cancel = false;
+    tuning = true;
+    turn_on();
+    if (THEKERNEL->spindle_accessories != nullptr)
+        THEKERNEL->spindle_accessories->spindle_started();
+
+    float fluctuation = 0.0f;
+    const bool ok = sample_commanded_speeds(stream, intervals, 1000, 5000, fluctuation);
+
+    tuning = false;
+    const bool needs_stop = spindle_on;
+    if (needs_stop)
+        turn_off();
+    if (needs_stop && THEKERNEL->spindle_accessories != nullptr)
+        THEKERNEL->spindle_accessories->spindle_stopped();
+    if (ok)
+        stream->printf("Validation fluctuation %5.0f rpm\n", fluctuation);
+    else
+        stream->printf("ERROR: Analog spindle map validation aborted\n");
 }
 
 void AnalogSpindleControl::on_analog_settings(Gcode *gcode)
@@ -696,7 +834,24 @@ void AnalogSpindleControl::on_analog_settings(Gcode *gcode)
         float step = 0.05f;
         if (gcode->has_letter('P'))
             step = gcode->get_value('P');
-        auto_tune(gcode->stream, step);
+        float seconds = gcode->has_letter('D') ? gcode->get_value('D') : 1.0f;
+        if (seconds < 0.2f)
+            seconds = 0.2f;
+        if (seconds > 30.0f)
+            seconds = 30.0f;
+        uint32_t step_ms = static_cast<uint32_t>(seconds * 1000.0f);
+        int sweeps = gcode->has_letter('N') ? gcode->get_int('N') : 2;
+        const bool apply = !gcode->has_letter('A') || gcode->get_value('A') != 0.0f;
+        const bool validate = !gcode->has_letter('V') || gcode->get_value('V') != 0.0f;
+        auto_tune(gcode->stream, step, step_ms, sweeps, apply, validate);
+        return;
+    }
+    // M959.2 checks the current map against RPM feedback without changing it.
+    if (gcode->subcode == 2) {
+        float step = 0.05f;
+        if (gcode->has_letter('P'))
+            step = gcode->get_value('P');
+        validate_map(gcode->stream, step);
         return;
     }
     if (gcode->subcode != 0)

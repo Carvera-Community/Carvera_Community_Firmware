@@ -80,7 +80,9 @@ class AnalogSpindleControl: public SpindleControl {
         void report_map(StreamOutput *stream) const;
         float pwm_for_rpm(float rpm) const;
         float rpm_from_pwm(float duty) const;
-        void auto_tune(StreamOutput *stream, float step);
+        void auto_tune(StreamOutput *stream, float step, uint32_t step_ms, int sweeps, bool apply, bool validate);
+        void validate_map(StreamOutput *stream, float step);
+        bool sample_commanded_speeds(StreamOutput *stream, int intervals, uint32_t min_ms, uint32_t max_ms, float &fluctuation);
         bool wait_for_stable_rpm(float &rpm, uint32_t min_ms, uint32_t max_ms);
 };
 
