@@ -639,7 +639,7 @@ void AnalogSpindleControl::auto_tune(StreamOutput *stream, float step, uint32_t 
         sweeps = 1;
     if (sweeps > 5)
         sweeps = 5;
-    if (step_ms < 200)
+    if (step_ms != 0 && step_ms < 200)
         step_ms = 200;
 
     PwmRpmSample *samples = new (std::nothrow) PwmRpmSample[count]();
@@ -688,11 +688,13 @@ void AnalogSpindleControl::auto_tune(StreamOutput *stream, float step, uint32_t 
     }
 
     uint32_t on_hold_ms = step_ms;
-    uint32_t off_hold_ms = step_ms;
-    if (static_cast<uint32_t>(delay_on_s) * 1000u > on_hold_ms)
-        on_hold_ms = static_cast<uint32_t>(delay_on_s) * 1000u;
-    if (static_cast<uint32_t>(delay_off_s) * 1000u > off_hold_ms)
-        off_hold_ms = static_cast<uint32_t>(delay_off_s) * 1000u;
+    if (on_hold_ms == 0)
+        on_hold_ms = static_cast<uint32_t>(delay_s) * 1000u;
+    if (on_hold_ms < 200)
+        on_hold_ms = 200;
+    uint32_t off_hold_ms = static_cast<uint32_t>(delay_off_s) * 1000u;
+    if (off_hold_ms < 200)
+        off_hold_ms = 200;
     stream->printf("Analog spindle auto-tune, PWM step %1.3f, step time %1.1f s, %d sweeps. The spindle will run.\n",
                    step, on_hold_ms / 1000.0f, sweeps);
 
@@ -998,12 +1000,15 @@ void AnalogSpindleControl::on_analog_settings(Gcode *gcode)
         float step = 0.05f;
         if (gcode->has_letter('P'))
             step = gcode->get_value('P');
-        float seconds = gcode->has_letter('D') ? gcode->get_value('D') : 1.0f;
-        if (seconds < 0.2f)
-            seconds = 0.2f;
-        if (seconds > 30.0f)
-            seconds = 30.0f;
-        uint32_t step_ms = static_cast<uint32_t>(seconds * 1000.0f);
+        uint32_t step_ms = 0;
+        if (gcode->has_letter('D')) {
+            float seconds = gcode->get_value('D');
+            if (seconds < 0.2f)
+                seconds = 0.2f;
+            if (seconds > 30.0f)
+                seconds = 30.0f;
+            step_ms = static_cast<uint32_t>(seconds * 1000.0f);
+        }
         int sweeps = gcode->has_letter('N') ? gcode->get_int('N') : 2;
         const bool apply = !gcode->has_letter('A') || gcode->get_value('A') != 0.0f;
         const bool validate = !gcode->has_letter('V') || gcode->get_value('V') != 0.0f;

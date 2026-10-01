@@ -3414,8 +3414,8 @@
         },
         "D": {
           "required": false,
-          "description": "Hold time at each PWM step. Clamped to 0.2–30.",
-          "default": 1,
+          "description": "Settling time at each PWM step. Omitting uses the measured delay_s. Clamped to 0.2–30.",
+          "default": null,
           "unit": "s"
         },
         "N": {
