@@ -3414,14 +3414,14 @@
         },
         "D": {
           "required": false,
-          "description": "Settling time at each PWM step. Omitting uses the measured delay_s. Clamped to 0.2–30.",
+          "description": "Settling time at each PWM step. Omitting uses 1.5 times the measured delay_s. Clamped to 0.2–30.",
           "default": null,
           "unit": "s"
         },
         "N": {
           "required": false,
           "description": "Number of sweeps. RPM readings are averaged before the fit. Clamped to 1–5.",
-          "default": 2
+          "default": 1
         },
         "A": {
           "required": false,

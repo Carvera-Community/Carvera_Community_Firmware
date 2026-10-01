@@ -680,8 +680,10 @@ void AnalogSpindleControl::auto_tune(StreamOutput *stream, float step, uint32_t 
     }
 
     uint32_t on_hold_ms = step_ms;
-    if (on_hold_ms == 0)
-        on_hold_ms = static_cast<uint32_t>(delay_s) * 1000u;
+    if (on_hold_ms == 0) {
+        // 1.5 times delay_s is 50% above the measured delay so each step has time to settle.
+        on_hold_ms = static_cast<uint32_t>(static_cast<float>(delay_s) * 1.5f * 1000.0f);
+    }
     if (on_hold_ms < 200)
         on_hold_ms = 200;
     uint32_t off_hold_ms = static_cast<uint32_t>(delay_off_s) * 1000u;
@@ -1004,7 +1006,7 @@ void AnalogSpindleControl::on_analog_settings(Gcode *gcode)
                 seconds = 30.0f;
             step_ms = static_cast<uint32_t>(seconds * 1000.0f);
         }
-        int sweeps = gcode->has_letter('N') ? gcode->get_int('N') : 2;
+        int sweeps = gcode->has_letter('N') ? gcode->get_int('N') : 1;
         const bool apply = !gcode->has_letter('A') || gcode->get_value('A') != 0.0f;
         const bool validate = !gcode->has_letter('V') || gcode->get_value('V') != 0.0f;
         auto_tune(gcode->stream, step, step_ms, sweeps, apply, validate);
