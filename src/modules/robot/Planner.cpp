@@ -39,6 +39,11 @@ Planner::Planner()
     config_load();
 }
 
+void Planner::reset_after_abort()
+{
+    memset(previous_unit_vec, 0, sizeof(previous_unit_vec));
+}
+
 // Configure acceleration
 void Planner::config_load()
 {
@@ -53,6 +58,8 @@ void Planner::config_load()
 bool Planner::append_block( ActuatorCoordinates &actuator_pos, uint8_t n_motors, float rate_mm_s, float distance, float *unit_vec, float acceleration, float s_value, bool g123, unsigned int _line)
 // bool Planner::append_block( ActuatorCoordinates &actuator_pos, uint8_t n_motors, float rate_mm_s, float distance, float *unit_vec, float acceleration, float *s_values, int s_count, bool g123, unsigned int _line)
 {
+    if (THECONVEYOR->motion_abort_requested()) return false;
+
     // Create ( recycle ) a new block
     Block* block = THECONVEYOR->queue.head_ref();
     block->line = _line;
@@ -235,9 +242,7 @@ bool Planner::append_block( ActuatorCoordinates &actuator_pos, uint8_t n_motors,
     // The block can now be used
     block->ready();
 
-    THECONVEYOR->queue_head_block();
-
-    return true;
+    return THECONVEYOR->queue_head_block();
 }
 
 void Planner::recalculate()
@@ -335,5 +340,4 @@ float Planner::max_allowable_speed(float acceleration, float target_velocity, fl
     // Was acceleration*60*60*distance, in case this breaks, but here we prefer to use seconds instead of minutes
     return(sqrtf(target_velocity * target_velocity - 2.0F * acceleration * distance));
 }
-
 

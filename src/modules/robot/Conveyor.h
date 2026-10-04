@@ -33,6 +33,9 @@ public:
 
     void dump_queue(void);
     void flush_queue(void);
+    void request_motion_abort();
+    void clear_motion_abort();
+    bool motion_abort_requested() const { return abort_motion; }
     float get_current_feedrate() const { return current_feedrate; }
     void force_queue() { check_queue(true); }
     bool set_continuous_mode(bool f);
@@ -43,7 +46,7 @@ public:
 
 private:
     void check_queue(bool force= false);
-    void queue_head_block(void);
+    bool queue_head_block(void);
 
     using  Queue_t= BlockQueue;
     Queue_t queue;  // Queue of Blocks
@@ -58,6 +61,7 @@ private:
         volatile bool allow_fetch:1;
         bool flush:1;
         volatile bool hold_queue:1;
+        volatile bool abort_motion:1;
         volatile uint8_t continuous_mode:2;
     };
 

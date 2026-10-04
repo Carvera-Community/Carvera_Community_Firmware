@@ -19,12 +19,38 @@ if(NOT CMAKE_BUILD_TYPE STREQUAL "Release" AND NOT CMAKE_BUILD_TYPE STREQUAL "De
 endif()
 
 set(VERSION "" CACHE STRING "Firmware version string; derived from Git when empty")
+set(MACHINE "carvera" CACHE STRING "Target machine family")
+set_property(CACHE MACHINE PROPERTY STRINGS carvera z1)
 set(AXIS "5" CACHE STRING "Maximum number of robot actuators")
 set(PAXIS "3" CACHE STRING "Number of primary axes")
 option(DISABLEMSD "Disable USB mass storage support" OFF)
+option(SERIAL_RX_DMA "Receive the primary UART through DMA" OFF)
+option(REMOTE_SETTINGS_TRANSFER "Load machine settings through the Makera serial link" OFF)
+option(STREAMED_JOB_PLAYBACK "Play jobs streamed through the Makera serial link" OFF)
+option(CANOPEN_SUPPORT "Enable CAN and CANopen support" OFF)
 option(NO_MODBUS_SPINDLE "Exclude the Modbus spindle drivers" ON)
 option(NO_VESC_SPINDLE "Exclude the VESC USB spindle driver" OFF)
+option(NO_USB_HOST "Exclude USB host support" OFF)
+option(NO_SD_CARD "Exclude local SD card support" OFF)
+option(NO_WIRELESS_PROBE "Exclude the wireless probe UART" OFF)
+option(NO_WIFI_PROVIDER "Exclude the Wi-Fi module" OFF)
 set(STACK_SIZE "4096" CACHE STRING "Reserved stack size in bytes; use 0 to disable the limit")
+if(MACHINE STREQUAL "z1")
+    set(REMOTE_SETTINGS_TRANSFER ON)
+    set(STREAMED_JOB_PLAYBACK ON)
+    set(CANOPEN_SUPPORT ON)
+    set(SERIAL_RX_DMA ON)
+    set(NO_USB_HOST ON)
+    set(NO_VESC_SPINDLE ON)
+    set(NO_SD_CARD ON)
+    set(NO_WIRELESS_PROBE ON)
+    set(NO_WIFI_PROVIDER ON)
+elseif(NOT MACHINE STREQUAL "carvera")
+    message(FATAL_ERROR "Unsupported MACHINE '${MACHINE}'; choose carvera or z1.")
+endif()
+if(NO_USB_HOST)
+    set(NO_VESC_SPINDLE ON)
+endif()
 if(CMAKE_BUILD_TYPE STREQUAL "Debug")
     set(_default_optimization "g")
 else()
@@ -63,7 +89,7 @@ endif()
 
 message(STATUS "Firmware profile: ${CMAKE_BUILD_TYPE}")
 message(STATUS "Firmware version: ${CARVERA_FIRMWARE_VERSION}")
-message(STATUS "Machine configuration: AXIS=${AXIS} PAXIS=${PAXIS}")
+message(STATUS "Machine configuration: MACHINE=${MACHINE} AXIS=${AXIS} PAXIS=${PAXIS}")
 
 include(cmake/compiler-options.cmake)
 
@@ -98,17 +124,23 @@ function(carvera_embed_config input_name object_name section_name output_variabl
 endfunction()
 carvera_embed_config(config.default configdefault .rodata.configdefault _configdefault_o)
 carvera_embed_config(config2.default config2default .rodata.config2default _config2default_o)
-set_source_files_properties("${_configdefault_o}" "${_config2default_o}" PROPERTIES
-    EXTERNAL_OBJECT TRUE
-    GENERATED TRUE
-)
+set(_embedded_configs "${_configdefault_o}" "${_config2default_o}")
+if(MACHINE STREQUAL "z1")
+    carvera_embed_config(config_z1.default configz1default .rodata.configz1default _configz1default_o)
+    carvera_embed_config(config_z1pro.default configz1prodefault .rodata.configz1prodefault _configz1prodefault_o)
+    list(APPEND _embedded_configs "${_configz1default_o}" "${_configz1prodefault_o}")
+endif()
+set_source_files_properties(${_embedded_configs} PROPERTIES EXTERNAL_OBJECT TRUE GENERATED TRUE)
 
 add_executable(firmware
     "${CMAKE_SOURCE_DIR}/build/mbed_custom.cpp"
-    "${_configdefault_o}"
-    "${_config2default_o}"
+    ${_embedded_configs}
 )
-set(_firmware_output_dir "${CMAKE_BINARY_DIR}/LPC1768")
+if(MACHINE STREQUAL "z1")
+    set(_firmware_output_dir "${CMAKE_BINARY_DIR}/LPC1768-z1")
+else()
+    set(_firmware_output_dir "${CMAKE_BINARY_DIR}/LPC1768")
+endif()
 set_target_properties(firmware PROPERTIES
     OUTPUT_NAME firmware
     SUFFIX .elf
@@ -160,7 +192,6 @@ add_custom_command(TARGET firmware POST_BUILD
 )
 target_link_libraries(firmware PRIVATE
     carvera_sources
-    "${CMAKE_SOURCE_DIR}/build/M8266WIFIDrv_LPC17xx.a"
     "$<$<CONFIG:Debug>:carvera_mri>"
     carvera_mbed
     stdc++
@@ -173,7 +204,6 @@ target_link_libraries(firmware PRIVATE
 set_property(TARGET firmware APPEND PROPERTY LINK_DEPENDS
     "${_firmware_linker_script}"
     "${CMAKE_SOURCE_DIR}/build/startfile.spec"
-    "${CMAKE_SOURCE_DIR}/build/M8266WIFIDrv_LPC17xx.a"
 )
 
 set(_firmware_bin "${_firmware_output_dir}/firmware.bin")

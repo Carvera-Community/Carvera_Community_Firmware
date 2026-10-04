@@ -332,7 +332,7 @@ second_usb_serial_enable					false			# This enables a second USB serial port
 
 # Main button
 #main_button_enable							true			# Set to true to enable main button
-# main_button_pin								2.13!^			# Main button pin
+main_button_pin								2.13!^			# Main button pin
 main_button_LED_R_pin						nc			# Main button red LED pin
 # main_button_LED_G_pin						1.15			# Main button green LED pin
 main_button_LED_B_pin						nc			# Main button blue LED pin
@@ -345,7 +345,7 @@ main_button_long_press_enable    			None  			#When the Main button long press,En
 #ps12_pin									0.22				# 12V power pin
 #ps24_pin									0.10				# 24V power pin
 # power_fan_delay_s							30				# power fan turn on/off delay
-#e_stop_pin									0.20^			# Emergency stop pin
+e_stop_pin									0.20^			# Emergency stop pin
 
 
 # 
@@ -363,6 +363,7 @@ spindle.pulses_per_rev						2				#12				# default 1. Defines the number of pulse
 spindle.control_P							0.00001			# default 0.0001. P value for the PID controller              
 spindle.control_I							0.00005			# default 0.0001. I value for the PID controller
 spindle.control_D							0.00005			# default 0.0001. D value for the PID controller
+spindle.delayed_D_control				true			# delay derivative correction after a speed change
 # spindle.control_smoothing					0.1				# default 0.1. This value is low pass filter time constant in seconds.
 # spindle.delay_s								3.0				# delay seconds before next motion after spindle turn on or off
 # spindle.acc_ratio							1				#1.635			# acceleration ratio
@@ -399,6 +400,8 @@ switch.vacuum.input_off_command			M802			# Command that will turn this switch of
 # switch.vacuum.output_pin				nc				# Pin this module controls
 switch.vacuum.output_type				hwpwm		# Digital means this is just an on or off pin
 switch.vacuum.default_on_value 80		# Default vacuum power when open (50 - 100)
+accessory.chip_clear_switch extendout	# CA1 uses the external output for spindle chip clearing
+accessory.chip_clear_power 80
 
 # Light
 switch.light.startup_state true			# Whether to turn on light by default
@@ -421,9 +424,12 @@ coordinate.anchor1_y -203.0 			# Y Machine coordinates of anchor1
 coordinate.anchor2_offset_x 88.5		# Anchor2 X Offset relative to anchor1
 coordinate.anchor2_offset_y 45.0		# Anchor2 Y Offset relative to anchor1
 
-# coordinate.toolrack_offset_x 126		# Tool 6 X Offset relative to anchor1
-# coordinate.toolrack_offset_y 196		# Tool 6 Y Offset relative to anchor1
-# coordinate.toolrack_z -108				# ATC Z axis machine coordinates
+coordinate.toolrack_offset_x 126		# Tool 6 X Offset relative to anchor1
+coordinate.toolrack_offset_y 196		# Tool 6 Y Offset relative to anchor1
+coordinate.toolrack_z -108				# ATC Z axis machine coordinates
+coordinate.manual_tool_change_x -33.0
+coordinate.manual_tool_change_y -7.0
+coordinate.manual_probe_z -118.0
 
 # Tool setter (probe) position in absolute Machine Coordinate System
 # If not set, uses hardcoded values: X=-165.0, Y=173.0, Z=-148.0 for CARVERA_AIR
@@ -433,8 +439,8 @@ coordinate.anchor2_offset_y 45.0		# Anchor2 Y Offset relative to anchor1
 #coordinate.probe_mcs_z -148.0		# Tool setter Z position in MCS (mm)
 
 coordinate.rotation_offset_x 41.5		# Rotation module X Offset relative to anchor1
-# coordinate.rotation_offset_y 82.5		# Rotation module Y Offset relative to anchor1
-# coordinate.rotation_offset_z 23.0		# Rotation module Z Offset relative to chuck center
+coordinate.rotation_offset_y 82.5		# Rotation module Y Offset relative to anchor1
+coordinate.rotation_offset_z 23.0		# Rotation module Z Offset relative to chuck center
 
 # coordinate.anchor_width 15.0			# Width of two anchors
 coordinate.anchor_length 100.0			# Length of two anchors
@@ -442,8 +448,8 @@ coordinate.anchor_length 100.0			# Length of two anchors
 coordinate.worksize_x 300.0				# Width of work area
 coordinate.worksize_y 200.0				# Height of work area
 
-# coordinate.clearance_x -5.0				# X Machine coordinates for clearance
-# coordinate.clearance_y -21.0			# Y Machine coordinates for clearance
+coordinate.clearance_x -5.0				# X Machine coordinates for clearance
+coordinate.clearance_y -21.0			# Y Machine coordinates for clearance
 coordinate.clearance_z -3.0				# Z Machine coordinates for clearance
 
 soft_endstop.enable	false				# enable soft limit or not
@@ -471,6 +477,7 @@ epsilon_acceleration 360.0				# Acceleration for auto tool changer (mm/second/se
 wifi.machine_name CARVERA_AIR_01001	    	# Machine name that is shown in the WiFi list
 
 # ATC Motion
+atc.lowest_tool_number 1                 # First automatic tool slot
 atc.homing_retract_mm 0					# Retract distance after homing (mm)
 atc.action_mm 70					 	# Action distance when drop tool (mm)
 atc.detector.detect_rate_mm_s 20		# Tool detect speed (mm / second)	

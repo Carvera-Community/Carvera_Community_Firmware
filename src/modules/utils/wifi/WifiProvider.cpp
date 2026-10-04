@@ -316,6 +316,11 @@ void WifiProvider::receive_wifi_data() {
 				continue;
 			}
 
+			if (packet.type == PTYPE_CTRL_MULTI && makera::is_diagnostic_request(packet.data, packet.data_length)) {
+				diagnose_flag = true;
+				continue;
+			}
+
 			if (packet.type != PTYPE_CTRL_MULTI && packet.type != PTYPE_FILE_START) continue;
 
 			if (packet.data_length == 0) {
@@ -323,12 +328,7 @@ void WifiProvider::receive_wifi_data() {
 				continue;
 			}
 
-			struct SerialMessage message;
-			message.message.assign(reinterpret_cast<const char *>(packet.data), packet.data_length);
-			message.stream = this;
-			message.line = 0;
-
-			if (!THEKERNEL->dispatch_console_line(message)) command_waiting = true;
+			command_waiting = true;
 			if (packet.type == PTYPE_FILE_START) return;
 		}
 	}
