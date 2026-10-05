@@ -53,3 +53,4 @@ gcc-arm-none-eabi*
 .cursor
 .idea
 __pycache__/
+*.log
