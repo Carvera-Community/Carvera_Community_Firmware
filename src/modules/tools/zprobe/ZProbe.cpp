@@ -121,7 +121,6 @@ void ZProbe::config_load()
         zprobe_checksum, require_probe_trigger_for_calibration_checksum)->as_bool(true);
     this->halt_pending = false;
     this->probe_triggered = false;
-    this->probe_crash_count = 0;
 
     // get strategies to load
     vector<uint16_t> modules;
