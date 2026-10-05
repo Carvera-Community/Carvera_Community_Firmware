@@ -115,13 +115,6 @@ typedef struct {
 
 static_assert(sizeof(EEPROM_data) <= 480, "EEPROM_data exceeds 480-byte EEPROM page budget");
 
-typedef struct {
-	char  MachineModel;
-	char  FuncSetting;
-	char  reserve1;
-	char  reserve2;
-} FACTORY_SET;
-
 class Kernel {
     public:
         Kernel();

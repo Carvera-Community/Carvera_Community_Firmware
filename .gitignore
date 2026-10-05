@@ -54,3 +54,4 @@ gcc-arm-none-eabi*
 .idea
 __pycache__/
 LPC1768-z1
+*.log
