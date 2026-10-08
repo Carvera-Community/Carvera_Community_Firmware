@@ -1,4 +1,4 @@
-[unreleased]
+[2.2.0c]
 - Fixed: Arcs start at the current position after jogging, direct moves, and coordinate resets.
 - Fixed: Prevent compressed file corruption during decompression.
 - Fixed: Suspending file playback no longer caused a stackoverflow crash
