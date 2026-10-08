@@ -1580,6 +1580,8 @@ void Robot::reset_axis_position(float x, float y, float z)
         compensationTransform(machine_position, true, false);
     }
 
+    memcpy(arc_milestone, machine_position, sizeof(arc_milestone));
+
     // now set the actuator positions based on the supplied compensated position
     ActuatorCoordinates actuator_pos;
     arm_solution->cartesian_to_actuator(this->compensated_machine_position, actuator_pos);
@@ -1638,6 +1640,9 @@ void Robot::reset_position_from_current_actuator_position()
 
     // compensated_machine_position includes the compensation transform so we need to get the inverse to get actual machine_position
     if(compensationTransform) compensationTransform(machine_position, true, false); // get inverse compensation transform
+
+    // Arcs must start at the actual position after a jog or interrupted move.
+    memcpy(arc_milestone, machine_position, sizeof(arc_milestone));
 
     // now reset actuator::machine_position, NOTE this may lose a little precision as FK is not always entirely accurate.
     // NOTE This is required to sync the machine position with the actuator position, we do a somewhat redundant cartesian_to_actuator() call
@@ -1968,6 +1973,7 @@ bool Robot::delta_move(const float *delta, float rate_mm_s, uint8_t naxis)
     bool moved = append_milestone(target, rate_mm_s * seconds_per_minute, 0);
     if(moved) {
         memcpy(machine_position, target, n_motors*sizeof(float));
+        memcpy(arc_milestone, target, sizeof(arc_milestone));
     }
     this->inverse_time_mode = saved_itm; // restore G93/G94
 
