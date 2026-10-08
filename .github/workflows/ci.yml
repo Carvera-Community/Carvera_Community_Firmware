@@ -122,14 +122,17 @@ jobs:
         id: set-version
         run: |
           if [[ "${{ github.ref }}" == "refs/heads/Dev" ]]; then
-            VERSION=$(date +'%Y.%m.%d')c
-            IS_DEV_BUILD=true
+            echo "VERSION=$(date +'%Y.%m.%d')c" >>"$GITHUB_OUTPUT"
+            echo "IS_DEV_BUILD=true" >>"$GITHUB_OUTPUT"
           else
-            VERSION=$(.github/scripts/set-version.sh | grep VERSION= | cut -d'=' -f2)
-            IS_DEV_BUILD=false
+            # set-version.sh writes VERSION to GITHUB_OUTPUT and prints nothing.
+            .github/scripts/set-version.sh
+            echo "IS_DEV_BUILD=false" >>"$GITHUB_OUTPUT"
           fi
-          echo "VERSION=$VERSION" >>"$GITHUB_OUTPUT"
-          echo "IS_DEV_BUILD=$IS_DEV_BUILD" >>"$GITHUB_OUTPUT"
+          if ! grep -q '^VERSION=.' "$GITHUB_OUTPUT"; then
+            echo "VERSION is empty" >&2
+            exit 1
+          fi
 
       - name: Cache compiler toolchain
         uses: actions/cache@v4
@@ -187,13 +190,13 @@ jobs:
       - name: Download firmware artifacts
         uses: actions/download-artifact@v4
         with:
-          name: firmware-${{ needs.build.outputs.version }}-arm64
+          name: firmware-${{ needs.build.outputs.version }}-${{ runner.arch }}
           path: release-assets
 
       - name: Download debug symbols artifacts
         uses: actions/download-artifact@v4
         with:
-          name: firmware-debug-symbols-${{ needs.build.outputs.version }}-ARM64
+          name: firmware-debug-symbols-${{ needs.build.outputs.version }}-${{ runner.arch }}
           path: release-assets
 
       - name: Create GitHub Release
@@ -231,13 +234,13 @@ jobs:
       - name: Download firmware artifacts
         uses: actions/download-artifact@v4
         with:
-          name: firmware-${{ needs.build.outputs.version }}-ARM64
+          name: firmware-${{ needs.build.outputs.version }}-${{ runner.arch }}
           path: release-assets
 
       - name: Download debug symbols artifacts
         uses: actions/download-artifact@v4
         with:
-          name: firmware-debug-symbols-${{ needs.build.outputs.version }}-ARM64
+          name: firmware-debug-symbols-${{ needs.build.outputs.version }}-${{ runner.arch }}
           path: release-assets
 
       - name: Generate dev release notes
