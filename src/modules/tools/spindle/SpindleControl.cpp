@@ -36,6 +36,10 @@ void SpindleControl::on_gcode_received(void *argument)
         report_settings();
         return;
     }
+    if (gcode->m == 959) {
+        on_analog_settings(gcode);
+        return;
+    }
     if (gcode->m == 223) {
         if (gcode->has_letter('S')) {
             float factor = gcode->get_value('S');
@@ -86,6 +90,11 @@ void SpindleControl::on_gcode_received(void *argument)
     }
     THEKERNEL->spindle_accessories->spindle_stopped();
     handling_gcode = false;
+}
+
+void SpindleControl::on_analog_settings(Gcode *gcode)
+{
+    gcode->stream->printf("ERROR: M959 requires an analog spindle type\n");
 }
 
 void SpindleControl::on_halt(void *argument)

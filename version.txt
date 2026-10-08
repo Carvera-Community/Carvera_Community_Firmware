@@ -1,4 +1,6 @@
 [unreleased]
+- Enhancement: Analog spindle PWM has configurable top and bottom dead zones, offset, and scale. M959 sets or reports the map.
+- Enhancement: M959.1 auto-tunes the analog spindle PWM map from RPM feedback, including the on, off, and shared spindle delays.
 - Changed: Aborting playback stops queued motion immediately before turning off the spindle.
 - Enhancement: Add support for Makera Z1 and Makera Z1 Pro.
 - Fixed: Suspending file playback no longer caused a stackoverflow crash

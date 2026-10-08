@@ -3355,6 +3355,98 @@
         }
       }
     },
+    "M959": {
+      "type": "mcode",
+      "description": "Set or report the analog spindle PWM map. Duty = offset + scale * (rpm / max_rpm), limited to [deadzone_bottom, 1 - deadzone_top]. Analog spindle type only.",
+      "parameters": {
+        "L": {
+          "required": false,
+          "description": "Minimum RPM. Commands below this run at this speed.",
+          "default": 100,
+          "unit": "rpm",
+          "default_source": "spindle.min_rpm"
+        },
+        "H": {
+          "required": false,
+          "description": "Maximum RPM. This is also the speed at full scaled duty.",
+          "default": 5000,
+          "unit": "rpm",
+          "default_source": "spindle.max_rpm"
+        },
+        "B": {
+          "required": false,
+          "description": "Bottom dead zone. Lowest duty that turns the spindle.",
+          "default": 0,
+          "unit": "duty",
+          "default_source": "spindle.pwm_deadzone_bottom"
+        },
+        "T": {
+          "required": false,
+          "description": "Top dead zone. Unused duty above the speed where RPM stops increasing.",
+          "default": 0,
+          "unit": "duty",
+          "default_source": "spindle.pwm_deadzone_top"
+        },
+        "O": {
+          "required": false,
+          "description": "Duty added to the scaled RPM command.",
+          "default": 0,
+          "unit": "duty",
+          "default_source": "spindle.pwm_offset"
+        },
+        "S": {
+          "required": false,
+          "description": "Scales duty across 0..max RPM. 1 with zero offset and dead zones matches rpm/max_rpm.",
+          "default": 1,
+          "default_source": "spindle.pwm_scale"
+        }
+      }
+    },
+    "M959.1": {
+      "type": "mcode",
+      "description": "Auto-tune the analog spindle PWM map from RPM feedback. The spindle runs from 0 to full duty. Also measures delay_on_s, delay_off_s, and delay_s. Requires spindle.feedback_pin. Halt or e-stop aborts and keeps the previous map. Prints config-set commands for the result.",
+      "parameters": {
+        "P": {
+          "required": false,
+          "description": "PWM step from 0 to 1. Clamped to 0.02–0.20.",
+          "default": 0.05,
+          "unit": "duty"
+        },
+        "D": {
+          "required": false,
+          "description": "Settling time at each PWM step. Omitting uses 1.5 times the measured delay_s. Clamped to 0.2–30.",
+          "default": null,
+          "unit": "s"
+        },
+        "N": {
+          "required": false,
+          "description": "Number of sweeps. RPM readings are averaged before the fit. Clamped to 1–5.",
+          "default": 1
+        },
+        "A": {
+          "required": false,
+          "description": "Apply the fitted map in memory. 0 leaves the current map unchanged.",
+          "default": 1
+        },
+        "V": {
+          "required": false,
+          "description": "Run a map check after the sweeps and print the largest RPM error. 0 skips it.",
+          "default": 1
+        }
+      }
+    },
+    "M959.2": {
+      "type": "mcode",
+      "description": "Check the current analog spindle PWM map against RPM feedback. The spindle runs from minimum to maximum RPM. Each speed is held for delay_on_s or delay_s, whichever is longer. Stopping waits for delay_off_s. Prints the largest speed error. Does not change the map.",
+      "parameters": {
+        "P": {
+          "required": false,
+          "description": "Step through the speed range. 0.05 checks 21 speeds. Clamped to 0.02–0.20.",
+          "default": 0.05,
+          "unit": "duty"
+        }
+      }
+    },
     "M999": {
       "type": "mcode",
       "description": "Clear a halt / alarm lock so motion commands are accepted again. Home afterwards; position is unknown.",

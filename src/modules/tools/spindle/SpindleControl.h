@@ -10,6 +10,8 @@
 
 #include "libs/Module.h"
 
+class Gcode;
+
 class SpindleControl: public Module {
     public:
         SpindleControl() : spindle_on(false), handling_gcode(false) {};
@@ -32,6 +34,7 @@ class SpindleControl: public Module {
         virtual void set_i_term(float) {};
         virtual void set_d_term(float) {};
         virtual void report_settings(void) {};
+        virtual void on_analog_settings(Gcode *);
 
         virtual void set_factor(float) {};
 };
