@@ -511,6 +511,10 @@
         }
       }
     },
+    "G34": {
+      "type": "gcode",
+      "description": "Record the Z deviation profile to the corresponding flex compensation."
+    },
     "G38.2": {
       "type": "gcode",
       "description": "Probe toward the workpiece and stop on contact. Halts with an error if the probe does not trigger.",
