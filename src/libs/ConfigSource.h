@@ -8,10 +8,28 @@
 #ifndef CONFIGSOURCE_H
 #define CONFIGSOURCE_H
 
+#include <cstdint>
 #include <string>
+#include <string_view>
 
 class ConfigValue;
 class ConfigCache;
+
+class ConfigLine {
+    public:
+        enum class Result : uint8_t { ignored, parsed, missing_pair, missing_value };
+
+        explicit ConfigLine(std::string_view line);
+
+        Result result() const { return result_; }
+        std::string_view key() const { return key_; }
+        std::string_view value() const { return value_; }
+
+    private:
+        Result result_;
+        std::string_view key_;
+        std::string_view value_;
+};
 
 class ConfigSource {
     public:

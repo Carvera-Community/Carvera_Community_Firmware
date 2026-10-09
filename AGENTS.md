@@ -4,27 +4,31 @@ These instructions apply to the entire repository.
 
 ## Supported machines
 
-This is firmware for two desktop CNC mills:
+This is firmware for four desktop CNC mills:
 
 - Carvera (C1)
 - Carvera Air (CA1)
+- Makera Z1
+- Makera Z1 Pro
 
-Both are Cartesian three-axis machines. A rotary A axis is optional. The C1
-has an automatic tool changer (ATC). The CA1 does not have a factory ATC,
-although some machines have a user-installed ATC modification.
+All four are Cartesian three-axis machines with an optional rotary A axis. The
+Carvera has an automatic tool changer (ATC). The Carvera Air does not have a
+factory ATC, although some machines have a user-installed ATC modification. The
+Z1 and Z1 Pro do not have an ATC.
 
 The built-in C1 configuration is `src/config.default`. The built-in CA1
-configuration is `src/config2.default`. Each machine also has a configuration
-overlay on its SD card with settings for that particular machine. The effective
-configuration is therefore not necessarily the same as either file in the
-repository.
+configuration is `src/config2.default`. The built-in Z1 and Z1 Pro
+configurations are `src/config_z1.default` and `src/config_z1pro.default`.
+Machine-specific settings supplement the built-in configuration, so the
+effective configuration is not necessarily the same as the corresponding file
+in the repository.
 
 This code descends from general-purpose Smoothieware and still contains code
 for machines and kinematics that Carvera does not use, including CoreXY and
 SCARA. Do not assume that inherited capabilities are supported here. Do not
 work on unrelated generic-machine code unless the task explicitly requires it.
-Do not infer that the C1 and CA1 share a feature merely because related code or
-configuration entries exist.
+Do not infer that different machine models share a feature merely because
+related code or configuration entries exist.
 
 ## Working in this repository
 
@@ -55,20 +59,26 @@ justified. Consider resource use when choosing an implementation.
 
 ## Validation
 
-Build the firmware with:
+Build Carvera and Carvera Air firmware with the Make-based build wrapper:
 
 ```sh
-./build/build.sh
+./build/build.sh --clean
+```
+
+Build Makera Z1 and Makera Z1 Pro firmware with:
+
+```sh
+./build/build.sh --clean MACHINE=z1
 ```
 
 This repository does not currently have a functional test suite. A successful
 build or static check does not show that the machine still behaves correctly.
 
-Before submitting a change that affects machine behavior, test it on a real C1
-or CA1 that has the affected feature. Record the information relevant to
-the testing in the pull request. The maintainers do not have the resources
-to perform this validation for contributors, and an unvalidated behavior change
-is not ready for review.
+Before submitting a change that affects machine behavior, test it on a real
+supported machine that has the affected feature. Record the information
+relevant to the testing in the pull request. The maintainers do not have the
+resources to perform this validation for contributors, and an unvalidated
+behavior change is not ready for review.
 
 ## Final review and pull requests
 

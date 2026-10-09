@@ -19,6 +19,9 @@ using namespace std;
 #include "libs/SerialMessage.h"
 #include "libs/ConfigSources/FileConfigSource.h"
 
+#if defined(REMOTE_SETTINGS_TRANSFER)
+#include "libs/ConfigSources/RemoteConfigSource.h"
+#endif
 #include "libs/ConfigSources/FirmConfigSource.h"
 #include "StreamOutputPool.h"
 
@@ -31,6 +34,9 @@ Config::Config()
     // Config source for firm config found in src/config.default
     this->config_sources.push_back( new FirmConfigSource("firm") );
 
+#if defined(REMOTE_SETTINGS_TRANSFER)
+    this->config_sources.push_back(new RemoteConfigSource(*THEKERNEL->serial));
+#else
     // Config source for */config files
     FileConfigSource *fcs = NULL;
     if( file_exists("/local/config") )
@@ -47,6 +53,7 @@ Config::Config()
         fcs = new FileConfigSource("/sd/config.txt", "sd");
     if( fcs != NULL )
         this->config_sources.push_back( fcs );
+#endif
 }
 
 Config::Config(ConfigSource *cs)

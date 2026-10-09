@@ -7,40 +7,53 @@
 
 #include "stdio.h"
 
+ConfigLine::ConfigLine(std::string_view line) : result_(Result::ignored)
+{
+    if(line.size() < 3) return;
+
+    const size_t begin_key = line.find_first_not_of(" \t");
+    if(begin_key == std::string_view::npos || line[begin_key] == '#') return;
+
+    const size_t end_key = line.find_first_of(" \t", begin_key);
+    if(end_key == std::string_view::npos) {
+        result_ = Result::missing_pair;
+        return;
+    }
+
+    const size_t begin_value = line.find_first_not_of(" \t", end_key);
+    if(begin_value == std::string_view::npos || line[begin_value] == '#') {
+        result_ = Result::missing_value;
+        return;
+    }
+
+    const size_t end_value = line.find_first_of("\r\n# \t", begin_value + 1);
+    const size_t value_size = end_value == std::string_view::npos
+        ? line.size() - begin_value
+        : end_value - begin_value;
+    key_ = line.substr(begin_key, end_key - begin_key);
+    value_ = line.substr(begin_value, value_size);
+    result_ = Result::parsed;
+}
+
 // Parse a config line into a ConfigValue on the stack.
 // Returns true if the line is a valid key-value pair.
 bool ConfigSource::process_line(const string &buffer, ConfigValue &result)
 {
-    if( buffer[0] == '#' ) {
-        return false;
-    }
-    if( buffer.length() < 3 ) {
-        return false;
-    }
-
-    size_t begin_key = buffer.find_first_not_of(" \t");
-    if(begin_key == string::npos || buffer[begin_key] == '#') return false;
-
-    size_t end_key = buffer.find_first_of(" \t", begin_key);
-    if(end_key == string::npos) {
+    const ConfigLine line(buffer);
+    if(line.result() == ConfigLine::Result::ignored) return false;
+    if(line.result() == ConfigLine::Result::missing_pair) {
         THEKERNEL->streams->printf("ERROR: config file line %s is invalid, no key value pair found\r\n", buffer.c_str());
         THEKERNEL->set_config_load_error(true);
         return false;
     }
-
-    size_t begin_value = buffer.find_first_not_of(" \t", end_key);
-    if(begin_value == string::npos || buffer[begin_value] == '#') {
+    if(line.result() == ConfigLine::Result::missing_value) {
         THEKERNEL->streams->printf("ERROR: config file line %s has no value\r\n", buffer.c_str());
         THEKERNEL->set_config_load_error(true);
         return false;
     }
 
-    string key = buffer.substr(begin_key, end_key - begin_key);
-    get_checksums(result.check_sums, key);
-
-    size_t end_value = buffer.find_first_of("\r\n# \t", begin_value + 1);
-    size_t vsize = end_value == string::npos ? buffer.size() - begin_value : end_value - begin_value;
-    result.set_value(buffer.c_str() + begin_value, vsize);
+    get_checksums(result.check_sums, line.key());
+    result.set_value(line.value().data(), line.value().size());
 
     return true;
 }

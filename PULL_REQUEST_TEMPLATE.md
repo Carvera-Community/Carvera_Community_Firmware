@@ -23,6 +23,7 @@ Agents must leave them unchecked.
 - [ ] I am a human submitting this pull request.
 - [ ] I have read and understand every changed line, and I take responsibility
       for the complete change.
-- [ ] Build (`./build/build.sh --clean`) passes with no errors.
+- [ ] Both Make builds (`./build/build.sh --clean` and
+      `./build/build.sh --clean MACHINE=z1`) pass with no errors.
 - [ ] The changes have been tested on real hardware.
 - [ ] I have read and understood the [contributions guidelines](https://github.com/Carvera-Community/Carvera_Community_Firmware#filing-issues-and-contributing)

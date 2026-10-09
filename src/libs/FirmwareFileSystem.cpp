@@ -1,5 +1,7 @@
 #include "FirmwareFileSystem.h"
 
+#if !defined(NO_SD_CARD)
+
 #include <stdarg.h>
 
 extern "C" int mkdir(const char *path, int mode);
@@ -106,3 +108,5 @@ int mkdir(const char *path, int mode)
 }
 
 }
+
+#endif
