@@ -6,7 +6,7 @@ on:
     tags: ['v*']
     branches: ['Dev']
   pull_request:
-    branches: ['master', 'Dev']
+    branches: ['master', 'Dev', 'release/*']
   workflow_dispatch:
 env:
   GCC_VERSION: 14.2
@@ -19,6 +19,8 @@ jobs:
       pull-requests: read
       contents: read
     if: github.event_name == 'pull_request'
+    outputs:
+      build: ${{ steps.build-changes.outputs.build }}
     steps:
       - name: Checkout PR head
         uses: actions/checkout@v4

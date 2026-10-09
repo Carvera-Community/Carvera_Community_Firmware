@@ -17,6 +17,7 @@
 * [Static analysis](#static-analysis)
   * [Requirements](#requirements)
   * [Running analysis](#running-analysis)
+* [Release branches](#release-branches)
 
 See also [TODO](./TODO.md) for some ideas on things to work on :)
 
@@ -602,3 +603,21 @@ So to read a bool config value you would use:
 this->config->value( disable_leds_checksum )->as_bool(false);
 instead of
 this->config->value( disable_leds_checksum )->by_default(false)->as_bool();
+
+# Release branches
+
+Release branches are named `release/<major>.<minor>.x` and stay open for the
+whole minor line, so 2.2.0, 2.2.1, … all land on the same branch:
+
+```
+release/2.2.x
+release/2.3.x
+```
+
+Cut the actual firmware versions with tags (`v2.2.0`, `v2.2.1`, …) from that
+branch.
+
+The naming is not cosmetic. When a PR merges into a release branch,
+[`cascading-merge.yml`](./.github/workflows/cascading-merge.yml) forwards that
+change into every later release branch and finally into `Dev`. Ordering is
+token-based (not strict semver): `release/2.2.x` sorts before `release/2.3.x`.

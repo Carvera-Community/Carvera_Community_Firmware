@@ -4,27 +4,40 @@ set -euo pipefail
 # Simple check to make sure version.txt has some kind of edit history for the
 # current PR, but only if files in the src/ directory have changed.
 
-# Extract the PR base branch name from the event payload
+# Extract the PR base branch and repository from the event payload
 BASE_REF=$(jq -r .pull_request.base.ref < "$GITHUB_EVENT_PATH")
+BASE_REPO=$(jq -r .pull_request.base.repo.clone_url < "$GITHUB_EVENT_PATH")
 
-if [[ -z "$BASE_REF" ]]; then
+if [[ -z "$BASE_REF" || "$BASE_REF" == "null" ]]; then
   echo "Could not determine base ref from GITHUB_EVENT_PATH. Skipping check."
-  exit 0 
+  exit 0
 fi
 
-DIFF_RANGE="origin/$BASE_REF...HEAD"
+# The workflow checks out the PR head repository, so on a fork the base branch
+# is usually absent from origin/. Fetch it from the base repository directly.
+# Without this the diff below fails, the error is swallowed by the "no src
+# changes" branch, and the check passes without having checked anything.
+if ! git fetch --no-tags --quiet "$BASE_REPO" \
+    "+refs/heads/$BASE_REF:refs/remotes/base/$BASE_REF"; then
+  echo "❌ Could not fetch base branch $BASE_REF"
+  echo ""
+  echo "The version.txt check needs the base branch to diff against, and"
+  echo "fetching it from $BASE_REPO failed."
+  exit 1
+fi
 
-# First check if any files in src/ directory have changed
-if ! git diff --name-only "$DIFF_RANGE" | grep -q "^src/"; then
+# Three-dot diff to see changes on HEAD since diverging from the base branch
+DIFF_RANGE="refs/remotes/base/$BASE_REF...HEAD"
+CHANGED=$(git diff --name-only "$DIFF_RANGE")
+
+if ! grep -q "^src/" <<< "$CHANGED"; then
   echo "ℹ️  No files changed in src/ directory. Skipping version.txt check."
   exit 0
 fi
 
 echo "ℹ️  Files changed in src/ directory. Checking version.txt update..."
 
-# List changed files compared to the base branch
-# Use three-dot diff to see changes on HEAD since diverging from origin/$BASE_REF
-if git diff --name-only "$DIFF_RANGE" | grep -qx version.txt; then
+if grep -qx version.txt <<< "$CHANGED"; then
   # PASS: version.txt was updated
   echo "✅ version.txt was updated in this PR."
   echo "(Checked diff range: $DIFF_RANGE)"
