@@ -187,8 +187,8 @@ class Kernel {
 
         void set_flex_compensation_active(bool f) { flex_compensation_active = f; }
         bool is_flex_compensation_active() const { return flex_compensation_active; }
-        void set_flex_compensation_load_error(bool f) { flex_compensation_load_error = f; }
-        bool is_flex_compensation_load_error() const { return flex_compensation_load_error; }
+        void set_flex_compensation_load_error(float f) { flex_compensation_load_error = f; }
+        float is_flex_compensation_load_error() const { return flex_compensation_load_error; }
         void set_config_load_error(bool f) { config_load_error = f; }
         bool is_config_load_error() const { return config_load_error; }
 
@@ -274,6 +274,7 @@ class Kernel {
         uint32_t stop_request_time;
         uint32_t steppers_powered_at_us;
         void protocol_from_name(const std::string& name, ProtocolMode& protocol);
+        uint8_t flex_compensation_load_error;
         struct {
             bool use_leds:1;
             bool halted:1;
@@ -300,7 +301,6 @@ class Kernel {
             bool disable_serial_console:1;
             bool halt_on_error_debug:1;
             bool flex_compensation_active:1;
-            bool flex_compensation_load_error:1;
             bool config_load_error:1;
             bool dispatching_console_line:1;
             bool steppers_powered:1;

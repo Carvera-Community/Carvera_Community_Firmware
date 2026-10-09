@@ -1384,8 +1384,10 @@ void SimpleShell::model_command( string parameters, StreamOutput *stream )
 			break;
 		case CARVERA_AIR:			
 			stream->printf("model = %s, %u, %d, %d\n", "CA1", model_number, THEKERNEL->factory_set->FuncSetting, THEKERNEL->probe_addr);
-            if(THEKERNEL->is_flex_compensation_load_error()) {
+            if(THEKERNEL->is_flex_compensation_load_error() == 1) {
                 stream->printf("ERROR: Could not load flex compensation data\n");
+            }else if(THEKERNEL->is_flex_compensation_load_error() == 2) {
+                stream->printf("ERROR: Configured flex compensation size too big. Max size is 30\n");
             }
             break;
 		default:

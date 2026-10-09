@@ -34,6 +34,7 @@ private:
 
     // Flex compensation methods
     bool doFlexMeasurement(Gcode *gc);
+    bool doFlexZMeasurement(Gcode *gc);
     void print_flex_compensation_data(StreamOutput *stream);
     void save_flex_compensation_data(StreamOutput *stream);
     bool load_flex_compensation_data(StreamOutput *stream);
@@ -79,6 +80,8 @@ private:
     bool flex_compensation_active;
     size_t flex_data_size;
     bool flex_compensation_always_active;
+    bool flex_z_measurement_active;
+    float loaded_flex_compensation_version;
 
     // Compensation state tracking
     bool cartesian_grid_active;
