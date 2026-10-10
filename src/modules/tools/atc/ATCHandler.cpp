@@ -826,8 +826,11 @@ enum CorPhase : uint8_t {
 	COR_AFTER_Y_FRONT,
 	COR_AFTER_Y_BACK,
 	COR_AFTER_Z_TOP,
-	COR_AFTER_REF_Z, // 4th-axis module reference surface (same as M469.5 / fill_zprobe_abs)
 };
+
+// G10 L2 P number and wcs_offsets index of the WCS that M469.6 writes
+constexpr int COR_WCS_P = 6; // G59
+constexpr int COR_WCS_INDEX = COR_WCS_P - 1;
 
 // MCS positions matching gcode #5022 / #5023 / #5024
 void atc_get_mcs_yza(float &y, float &z, float &a)
@@ -903,29 +906,6 @@ void ATCHandler::cor_queue_probe_z_top()
 	this->script_queue.push("M469.7 P6");
 }
 
-// Probe the 4th-axis module reference surface used by fill_zprobe_abs / M469.5.
-// rotation_offset_z = Z_ref - Z_CoR (height of that surface above chuck center).
-void ATCHandler::cor_queue_probe_module_ref()
-{
-	char buff[100];
-	float ref_x;
-	if (!(THEKERNEL->factory_set->FuncSetting & (1 << 0))) {
-		ref_x = this->anchor1_x + this->rotation_offset_x - 3.0f;
-	} else {
-		ref_x = this->anchor1_x + this->rotation_offset_x - 7.0f;
-	}
-	// Use measured CoR Y so the ref probe stays on the rotation centerline
-	const float ref_y = a_axis_cor.y_center;
-
-	snprintf(buff, sizeof(buff), "G90 G53 G0 Z%.3f", THEROBOT->from_millimeters(this->clearance_z));
-	this->script_queue.push(buff);
-	snprintf(buff, sizeof(buff), "G53 G0 X%.3f Y%.3f A%.3f F%.3f", ref_x, ref_y, a_axis_cor.start_a, a_axis_cor.pos_feed);
-	this->script_queue.push(buff);
-	snprintf(buff, sizeof(buff), "G91 %s Z%.3f F%.3f", cor_probe_cmd(a_axis_cor.invert_probe), -120.0f, this->probe_slow_rate);
-	this->script_queue.push(buff);
-	this->script_queue.push("M469.7 P6");
-}
-
 void ATCHandler::calibrate_a_axis_cor(Gcode *gcode) //M469.6
 {
 	THEKERNEL->streams->printf("Calibrating A Axis Center of Rotation\n");
@@ -983,7 +963,7 @@ void ATCHandler::calibrate_a_axis_cor(Gcode *gcode) //M469.6
 
 	char buff[100];
 	this->script_queue.push(";Position probe tip above the artifact center within clearance of its surface");
-	this->script_queue.push(";After CoR finding, probes the standard 4th-axis Z reference (same as M469.5) to compute rotation_offset_z");
+	this->script_queue.push(";The measured rotation axis Y and Z are written to G59");
 	this->script_queue.push("G90 G21");
 	snprintf(buff, sizeof(buff), "G91 %s Z%.3f F%.3f", cor_probe_cmd(invert_probe), -a_axis_cor.probe_travel, this->probe_slow_rate);
 	this->script_queue.push(buff);
@@ -1045,42 +1025,31 @@ void ATCHandler::calibrate_a_axis_cor_step()
 				a_axis_cor.phase = COR_AFTER_Y_FRONT;
 				cor_queue_probe_y_front();
 			} else {
-				// Store raw MCS CoR for the config offset (M469.5 also uses raw #5023, no TLO)
-				a_axis_cor.z_cor_mcs = z_top_raw - apparent_r;
-				a_axis_cor.phase = COR_AFTER_REF_Z;
-				cor_queue_probe_module_ref();
+				// MCS Z = WCS Z + WCS offset Z + tool offset Z (Robot::wcs2mcs), so this
+				// offset puts Z0 on the rotation axis for any tool with a valid TLO.
+				const std::vector<Robot::wcs_t> wcs = THEROBOT->get_wcs_state();
+				const float tlo = std::get<Z_AXIS>(wcs.back());
+				const float old_y = std::get<Y_AXIS>(wcs[1 + COR_WCS_INDEX]);
+				const float old_z = std::get<Z_AXIS>(wcs[1 + COR_WCS_INDEX]);
+				const float new_y = a_axis_cor.y_center;
+				const float new_z = z_top_raw - apparent_r - tlo;
+				const float new_rot_y = new_y - this->anchor1_y;
+
+				snprintf(buff, sizeof(buff), "G10 L2 P%d Y%.4f Z%.4f", COR_WCS_P, new_y, new_z);
+				this->script_queue.push(buff);
+
+				THEKERNEL->streams->printf("Apparent artifact diameter: %.4f\n", apparent_r * 2.0f);
+				THEKERNEL->streams->printf("G59 Y: %.4f -> %.4f (delta %.4f)\n", old_y, new_y, new_y - old_y);
+				THEKERNEL->streams->printf("G59 Z: %.4f -> %.4f (delta %.4f)\n", old_z, new_z, new_z - old_z);
+
+				// The 4th-axis Z probe and M465 use the anchor-relative axis Y
+				this->rotation_offset_y = new_rot_y;
+				THEKERNEL->streams->printf("rotation_offset_y set to %.3f until reset. To keep it run:\n", new_rot_y);
+				THEKERNEL->streams->printf("config-set sd coordinate.rotation_offset_y %.3f\n", new_rot_y);
+
+				a_axis_cor.phase = COR_IDLE;
+				a_axis_cor.pass = 0;
 			}
-			break;
-		}
-
-		case COR_AFTER_REF_Z: {
-			// Same reference surface as fill_zprobe_abs / M469.5 A (#120).
-			// rotation_offset_z = Z_ref - Z_CoR  (module surface height above chuck center).
-			const float z_ref_mcs = atc_get_mcs_axis(Z_AXIS);
-			const float new_rot_z = z_ref_mcs - a_axis_cor.z_cor_mcs;
-			const float new_rot_y = a_axis_cor.y_center - this->anchor1_y;
-
-			snprintf(buff, sizeof(buff), "G90 G53 G0 Z%.3f", THEROBOT->from_millimeters(this->clearance_z));
-			this->script_queue.push(buff);
-
-			THEKERNEL->streams->printf("CoR MCS Y: %.3f  Z: %.3f\n", a_axis_cor.y_center, a_axis_cor.z_cor_mcs);
-			THEKERNEL->streams->printf("Module ref MCS Z: %.3f\n", z_ref_mcs);
-			THEKERNEL->streams->printf("Previous 4th Center of Rotation Y: %.3f (rotation_offset_y: %.3f)\n",
-				this->anchor1_y + this->rotation_offset_y, this->rotation_offset_y);
-			THEKERNEL->streams->printf("New 4th Center of Rotation Y: %.3f (rotation_offset_y: %.3f)\n",
-				a_axis_cor.y_center, new_rot_y);
-			THEKERNEL->streams->printf("Previous rotation_offset_z (ref above CoR): %.3f\n", this->rotation_offset_z);
-			THEKERNEL->streams->printf("New rotation_offset_z (ref above CoR): %.3f\n", new_rot_z);
-
-			this->rotation_offset_y = new_rot_y;
-			this->rotation_offset_z = new_rot_z;
-			THEKERNEL->streams->printf("These values have been temporarily set.\n");
-			THEKERNEL->streams->printf("To make them permanent run:\n");
-			THEKERNEL->streams->printf("config-set sd coordinate.rotation_offset_y %.3f\n", new_rot_y);
-			THEKERNEL->streams->printf("config-set sd coordinate.rotation_offset_z %.3f\n", new_rot_z);
-
-			a_axis_cor.phase = COR_IDLE;
-			a_axis_cor.pass = 0;
 			break;
 		}
 

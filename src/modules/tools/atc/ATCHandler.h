@@ -132,7 +132,6 @@ private:
     void cor_queue_probe_y_front();
     void cor_queue_probe_y_back();
     void cor_queue_probe_z_top();
-    void cor_queue_probe_module_ref();
     void home_machine_with_pin(Gcode *gcode);
     void calibrate_set_value(Gcode *gcode);
 
@@ -243,7 +242,6 @@ private:
         float z_centerline;    // Z height used for Y probing
         float y1, y2;          // Y contacts (tip-radius compensated)
         float y_center;        // Y CoR in MCS
-        float z_cor_mcs;       // Z CoR in MCS (from artifact probes)
     } a_axis_cor;
 
     float toolrack_offset_x;
