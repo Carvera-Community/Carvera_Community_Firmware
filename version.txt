@@ -14,6 +14,7 @@
 - Fixed: MD5 hashes for files other than config.txt in the SD card root were invalid
 - Changed: Files without a pre-calculated MD5 hash on the SD card now get a MD5 generated on-the-fly when downloaded
 - Changed: Aborting playback stops queued motion immediately before turning off the spindle.
+- Changed: M469.6 writes the measured 4th axis rotation centre Y and Z to G59 instead of probing the 4th axis housing to set coordinate.rotation_offset_z.
 - Removed: The spindle PWM value from the status response (? command)
 
 [2.2.0c-RC3]

@@ -2475,7 +2475,7 @@
     },
     "M469.6": {
       "type": "mcode",
-      "description": "Calibrate A-axis centre of rotation. This is the current Controller calibration flow for the 4th axis.",
+      "description": "Find the A-axis rotation centre from a round artifact in the chuck and write its Y and Z to G59. Start with the probe just above the artifact at the X to measure.",
       "parameters": {
         "I": {
           "required": false,
