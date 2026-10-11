@@ -103,6 +103,7 @@ public:
     void on_module_loaded();
     void on_gcode_received(void *argument);
     void on_main_loop(void *argument);
+    void on_idle(void *argument);
     void after_config_cache_clear();
 
     bool check_last_probe_ok();
