@@ -2475,7 +2475,7 @@
     },
     "M469.6": {
       "type": "mcode",
-      "description": "Find the A-axis rotation centre from a round artifact in the chuck and write its Y and Z to G59. Start with the probe just above the artifact at the X to measure.",
+      "description": "Find the A-axis rotation centre from a round artifact in the chuck and write its Y and Z to G59. Start with the probe just above the artifact at the X to measure. With X, measures again at a second X position and reports the axis yaw and pitch. S chooses what is written.",
       "parameters": {
         "I": {
           "required": false,
@@ -2490,7 +2490,7 @@
         },
         "D": {
           "required": false,
-          "description": "Probe tip diameter.",
+          "description": "Probe tip diameter, up to 6 mm. The artifact diameter is R.",
           "default": "zprobe.probe_tip_diameter",
           "unit": "mm",
           "default_source": "zprobe.probe_tip_diameter"
@@ -2506,6 +2506,17 @@
           "description": "Positioning feed.",
           "default": 400,
           "unit": "mm/min"
+        },
+        "X": {
+          "required": false,
+          "description": "Distance from the start to a second measurement along the same artifact diameter. The probe feeds there at the clearance height with the probe armed. At least 10 mm; 0 measures once. Z0 is set midway between the two.",
+          "default": 0,
+          "unit": "mm"
+        },
+        "S": {
+          "required": false,
+          "description": "0 reports only and leaves G59 unchanged. 1 writes G59 Y and Z and keeps R. 2 also writes the measured yaw as G59 R (needs X).",
+          "default": 1
         }
       }
     },

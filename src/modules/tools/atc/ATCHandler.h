@@ -128,10 +128,13 @@ private:
     void calibrate_a_axis_height(Gcode *gcode);
     void calibrate_a_axis_cor(Gcode *gcode);
     void calibrate_a_axis_cor_step();
-    void cor_queue_z_clearance();
-    void cor_queue_probe_y_front();
-    void cor_queue_probe_y_back();
-    void cor_queue_probe_z_top();
+    void cor_queue_orbit_top();
+    void cor_queue_arc(bool clockwise, float dy, float dz, float j, float k, float da);
+    void cor_queue_probe(char axis, float distance);
+    void cor_queue_to_front();
+    void cor_queue_to_back();
+    void cor_queue_to_top();
+    void cor_finish(float x, float z, float dia);
     void home_machine_with_pin(Gcode *gcode);
     void calibrate_set_value(Gcode *gcode);
 
@@ -226,22 +229,24 @@ private:
     struct {
         uint8_t phase;         // CorPhase in ATCHandler.cpp
         uint8_t pass;          // 1 = first measure, 2 = convergence
+        uint8_t station;       // 1, or 2 for the second X position
         bool invert_probe;
+        uint8_t save_mode;     // S: 0 report only, 1 write Y/Z, 2 also write yaw as R
         float artifact_dia;
         float tip_r;           // probe tip radius
-        float clearance;
         float probe_travel;    // clearance * 2
         float pos_feed;
-        float y_clr;           // Y offset from start to clearance
-        float z_clr;           // Z clearance above estimated CoR
+        float y_clr;           // orbit radius: axis to ball centre at the C clearance
         float z_ctr;           // ball-geometry Z offset for side probing
         float z_corr;          // three_axis_probe_tlo_correction
-        float z_est;           // estimated Z CoR in MCS (from initial Z probe)
-        float start_y;         // starting Y MCS
+        float start_y;         // orbit centre Y in MCS (axis estimate)
         float start_a;         // starting A MCS
-        float z_centerline;    // Z height used for Y probing
+        float z_centerline;    // orbit centre Z: tip Z for Y probing at the axis height
         float y1, y2;          // Y contacts (tip-radius compensated)
         float y_center;        // Y CoR in MCS
+        float x_inc;           // X: station 2 distance from station 1 (0 = one station)
+        float s1_x, s1_y, s1_z; // station 1 axis point in MCS (Z as probe tip on axis)
+        float s1_dia;          // station 1 apparent artifact diameter
     } a_axis_cor;
 
     float toolrack_offset_x;
