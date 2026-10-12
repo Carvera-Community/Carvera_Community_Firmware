@@ -566,6 +566,15 @@ bool CartGridStrategy::handleGcode(Gcode *gcode)
                 }
             }
             return true;
+        } else if(gcode->m == 376) { // M376: add a Z ramp along X to the grid (used by M469.6 S3)
+            if(!gcode->has_letter('X') || !gcode->has_letter('I')) {
+                gcode->stream->printf("error:M376 needs X (where the ramp is zero) and I (Z per mm of X)\n");
+                return true;
+            }
+            THEKERNEL->conveyor->wait_for_idle();
+            add_x_ramp(gcode->get_value('X'), gcode->get_value('I'), gcode->stream);
+            return true;
+
         } else if(gcode->m == 380) { // M380: Disable flex compensation, M380.1: Display data, M380.2: Save, M380.3: Load, M380.4: Delete
             if(gcode->subcode == 1) {
                 // Display current flex compensation data
@@ -635,6 +644,52 @@ bool CartGridStrategy::handleGcode(Gcode *gcode)
 #define X_PROBE_OFFSET_FROM_EXTRUDER std::get<0>(probe_offsets)
 #define Y_PROBE_OFFSET_FROM_EXTRUDER std::get<1>(probe_offsets)
 #define Z_PROBE_OFFSET_FROM_EXTRUDER std::get<2>(probe_offsets)
+
+// Add Z = slope * (X - x_zero) to the grid. With no grid active, a 2 x 2 grid covering the
+// soft endstop travel (plus a margin) is created first. Compensation is zero outside the grid,
+// so an active grid that does not cover the travel is refused rather than leave a Z step at its edge.
+bool CartGridStrategy::add_x_ramp(float x_zero, float slope, StreamOutput *stream)
+{
+    const float margin = 20.0F;
+    const float tx0 = THEROBOT->get_soft_endstop_min(X_AXIS), tx1 = THEROBOT->get_soft_endstop_max(X_AXIS);
+    const float ty0 = THEROBOT->get_soft_endstop_min(Y_AXIS), ty1 = THEROBOT->get_soft_endstop_max(Y_AXIS);
+    if(isnan(tx0) || isnan(tx1) || isnan(ty0) || isnan(ty1) || grid == nullptr ||
+       configured_grid_x_size < 2 || configured_grid_y_size < 2) {
+        stream->printf("error:M376 needs X and Y soft endstop limits and a grid size of at least 2\n");
+        return false;
+    }
+    const float travel_x_min = std::min(tx0, tx1), travel_x_max = std::max(tx0, tx1);
+    const float travel_y_min = std::min(ty0, ty1), travel_y_max = std::max(ty0, ty1);
+
+    if(cartesian_grid_active && !isnan(grid[0])) {
+        const float gx_min = std::min(x_start, x_start + x_size), gx_max = std::max(x_start, x_start + x_size);
+        const float gy_min = std::min(y_start, y_start + y_size), gy_max = std::max(y_start, y_start + y_size);
+        if(gx_min > travel_x_min || gx_max < travel_x_max || gy_min > travel_y_min || gy_max < travel_y_max) {
+            stream->printf("error:The active grid does not cover the machine travel. Clear it with M370 first.\n");
+            return false;
+        }
+    } else {
+        current_grid_x_size = 2;
+        current_grid_y_size = 2;
+        x_start = travel_x_min - margin;
+        x_size = travel_x_max - travel_x_min + 2.0F * margin;
+        y_start = travel_y_min - margin;
+        y_size = travel_y_max - travel_y_min + 2.0F * margin;
+        for(int i = 0; i < 4; i++) grid[i] = 0.0F;
+    }
+
+    for(int iy = 0; iy < current_grid_y_size; iy++) {
+        for(int ix = 0; ix < current_grid_x_size; ix++) {
+            const float node_x = x_start + x_size * ix / (current_grid_x_size - 1);
+            grid[ix + iy * current_grid_x_size] += slope * (node_x - x_zero);
+        }
+    }
+
+    cartesian_grid_active = true;
+    updateCompensationTransform();
+    stream->printf("Grid: added Z %.7f mm per mm of X, zero at X%.3f\n", slope, x_zero);
+    return true;
+}
 
 void CartGridStrategy::setAdjustFunction(bool on)
 {

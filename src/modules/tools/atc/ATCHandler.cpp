@@ -827,6 +827,7 @@ enum CorPhase : uint8_t {
 	COR_AFTER_Y_BACK,
 	COR_AFTER_Z_TOP,
 	COR_AFTER_STATION_MOVE, // protected X move to the second station
+	COR_AFTER_GRID,         // S3: pitch ramp added to the leveling grid
 };
 
 // G10 L2 P number and wcs_offsets index of the WCS that M469.6 writes
@@ -843,7 +844,19 @@ enum CorSaveMode : uint8_t {
 	COR_REPORT_ONLY = 0, // S0: measure and report, G59 not changed
 	COR_WRITE_YZ = 1,    // S1: write Y and Z, keep R
 	COR_WRITE_YZR = 2,   // S2: write Y and Z, and the measured yaw as R
+	COR_WRITE_YZR_GRID = 3, // S3: as S2, and correct the pitch with the leveling grid
 };
+
+constexpr float COR_MAX_GRID_DZ = 1.0f; // largest pitch ramp the grid may add across the X travel (mm)
+
+// Z the active compensation adds at a point (0 with none)
+float cor_compensation_z(float x, float y, float z)
+{
+	if (!THEROBOT->compensationTransform) return 0.0f;
+	float p[3] = {x, y, z};
+	THEROBOT->compensationTransform(p, false, false);
+	return p[Z_AXIS] - z;
+}
 
 // MCS positions matching gcode #5022 / #5023 / #5024
 void atc_get_mcs_yza(float &y, float &z, float &a)
@@ -998,12 +1011,12 @@ void ATCHandler::calibrate_a_axis_cor(Gcode *gcode) //M469.6
 		THEKERNEL->streams->printf("ERROR: M469.6 X must be at least %.0f mm.\n", COR_MIN_STATION_DX);
 		return;
 	}
-	if (save_mode < COR_REPORT_ONLY || save_mode > COR_WRITE_YZR) {
-		THEKERNEL->streams->printf("ERROR: M469.6 S must be 0, 1 or 2.\n");
+	if (save_mode < COR_REPORT_ONLY || save_mode > COR_WRITE_YZR_GRID) {
+		THEKERNEL->streams->printf("ERROR: M469.6 S must be 0, 1, 2 or 3.\n");
 		return;
 	}
-	if (save_mode == COR_WRITE_YZR && x_inc == 0.0f) {
-		THEKERNEL->streams->printf("ERROR: M469.6 S2 needs X to measure the yaw.\n");
+	if (save_mode >= COR_WRITE_YZR && x_inc == 0.0f) {
+		THEKERNEL->streams->printf("ERROR: M469.6 S%d needs X to measure yaw and pitch.\n", save_mode);
 		return;
 	}
 
@@ -1027,8 +1040,10 @@ void ATCHandler::calibrate_a_axis_cor(Gcode *gcode) //M469.6
 		this->script_queue.push(";Report only: G59 is not changed");
 	} else if (save_mode == COR_WRITE_YZ) {
 		this->script_queue.push(";The measured rotation axis Y and Z are written to G59");
-	} else {
+	} else if (save_mode == COR_WRITE_YZR) {
 		this->script_queue.push(";The measured rotation axis Y, Z and yaw (R) are written to G59");
+	} else {
+		this->script_queue.push(";The measured rotation axis Y, Z and yaw (R) are written to G59, pitch to the leveling grid");
 	}
 	if (x_inc != 0.0f) {
 		snprintf(buff, sizeof(buff), ";Second measurement %.3f mm away in X, over the same artifact diameter", x_inc);
@@ -1113,6 +1128,10 @@ void ATCHandler::calibrate_a_axis_cor_step()
 			break;
 		}
 
+		case COR_AFTER_GRID:
+			cor_finish_grid();
+			break;
+
 		case COR_AFTER_STATION_MOVE: {
 			// A protected move that stopped short means the probe touched something
 			if (fabsf(atc_get_mcs_axis(X_AXIS) - (a_axis_cor.s1_x + a_axis_cor.x_inc)) > 0.01f) {
@@ -1140,22 +1159,19 @@ void ATCHandler::calibrate_a_axis_cor_step()
 // station's axis point (MCS, z as the probe tip on the axis); Y is a_axis_cor.y_center.
 void ATCHandler::cor_finish(float x, float z, float dia)
 {
-	char buff[80];
 	const uint8_t mode = a_axis_cor.save_mode;
 	const bool two_stations = (a_axis_cor.station == 2);
+	const bool write_r = (mode >= COR_WRITE_YZR);
 	const float y = a_axis_cor.y_center;
 	// MCS Z = WCS Z + WCS offset Z + tool offset Z (Robot::wcs2mcs), so subtracting
 	// the TLO puts Z0 on the rotation axis for any tool with a valid TLO.
 	const std::vector<Robot::wcs_t> wcs = THEROBOT->get_wcs_state();
 	const float tlo = std::get<Z_AXIS>(wcs.back());
 	const float x0 = std::get<X_AXIS>(wcs[1 + COR_WCS_INDEX]);
-	const float old_y = std::get<Y_AXIS>(wcs[1 + COR_WCS_INDEX]);
-	const float old_z = std::get<Z_AXIS>(wcs[1 + COR_WCS_INDEX]);
 	const float old_r = THEROBOT->r[COR_WCS_INDEX];
-	const float tan_old_r = tanf(old_r / COR_DEG_PER_RAD);
 	// Point where Z0 (and, unless R is replaced, the WCS X line) meets the axis
 	float ref_x = x, ref_y = y, ref_z = z;
-	float new_y, new_r = old_r, yaw = 0.0f;
+	float new_y, new_r = old_r, yaw = 0.0f, slope_z = 0.0f;
 
 	a_axis_cor.phase = COR_IDLE;
 	a_axis_cor.pass = 0;
@@ -1163,12 +1179,12 @@ void ATCHandler::cor_finish(float x, float z, float dia)
 	if (two_stations) {
 		const float dx = x - a_axis_cor.s1_x;
 		const float slope_y = (y - a_axis_cor.s1_y) / dx;
-		const float slope_z = (z - a_axis_cor.s1_z) / dx;
+		slope_z = (z - a_axis_cor.s1_z) / dx;
 		yaw = atanf(slope_y) * COR_DEG_PER_RAD;
 		const float pitch = atanf(slope_z / sqrtf(1.0f + slope_y * slope_y)) * COR_DEG_PER_RAD;
 		ref_x = (x + a_axis_cor.s1_x) * 0.5f;
 		ref_y = (y + a_axis_cor.s1_y) * 0.5f;
-		ref_z = (z + a_axis_cor.s1_z) * 0.5f; // pitch is not corrected, so Z0 is set midway
+		ref_z = (z + a_axis_cor.s1_z) * 0.5f; // without the grid, Z0 is right midway
 
 		THEKERNEL->streams->printf("Station 1 X%.3f: axis Y%.4f Z%.4f, apparent dia %.4f\n",
 			a_axis_cor.s1_x, a_axis_cor.s1_y, a_axis_cor.s1_z - tlo, a_axis_cor.s1_dia);
@@ -1176,6 +1192,9 @@ void ATCHandler::cor_finish(float x, float z, float dia)
 		THEKERNEL->streams->printf("Yaw: %.4f deg, Y %.4f mm per 100 mm of X\n", yaw, slope_y * 100.0f);
 		THEKERNEL->streams->printf("Pitch: %.4f deg, Z %.4f mm per 100 mm of X\n", pitch, slope_z * 100.0f);
 		THEKERNEL->streams->printf("Positive: the axis moves toward +Y / +Z as X increases\n");
+		if (THEROBOT->compensationTransform) {
+			THEKERNEL->streams->printf("Compensation is active; these values are relative to it\n");
+		}
 
 		if (fabsf(yaw) > COR_MAX_DEV_DEG || fabsf(pitch) > COR_MAX_DEV_DEG) {
 			THEKERNEL->streams->printf("WARNING: Deviation over %.0f deg. Check the artifact and setup.\n", COR_MAX_DEV_DEG);
@@ -1188,30 +1207,105 @@ void ATCHandler::cor_finish(float x, float z, float dia)
 		THEKERNEL->streams->printf("Apparent artifact diameter: %.4f\n", dia);
 	}
 
-	if (mode == COR_WRITE_YZR) {
+	if (write_r) {
 		// R turns WCS X onto the measured axis; the origin sits on that line at G59's X
 		new_r = yaw;
 		new_y = ref_y + (x0 - ref_x) * tanf(yaw / COR_DEG_PER_RAD);
 	} else {
 		// Keep R: the WCS X line at that angle crosses the axis at ref_x
-		new_y = ref_y + (x0 - ref_x) * tan_old_r;
+		new_y = ref_y + (x0 - ref_x) * tanf(old_r / COR_DEG_PER_RAD);
 	}
-	const float new_z = ref_z - tlo;
+
+	if (mode != COR_WRITE_YZR_GRID) {
+		cor_write_g59(new_y, ref_z - tlo, new_r, write_r, ref_y);
+		return;
+	}
+
+	// S3: add the measured pitch to the leveling grid as a Z ramp along X, zero at the tool
+	// setter so tool lengths are unaffected. Positions are read through any active
+	// compensation, so with a pitch grid already active the slope is a residual and adds to it.
+	// Standard setter X only; one-off offsets last a single tool change and would move the zero
+	const float x_zero = probe_mx_mm;
+	const float tx0 = THEROBOT->get_soft_endstop_min(X_AXIS), tx1 = THEROBOT->get_soft_endstop_max(X_AXIS);
+	if (isnan(tx0) || isnan(tx1)) {
+		THEKERNEL->streams->printf("ERROR: S3 needs the X soft endstop limits. G59 not changed.\n");
+		return;
+	}
+	const float check_x = (fabsf(tx0 - x_zero) > fabsf(tx1 - x_zero)) ? tx0 : tx1; // farthest travel end
+	if (fabsf(slope_z * (check_x - x_zero)) > COR_MAX_GRID_DZ) {
+		THEKERNEL->streams->printf("ERROR: Pitch would need over %.0f mm of grid correction across the X travel.\n", COR_MAX_GRID_DZ);
+		THEKERNEL->streams->printf("Shim the 4th axis first. G59 not changed.\n");
+		return;
+	}
+
+	a_axis_cor.pg.slope = slope_z;
+	a_axis_cor.pg.x_zero = x_zero;
+	a_axis_cor.pg.check_x = check_x;
+	a_axis_cor.pg.ref_x = ref_x;
+	a_axis_cor.pg.ref_y = ref_y;
+	a_axis_cor.pg.ref_z = ref_z;
+	a_axis_cor.pg.new_y = new_y;
+	a_axis_cor.pg.new_r = new_r;
+	a_axis_cor.pg.comp_ref = cor_compensation_z(ref_x, ref_y, ref_z);
+	a_axis_cor.pg.comp_check = cor_compensation_z(check_x, ref_y, ref_z);
+
+	char buff[80];
+	snprintf(buff, sizeof(buff), "M376 X%.4f I%.8f", x_zero, slope_z);
+	this->script_queue.push(buff);
+	this->script_queue.push("M469.7 P6");
+	a_axis_cor.phase = COR_AFTER_GRID;
+}
+
+// S3, after M376: check the ramp is in place, then write G59 and save the grid
+void ATCHandler::cor_finish_grid()
+{
+	a_axis_cor.phase = COR_IDLE;
+	a_axis_cor.pass = 0;
+
+	const float added_ref = cor_compensation_z(a_axis_cor.pg.ref_x, a_axis_cor.pg.ref_y, a_axis_cor.pg.ref_z) - a_axis_cor.pg.comp_ref;
+	const float added_check = cor_compensation_z(a_axis_cor.pg.check_x, a_axis_cor.pg.ref_y, a_axis_cor.pg.ref_z) - a_axis_cor.pg.comp_check;
+	const float expected = a_axis_cor.pg.slope * (a_axis_cor.pg.check_x - a_axis_cor.pg.x_zero);
+	if (!THEROBOT->compensationTransform || fabsf(added_check - expected) > 0.0005f + 0.001f * fabsf(expected)) {
+		THEKERNEL->streams->printf("ERROR: The pitch correction was not added to the leveling grid. G59 not changed.\n");
+		return;
+	}
+
+	THEKERNEL->streams->printf("Pitch grid: Z %.4f mm per 100 mm of X added, zero at the tool setter X%.3f\n",
+		a_axis_cor.pg.slope * 100.0f, a_axis_cor.pg.x_zero);
+
+	// Z0 stays on the axis at ref_x now that the grid adds the ramp there
+	const std::vector<Robot::wcs_t> wcs = THEROBOT->get_wcs_state();
+	const float tlo = std::get<Z_AXIS>(wcs.back());
+	cor_write_g59(a_axis_cor.pg.new_y, a_axis_cor.pg.ref_z - added_ref - tlo, a_axis_cor.pg.new_r, true, a_axis_cor.pg.ref_y);
+
+	this->script_queue.push("M374");
+	THEKERNEL->streams->printf("The grid is saved to the SD card. After a restart, M370 or auto-leveling,\n");
+	THEKERNEL->streams->printf("run M375 to load it again before 4th-axis work.\n");
+}
+
+// Print the G59 changes and, unless S0, write them
+void ATCHandler::cor_write_g59(float new_y, float new_z, float new_r, bool write_r, float axis_y)
+{
+	char buff[80];
+	const std::vector<Robot::wcs_t> wcs = THEROBOT->get_wcs_state();
+	const float old_y = std::get<Y_AXIS>(wcs[1 + COR_WCS_INDEX]);
+	const float old_z = std::get<Z_AXIS>(wcs[1 + COR_WCS_INDEX]);
+	const float old_r = THEROBOT->r[COR_WCS_INDEX];
 
 	THEKERNEL->streams->printf("G59 Y: %.4f -> %.4f (delta %.4f)\n", old_y, new_y, new_y - old_y);
 	THEKERNEL->streams->printf("G59 Z: %.4f -> %.4f (delta %.4f)\n", old_z, new_z, new_z - old_z);
-	if (mode == COR_WRITE_YZR) {
+	if (write_r) {
 		THEKERNEL->streams->printf("G59 R: %.4f -> %.4f\n", old_r, new_r);
 	} else {
 		THEKERNEL->streams->printf("G59 R: %.4f (not changed)\n", old_r);
 	}
 
-	if (mode == COR_REPORT_ONLY) {
+	if (a_axis_cor.save_mode == COR_REPORT_ONLY) {
 		THEKERNEL->streams->printf("Report only (S0): G59 not changed\n");
 		return;
 	}
 
-	if (mode == COR_WRITE_YZR) {
+	if (write_r) {
 		snprintf(buff, sizeof(buff), "G10 L2 P%d Y%.4f Z%.4f R%.5f", COR_WCS_P, new_y, new_z, new_r);
 	} else {
 		snprintf(buff, sizeof(buff), "G10 L2 P%d Y%.4f Z%.4f", COR_WCS_P, new_y, new_z);
@@ -1219,7 +1313,7 @@ void ATCHandler::cor_finish(float x, float z, float dia)
 	this->script_queue.push(buff);
 
 	// The 4th-axis Z probe and M465 use the anchor-relative axis Y to position the probe
-	const float new_rot_y = ref_y - this->anchor1_y;
+	const float new_rot_y = axis_y - this->anchor1_y;
 	this->rotation_offset_y = new_rot_y;
 	THEKERNEL->streams->printf("G59 needs no config change. Separately, rotation_offset_y (probe position for\n");
 	THEKERNEL->streams->printf("the 4th-axis Z probe and M465) is set to %.3f until reset. To keep it run:\n", new_rot_y);

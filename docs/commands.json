@@ -1486,6 +1486,21 @@
       "description": "Print the current bed-leveling grid to the console.",
       "parameters": {}
     },
+    "M376": {
+      "type": "mcode",
+      "description": "Add a Z ramp along X to the leveling grid, for example to correct 4th axis pitch (M469.6 S3). With no grid active, creates one covering the machine travel. Refuses an active grid that does not cover the travel.",
+      "parameters": {
+        "X": {
+          "required": true,
+          "description": "X position where the ramp is zero.",
+          "unit": "mm"
+        },
+        "I": {
+          "required": true,
+          "description": "Z change per mm of X."
+        }
+      }
+    },
     "M380": {
       "type": "mcode",
       "description": "Disable X-axis flex compensation.",
@@ -2515,7 +2530,7 @@
         },
         "S": {
           "required": false,
-          "description": "0 reports only and leaves G59 unchanged. 1 writes G59 Y and Z and keeps R. 2 also writes the measured yaw as G59 R (needs X).",
+          "description": "0 reports only and leaves G59 unchanged. 1 writes G59 Y and Z and keeps R. 2 also writes the measured yaw as G59 R (needs X). 3 does the same as 2 and adds the measured pitch to the leveling grid as a Z ramp along X, then saves the grid (needs X).",
           "default": 1
         }
       }

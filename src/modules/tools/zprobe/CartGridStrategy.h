@@ -31,6 +31,7 @@ private:
     void reset_bed_level();
     void save_grid(StreamOutput *stream);
     bool load_grid(StreamOutput *stream);
+    bool add_x_ramp(float x_zero, float slope, StreamOutput *stream);
 
     // Flex compensation methods
     bool doFlexMeasurement(Gcode *gc);

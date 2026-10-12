@@ -135,6 +135,8 @@ private:
     void cor_queue_to_back();
     void cor_queue_to_top();
     void cor_finish(float x, float z, float dia);
+    void cor_finish_grid();
+    void cor_write_g59(float new_y, float new_z, float new_r, bool write_r, float axis_y);
     void home_machine_with_pin(Gcode *gcode);
     void calibrate_set_value(Gcode *gcode);
 
@@ -231,7 +233,7 @@ private:
         uint8_t pass;          // 1 = first measure, 2 = convergence
         uint8_t station;       // 1, or 2 for the second X position
         bool invert_probe;
-        uint8_t save_mode;     // S: 0 report only, 1 write Y/Z, 2 also write yaw as R
+        uint8_t save_mode;     // S: 0 report only, 1 write Y/Z, 2 also yaw as R, 3 also pitch to the grid
         float artifact_dia;
         float tip_r;           // probe tip radius
         float probe_travel;    // clearance * 2
@@ -247,6 +249,14 @@ private:
         float x_inc;           // X: station 2 distance from station 1 (0 = one station)
         float s1_x, s1_y, s1_z; // station 1 axis point in MCS (Z as probe tip on axis)
         float s1_dia;          // station 1 apparent artifact diameter
+        struct {               // S3: pitch ramp added to the leveling grid
+            float slope;       // Z per mm of X
+            float x_zero;      // X where the ramp is zero (tool setter)
+            float check_x;     // X travel end used to confirm the ramp
+            float ref_x, ref_y, ref_z; // Z0 reference point (MCS, Z as probe tip on axis)
+            float new_y, new_r;
+            float comp_ref, comp_check; // compensation Z before the ramp at ref_x and check_x
+        } pg;
     } a_axis_cor;
 
     float toolrack_offset_x;
