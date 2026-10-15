@@ -64,6 +64,7 @@ class Robot : public Module {
         void print_position(uint8_t subcode, std::string& buf, bool ignore_extruders=false) const;
         uint8_t get_current_wcs() const { return current_wcs; }
         std::vector<wcs_t> get_wcs_state() const;
+        wcs_t get_wcs_offset(const size_t n) const { return wcs_offsets[n]; }
         std::tuple<float, float, float, uint8_t> get_last_probe_position() const { return last_probe_position; }
         void set_last_probe_position(std::tuple<float, float, float, uint8_t> p) { last_probe_position = p; }
         bool delta_move(const float delta[], float rate_mm_s, uint8_t naxis);
@@ -94,10 +95,13 @@ class Robot : public Module {
         wcs_t mcs2selected_wcs(const wcs_t &pos, const size_t n) const;
         wcs_t mcs2wcs(const float *pos) const { return mcs2wcs(wcs_t(pos[X_AXIS], pos[Y_AXIS], pos[Z_AXIS], pos[A_AXIS], pos[B_AXIS])); }
         wcs_t mcs2selected_wcs(const float *pos, const size_t n) const { return mcs2selected_wcs(wcs_t(pos[X_AXIS], pos[Y_AXIS], pos[Z_AXIS], pos[A_AXIS], pos[B_AXIS]), n); }
-        wcs_t wcs2mcs(const wcs_t &pos) const;
+        wcs_t wcs2mcs(const wcs_t &pos) const { return selected_wcs2mcs(pos, current_wcs); }
+        wcs_t selected_wcs2mcs(const wcs_t &pos, const size_t n) const;
         wcs_t wcs2mcs(const float *pos) const { return wcs2mcs(wcs_t(pos[X_AXIS], pos[Y_AXIS], pos[Z_AXIS], pos[A_AXIS], pos[B_AXIS])); }
+        wcs_t wcs_offset_for(const wcs_t &pos, const wcs_t &mpos, size_t n, float rotation) const;
 
-        void set_current_wcs_by_mpos(float x = NAN, float y = NAN, float z = NAN, float a = NAN, float b = NAN, float r = NAN);
+        void set_wcs_by_mpos(float x = NAN, float y = NAN, float z = NAN, float a = NAN, float b = NAN, float r = NAN, int wcs = -1);
+        void set_wcs_offset(size_t n, const wcs_t &offset, float rotation);
 
         float r[MAX_WCS];
 
@@ -130,6 +134,7 @@ class Robot : public Module {
         bool is_homed(uint8_t i) const;
 
     private:
+        wcs_t wcs2mcs_turned(const wcs_t &pos, const wcs_t &offset, float cos_r, float sin_r) const;
         bool home_override = false;
         enum MOTION_MODE_T {
             NONE,

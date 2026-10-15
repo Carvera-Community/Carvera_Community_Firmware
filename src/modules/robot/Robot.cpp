@@ -533,15 +533,36 @@ Robot::wcs_t Robot::mcs2selected_wcs(const wcs_t &pos, size_t n) const
     );
 }
 
-// converts a position in work coordinate system to machine coordinate system (machine position)
-Robot::wcs_t Robot::wcs2mcs(const Robot::wcs_t& pos) const
+// converts a position in work coordinate system n to machine coordinate system (machine position)
+Robot::wcs_t Robot::selected_wcs2mcs(const Robot::wcs_t& pos, size_t n) const
+{
+    return wcs2mcs_turned(pos, wcs_offsets[n], this->cos_r[n], this->sin_r[n]);
+}
+
+// the offset work coordinate system n needs with the given rotation (degrees) so that pos in that
+// system is at the machine position mpos, as G10 L20 does
+Robot::wcs_t Robot::wcs_offset_for(const wcs_t &pos, const wcs_t &mpos, size_t n, float rotation) const
+{
+    // the machine position of pos with a zero offset; the offset is the rest up to mpos
+    wcs_t turned = wcs2mcs_turned(pos, wcs_t(0, 0, 0, 0, 0), cos(rotation * (PI / 180.0)), sin(rotation * (PI / 180.0)));
+    return std::make_tuple(
+        std::get<X_AXIS>(mpos) - std::get<X_AXIS>(turned),
+        std::get<Y_AXIS>(mpos) - std::get<Y_AXIS>(turned),
+        std::get<Z_AXIS>(mpos) - std::get<Z_AXIS>(turned),
+        std::get<A_AXIS>(wcs_offsets[n]),
+        std::get<B_AXIS>(wcs_offsets[n])
+    );
+}
+
+// converts pos to the machine position for a work coordinate system with the given offset and rotation
+Robot::wcs_t Robot::wcs2mcs_turned(const wcs_t &pos, const wcs_t &offset, float cos_r, float sin_r) const
 {
     return std::make_tuple(
-        std::get<X_AXIS>(wcs_offsets[current_wcs]) + this->cos_r[current_wcs] * (std::get<X_AXIS>(pos) - std::get<X_AXIS>(g92_offset) + std::get<X_AXIS>(tool_offset)) - this->sin_r[current_wcs] * (std::get<Y_AXIS>(pos) - std::get<Y_AXIS>(g92_offset) + std::get<Y_AXIS>(tool_offset)),
-        std::get<Y_AXIS>(wcs_offsets[current_wcs]) + this->cos_r[current_wcs] * (std::get<Y_AXIS>(pos) - std::get<Y_AXIS>(g92_offset) + std::get<Y_AXIS>(tool_offset)) + this->sin_r[current_wcs] * (std::get<X_AXIS>(pos) - std::get<X_AXIS>(g92_offset) + std::get<X_AXIS>(tool_offset)),
-        std::get<Z_AXIS>(pos) + std::get<Z_AXIS>(wcs_offsets[current_wcs]) - std::get<Z_AXIS>(g92_offset) + std::get<Z_AXIS>(tool_offset),
-        std::get<A_AXIS>(pos) + std::get<A_AXIS>(wcs_offsets[current_wcs]) - std::get<A_AXIS>(g92_offset) + std::get<A_AXIS>(tool_offset),
-        std::get<B_AXIS>(pos) + std::get<B_AXIS>(wcs_offsets[current_wcs]) - std::get<B_AXIS>(g92_offset) + std::get<B_AXIS>(tool_offset)
+        std::get<X_AXIS>(offset) + cos_r * (std::get<X_AXIS>(pos) - std::get<X_AXIS>(g92_offset) + std::get<X_AXIS>(tool_offset)) - sin_r * (std::get<Y_AXIS>(pos) - std::get<Y_AXIS>(g92_offset) + std::get<Y_AXIS>(tool_offset)),
+        std::get<Y_AXIS>(offset) + cos_r * (std::get<Y_AXIS>(pos) - std::get<Y_AXIS>(g92_offset) + std::get<Y_AXIS>(tool_offset)) + sin_r * (std::get<X_AXIS>(pos) - std::get<X_AXIS>(g92_offset) + std::get<X_AXIS>(tool_offset)),
+        std::get<Z_AXIS>(pos) + std::get<Z_AXIS>(offset) - std::get<Z_AXIS>(g92_offset) + std::get<Z_AXIS>(tool_offset),
+        std::get<A_AXIS>(pos) + std::get<A_AXIS>(offset) - std::get<A_AXIS>(g92_offset) + std::get<A_AXIS>(tool_offset),
+        std::get<B_AXIS>(pos) + std::get<B_AXIS>(offset) - std::get<B_AXIS>(g92_offset) + std::get<B_AXIS>(tool_offset)
     );
 }
 
@@ -560,45 +581,49 @@ void Robot::check_max_actuator_speeds()
     }
 }
 
-void Robot::set_current_wcs_by_mpos(float x, float y, float z, float a, float b, float r)
+void Robot::set_wcs_by_mpos(float x, float y, float z, float a, float b, float r, int wcs)
 {
+    if(wcs == -1) {
+        wcs = current_wcs;
+    }
     if(isnan(x)){
-        x = std::get<X_AXIS>(wcs_offsets[current_wcs]);
+        x = std::get<X_AXIS>(wcs_offsets[wcs]);
     }
     if(isnan(y)){
-        y = std::get<Y_AXIS>(wcs_offsets[current_wcs]);
+        y = std::get<Y_AXIS>(wcs_offsets[wcs]);
     }
     if(isnan(z)){
-        z = std::get<Z_AXIS>(wcs_offsets[current_wcs]);
+        z = std::get<Z_AXIS>(wcs_offsets[wcs]);
     }else{
         z = z - std::get<Z_AXIS>(tool_offset);
     }
     if(isnan(a)){
-        a = std::get<A_AXIS>(wcs_offsets[current_wcs]);
+        a = std::get<A_AXIS>(wcs_offsets[wcs]);
     }
     if(isnan(b)){
-        b = std::get<B_AXIS>(wcs_offsets[current_wcs]);
+        b = std::get<B_AXIS>(wcs_offsets[wcs]);
     }
-    if(!isnan(r)){
-        this->r[current_wcs] = r;
-        this->cos_r[current_wcs] = cos(r * (PI / 180.0));
-        this->sin_r[current_wcs] = sin(r * (PI / 180.0));
+    if(isnan(r)){
+        r = this->r[wcs];
     }
-    THEROBOT->wcs_offsets[current_wcs] = Robot::wcs_t(x, y, z , a , b);
-    // save wcs data to eeprom if current wcs = G54
-    if (current_wcs <= 5) {
-        THEKERNEL->eeprom_data->WCScoord[current_wcs][0] = x;
-        THEKERNEL->eeprom_data->WCScoord[current_wcs][1] = y;
-        THEKERNEL->eeprom_data->WCScoord[current_wcs][2] = z;
-        THEKERNEL->eeprom_data->WCScoord[current_wcs][3] = a;
-        THEKERNEL->eeprom_data->WCSrotation[current_wcs] = this->r[current_wcs];
-    }
+    set_wcs_offset(wcs, Robot::wcs_t(x, y, z, a, b), r);
+}
 
-    // save eeprom data if the current WCS is 0-5
-    if (current_wcs <= 5) {
+// sets the offset and the rotation of work coordinate system n and saves G54 to G59 to the EEPROM
+void Robot::set_wcs_offset(size_t n, const wcs_t &offset, float rotation)
+{
+    this->r[n] = rotation;
+    this->cos_r[n] = cos(rotation * (PI / 180.0));
+    this->sin_r[n] = sin(rotation * (PI / 180.0));
+    wcs_offsets[n] = offset;
+    if (n <= 5) {
+        THEKERNEL->eeprom_data->WCScoord[n][0] = std::get<X_AXIS>(offset);
+        THEKERNEL->eeprom_data->WCScoord[n][1] = std::get<Y_AXIS>(offset);
+        THEKERNEL->eeprom_data->WCScoord[n][2] = std::get<Z_AXIS>(offset);
+        THEKERNEL->eeprom_data->WCScoord[n][3] = std::get<A_AXIS>(offset);
+        THEKERNEL->eeprom_data->WCSrotation[n] = rotation;
         THEKERNEL->write_eeprom_data();
     }
-
 }
 
 //A GCode has been received

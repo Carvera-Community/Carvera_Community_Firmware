@@ -229,6 +229,11 @@ void ZProbe::on_main_loop(void *argument)
     }
     
     
+    // results of the previous probing cycle (#151-#156) are not valid for the next one
+    if (probing_cycle != NONE) {
+        for (int i = 0; i < 6; ++i) THEKERNEL->probe_outputs[i] = -1.0e6f;
+    }
+
     switch(probing_cycle)
     {
         case CALIBRATE_PROBE_BORE:
@@ -765,6 +770,9 @@ void ZProbe::on_gcode_received(void *argument)
                     }
                 }
                 break;                
+            case 468:
+                set_wcs_from_probe_result(gcode);
+                break;
             case 670:
                 if (gcode->has_letter('S')) this->slow_feedrate = gcode->get_value('S');
                 if (gcode->has_letter('K')) this->fast_feedrate = gcode->get_value('K');
@@ -1498,11 +1506,11 @@ void ZProbe::probe_bore(bool calibration) //M461
 
     if (param.save_position > 0 && check_last_probe_ok()){
         if (param.x_axis_distance != 0 && param.y_axis_distance != 0){
-            THEROBOT->set_current_wcs_by_mpos( THEKERNEL->probe_outputs[3], THEKERNEL->probe_outputs[4], NAN);
+            THEROBOT->set_wcs_by_mpos( THEKERNEL->probe_outputs[3], THEKERNEL->probe_outputs[4], NAN);
         }else if (param.x_axis_distance != 0){
-            THEROBOT->set_current_wcs_by_mpos( THEKERNEL->probe_outputs[3], NAN, NAN);
+            THEROBOT->set_wcs_by_mpos( THEKERNEL->probe_outputs[3], NAN, NAN);
         }else if (param.y_axis_distance != 0){
-            THEROBOT->set_current_wcs_by_mpos( NAN, THEKERNEL->probe_outputs[4], NAN);
+            THEROBOT->set_wcs_by_mpos( NAN, THEKERNEL->probe_outputs[4], NAN);
         } 
     }
 }
@@ -1550,8 +1558,9 @@ void ZProbe::probe_boss(bool calibration) //M462
 	if (param.probe_height != 0){
         param.z_axis_distance = param.probe_height;
         if (!fast_slow_probe_sequence(Z_AXIS, POS)) return;
+        THEKERNEL->probe_outputs[5] = out_coords.z_negative_z_out;
         if (param.save_position == 2 && check_last_probe_ok()){
-            THEROBOT->set_current_wcs_by_mpos( NAN, NAN, out_coords.z_negative_z_out);
+            THEROBOT->set_wcs_by_mpos( NAN, NAN, out_coords.z_negative_z_out);
         }
         //z_probe_move_with_retract(param.probe_g38_subcode, -param.probe_height, param.clearance_height, param.feed_rate);
     }
@@ -1696,11 +1705,11 @@ void ZProbe::probe_boss(bool calibration) //M462
 
     if (param.save_position > 0 && check_last_probe_ok()){
         if (probe_x_axis && probe_y_axis){
-            THEROBOT->set_current_wcs_by_mpos( THEKERNEL->probe_outputs[3], THEKERNEL->probe_outputs[4], NAN);
+            THEROBOT->set_wcs_by_mpos( THEKERNEL->probe_outputs[3], THEKERNEL->probe_outputs[4], NAN);
         }else if (probe_x_axis){
-            THEROBOT->set_current_wcs_by_mpos( THEKERNEL->probe_outputs[3], NAN, NAN);
+            THEROBOT->set_wcs_by_mpos( THEKERNEL->probe_outputs[3], NAN, NAN);
         }else if (probe_y_axis){
-            THEROBOT->set_current_wcs_by_mpos( NAN, THEKERNEL->probe_outputs[4], NAN);
+            THEROBOT->set_wcs_by_mpos( NAN, THEKERNEL->probe_outputs[4], NAN);
         }
     }
 }
@@ -1782,7 +1791,7 @@ void ZProbe::probe_insideCorner() //M463
     THEKERNEL->streams->printf("Corner found. X coordinate stored in #154 as MCS %.3f , Y coordinate in #155 as MCS %.3f \n", THEKERNEL->probe_outputs[3], THEKERNEL->probe_outputs[4] );
     
     if (param.save_position > 0){
-        THEROBOT->set_current_wcs_by_mpos( THEKERNEL->probe_outputs[3], THEKERNEL->probe_outputs[4], NAN);
+        THEROBOT->set_wcs_by_mpos( THEKERNEL->probe_outputs[3], THEKERNEL->probe_outputs[4], NAN);
     }
 }
 
@@ -1803,8 +1812,9 @@ void ZProbe::probe_outsideCorner() //M464
 	if (param.probe_height != 0){
         param.z_axis_distance = param.probe_height;
         if (!fast_slow_probe_sequence(Z_AXIS, POS)) return;
+        THEKERNEL->probe_outputs[5] = out_coords.z_negative_z_out;
         if (param.save_position == 2 && check_last_probe_ok()){
-            THEROBOT->set_current_wcs_by_mpos( NAN, NAN, out_coords.z_negative_z_out);
+            THEROBOT->set_wcs_by_mpos( NAN, NAN, out_coords.z_negative_z_out);
         }
         //z_probe_move_with_retract(param.probe_g38_subcode, -param.probe_height, param.clearance_height, param.feed_rate);
     }
@@ -1907,7 +1917,7 @@ void ZProbe::probe_outsideCorner() //M464
     THEKERNEL->streams->printf("Corner found. X coordinate stored in #154 as MCS %.3f , Y coordinate in #155 as MCS %.3f  \n", THEKERNEL->probe_outputs[3], THEKERNEL->probe_outputs[4] );
     
     if (param.save_position > 0 && check_last_probe_ok()){
-        THEROBOT->set_current_wcs_by_mpos(THEKERNEL->probe_outputs[3], THEKERNEL->probe_outputs[4], NAN);
+        THEROBOT->set_wcs_by_mpos(THEKERNEL->probe_outputs[3], THEKERNEL->probe_outputs[4], NAN);
     }
     if (param.save_position == 2){
         coordinated_move(NAN, NAN, out_coords.z_negative_z_out + 2, param.rapid_rate);
@@ -2216,9 +2226,9 @@ void ZProbe::probe_axisangle(bool probe_a_axis, bool probe_with_offset) //M465
     }
     if (param.save_position == 1){
         if (probe_a_axis){
-            THEROBOT->set_current_wcs_by_mpos(NAN,NAN,NAN,a_axis_pos - THEKERNEL->probe_outputs[2],NAN,NAN);
+            THEROBOT->set_wcs_by_mpos(NAN,NAN,NAN,a_axis_pos - THEKERNEL->probe_outputs[2],NAN,NAN);
         }else{
-        THEROBOT->set_current_wcs_by_mpos(NAN,NAN,NAN,NAN,NAN,THEKERNEL->probe_outputs[2]);
+        THEROBOT->set_wcs_by_mpos(NAN,NAN,NAN,NAN,NAN,THEKERNEL->probe_outputs[2]);
         }
     }
 }
@@ -2516,7 +2526,7 @@ void ZProbe::single_axis_probe_double_tap(){
         THEKERNEL->probe_outputs[3] = ave_x;
         THEKERNEL->probe_outputs[4] = ave_y;
         if (param.save_position > 0 && check_last_probe_ok()){
-            THEROBOT->set_current_wcs_by_mpos( THEKERNEL->probe_outputs[3], THEKERNEL->probe_outputs[4], NAN);
+            THEROBOT->set_wcs_by_mpos( THEKERNEL->probe_outputs[3], THEKERNEL->probe_outputs[4], NAN);
         }
     } else if(param.x_axis_distance != 0){
         THEKERNEL->streams->printf("--- Machine Coordinates ---\n");
@@ -2525,7 +2535,7 @@ void ZProbe::single_axis_probe_double_tap(){
         THEKERNEL->streams->printf("Final Position X: %.3f\n", std::get<X_AXIS>(pos));
         THEKERNEL->probe_outputs[3] = ave_x;
         if (param.save_position > 0 && check_last_probe_ok()){
-            THEROBOT->set_current_wcs_by_mpos( THEKERNEL->probe_outputs[3], NAN, NAN);
+            THEROBOT->set_wcs_by_mpos( THEKERNEL->probe_outputs[3], NAN, NAN);
         }
     } else if(param.y_axis_distance != 0){
         THEKERNEL->streams->printf("--- Machine Coordinates ---\n");
@@ -2534,7 +2544,7 @@ void ZProbe::single_axis_probe_double_tap(){
         THEKERNEL->streams->printf("Final Position Y: %.3f\n", std::get<Y_AXIS>(pos));
         THEKERNEL->probe_outputs[4] = ave_y;
         if (param.save_position > 0 && check_last_probe_ok()){
-            THEROBOT->set_current_wcs_by_mpos( NAN, THEKERNEL->probe_outputs[4], NAN);
+            THEROBOT->set_wcs_by_mpos( NAN, THEKERNEL->probe_outputs[4], NAN);
         }
     }
     if (param.z_axis_distance != 0){
@@ -2544,8 +2554,133 @@ void ZProbe::single_axis_probe_double_tap(){
         THEKERNEL->streams->printf("Final Positon Z: %.3f\n", std::get<Z_AXIS>(pos));
         THEKERNEL->probe_outputs[5] = ave_z;
         if (param.save_position == 2 && check_last_probe_ok()){
-            THEROBOT->set_current_wcs_by_mpos( NAN, NAN, THEKERNEL->probe_outputs[5]);
+            THEROBOT->set_wcs_by_mpos( NAN, NAN, THEKERNEL->probe_outputs[5]);
         }
+    }
+}
+
+// M468: set a work coordinate system from the last probing result so that the
+// probed point gets the given coordinates. Only the given axes are changed.
+// P: work coordinate system, 1 = G54 to 9 = G59.3, 0 or omitted = active one
+// X, Y, Z: coordinates of the probed point (#154, #155, #156)
+// Q: angle of the probed edge; the rotation becomes #153 - Q
+// D, E: nominal size in X and Y (#151, #152), checked only
+// R: position tolerance for X, Y and Z; H: size tolerance; B: angle tolerance for Q
+// W1: print the measured values and the deviations
+// V1: check and print only, write nothing
+// When a check fails, nothing is written and the machine halts.
+void ZProbe::set_wcs_from_probe_result(Gcode *gcode)
+{
+    auto fail = [](const char *reason) {
+        THEKERNEL->streams->printf("ERROR: M468: %s\n", reason);
+        THEKERNEL->call_event(ON_HALT, nullptr);
+        THEKERNEL->set_halt_reason(PROBE_FAIL);
+    };
+
+    size_t n = THEROBOT->get_current_wcs();
+    if (gcode->has_letter('P')) {
+        int p = gcode->get_int('P');
+        if (p < 0 || p > (int)MAX_WCS) {
+            fail("P must be 0 to 9");
+            return;
+        }
+        if (p > 0) n = p - 1;
+    }
+
+    bool set_x = gcode->has_letter('X');
+    bool set_y = gcode->has_letter('Y');
+    bool set_z = gcode->has_letter('Z');
+    bool set_angle = gcode->has_letter('Q');
+    bool size_x = gcode->has_letter('D');
+    bool size_y = gcode->has_letter('E');
+    if (!set_x && !set_y && !set_z && !set_angle && !size_x && !size_y) {
+        fail("no X, Y, Z, Q, D or E given");
+        return;
+    }
+
+    // a result is set when it is above the unset value, as for #151-#156
+    const float *result = THEKERNEL->probe_outputs;
+    auto measured = [result](int i) { return result[i] > -100000; };
+    if ((set_x && !measured(3)) || (set_y && !measured(4)) || (set_z && !measured(5)) ||
+        (set_angle && !measured(2)) || (size_x && !measured(0)) || (size_y && !measured(1))) {
+        fail("the last probing cycle did not measure the given axis");
+        return;
+    }
+
+    float nx = set_x ? THEROBOT->to_millimeters(gcode->get_value('X')) : 0;
+    float ny = set_y ? THEROBOT->to_millimeters(gcode->get_value('Y')) : 0;
+    float nz = set_z ? THEROBOT->to_millimeters(gcode->get_value('Z')) : 0;
+    float na = set_angle ? gcode->get_value('Q') : 0;
+
+    // the probed point in that system before the change. An axis that was not probed is taken
+    // from the current position.
+    float mpos[3];
+    THEROBOT->get_current_machine_position(mpos);
+    float px = measured(3) ? result[3] : mpos[X_AXIS];
+    float py = measured(4) ? result[4] : mpos[Y_AXIS];
+    float pz = measured(5) ? result[5] : mpos[Z_AXIS];
+    Robot::wcs_t pos = THEROBOT->mcs2selected_wcs(Robot::wcs_t(px, py, pz, 0, 0), n);
+
+    // deviation = measured - nominal, which is also how far the system moves or turns
+    struct check { bool given; char name; float measured; float nominal; char tolerance; };
+    check checks[] = {
+        {set_x, 'X', std::get<X_AXIS>(pos), nx, 'R'},
+        {set_y, 'Y', std::get<Y_AXIS>(pos), ny, 'R'},
+        {set_z, 'Z', std::get<Z_AXIS>(pos), nz, 'R'},
+        {set_angle, 'Q', result[2] - THEROBOT->r[n], na, 'B'},
+        {size_x, 'D', result[0], size_x ? THEROBOT->to_millimeters(gcode->get_value('D')) : 0, 'H'},
+        {size_y, 'E', result[1], size_y ? THEROBOT->to_millimeters(gcode->get_value('E')) : 0, 'H'},
+    };
+    bool print = gcode->has_letter('W') && gcode->get_int('W') > 0;
+    for (const check &c : checks) {
+        if (c.given && print) {
+            THEKERNEL->streams->printf("M468 %c: measured %.3f, nominal %.3f, deviation %.3f\n",
+                c.name, c.measured, c.nominal, c.measured - c.nominal);
+        }
+    }
+    for (const check &c : checks) {
+        if (!c.given || !gcode->has_letter(c.tolerance)) continue;
+        float tolerance = gcode->get_value(c.tolerance);
+        if (c.tolerance != 'B') tolerance = THEROBOT->to_millimeters(tolerance);
+        if (fabs(c.measured - c.nominal) > tolerance) {
+            char reason[96];
+            snprintf(reason, sizeof(reason), "%c deviation %.3f is outside the tolerance %.3f, nothing written",
+                c.name, c.measured - c.nominal, tolerance);
+            fail(reason);
+            return;
+        }
+    }
+
+    if (gcode->has_letter('V') && gcode->get_int('V') > 0) {
+        return;
+    }
+
+    if (!set_x && !set_y && !set_z && !set_angle) {
+        return;
+    }
+
+    // The offset that puts the given coordinates of the probed point on the probed point, with the
+    // new rotation. An axis that was not given keeps its current coordinate.
+    float rotation = set_angle ? result[2] - na : THEROBOT->r[n];
+    Robot::wcs_t target(set_x ? nx : std::get<X_AXIS>(pos), set_y ? ny : std::get<Y_AXIS>(pos),
+                        set_z ? nz : std::get<Z_AXIS>(pos), 0, 0);
+    Robot::wcs_t wanted = THEROBOT->wcs_offset_for(target, Robot::wcs_t(px, py, pz, 0, 0), n, rotation);
+
+    // Only the given axes change. X and Y change together, as a rotated system couples them.
+    Robot::wcs_t offset = THEROBOT->get_wcs_offset(n);
+    if (set_x || set_y) {
+        std::get<X_AXIS>(offset) = std::get<X_AXIS>(wanted);
+        std::get<Y_AXIS>(offset) = std::get<Y_AXIS>(wanted);
+    }
+    if (set_z) std::get<Z_AXIS>(offset) = std::get<Z_AXIS>(wanted);
+
+    // one write, so the EEPROM is saved once
+    THEROBOT->set_wcs_offset(n, offset, rotation);
+
+    if (n < 6) {
+        THEKERNEL->streams->printf("G%d set from probing result\n", 54 + (int)n);
+    } else {
+        THEKERNEL->streams->printf("G59.%d set from probing result\n", (int)n - 5);
     }
 }
 

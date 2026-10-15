@@ -144,6 +144,7 @@ Kernel::Kernel()
     // Initialize user defined variables and subroutine call parameters.
     for(int i = 0; i < 20; ++i) local_vars[i]   = -1.0e6f;
     for(int i = 0; i < 30; ++i) local_params[i] = 0.0f;
+    for(int i = 0; i < 6; ++i) probe_outputs[i] = -1.0e6f;
 
     instance = this; // setup the Singleton instance of the kernel
 

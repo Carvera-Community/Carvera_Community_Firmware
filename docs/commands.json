@@ -2394,6 +2394,74 @@
       "description": "Not implemented. The square probe is M466.1.",
       "parameters": {}
     },
+    "M468": {
+      "type": "mcode",
+      "description": "Set a work coordinate system from the last probing result so the probed point gets the given coordinates. Only the given axes change. Optional checks halt without writing; V1 only checks.",
+      "parameters": {
+        "P": {
+          "required": false,
+          "description": "Work coordinate system: 1 G54 to 9 G59.3, 0 the active one.",
+          "default": 0
+        },
+        "X": {
+          "required": false,
+          "description": "X of the probed point (#154) in that system.",
+          "default": null
+        },
+        "Y": {
+          "required": false,
+          "description": "Y of the probed point (#155) in that system.",
+          "default": null
+        },
+        "Z": {
+          "required": false,
+          "description": "Z of the probed point (#156) in that system.",
+          "default": null
+        },
+        "Q": {
+          "required": false,
+          "description": "Angle of the probed edge. The rotation becomes #153 minus Q.",
+          "default": null,
+          "unit": "deg"
+        },
+        "D": {
+          "required": false,
+          "description": "Nominal size in X (#151), checked against H.",
+          "default": null
+        },
+        "E": {
+          "required": false,
+          "description": "Nominal size in Y (#152), checked against H.",
+          "default": null
+        },
+        "R": {
+          "required": false,
+          "description": "Position tolerance for X, Y and Z.",
+          "default": null
+        },
+        "H": {
+          "required": false,
+          "description": "Size tolerance for D and E.",
+          "default": null
+        },
+        "B": {
+          "required": false,
+          "description": "Angle tolerance for Q.",
+          "default": null,
+          "unit": "deg"
+        },
+        "W": {
+          "required": false,
+          "description": "1 prints the measured values and deviations.",
+          "default": 0
+        },
+        "V": {
+          "required": false,
+          "description": "1 checks and prints only and writes nothing.",
+          "default": 0
+        }
+      }
+    },
     "M469.1": {
       "type": "mcode",
       "description": "Calibrate Anchor 1 with the 3D probe. Check MDI for the config-set line to keep the result.",
