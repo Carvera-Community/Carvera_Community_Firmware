@@ -1,3 +1,6 @@
+[unreleased]
+- Enhancement: Updates for CAM Probing. M468 can set any WCS and even check tolerances of positions and angles and halt if the geometry is out of tolerance
+
 [2.3.0c-RC1]
 - Enhancement: Analog spindle PWM has configurable top and bottom dead zones, offset, and scale. M959 sets or reports the map.
 - Enhancement: M959.1 auto-tunes the analog spindle PWM map from RPM feedback, including the on, off, and shared spindle delays.
