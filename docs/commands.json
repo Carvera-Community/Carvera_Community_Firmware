@@ -2400,7 +2400,7 @@
       "parameters": {
         "P": {
           "required": false,
-          "description": "Work coordinate system: 1 G54 to 9 G59.3, 0 the active one.",
+          "description": "Work coordinate system: 1 G54 to 9 G59.3, 0 is the active one.",
           "default": 0
         },
         "X": {
