@@ -55,6 +55,8 @@ class AnalogSpindleControl: public SpindleControl {
         // Lowest duty that turns the spindle, and unused duty at the top of the range.
         float pwm_deadzone_bottom;
         float pwm_deadzone_top;
+        // Highest duty the spindle driver accepts; the Carvera Air spindle does not run at full duty.
+        float max_pwm;
         int delay_s;
         int delay_on_s;
         int delay_off_s;

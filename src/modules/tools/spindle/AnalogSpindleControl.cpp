@@ -49,6 +49,7 @@
 #define spindle_pwm_deadzone_top_checksum    CHECKSUM("pwm_deadzone_top")
 #define spindle_pwm_offset_checksum          CHECKSUM("pwm_offset")
 #define spindle_pwm_scale_checksum           CHECKSUM("pwm_scale")
+#define spindle_max_pwm_checksum             CHECKSUM("max_pwm")
 
 #define UPDATE_FREQ 100
 
@@ -384,6 +385,10 @@ void AnalogSpindleControl::read_pwm_map()
     pwm_deadzone_top = THEKERNEL->config->value(spindle_checksum, spindle_pwm_deadzone_top_checksum)->as_number(0.0f);
     pwm_offset = THEKERNEL->config->value(spindle_checksum, spindle_pwm_offset_checksum)->as_number(0.0f);
     pwm_scale = THEKERNEL->config->value(spindle_checksum, spindle_pwm_scale_checksum)->as_number(1.0f);
+    // as in PWMSpindleControl: the Carvera Air spindle stops at full duty, so it is limited to 0.9
+    max_pwm = THEKERNEL->config->value(spindle_checksum, spindle_max_pwm_checksum)->as_number(1.0f);
+    if (CARVERA_AIR == THEKERNEL->factory_set->MachineModel)
+        max_pwm = 0.9f;
     delay_s = THEKERNEL->config->value(spindle_checksum, spindle_delay_s_checksum)->as_int(0);
     delay_on_s = THEKERNEL->config->value(spindle_checksum, spindle_delay_on_s_checksum)->as_int(delay_s);
     delay_off_s = THEKERNEL->config->value(spindle_checksum, spindle_delay_off_s_checksum)->as_int(delay_s);
@@ -419,14 +424,15 @@ void AnalogSpindleControl::sanitize_pwm_map()
     }
     pwm_offset = clamp_float(pwm_offset, -1.0f, 1.0f, 0.0f, changed);
     pwm_scale = clamp_float(pwm_scale, kMinPwmScale, kMaxPwmScale, 1.0f, changed);
+    max_pwm = clamp_float(max_pwm, 0.1f, 1.0f, 1.0f, changed);
     if (changed)
         THEKERNEL->streams->printf("ERROR: Analog spindle PWM map config was out of range and was corrected\n");
 }
 
 void AnalogSpindleControl::report_map(StreamOutput *stream) const
 {
-    stream->printf("min_rpm: %d\nmax_rpm: %d\ndeadzone_bottom: %1.4f\ndeadzone_top: %1.4f\noffset: %1.4f\nscale: %1.4f\ndelay_s: %d\ndelay_on_s: %d\ndelay_off_s: %d\n",
-                   min_rpm, max_rpm, pwm_deadzone_bottom, pwm_deadzone_top, pwm_offset, pwm_scale, delay_s, delay_on_s, delay_off_s);
+    stream->printf("min_rpm: %d\nmax_rpm: %d\ndeadzone_bottom: %1.4f\ndeadzone_top: %1.4f\noffset: %1.4f\nscale: %1.4f\nmax_pwm: %1.4f\ndelay_s: %d\ndelay_on_s: %d\ndelay_off_s: %d\n",
+                   min_rpm, max_rpm, pwm_deadzone_bottom, pwm_deadzone_top, pwm_offset, pwm_scale, max_pwm, delay_s, delay_on_s, delay_off_s);
 }
 
 float AnalogSpindleControl::pwm_for_rpm(float rpm) const
@@ -438,8 +444,8 @@ float AnalogSpindleControl::pwm_for_rpm(float rpm) const
     float hi = 1.0f - pwm_deadzone_top;
     if (lo < 0.0f)
         lo = 0.0f;
-    if (hi > 1.0f)
-        hi = 1.0f;
+    if (hi > max_pwm)
+        hi = max_pwm;
     if (hi < lo)
         hi = lo;
     if (duty < lo)
@@ -620,13 +626,14 @@ void AnalogSpindleControl::auto_tune(StreamOutput *stream, float step, uint32_t 
         step = 0.02f;
     if (step > 0.20f)
         step = 0.20f;
-    int intervals = static_cast<int>(1.0f / step + 0.5f);
+    // the sweep runs from 0 to max_pwm in equal steps
+    int intervals = static_cast<int>(max_pwm / step + 0.5f);
     if (intervals < 2)
         intervals = 2;
     if (intervals > kMaxTuneSamples - 1)
         intervals = kMaxTuneSamples - 1;
     const int count = intervals + 1;
-    step = 1.0f / static_cast<float>(intervals);
+    step = max_pwm / static_cast<float>(intervals);
     if (sweeps < 1)
         sweeps = 1;
     if (sweeps > 5)
@@ -708,7 +715,7 @@ void AnalogSpindleControl::auto_tune(StreamOutput *stream, float step, uint32_t 
             }
             float pwm = step * static_cast<float>(i);
             if (i == count - 1)
-                pwm = 1.0f;
+                pwm = max_pwm;
             update_pwm(pwm);
             float rpm = 0.0f;
             if (!wait_for_stable_rpm(rpm, on_hold_ms, on_hold_ms)) {
@@ -819,7 +826,7 @@ void AnalogSpindleControl::auto_tune(StreamOutput *stream, float step, uint32_t 
 
 bool AnalogSpindleControl::measure_start_stop_times(StreamOutput *stream, int &on_s, int &off_s)
 {
-    update_pwm(1.0f);
+    update_pwm(max_pwm);
     const uint32_t start = us_ticker_read();
     float window[4] = {};
     int count = 0;
