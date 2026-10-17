@@ -2396,7 +2396,7 @@
     },
     "M468": {
       "type": "mcode",
-      "description": "Test last probe result against a given size or position with tolerance. Optionally set WCS from last probed result, halt or pause on outside tolerance, and print result",
+      "description": "CAM probing helper macro. Optionally sets WCS from last probe operation using an offset. Optionally compares last probe operation against supplied values and errors if outside a supplied tolerance value. Can be run silently",
       "parameters": {
         "P": {
           "required": false,
@@ -2405,22 +2405,22 @@
         },
         "X": {
           "required": false,
-          "description": "X position to test last probe point (#154) against",
+          "description": "Expected X of the probed point (#154). Becomes the new X when S1 is set.",
           "default": null
         },
         "Y": {
           "required": false,
-          "description": "Y position to test last probe point (#155) against",
+          "description": "Expected Y of the probed point (#155). Becomes the new Y when S1 is set.",
           "default": null
         },
         "Z": {
           "required": false,
-          "description": "Z position to test last probe point (#156) against",
+          "description": "Expected Z of the probed point (#156). Becomes the new Z when S1 is set.",
           "default": null
         },
-        "Q": {
+        "R": {
           "required": false,
-          "description": "Angle of the probed edge. The rotation becomes #153 minus Q.",
+          "description": "Angle of the probed edge. The rotation becomes #153 minus R.",
           "default": null,
           "unit": "deg"
         },
@@ -2431,33 +2431,33 @@
         },
         "E": {
           "required": false,
-          "description": "Nominal size in Y (#152), checked against H.",
+          "description": "Nominal size in Y to compare last probe bore/boss against (#152)",
           "default": null
         },
-        "R": {
+        "T": {
           "required": false,
           "description": "Position tolerance for X, Y and Z.",
           "default": null
         },
-        "H": {
+        "U": {
           "required": false,
           "description": "Size tolerance for D and E.",
           "default": null
         },
-        "B": {
+        "Q": {
           "required": false,
-          "description": "Angle tolerance for Q.",
+          "description": "Angle tolerance for R.",
           "default": null,
           "unit": "deg"
         },
         "W": {
           "required": false,
-          "description": "1 prints the measured values and deviations.",
+          "description": "W1 prints the measured values and deviations.",
           "default": 0
         },
-        "V": {
+        "S": {
           "required": false,
-          "description": "1 checks and prints only and writes nothing.",
+          "description": "1 updates the WCS offset (and rotation, if R is given). Otherwise only checks are run.",
           "default": 0
         }
       }

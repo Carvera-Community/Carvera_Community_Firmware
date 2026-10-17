@@ -2559,16 +2559,16 @@ void ZProbe::single_axis_probe_double_tap(){
     }
 }
 
-// M468: set a work coordinate system from the last probing result so that the
-// probed point gets the given coordinates. Only the given axes are changed.
+// M468: compare the last probing result with the expected values and, with S1, update a work
+// coordinate system so the probed point lands on them. Only the given axes are updated.
 // P: work coordinate system, 1 = G54 to 9 = G59.3, 0 or omitted = active one
-// X, Y, Z: coordinates of the probed point (#154, #155, #156)
-// Q: angle of the probed edge; the rotation becomes #153 - Q
-// D, E: nominal size in X and Y (#151, #152), checked only
-// R: position tolerance for X, Y and Z; H: size tolerance; B: angle tolerance for Q
-// W1: print the measured values and the deviations
-// V1: check and print only, write nothing
-// When a check fails, nothing is written and the machine halts.
+// X, Y, Z: expected coordinates of the probed point (#154, #155, #156)
+// R: expected angle of the probed edge; S1 sets the rotation to #153 - R
+// D, E: expected size in X and Y (#151, #152), checked only
+// T: position tolerance; U: size tolerance; Q: angle tolerance
+// W1: print measured values and deviations
+// S1: update the WCS; without it, nothing is written
+// If a check fails, nothing is written and the machine halts.
 void ZProbe::set_wcs_from_probe_result(Gcode *gcode)
 {
     auto fail = [](const char *reason) {
@@ -2590,11 +2590,11 @@ void ZProbe::set_wcs_from_probe_result(Gcode *gcode)
     bool set_x = gcode->has_letter('X');
     bool set_y = gcode->has_letter('Y');
     bool set_z = gcode->has_letter('Z');
-    bool set_angle = gcode->has_letter('Q');
+    bool set_angle = gcode->has_letter('R');
     bool size_x = gcode->has_letter('D');
     bool size_y = gcode->has_letter('E');
     if (!set_x && !set_y && !set_z && !set_angle && !size_x && !size_y) {
-        fail("no X, Y, Z, Q, D or E given");
+        fail("no X, Y, Z, R, D or E given");
         return;
     }
 
@@ -2610,7 +2610,7 @@ void ZProbe::set_wcs_from_probe_result(Gcode *gcode)
     float nx = set_x ? THEROBOT->to_millimeters(gcode->get_value('X')) : 0;
     float ny = set_y ? THEROBOT->to_millimeters(gcode->get_value('Y')) : 0;
     float nz = set_z ? THEROBOT->to_millimeters(gcode->get_value('Z')) : 0;
-    float na = set_angle ? gcode->get_value('Q') : 0;
+    float na = set_angle ? gcode->get_value('R') : 0;
 
     // the probed point in that system before the change. An axis that was not probed is taken
     // from the current position.
@@ -2624,12 +2624,12 @@ void ZProbe::set_wcs_from_probe_result(Gcode *gcode)
     // deviation = measured - nominal, which is also how far the system moves or turns
     struct check { bool given; char name; float measured; float nominal; char tolerance; };
     check checks[] = {
-        {set_x, 'X', std::get<X_AXIS>(pos), nx, 'R'},
-        {set_y, 'Y', std::get<Y_AXIS>(pos), ny, 'R'},
-        {set_z, 'Z', std::get<Z_AXIS>(pos), nz, 'R'},
-        {set_angle, 'Q', result[2] - THEROBOT->r[n], na, 'B'},
-        {size_x, 'D', result[0], size_x ? THEROBOT->to_millimeters(gcode->get_value('D')) : 0, 'H'},
-        {size_y, 'E', result[1], size_y ? THEROBOT->to_millimeters(gcode->get_value('E')) : 0, 'H'},
+        {set_x, 'X', std::get<X_AXIS>(pos), nx, 'T'},
+        {set_y, 'Y', std::get<Y_AXIS>(pos), ny, 'T'},
+        {set_z, 'Z', std::get<Z_AXIS>(pos), nz, 'T'},
+        {set_angle, 'R', result[2] - THEROBOT->r[n], na, 'Q'},
+        {size_x, 'D', result[0], size_x ? THEROBOT->to_millimeters(gcode->get_value('D')) : 0, 'U'},
+        {size_y, 'E', result[1], size_y ? THEROBOT->to_millimeters(gcode->get_value('E')) : 0, 'U'},
     };
     bool print = gcode->has_letter('W') && gcode->get_int('W') > 0;
     for (const check &c : checks) {
@@ -2641,7 +2641,7 @@ void ZProbe::set_wcs_from_probe_result(Gcode *gcode)
     for (const check &c : checks) {
         if (!c.given || !gcode->has_letter(c.tolerance)) continue;
         float tolerance = gcode->get_value(c.tolerance);
-        if (c.tolerance != 'B') tolerance = THEROBOT->to_millimeters(tolerance);
+        if (c.tolerance != 'Q') tolerance = THEROBOT->to_millimeters(tolerance);
         if (fabs(c.measured - c.nominal) > tolerance) {
             char reason[96];
             snprintf(reason, sizeof(reason), "%c deviation %.3f is outside the tolerance %.3f, nothing written",
@@ -2651,7 +2651,7 @@ void ZProbe::set_wcs_from_probe_result(Gcode *gcode)
         }
     }
 
-    if (gcode->has_letter('V') && gcode->get_int('V') > 0) {
+    if (!gcode->has_letter('S') || gcode->get_int('S') != 1) {
         return;
     }
 
