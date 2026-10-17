@@ -2410,7 +2410,7 @@
         },
         "Y": {
           "required": false,
-          "description": "Y of the probed point (#155) in that system.",
+          "description": "Y position to test last probe point (#155) against",
           "default": null
         },
         "Z": {
