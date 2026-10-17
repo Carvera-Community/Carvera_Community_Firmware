@@ -2415,7 +2415,7 @@
         },
         "Z": {
           "required": false,
-          "description": "Z of the probed point (#156) in that system.",
+          "description": "Z position to test last probe point (#156) against",
           "default": null
         },
         "Q": {
