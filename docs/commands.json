@@ -2405,7 +2405,7 @@
         },
         "X": {
           "required": false,
-          "description": "X of the probed point (#154) in that system.",
+          "description": "X position to test last probe point (#154) against",
           "default": null
         },
         "Y": {
