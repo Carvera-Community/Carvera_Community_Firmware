@@ -2426,7 +2426,7 @@
         },
         "D": {
           "required": false,
-          "description": "Nominal size in X (#151), checked against H.",
+          "description": "Nominal size in X to compare last probe bore/boss against (#151)",
           "default": null
         },
         "E": {
