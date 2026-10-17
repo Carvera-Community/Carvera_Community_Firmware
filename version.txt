@@ -1,5 +1,5 @@
 [unreleased]
-- Enhancement: Updates for CAM Probing. M468 can set any WCS and even check tolerances of positions and angles and halt if the geometry is out of tolerance
+- Enhancement: CAM probing helper macro. Optionally sets WCS from last probe operation using an offset. Optionally compares last probe operation against supplied values and errors if outside a supplied tolerance value. Can be run silently
 
 [2.3.0c-RC1]
 - Enhancement: Analog spindle PWM has configurable top and bottom dead zones, offset, and scale. M959 sets or reports the map.
