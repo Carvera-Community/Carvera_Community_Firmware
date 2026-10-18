@@ -513,7 +513,37 @@
     },
     "G34": {
       "type": "gcode",
-      "description": "Record the Z deviation profile to the corresponding flex compensation."
+      "description": "Probe the bed Z along X and add the Z profile to flex compensation. With active flex compensation it uses that X grid. Without it, X and I set a new grid from the current X and only Z is compensated. The first point is not probed.",
+      "parameters": {
+        "X": {
+          "required": false,
+          "description": "Travel distance along X. Required without active flex compensation.",
+          "default": null,
+          "unit": "mm"
+        },
+        "I": {
+          "required": false,
+          "description": "Number of points. Required without active flex compensation.",
+          "default": null
+        },
+        "L": {
+          "required": false,
+          "description": "Repeat measurements at each point.",
+          "default": 1
+        },
+        "H": {
+          "required": false,
+          "description": "Probe height used instead of the configured one.",
+          "default": null,
+          "unit": "mm"
+        },
+        "R": {
+          "required": false,
+          "description": "Rapid feed between points.",
+          "default": 800,
+          "unit": "mm/min"
+        }
+      }
     },
     "G38.2": {
       "type": "gcode",

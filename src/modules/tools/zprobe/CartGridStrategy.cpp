@@ -1316,11 +1316,28 @@ bool CartGridStrategy::doFlexMeasurement(Gcode *gc)
 
 bool CartGridStrategy::doFlexZMeasurement(Gcode *gc)
 {
-    if (!flex_compensation_active) {
-        gc->stream->printf("ERROR: Flex compensation is not active. Please run G33 before G34\n");
+    if(flex_compensation_data == nullptr) {
         return false;
     }
-    if(flex_current_x_points < 2 || flex_x_size <= 0.0F || flex_compensation_data == nullptr) {
+    // With active flex compensation G34 uses its X grid. Without it, X and I define a new grid
+    // from the current X, like G33, and only the Z profile is applied.
+    bool standalone = !flex_compensation_active;
+    if(standalone) {
+        if(!gc->has_letter('X') || !gc->has_letter('I')) {
+            gc->stream->printf("ERROR: X and I are required for G34 without flex compensation\n");
+            return false;
+        }
+        float size = gc->get_value('X');
+        int points = gc->get_int('I');
+        if(size <= 0.0F || points < 2 || points > flex_x_points) {
+            gc->stream->printf("ERROR: X must be positive and I between 2 and %d\n", flex_x_points);
+            return false;
+        }
+        reset_flex_compensation();
+        flex_x_start = THEROBOT->get_axis_position(X_AXIS);
+        flex_x_size = size;
+        flex_current_x_points = points;
+    } else if(flex_current_x_points < 2 || flex_x_size <= 0.0F) {
         gc->stream->printf("ERROR: Load flex grid (M380.3) or run G33 before G34\n");
         return false;
     }
@@ -1389,6 +1406,10 @@ bool CartGridStrategy::doFlexZMeasurement(Gcode *gc)
     }
     flex_z_measurement_active = false;
     loaded_flex_compensation_version = (float)(FLEX_COMPENSATION_VERSION);
+    if(standalone) {
+        flex_compensation_active = true;
+        updateCompensationTransform();
+    }
     return true;
 }
 
