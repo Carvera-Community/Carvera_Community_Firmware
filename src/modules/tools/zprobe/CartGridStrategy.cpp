@@ -1319,19 +1319,59 @@ bool CartGridStrategy::doFlexZMeasurement(Gcode *gc)
     if(flex_compensation_data == nullptr) {
         return false;
     }
-    // With active flex compensation G34 uses its X grid. Without it, X and I define a new grid
-    // from the current X, like G33, and only the Z profile is applied.
-    bool standalone = !flex_compensation_active;
-    if(standalone) {
+    // G34 uses the X grid of active flex compensation, or else of the stored flex data, so a Y
+    // profile from G33 is kept. X and I define a new grid from the current X, like G33, when
+    // there is no flex data or it holds only a Z profile; then only the Z profile is applied.
+    bool was_active = flex_compensation_active;
+    // after an input error flex compensation stays as it was: stored data loaded only for its grid
+    // is dropped again
+    auto input_error = [this, was_active]() {
+        if(!was_active && flex_compensation_active) reset_flex_compensation();
+        return false;
+    };
+    bool new_grid = false;
+    if(!flex_compensation_active) {
+        bool stored = false;
+#if !defined(NO_SD_CARD)
+        FILE *fp = fwfs::fopen(FLEX_COMPENSATION_FILE, "r");
+        if(fp != NULL) {
+            fwfs::fclose(fp);
+            stored = true;
+        }
+#endif
+        if(stored) {
+            if(!load_flex_compensation_data(gc->stream)) {
+                gc->stream->printf("ERROR: Stored flex data could not be loaded. Delete it with M380.4 to start a new grid\n");
+                return false;
+            }
+        } else {
+            new_grid = true;
+        }
+    }
+    if(!new_grid && (gc->has_letter('X') || gc->has_letter('I'))) {
+        bool y_profile = false;
+        for(int i = 0; i < flex_current_x_points; i++) {
+            if(flex_compensation_data[i] != 0.0F) {
+                y_profile = true;
+                break;
+            }
+        }
+        if(y_profile) {
+            gc->stream->printf("ERROR: The flex data has a Y profile from G33, its grid cannot be changed. Run G34 without X and I or run G33 again with the desired grid size\n");
+            return input_error();
+        }
+        new_grid = true;
+    }
+    if(new_grid) {
         if(!gc->has_letter('X') || !gc->has_letter('I')) {
-            gc->stream->printf("ERROR: X and I are required for G34 without flex compensation\n");
-            return false;
+            gc->stream->printf("ERROR: X and I are required for G34 without flex data\n");
+            return input_error();
         }
         float size = gc->get_value('X');
         int points = gc->get_int('I');
         if(size <= 0.0F || points < 2 || points > flex_x_points) {
             gc->stream->printf("ERROR: X must be positive and I between 2 and %d\n", flex_x_points);
-            return false;
+            return input_error();
         }
         reset_flex_compensation();
         flex_x_start = THEROBOT->get_axis_position(X_AXIS);
@@ -1339,7 +1379,9 @@ bool CartGridStrategy::doFlexZMeasurement(Gcode *gc)
         flex_current_x_points = points;
     } else if(flex_current_x_points < 2 || flex_x_size <= 0.0F) {
         gc->stream->printf("ERROR: Load flex grid (M380.3) or run G33 before G34\n");
-        return false;
+        return input_error();
+    } else {
+        gc->stream->printf("Using the X grid of the current flex data\n");
     }
 
     int repeat = 1;
@@ -1360,19 +1402,44 @@ bool CartGridStrategy::doFlexZMeasurement(Gcode *gc)
     float z_reference = 0.0F;
     float mm = 0.0F;
 
+    // a halt or failed probe leaves partial data. Flex compensation that was off stays off. Active
+    // flex compensation goes back to the stored flex data, or is discarded when nothing is stored.
+    auto abandon = [this, gc, was_active]() {
+        flex_z_measurement_active = false;
+        if(!was_active) {
+            reset_flex_compensation();
+            gc->stream->printf("Flex compensation stays off\n");
+            return;
+        }
+        bool stored = false;
+#if !defined(NO_SD_CARD)
+        FILE *fp = fwfs::fopen(FLEX_COMPENSATION_FILE, "r");
+        if(fp != NULL) {
+            fwfs::fclose(fp);
+            stored = true;
+        }
+#endif
+        if(stored && load_flex_compensation_data(gc->stream)) {
+            gc->stream->printf("Stored flex data restored\n");
+        } else {
+            reset_flex_compensation();
+            gc->stream->printf("Flex data discarded\n");
+        }
+    };
+
     flex_z_measurement_active = true;
     for(int r = 1; r <= repeat; r++) {
         for(int i = 1; i < flex_current_x_points; i++) {
             if(THEKERNEL->is_halted()) {
                 gc->stream->printf("ERROR: Halted during flex Z measurement\n");
-                flex_z_measurement_active = false;
+                abandon();
                 return false;
             }
             float probe_x = flex_x_start + (i * x_step);
             zprobe->coordinated_move(probe_x, probe_y, NAN, rapid / 60);
             if(!zprobe->doProbeAt(mm, probe_x, probe_y)) {
                 gc->stream->printf("ERROR: Z probe failed at point %d\n", i);
-                flex_z_measurement_active = false;
+                abandon();
                 return false;
             }
             float z_abs = (gc->has_letter('H') ? gc->get_value('H') : zprobe->getProbeHeight()) - mm;
@@ -1406,7 +1473,7 @@ bool CartGridStrategy::doFlexZMeasurement(Gcode *gc)
     }
     flex_z_measurement_active = false;
     loaded_flex_compensation_version = (float)(FLEX_COMPENSATION_VERSION);
-    if(standalone) {
+    if(new_grid) {
         flex_compensation_active = true;
         updateCompensationTransform();
     }
