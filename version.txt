@@ -1,3 +1,8 @@
+[unreleased]
+- Enhancement: Added flex compensation version 2
+- Fixed: Fixed a bug that would lead to inconsistent positions after a powercycle and homing when using flex comp
+
+
 [2.3.0c-RC1]
 - Enhancement: Analog spindle PWM has configurable top and bottom dead zones, offset, and scale. M959 sets or reports the map.
 - Enhancement: M959.1 auto-tunes the analog spindle PWM map from RPM feedback, including the on, off, and shared spindle delays.

@@ -511,6 +511,40 @@
         }
       }
     },
+    "G34": {
+      "type": "gcode",
+      "description": "Probe the bed Z along X at the current Y position and add the Z profile to flex compensation. Uses the X grid of the stored flex data and keeps a Y profile from G33. X and I set a new grid from the current X when there is no flex data",
+      "parameters": {
+        "X": {
+          "required": false,
+          "description": "Travel distance along X for a new grid. Not allowed with a Y profile from G33.",
+          "default": null,
+          "unit": "mm"
+        },
+        "I": {
+          "required": false,
+          "description": "Number of points for a new grid. Not allowed with a Y profile from G33.",
+          "default": null
+        },
+        "L": {
+          "required": false,
+          "description": "Repeat measurements at each point.",
+          "default": 1
+        },
+        "H": {
+          "required": false,
+          "description": "Probe height used instead of the configured one.",
+          "default": null,
+          "unit": "mm"
+        },
+        "R": {
+          "required": false,
+          "description": "Rapid feed between points.",
+          "default": 800,
+          "unit": "mm/min"
+        }
+      }
+    },
     "G38.2": {
       "type": "gcode",
       "description": "Probe toward the workpiece and stop on contact. Halts with an error if the probe does not trigger.",
