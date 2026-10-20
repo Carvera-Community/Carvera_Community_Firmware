@@ -144,6 +144,7 @@ private:
     void calibrate_probe_bore();
     void calibrate_probe_boss();
     void single_axis_probe_double_tap();
+    void set_wcs_from_probe_result(Gcode *gcode);
     void calibrate_Z(Gcode *gc);
     uint32_t read_probe(uint32_t dummy);
     uint32_t read_calibrate(uint32_t dummy);

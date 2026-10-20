@@ -2428,6 +2428,74 @@
       "description": "Not implemented. The square probe is M466.1.",
       "parameters": {}
     },
+    "M468": {
+      "type": "mcode",
+      "description": "CAM probing helper macro. Optionally sets WCS from last probe operation using an offset. Optionally compares last probe operation against supplied values and errors if outside a supplied tolerance value. Can be run silently",
+      "parameters": {
+        "P": {
+          "required": false,
+          "description": "Work coordinate system: 1 G54 to 9 G59.3, 0 is the active one.",
+          "default": 0
+        },
+        "X": {
+          "required": false,
+          "description": "Expected X of the probed point (#154). Becomes the new X when S1 is set.",
+          "default": null
+        },
+        "Y": {
+          "required": false,
+          "description": "Expected Y of the probed point (#155). Becomes the new Y when S1 is set.",
+          "default": null
+        },
+        "Z": {
+          "required": false,
+          "description": "Expected Z of the probed point (#156). Becomes the new Z when S1 is set.",
+          "default": null
+        },
+        "R": {
+          "required": false,
+          "description": "Angle of the probed edge. The rotation becomes #153 minus R.",
+          "default": null,
+          "unit": "deg"
+        },
+        "D": {
+          "required": false,
+          "description": "Nominal size in X to compare last probe bore/boss against (#151)",
+          "default": null
+        },
+        "E": {
+          "required": false,
+          "description": "Nominal size in Y to compare last probe bore/boss against (#152)",
+          "default": null
+        },
+        "T": {
+          "required": false,
+          "description": "Position tolerance for X, Y and Z.",
+          "default": null
+        },
+        "U": {
+          "required": false,
+          "description": "Size tolerance for D and E.",
+          "default": null
+        },
+        "Q": {
+          "required": false,
+          "description": "Angle tolerance for R.",
+          "default": null,
+          "unit": "deg"
+        },
+        "W": {
+          "required": false,
+          "description": "W1 prints the measured values and deviations.",
+          "default": 0
+        },
+        "S": {
+          "required": false,
+          "description": "1 updates the WCS offset (and rotation, if R is given). Otherwise only checks are run.",
+          "default": 0
+        }
+      }
+    },
     "M469.1": {
       "type": "mcode",
       "description": "Calibrate Anchor 1 with the 3D probe. Check MDI for the config-set line to keep the result.",
