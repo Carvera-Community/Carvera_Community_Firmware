@@ -94,6 +94,7 @@ void ZProbe::on_module_loaded()
     register_for_event(ON_GET_PUBLIC_DATA);
     register_for_event(ON_SET_PUBLIC_DATA);
     register_for_event(ON_MAIN_LOOP);
+    register_for_event(ON_IDLE);
 
     this->probing_cycle = NONE;
 
@@ -200,12 +201,6 @@ void ZProbe::after_config_cache_clear()
 
 void ZProbe::on_main_loop(void *argument)
 {
-    // Handle deferred halt event from crash detection
-    if (halt_pending) {
-        halt_pending = false;
-        THEKERNEL->call_event(ON_HALT, nullptr);
-    }
-
     if (check_probe_tool() == 2){
         is_3dprobe_active = true;
         if (CARVERA_AIR == THEKERNEL->factory_set->MachineModel) {
@@ -278,6 +273,18 @@ void ZProbe::on_main_loop(void *argument)
     }
 }
 
+// Finishes a crash halt that read_probe started. ON_IDLE also runs while the main loop waits for the
+// queue to empty (M400, macros, tool change), where ON_MAIN_LOOP would never come, so the halt
+// flushes the queue there as well.
+void ZProbe::on_idle(void *argument)
+{
+    if (!halt_pending) return;
+    halt_pending = false;
+    THEKERNEL->streams->printf("error:3D Probe crash detected\r\n");
+    THEKERNEL->streams->printf("Manually move the probe to a safe position\r\n");
+    THEKERNEL->call_event(ON_HALT, nullptr);
+}
+
 uint32_t ZProbe::read_probe(uint32_t dummy)
 {
 
@@ -288,16 +295,14 @@ uint32_t ZProbe::read_probe(uint32_t dummy)
     if(STEPPER[X_AXIS]->is_moving() || STEPPER[Y_AXIS]->is_moving() || STEPPER[Z_AXIS]->is_moving()) {
         if (this->pin.get() != invert_probe && is_3dprobe_active && !probe_triggered) {
             probe_triggered = true;
-            // Set halt state immediately for fast response, defer event processing to main loop
+            // Set halt state immediately for fast response, defer the messages and the halt event to on_idle:
+            // printing from this interrupt can block on the WiFi stream and the watchdog then resets
             // Disable crash detection during TLO calibration to prevent false positives
             if (!probing && !calibrating && !tlo_calibrating) {
                 THEKERNEL->set_halt_reason(CRASH_DETECTED);
                 THEKERNEL->set_halted(true);
-                // Set a flag to process the halt event in the main loop
                 halt_pending = true;
-                THEKERNEL->streams->printf("error:3D Probe crash detected\r\n");
-                THEKERNEL->streams->printf("Manually move the probe to a safe position\r\n");
-            } 
+            }
         }
     }
 
