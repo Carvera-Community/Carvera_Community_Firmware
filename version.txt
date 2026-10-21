@@ -6,7 +6,7 @@
 - Enhancement: Add support for Makera Z1 and Makera Z1 Pro.
 - Enhancement: Add a tool to check or fix the code formatting according to Google C/C++ style guide.
 - Enhancement: Add CMake support for better IDE integration
-- Enhancement: M469.6 X measures the 4th axis at a second X position and reports its yaw and pitch. S0 only reports, S1 writes G59 Y and Z, S2 also writes the yaw as G59 R.
+- Enhancement: M469.6 X measures the 4th axis at a second X position and reports its yaw and pitch. S0 only reports, S1 writes the WCS Y and Z, S2 also writes the yaw as its R.
 - Enhancement: M469.6 S3 also corrects the 4th axis pitch by adding a Z ramp along X to the leveling grid (new M376).
 - Fixed: Suspending file playback no longer caused a stackoverflow crash
 - Fixed: Prevent compressed file corruption during decompression.
@@ -17,7 +17,7 @@
 - Fixed: Probing cycles now remove leveling-grid compensation from the positions they read, as they already did with flex compensation active
 - Changed: Files without a pre-calculated MD5 hash on the SD card now get a MD5 generated on-the-fly when downloaded
 - Changed: Aborting playback stops queued motion immediately before turning off the spindle.
-- Changed: M469.6 writes the measured 4th axis rotation centre Y and Z to G59 instead of probing the 4th axis housing to set coordinate.rotation_offset_z.
+- Changed: M469.6 writes the measured 4th axis rotation centre Y and Z to the active work coordinate system instead of probing the 4th axis housing to set coordinate.rotation_offset_z.
 - Changed: M469.6 moves the probe between contacts on arcs around the artifact, with A turning in step.
 - Removed: The spindle PWM value from the status response (? command)
 

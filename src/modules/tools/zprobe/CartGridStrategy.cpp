@@ -685,6 +685,14 @@ bool CartGridStrategy::add_x_ramp(float x_zero, float slope, StreamOutput *strea
         }
     }
 
+    // Range reported in the status (|O:) like a loaded or probed grid
+    float min_z = grid[0], max_z = grid[0];
+    for(int i = 1; i < current_grid_x_size * current_grid_y_size; i++) {
+        min_z = std::min(min_z, grid[i]);
+        max_z = std::max(max_z, grid[i]);
+    }
+    THEROBOT->set_max_delta(max_z - min_z);
+
     cartesian_grid_active = true;
     updateCompensationTransform();
     stream->printf("Grid: added Z %.7f mm per mm of X, zero at X%.3f\n", slope, x_zero);

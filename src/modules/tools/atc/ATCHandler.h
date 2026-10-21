@@ -233,6 +233,7 @@ private:
         uint8_t pass;          // 1 = first measure, 2 = convergence
         uint8_t station;       // 1, or 2 for the second X position
         bool invert_probe;
+        uint8_t wcs_index;     // WCS written, 0 = G54: the one active at the start
         uint8_t save_mode;     // S: 0 report only, 1 write Y/Z, 2 also yaw as R, 3 also pitch to the grid
         float artifact_dia;
         float tip_r;           // probe tip radius

@@ -2490,7 +2490,7 @@
     },
     "M469.6": {
       "type": "mcode",
-      "description": "Find the A-axis rotation centre from a round artifact in the chuck and write its Y and Z to G59. Start with the probe just above the artifact at the X to measure. With X, measures again at a second X position and reports the axis yaw and pitch. S chooses what is written.",
+      "description": "Find the A-axis rotation centre from a round artifact in the chuck and write its Y and Z to the active work coordinate system. Start with the probe just above the artifact at the X to measure. With X, measures again at a second X position and reports the axis yaw and pitch. S chooses what is written.",
       "parameters": {
         "I": {
           "required": false,
@@ -2530,7 +2530,7 @@
         },
         "S": {
           "required": false,
-          "description": "0 reports only and leaves G59 unchanged. 1 writes G59 Y and Z and keeps R. 2 also writes the measured yaw as G59 R (needs X). 3 does the same as 2 and adds the measured pitch to the leveling grid as a Z ramp along X, then saves the grid (needs X).",
+          "description": "0 reports only and leaves the WCS unchanged. 1 writes the WCS Y and Z and keeps its R. 2 also writes the measured yaw as its R (needs X). 3 does the same as 2 and adds the measured pitch to the leveling grid as a Z ramp along X, then saves the grid (needs X).",
           "default": 1
         }
       }
