@@ -2,7 +2,7 @@
 - Enhancement: CAM probing helper macro. Optionally sets WCS from last probe operation using an offset. Optionally compares last probe operation against supplied values and errors if outside a supplied tolerance value. Can be run silently
 - Enhancement: Added flex compensation version 2
 - Fixed: Fixed a bug that would lead to inconsistent positions after a powercycle and homing when using flex comp
-
+- Fixed: probe crash detection no longer stalls the machine
 
 [2.3.0c-RC1]
 - Enhancement: Analog spindle PWM has configurable top and bottom dead zones, offset, and scale. M959 sets or reports the map.
