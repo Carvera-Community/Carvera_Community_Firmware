@@ -843,47 +843,67 @@ const char* cor_probe_cmd(bool invert)
 
 } // namespace
 
-void ATCHandler::cor_queue_z_clearance()
+// The probe moves between hits on an orbit in the YZ plane: centred on the current axis
+// estimate (start_y, z_centerline) with radius y_clr, so the ball keeps the C clearance
+// from the artifact. A turns with each arc, so the measured point travels with the probe.
+// Top of orbit: A start. Front (-Y): A start +90. Back (+Y): A start -90.
+
+// Straight up (or across) to the top of the orbit
+void ATCHandler::cor_queue_orbit_top()
 {
 	char buff[80];
-	snprintf(buff, sizeof(buff), "G53 G90 G0 Z%.3f F3000", a_axis_cor.z_est + a_axis_cor.z_clr);
+	snprintf(buff, sizeof(buff), "G53 G90 G0 Y%.4f Z%.4f F3000", a_axis_cor.start_y, a_axis_cor.z_centerline + a_axis_cor.y_clr);
 	this->script_queue.push(buff);
 }
 
-void ATCHandler::cor_queue_probe_y_front()
+// Relative YZ arc with A, then back to the XY plane. G2/G3 as seen from +X (G19).
+void ATCHandler::cor_queue_arc(bool clockwise, float dy, float dz, float j, float k, float da)
 {
 	char buff[100];
-	const float y_front = a_axis_cor.start_y - a_axis_cor.y_clr;
-	snprintf(buff, sizeof(buff), "G53 G0 G90 Y%.3f A%.3f F%.3f", y_front, a_axis_cor.start_a + 90.0f, a_axis_cor.pos_feed);
+	snprintf(buff, sizeof(buff), "G91 G19 %s Y%.4f Z%.4f J%.4f K%.4f A%.3f F%.3f",
+		clockwise ? "G2" : "G3", dy, dz, j, k, da, a_axis_cor.pos_feed);
 	this->script_queue.push(buff);
-	snprintf(buff, sizeof(buff), "G53 G0 Z%.3f F%.3f", a_axis_cor.z_centerline, a_axis_cor.pos_feed);
-	this->script_queue.push(buff);
-	snprintf(buff, sizeof(buff), "G91 %s Y%.3f F%.3f", cor_probe_cmd(a_axis_cor.invert_probe), a_axis_cor.probe_travel, this->probe_slow_rate);
+	this->script_queue.push("G17");
+}
+
+void ATCHandler::cor_queue_probe(char axis, float distance)
+{
+	char buff[80];
+	snprintf(buff, sizeof(buff), "G91 %s %c%.3f F%.3f", cor_probe_cmd(a_axis_cor.invert_probe), axis, distance, this->probe_slow_rate);
 	this->script_queue.push(buff);
 	this->script_queue.push("M469.7 P6");
 }
 
-void ATCHandler::cor_queue_probe_y_back()
+// From the top of the orbit: arc to the front and probe toward +Y
+void ATCHandler::cor_queue_to_front()
 {
-	char buff[100];
-	const float y_back = a_axis_cor.start_y + a_axis_cor.y_clr;
-	snprintf(buff, sizeof(buff), "G53 G0 Y%.3f A%.3f F%.3f", y_back, a_axis_cor.start_a - 90.0f, a_axis_cor.pos_feed);
-	this->script_queue.push(buff);
-	snprintf(buff, sizeof(buff), "G53 G0 Z%.3f F%.3f", a_axis_cor.z_centerline, a_axis_cor.pos_feed);
-	this->script_queue.push(buff);
-	snprintf(buff, sizeof(buff), "G91 %s Y%.3f F%.3f", cor_probe_cmd(a_axis_cor.invert_probe), -a_axis_cor.probe_travel, this->probe_slow_rate);
-	this->script_queue.push(buff);
-	this->script_queue.push("M469.7 P6");
+	const float r = a_axis_cor.y_clr;
+	cor_queue_arc(false, -r, -r, 0.0f, -r, 90.0f);
+	cor_queue_probe('Y', a_axis_cor.probe_travel);
 }
 
-void ATCHandler::cor_queue_probe_z_top()
+// From the front contact: back onto the orbit, arc over the top to the back, probe toward -Y
+void ATCHandler::cor_queue_to_back()
 {
-	char buff[100];
-	snprintf(buff, sizeof(buff), "G53 G0 Y%.3f A%.3f F%.3f", a_axis_cor.y_center, a_axis_cor.start_a, a_axis_cor.pos_feed);
+	char buff[80];
+	const float r = a_axis_cor.y_clr;
+	snprintf(buff, sizeof(buff), "G53 G90 G0 Y%.4f Z%.4f F%.3f", a_axis_cor.start_y - r, a_axis_cor.z_centerline, a_axis_cor.pos_feed);
 	this->script_queue.push(buff);
-	snprintf(buff, sizeof(buff), "G91 %s Z%.3f F%.3f", cor_probe_cmd(a_axis_cor.invert_probe), -a_axis_cor.probe_travel, this->probe_slow_rate);
+	cor_queue_arc(true, 2.0f * r, 0.0f, r, 0.0f, -180.0f);
+	cor_queue_probe('Y', -a_axis_cor.probe_travel);
+}
+
+// From the back contact: back onto the orbit, arc to the top, over the measured centre, probe -Z
+void ATCHandler::cor_queue_to_top()
+{
+	char buff[80];
+	const float r = a_axis_cor.y_clr;
+	snprintf(buff, sizeof(buff), "G53 G90 G0 Y%.4f Z%.4f F%.3f", a_axis_cor.start_y + r, a_axis_cor.z_centerline, a_axis_cor.pos_feed);
 	this->script_queue.push(buff);
-	this->script_queue.push("M469.7 P6");
+	cor_queue_arc(false, -r, r, -r, 0.0f, 90.0f);
+	snprintf(buff, sizeof(buff), "G53 G90 G0 Y%.4f F%.3f", a_axis_cor.y_center, a_axis_cor.pos_feed);
+	this->script_queue.push(buff);
+	cor_queue_probe('Z', -a_axis_cor.probe_travel);
 }
 
 // Probe the 4th-axis module reference surface used by fill_zprobe_abs / M469.5.
@@ -900,9 +920,15 @@ void ATCHandler::cor_queue_probe_module_ref()
 	// Use measured CoR Y so the ref probe stays on the rotation centerline
 	const float ref_y = a_axis_cor.y_center;
 
+	// Same order as M495 R: clear Y before traveling in X, so the stylus
+	// does not cross the chuck on the way to the module reference.
 	snprintf(buff, sizeof(buff), "G90 G53 G0 Z%.3f", THEROBOT->from_millimeters(this->clearance_z));
 	this->script_queue.push(buff);
-	snprintf(buff, sizeof(buff), "G53 G0 X%.3f Y%.3f A%.3f F%.3f", ref_x, ref_y, a_axis_cor.start_a, a_axis_cor.pos_feed);
+	snprintf(buff, sizeof(buff), "G53 G90 G0 Y%.3f", THEROBOT->from_millimeters(this->clearance_y));
+	this->script_queue.push(buff);
+	snprintf(buff, sizeof(buff), "G53 G90 G0 X%.3f A%.3f", ref_x, a_axis_cor.start_a);
+	this->script_queue.push(buff);
+	snprintf(buff, sizeof(buff), "G53 G90 G0 Y%.3f", ref_y);
 	this->script_queue.push(buff);
 	snprintf(buff, sizeof(buff), "G91 %s Z%.3f F%.3f", cor_probe_cmd(a_axis_cor.invert_probe), -120.0f, this->probe_slow_rate);
 	this->script_queue.push(buff);
@@ -954,11 +980,9 @@ void ATCHandler::calibrate_a_axis_cor(Gcode *gcode) //M469.6
 	a_axis_cor.invert_probe = invert_probe;
 	a_axis_cor.artifact_dia = artifact_dia;
 	a_axis_cor.tip_r = tip_dia * 0.5f;
-	a_axis_cor.clearance = clearance;
 	a_axis_cor.probe_travel = clearance * 2.0f;
 	a_axis_cor.pos_feed = pos_feed;
 	a_axis_cor.y_clr = a_axis_cor.tip_r + artifact_dia * 0.5f + clearance;
-	a_axis_cor.z_clr = artifact_dia * 0.5f + clearance;
 	a_axis_cor.z_ctr = (tip_dia - 0.131f) * -0.5f; // empirical ball-geometry factor
 	a_axis_cor.z_corr = this->three_axis_probe_tlo_correction;
 	a_axis_cor.pass = 1;
@@ -967,7 +991,7 @@ void ATCHandler::calibrate_a_axis_cor(Gcode *gcode) //M469.6
 	char buff[100];
 	this->script_queue.push(";Position probe tip above the artifact center within clearance of its surface");
 	this->script_queue.push(";After CoR finding, probes the standard 4th-axis Z reference (same as M469.5) to compute rotation_offset_z");
-	this->script_queue.push("G90 G21");
+	this->script_queue.push("G90 G21 G94");
 	snprintf(buff, sizeof(buff), "G91 %s Z%.3f F%.3f", cor_probe_cmd(invert_probe), -a_axis_cor.probe_travel, this->probe_slow_rate);
 	this->script_queue.push(buff);
 	this->script_queue.push("M469.7 P6");
@@ -981,37 +1005,29 @@ void ATCHandler::calibrate_a_axis_cor_step()
 		case COR_AFTER_INIT_Z: {
 			float y, z, a;
 			atc_get_mcs_yza(y, z, a);
-			a_axis_cor.z_est = z - a_axis_cor.artifact_dia * 0.5f;
+			const float z_est = z - a_axis_cor.artifact_dia * 0.5f; // first estimate of the axis Z
 			a_axis_cor.start_y = y;
 			a_axis_cor.start_a = a;
-			a_axis_cor.z_centerline = a_axis_cor.z_est + a_axis_cor.z_ctr;
+			a_axis_cor.z_centerline = z_est + a_axis_cor.z_ctr;
 
 			a_axis_cor.phase = COR_AFTER_Y_FRONT;
-			this->script_queue.push("G91 G0 Z1");
-			cor_queue_probe_y_front();
+			cor_queue_orbit_top();
+			cor_queue_to_front();
 			break;
 		}
 
 		case COR_AFTER_Y_FRONT: {
 			a_axis_cor.y1 = atc_get_mcs_axis(Y_AXIS) + a_axis_cor.tip_r;
-			snprintf(buff, sizeof(buff), "G91 G0 Y%.3f", -a_axis_cor.clearance);
-			this->script_queue.push(buff);
-
 			a_axis_cor.phase = COR_AFTER_Y_BACK;
-			cor_queue_z_clearance();
-			cor_queue_probe_y_back();
+			cor_queue_to_back();
 			break;
 		}
 
 		case COR_AFTER_Y_BACK: {
 			a_axis_cor.y2 = atc_get_mcs_axis(Y_AXIS) - a_axis_cor.tip_r;
-			snprintf(buff, sizeof(buff), "G91 G0 Y%.3f", a_axis_cor.clearance);
-			this->script_queue.push(buff);
 			a_axis_cor.y_center = (a_axis_cor.y1 + a_axis_cor.y2) * 0.5f;
-
 			a_axis_cor.phase = COR_AFTER_Z_TOP;
-			cor_queue_z_clearance();
-			cor_queue_probe_z_top();
+			cor_queue_to_top();
 			break;
 		}
 
@@ -1020,13 +1036,16 @@ void ATCHandler::calibrate_a_axis_cor_step()
 			const float apparent_r = (a_axis_cor.y2 - a_axis_cor.y1) * 0.5f;
 			// Tip-corrected CoR for aiming the convergence pass (matches original NC #112/#114)
 			const float z_cor_aim = z_top_raw + a_axis_cor.z_corr - apparent_r;
-			cor_queue_z_clearance();
+
+			// Re-centre the orbit on this pass's result and rise to its top
+			a_axis_cor.start_y = a_axis_cor.y_center;
+			a_axis_cor.z_centerline = z_cor_aim + a_axis_cor.z_ctr;
+			cor_queue_orbit_top();
 
 			if (a_axis_cor.pass == 1) {
-				a_axis_cor.z_centerline = z_cor_aim + a_axis_cor.z_ctr;
 				a_axis_cor.pass = 2;
 				a_axis_cor.phase = COR_AFTER_Y_FRONT;
-				cor_queue_probe_y_front();
+				cor_queue_to_front();
 			} else {
 				// Store raw MCS CoR for the config offset (M469.5 also uses raw #5023, no TLO)
 				a_axis_cor.z_cor_mcs = z_top_raw - apparent_r;
