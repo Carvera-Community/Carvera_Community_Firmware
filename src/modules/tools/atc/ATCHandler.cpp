@@ -826,8 +826,40 @@ enum CorPhase : uint8_t {
 	COR_AFTER_Y_FRONT,
 	COR_AFTER_Y_BACK,
 	COR_AFTER_Z_TOP,
-	COR_AFTER_REF_Z, // 4th-axis module reference surface (same as M469.5 / fill_zprobe_abs)
+	COR_AFTER_STATION_MOVE, // protected X move to the second station
+	COR_AFTER_GRID,         // S3: pitch ramp added to the leveling grid
 };
+
+// WCS name by index (0 = G54), for messages
+const char* cor_wcs_name(uint8_t index)
+{
+	static const char* const names[MAX_WCS] = {"G54", "G55", "G56", "G57", "G58", "G59", "G59.1", "G59.2", "G59.3"};
+	return index < MAX_WCS ? names[index] : "?";
+}
+
+constexpr float COR_MIN_STATION_DX = 10.0f; // shortest second-station X distance (mm)
+constexpr float COR_MAX_TIP_DIA = 6.0f;     // larger D is almost certainly the artifact (R)
+constexpr float COR_MAX_DEV_DEG = 1.0f;     // larger yaw or pitch is treated as a bad measurement
+constexpr float COR_DEG_PER_RAD = 57.2957795f;
+
+// M469.6 S: what is written to the WCS
+enum CorSaveMode : uint8_t {
+	COR_REPORT_ONLY = 0, // S0: measure and report, WCS not changed
+	COR_WRITE_YZ = 1,    // S1: write Y and Z, keep R
+	COR_WRITE_YZR = 2,   // S2: write Y and Z, and the measured yaw as R
+	COR_WRITE_YZR_GRID = 3, // S3: as S2, and correct the pitch with the leveling grid
+};
+
+constexpr float COR_MAX_GRID_DZ = 1.0f; // largest pitch ramp the grid may add across the X travel (mm)
+
+// Z the active compensation adds at a point (0 with none)
+float cor_compensation_z(float x, float y, float z)
+{
+	if (!THEROBOT->compensationTransform) return 0.0f;
+	float p[3] = {x, y, z};
+	THEROBOT->compensationTransform(p, false, false);
+	return p[Z_AXIS] - z;
+}
 
 // MCS positions matching gcode #5022 / #5023 / #5024
 void atc_get_mcs_yza(float &y, float &z, float &a)
@@ -858,72 +890,75 @@ const char* cor_probe_cmd(bool invert)
 	return invert ? "G38.4" : "G38.2";
 }
 
+// Probe-armed move that stops without an error on contact (checked afterwards)
+const char* cor_protected_cmd(bool invert)
+{
+	return invert ? "G38.5" : "G38.3";
+}
+
 } // namespace
 
-void ATCHandler::cor_queue_z_clearance()
+// The probe moves between hits on an orbit in the YZ plane: centred on the current axis
+// estimate (start_y, z_centerline) with radius y_clr, so the ball keeps the C clearance
+// from the artifact. A turns with each arc, so the measured point travels with the probe.
+// Top of orbit: A start. Front (-Y): A start +90. Back (+Y): A start -90.
+
+// Straight up (or across) to the top of the orbit
+void ATCHandler::cor_queue_orbit_top()
 {
 	char buff[80];
-	snprintf(buff, sizeof(buff), "G53 G90 G0 Z%.3f F3000", a_axis_cor.z_est + a_axis_cor.z_clr);
+	snprintf(buff, sizeof(buff), "G53 G90 G0 Y%.4f Z%.4f F3000", a_axis_cor.start_y, a_axis_cor.z_centerline + a_axis_cor.y_clr);
 	this->script_queue.push(buff);
 }
 
-void ATCHandler::cor_queue_probe_y_front()
+// Relative YZ arc with A, then back to the XY plane. G2/G3 as seen from +X (G19).
+void ATCHandler::cor_queue_arc(bool clockwise, float dy, float dz, float j, float k, float da)
 {
 	char buff[100];
-	const float y_front = a_axis_cor.start_y - a_axis_cor.y_clr;
-	snprintf(buff, sizeof(buff), "G53 G0 G90 Y%.3f A%.3f F%.3f", y_front, a_axis_cor.start_a + 90.0f, a_axis_cor.pos_feed);
+	snprintf(buff, sizeof(buff), "G91 G19 %s Y%.4f Z%.4f J%.4f K%.4f A%.3f F%.3f",
+		clockwise ? "G2" : "G3", dy, dz, j, k, da, a_axis_cor.pos_feed);
 	this->script_queue.push(buff);
-	snprintf(buff, sizeof(buff), "G53 G0 Z%.3f F%.3f", a_axis_cor.z_centerline, a_axis_cor.pos_feed);
-	this->script_queue.push(buff);
-	snprintf(buff, sizeof(buff), "G91 %s Y%.3f F%.3f", cor_probe_cmd(a_axis_cor.invert_probe), a_axis_cor.probe_travel, this->probe_slow_rate);
+	this->script_queue.push("G17");
+}
+
+void ATCHandler::cor_queue_probe(char axis, float distance)
+{
+	char buff[80];
+	snprintf(buff, sizeof(buff), "G91 %s %c%.3f F%.3f", cor_probe_cmd(a_axis_cor.invert_probe), axis, distance, this->probe_slow_rate);
 	this->script_queue.push(buff);
 	this->script_queue.push("M469.7 P6");
 }
 
-void ATCHandler::cor_queue_probe_y_back()
+// From the top of the orbit: arc to the front and probe toward +Y
+void ATCHandler::cor_queue_to_front()
 {
-	char buff[100];
-	const float y_back = a_axis_cor.start_y + a_axis_cor.y_clr;
-	snprintf(buff, sizeof(buff), "G53 G0 Y%.3f A%.3f F%.3f", y_back, a_axis_cor.start_a - 90.0f, a_axis_cor.pos_feed);
-	this->script_queue.push(buff);
-	snprintf(buff, sizeof(buff), "G53 G0 Z%.3f F%.3f", a_axis_cor.z_centerline, a_axis_cor.pos_feed);
-	this->script_queue.push(buff);
-	snprintf(buff, sizeof(buff), "G91 %s Y%.3f F%.3f", cor_probe_cmd(a_axis_cor.invert_probe), -a_axis_cor.probe_travel, this->probe_slow_rate);
-	this->script_queue.push(buff);
-	this->script_queue.push("M469.7 P6");
+	const float r = a_axis_cor.y_clr;
+	cor_queue_arc(false, -r, -r, 0.0f, -r, 90.0f);
+	cor_queue_probe('Y', a_axis_cor.probe_travel);
 }
 
-void ATCHandler::cor_queue_probe_z_top()
+// From the front contact: back onto the orbit, arc over the top to the back, probe toward -Y
+void ATCHandler::cor_queue_to_back()
 {
-	char buff[100];
-	snprintf(buff, sizeof(buff), "G53 G0 Y%.3f A%.3f F%.3f", a_axis_cor.y_center, a_axis_cor.start_a, a_axis_cor.pos_feed);
+	char buff[80];
+	const float r = a_axis_cor.y_clr;
+	snprintf(buff, sizeof(buff), "G53 G90 G0 Y%.4f Z%.4f F%.3f", a_axis_cor.start_y - r, a_axis_cor.z_centerline, a_axis_cor.pos_feed);
 	this->script_queue.push(buff);
-	snprintf(buff, sizeof(buff), "G91 %s Z%.3f F%.3f", cor_probe_cmd(a_axis_cor.invert_probe), -a_axis_cor.probe_travel, this->probe_slow_rate);
-	this->script_queue.push(buff);
-	this->script_queue.push("M469.7 P6");
+	cor_queue_arc(true, 2.0f * r, 0.0f, r, 0.0f, -180.0f);
+	cor_queue_probe('Y', -a_axis_cor.probe_travel);
 }
 
-// Probe the 4th-axis module reference surface used by fill_zprobe_abs / M469.5.
-// rotation_offset_z = Z_ref - Z_CoR (height of that surface above chuck center).
-void ATCHandler::cor_queue_probe_module_ref()
+// From the back contact: back onto the orbit, arc to the top, over the measured centre, probe -Z
+void ATCHandler::cor_queue_to_top()
 {
-	char buff[100];
-	float ref_x;
-	if (!(THEKERNEL->factory_set->FuncSetting & (1 << 0))) {
-		ref_x = this->anchor1_x + this->rotation_offset_x - 3.0f;
-	} else {
-		ref_x = this->anchor1_x + this->rotation_offset_x - 7.0f;
-	}
-	// Use measured CoR Y so the ref probe stays on the rotation centerline
-	const float ref_y = a_axis_cor.y_center;
-
-	snprintf(buff, sizeof(buff), "G90 G53 G0 Z%.3f", THEROBOT->from_millimeters(this->clearance_z));
+	char buff[80];
+	const float r = a_axis_cor.y_clr;
+	snprintf(buff, sizeof(buff), "G53 G90 G0 Y%.4f Z%.4f F%.3f", a_axis_cor.start_y + r, a_axis_cor.z_centerline, a_axis_cor.pos_feed);
 	this->script_queue.push(buff);
-	snprintf(buff, sizeof(buff), "G53 G0 X%.3f Y%.3f A%.3f F%.3f", ref_x, ref_y, a_axis_cor.start_a, a_axis_cor.pos_feed);
+	cor_queue_arc(false, -r, r, -r, 0.0f, 90.0f);
+	snprintf(buff, sizeof(buff), "G53 G90 G0 Y%.4f F%.3f", a_axis_cor.y_center, a_axis_cor.pos_feed);
 	this->script_queue.push(buff);
-	snprintf(buff, sizeof(buff), "G91 %s Z%.3f F%.3f", cor_probe_cmd(a_axis_cor.invert_probe), -120.0f, this->probe_slow_rate);
-	this->script_queue.push(buff);
-	this->script_queue.push("M469.7 P6");
+	cor_queue_probe('Z', -a_axis_cor.probe_travel);
 }
 
 void ATCHandler::calibrate_a_axis_cor(Gcode *gcode) //M469.6
@@ -956,35 +991,77 @@ void ATCHandler::calibrate_a_axis_cor(Gcode *gcode) //M469.6
 	float clearance = 2.0f;
 	float pos_feed = 400.0f;
 	bool invert_probe = false;
+	float x_inc = 0.0f;
+	int save_mode = COR_WRITE_YZ;
 
 	if (gcode->has_letter('I')) invert_probe = gcode->get_value('I') == 1 ? true:false;
 	if (gcode->has_letter('R')) artifact_dia = gcode->get_value('R');
 	if (gcode->has_letter('D')) tip_dia = gcode->get_value('D');
 	if (gcode->has_letter('C')) clearance = gcode->get_value('C');
 	if (gcode->has_letter('F')) pos_feed = gcode->get_value('F');
+	if (gcode->has_letter('X')) x_inc = gcode->get_value('X');
+	if (gcode->has_letter('S')) save_mode = gcode->get_int('S');
 
 	if (artifact_dia <= 0.0f || tip_dia <= 0.0f || clearance <= 0.0f || pos_feed <= 0.0f) {
 		THEKERNEL->streams->printf("ERROR: M469.6 invalid parameter (R/D/C/F must be > 0).\n");
+		return;
+	}
+	if (gcode->has_letter('D') && tip_dia > COR_MAX_TIP_DIA) {
+		THEKERNEL->streams->printf("ERROR: M469.6 D is the probe tip diameter (max %.0f mm). The artifact diameter is R.\n", COR_MAX_TIP_DIA);
+		return;
+	}
+	if (x_inc != 0.0f && fabsf(x_inc) < COR_MIN_STATION_DX) {
+		THEKERNEL->streams->printf("ERROR: M469.6 X must be at least %.0f mm.\n", COR_MIN_STATION_DX);
+		return;
+	}
+	if (save_mode < COR_REPORT_ONLY || save_mode > COR_WRITE_YZR_GRID) {
+		THEKERNEL->streams->printf("ERROR: M469.6 S must be 0, 1, 2 or 3.\n");
+		return;
+	}
+	if (save_mode >= COR_WRITE_YZR && x_inc == 0.0f) {
+		THEKERNEL->streams->printf("ERROR: M469.6 S%d needs X to measure yaw and pitch.\n", save_mode);
 		return;
 	}
 
 	a_axis_cor.invert_probe = invert_probe;
 	a_axis_cor.artifact_dia = artifact_dia;
 	a_axis_cor.tip_r = tip_dia * 0.5f;
-	a_axis_cor.clearance = clearance;
 	a_axis_cor.probe_travel = clearance * 2.0f;
 	a_axis_cor.pos_feed = pos_feed;
 	a_axis_cor.y_clr = a_axis_cor.tip_r + artifact_dia * 0.5f + clearance;
-	a_axis_cor.z_clr = artifact_dia * 0.5f + clearance;
 	a_axis_cor.z_ctr = (tip_dia - 0.131f) * -0.5f; // empirical ball-geometry factor
 	a_axis_cor.z_corr = this->three_axis_probe_tlo_correction;
+	// Like the probing cycles, write the WCS that is active now (fixed here so a WCS change mid-run doesn't matter)
+	a_axis_cor.wcs_index = THEROBOT->get_current_wcs();
+	a_axis_cor.x_inc = x_inc;
+	a_axis_cor.save_mode = (uint8_t)save_mode;
+	a_axis_cor.station = 1;
 	a_axis_cor.pass = 1;
 	a_axis_cor.phase = COR_AFTER_INIT_Z;
 
 	char buff[100];
 	this->script_queue.push(";Position probe tip above the artifact center within clearance of its surface");
-	this->script_queue.push(";After CoR finding, probes the standard 4th-axis Z reference (same as M469.5) to compute rotation_offset_z");
-	this->script_queue.push("G90 G21");
+	if (save_mode == COR_REPORT_ONLY) {
+		snprintf(buff, sizeof(buff), ";Report only: %s is not changed", cor_wcs_name(a_axis_cor.wcs_index));
+		this->script_queue.push(buff);
+	} else if (save_mode == COR_WRITE_YZ) {
+		snprintf(buff, sizeof(buff), ";The measured rotation axis Y and Z are written to %s", cor_wcs_name(a_axis_cor.wcs_index));
+	this->script_queue.push(buff);
+	} else if (save_mode == COR_WRITE_YZR) {
+		snprintf(buff, sizeof(buff), ";The measured rotation axis Y, Z and yaw (R) are written to %s", cor_wcs_name(a_axis_cor.wcs_index));
+		this->script_queue.push(buff);
+	} else {
+		snprintf(buff, sizeof(buff), ";The measured rotation axis Y, Z and yaw (R) are written to %s, pitch to the leveling grid", cor_wcs_name(a_axis_cor.wcs_index));
+		this->script_queue.push(buff);
+	}
+	if (x_inc != 0.0f) {
+		snprintf(buff, sizeof(buff), ";Second measurement %.3f mm away in X, over the same artifact diameter", x_inc);
+		this->script_queue.push(buff);
+	}
+	if (a_axis_cor.wcs_index > 5) {
+		this->script_queue.push(";Note: G59.1 to G59.3 are not kept after a restart");
+	}
+	this->script_queue.push("G90 G21 G94");
 	snprintf(buff, sizeof(buff), "G91 %s Z%.3f F%.3f", cor_probe_cmd(invert_probe), -a_axis_cor.probe_travel, this->probe_slow_rate);
 	this->script_queue.push(buff);
 	this->script_queue.push("M469.7 P6");
@@ -998,37 +1075,29 @@ void ATCHandler::calibrate_a_axis_cor_step()
 		case COR_AFTER_INIT_Z: {
 			float y, z, a;
 			atc_get_mcs_yza(y, z, a);
-			a_axis_cor.z_est = z - a_axis_cor.artifact_dia * 0.5f;
+			const float z_est = z - a_axis_cor.artifact_dia * 0.5f; // first estimate of the axis Z
 			a_axis_cor.start_y = y;
 			a_axis_cor.start_a = a;
-			a_axis_cor.z_centerline = a_axis_cor.z_est + a_axis_cor.z_ctr;
+			a_axis_cor.z_centerline = z_est + a_axis_cor.z_ctr;
 
 			a_axis_cor.phase = COR_AFTER_Y_FRONT;
-			this->script_queue.push("G91 G0 Z1");
-			cor_queue_probe_y_front();
+			cor_queue_orbit_top();
+			cor_queue_to_front();
 			break;
 		}
 
 		case COR_AFTER_Y_FRONT: {
 			a_axis_cor.y1 = atc_get_mcs_axis(Y_AXIS) + a_axis_cor.tip_r;
-			snprintf(buff, sizeof(buff), "G91 G0 Y%.3f", -a_axis_cor.clearance);
-			this->script_queue.push(buff);
-
 			a_axis_cor.phase = COR_AFTER_Y_BACK;
-			cor_queue_z_clearance();
-			cor_queue_probe_y_back();
+			cor_queue_to_back();
 			break;
 		}
 
 		case COR_AFTER_Y_BACK: {
 			a_axis_cor.y2 = atc_get_mcs_axis(Y_AXIS) - a_axis_cor.tip_r;
-			snprintf(buff, sizeof(buff), "G91 G0 Y%.3f", a_axis_cor.clearance);
-			this->script_queue.push(buff);
 			a_axis_cor.y_center = (a_axis_cor.y1 + a_axis_cor.y2) * 0.5f;
-
 			a_axis_cor.phase = COR_AFTER_Z_TOP;
-			cor_queue_z_clearance();
-			cor_queue_probe_z_top();
+			cor_queue_to_top();
 			break;
 		}
 
@@ -1037,50 +1106,56 @@ void ATCHandler::calibrate_a_axis_cor_step()
 			const float apparent_r = (a_axis_cor.y2 - a_axis_cor.y1) * 0.5f;
 			// Tip-corrected CoR for aiming the convergence pass (matches original NC #112/#114)
 			const float z_cor_aim = z_top_raw + a_axis_cor.z_corr - apparent_r;
-			cor_queue_z_clearance();
+
+			// Re-centre the orbit on this pass's result and rise to its top
+			a_axis_cor.start_y = a_axis_cor.y_center;
+			a_axis_cor.z_centerline = z_cor_aim + a_axis_cor.z_ctr;
+			cor_queue_orbit_top();
 
 			if (a_axis_cor.pass == 1) {
-				a_axis_cor.z_centerline = z_cor_aim + a_axis_cor.z_ctr;
 				a_axis_cor.pass = 2;
 				a_axis_cor.phase = COR_AFTER_Y_FRONT;
-				cor_queue_probe_y_front();
+				cor_queue_to_front();
 			} else {
-				// Store raw MCS CoR for the config offset (M469.5 also uses raw #5023, no TLO)
-				a_axis_cor.z_cor_mcs = z_top_raw - apparent_r;
-				a_axis_cor.phase = COR_AFTER_REF_Z;
-				cor_queue_probe_module_ref();
+				const float axis_x = atc_get_mcs_axis(X_AXIS);
+				const float axis_z = z_top_raw - apparent_r;
+
+				if (a_axis_cor.station == 1 && a_axis_cor.x_inc != 0.0f) {
+					a_axis_cor.s1_x = axis_x;
+					a_axis_cor.s1_y = a_axis_cor.y_center;
+					a_axis_cor.s1_z = axis_z;
+					a_axis_cor.s1_dia = apparent_r * 2.0f;
+					a_axis_cor.station = 2;
+					a_axis_cor.pass = 1;
+					a_axis_cor.phase = COR_AFTER_STATION_MOVE;
+
+					// Stay at the top of the orbit and feed to station 2 with the probe armed
+					snprintf(buff, sizeof(buff), "G91 %s X%.3f F%.3f", cor_protected_cmd(a_axis_cor.invert_probe), a_axis_cor.x_inc, a_axis_cor.pos_feed);
+					this->script_queue.push(buff);
+					this->script_queue.push("M469.7 P6");
+				} else {
+					cor_finish(axis_x, axis_z, apparent_r * 2.0f);
+				}
 			}
 			break;
 		}
 
-		case COR_AFTER_REF_Z: {
-			// Same reference surface as fill_zprobe_abs / M469.5 A (#120).
-			// rotation_offset_z = Z_ref - Z_CoR  (module surface height above chuck center).
-			const float z_ref_mcs = atc_get_mcs_axis(Z_AXIS);
-			const float new_rot_z = z_ref_mcs - a_axis_cor.z_cor_mcs;
-			const float new_rot_y = a_axis_cor.y_center - this->anchor1_y;
+		case COR_AFTER_GRID:
+			cor_finish_grid();
+			break;
 
-			snprintf(buff, sizeof(buff), "G90 G53 G0 Z%.3f", THEROBOT->from_millimeters(this->clearance_z));
-			this->script_queue.push(buff);
-
-			THEKERNEL->streams->printf("CoR MCS Y: %.3f  Z: %.3f\n", a_axis_cor.y_center, a_axis_cor.z_cor_mcs);
-			THEKERNEL->streams->printf("Module ref MCS Z: %.3f\n", z_ref_mcs);
-			THEKERNEL->streams->printf("Previous 4th Center of Rotation Y: %.3f (rotation_offset_y: %.3f)\n",
-				this->anchor1_y + this->rotation_offset_y, this->rotation_offset_y);
-			THEKERNEL->streams->printf("New 4th Center of Rotation Y: %.3f (rotation_offset_y: %.3f)\n",
-				a_axis_cor.y_center, new_rot_y);
-			THEKERNEL->streams->printf("Previous rotation_offset_z (ref above CoR): %.3f\n", this->rotation_offset_z);
-			THEKERNEL->streams->printf("New rotation_offset_z (ref above CoR): %.3f\n", new_rot_z);
-
-			this->rotation_offset_y = new_rot_y;
-			this->rotation_offset_z = new_rot_z;
-			THEKERNEL->streams->printf("These values have been temporarily set.\n");
-			THEKERNEL->streams->printf("To make them permanent run:\n");
-			THEKERNEL->streams->printf("config-set sd coordinate.rotation_offset_y %.3f\n", new_rot_y);
-			THEKERNEL->streams->printf("config-set sd coordinate.rotation_offset_z %.3f\n", new_rot_z);
-
-			a_axis_cor.phase = COR_IDLE;
-			a_axis_cor.pass = 0;
+		case COR_AFTER_STATION_MOVE: {
+			// A protected move that stopped short means the probe touched something
+			if (fabsf(atc_get_mcs_axis(X_AXIS) - (a_axis_cor.s1_x + a_axis_cor.x_inc)) > 0.01f) {
+				THEKERNEL->streams->printf("ERROR: Probe hit something moving to the second station.\n");
+				a_axis_cor.phase = COR_IDLE;
+				a_axis_cor.pass = 0;
+				THEKERNEL->call_event(ON_HALT, nullptr);
+				THEKERNEL->set_halt_reason(PROBE_FAIL);
+				break;
+			}
+			a_axis_cor.phase = COR_AFTER_INIT_Z;
+			cor_queue_probe('Z', -a_axis_cor.probe_travel);
 			break;
 		}
 
@@ -1090,6 +1165,172 @@ void ATCHandler::calibrate_a_axis_cor_step()
 			a_axis_cor.pass = 0;
 			break;
 	}
+}
+
+// Report the measured rotation axis and write the WCS as selected by S. x and z are this
+// station's axis point (MCS, z as the probe tip on the axis); Y is a_axis_cor.y_center.
+void ATCHandler::cor_finish(float x, float z, float dia)
+{
+	const uint8_t mode = a_axis_cor.save_mode;
+	const bool two_stations = (a_axis_cor.station == 2);
+	const bool write_r = (mode >= COR_WRITE_YZR);
+	const float y = a_axis_cor.y_center;
+	// MCS Z = WCS Z + WCS offset Z + tool offset Z (Robot::wcs2mcs), so subtracting
+	// the TLO puts Z0 on the rotation axis for any tool with a valid TLO.
+	const std::vector<Robot::wcs_t> wcs = THEROBOT->get_wcs_state();
+	const float tlo = std::get<Z_AXIS>(wcs.back());
+	const float x0 = std::get<X_AXIS>(wcs[1 + a_axis_cor.wcs_index]);
+	const float old_r = THEROBOT->r[a_axis_cor.wcs_index];
+	// Point where Z0 (and, unless R is replaced, the WCS X line) meets the axis
+	float ref_x = x, ref_y = y, ref_z = z;
+	float new_y, new_r = old_r, yaw = 0.0f, slope_z = 0.0f;
+
+	a_axis_cor.phase = COR_IDLE;
+	a_axis_cor.pass = 0;
+
+	if (two_stations) {
+		const float dx = x - a_axis_cor.s1_x;
+		const float slope_y = (y - a_axis_cor.s1_y) / dx;
+		slope_z = (z - a_axis_cor.s1_z) / dx;
+		yaw = atanf(slope_y) * COR_DEG_PER_RAD;
+		const float pitch = atanf(slope_z / sqrtf(1.0f + slope_y * slope_y)) * COR_DEG_PER_RAD;
+		ref_x = (x + a_axis_cor.s1_x) * 0.5f;
+		ref_y = (y + a_axis_cor.s1_y) * 0.5f;
+		ref_z = (z + a_axis_cor.s1_z) * 0.5f; // without the grid, Z0 is right midway
+
+		THEKERNEL->streams->printf("Station 1 X%.3f: axis Y%.4f Z%.4f, apparent dia %.4f\n",
+			a_axis_cor.s1_x, a_axis_cor.s1_y, a_axis_cor.s1_z - tlo, a_axis_cor.s1_dia);
+		THEKERNEL->streams->printf("Station 2 X%.3f: axis Y%.4f Z%.4f, apparent dia %.4f\n", x, y, z - tlo, dia);
+		THEKERNEL->streams->printf("Yaw: %.4f deg, Y %.4f mm per 100 mm of X\n", yaw, slope_y * 100.0f);
+		THEKERNEL->streams->printf("Pitch: %.4f deg, Z %.4f mm per 100 mm of X\n", pitch, slope_z * 100.0f);
+		THEKERNEL->streams->printf("Positive: the axis moves toward +Y / +Z as X increases\n");
+		if (THEROBOT->compensationTransform) {
+			THEKERNEL->streams->printf("Compensation is active; these values are relative to it\n");
+		}
+
+		if (fabsf(yaw) > COR_MAX_DEV_DEG || fabsf(pitch) > COR_MAX_DEV_DEG) {
+			THEKERNEL->streams->printf("WARNING: Deviation over %.0f deg. Check the artifact and setup.\n", COR_MAX_DEV_DEG);
+			if (mode != COR_REPORT_ONLY) {
+				THEKERNEL->streams->printf("%s not changed.\n", cor_wcs_name(a_axis_cor.wcs_index));
+				return;
+			}
+		}
+	} else {
+		THEKERNEL->streams->printf("Apparent artifact diameter: %.4f\n", dia);
+	}
+
+	if (write_r) {
+		// R turns WCS X onto the measured axis; the origin sits on that line at the WCS X origin
+		new_r = yaw;
+		new_y = ref_y + (x0 - ref_x) * tanf(yaw / COR_DEG_PER_RAD);
+	} else {
+		// Keep R: the WCS X line at that angle crosses the axis at ref_x
+		new_y = ref_y + (x0 - ref_x) * tanf(old_r / COR_DEG_PER_RAD);
+	}
+
+	if (mode != COR_WRITE_YZR_GRID) {
+		cor_write_g59(new_y, ref_z - tlo, new_r, write_r, ref_y);
+		return;
+	}
+
+	// S3: add the measured pitch to the leveling grid as a Z ramp along X, zero at the tool
+	// setter so tool lengths are unaffected. Positions are read through any active
+	// compensation, so with a pitch grid already active the slope is a residual and adds to it.
+	// Standard setter X only; one-off offsets last a single tool change and would move the zero
+	const float x_zero = probe_mx_mm;
+	const float tx0 = THEROBOT->get_soft_endstop_min(X_AXIS), tx1 = THEROBOT->get_soft_endstop_max(X_AXIS);
+	if (isnan(tx0) || isnan(tx1)) {
+		THEKERNEL->streams->printf("ERROR: S3 needs the X soft endstop limits. %s not changed.\n", cor_wcs_name(a_axis_cor.wcs_index));
+		return;
+	}
+	const float check_x = (fabsf(tx0 - x_zero) > fabsf(tx1 - x_zero)) ? tx0 : tx1; // farthest travel end
+	if (fabsf(slope_z * (check_x - x_zero)) > COR_MAX_GRID_DZ) {
+		THEKERNEL->streams->printf("ERROR: Pitch would need over %.0f mm of grid correction across the X travel.\n", COR_MAX_GRID_DZ);
+		THEKERNEL->streams->printf("Shim the 4th axis first. %s not changed.\n", cor_wcs_name(a_axis_cor.wcs_index));
+		return;
+	}
+
+	a_axis_cor.pg.slope = slope_z;
+	a_axis_cor.pg.x_zero = x_zero;
+	a_axis_cor.pg.check_x = check_x;
+	a_axis_cor.pg.ref_x = ref_x;
+	a_axis_cor.pg.ref_y = ref_y;
+	a_axis_cor.pg.ref_z = ref_z;
+	a_axis_cor.pg.new_y = new_y;
+	a_axis_cor.pg.new_r = new_r;
+	a_axis_cor.pg.comp_ref = cor_compensation_z(ref_x, ref_y, ref_z);
+	a_axis_cor.pg.comp_check = cor_compensation_z(check_x, ref_y, ref_z);
+
+	char buff[80];
+	snprintf(buff, sizeof(buff), "M376 X%.4f I%.8f", x_zero, slope_z);
+	this->script_queue.push(buff);
+	this->script_queue.push("M469.7 P6");
+	a_axis_cor.phase = COR_AFTER_GRID;
+}
+
+// S3, after M376: check the ramp is in place, then write the WCS and save the grid
+void ATCHandler::cor_finish_grid()
+{
+	a_axis_cor.phase = COR_IDLE;
+	a_axis_cor.pass = 0;
+
+	const float added_ref = cor_compensation_z(a_axis_cor.pg.ref_x, a_axis_cor.pg.ref_y, a_axis_cor.pg.ref_z) - a_axis_cor.pg.comp_ref;
+	const float added_check = cor_compensation_z(a_axis_cor.pg.check_x, a_axis_cor.pg.ref_y, a_axis_cor.pg.ref_z) - a_axis_cor.pg.comp_check;
+	const float expected = a_axis_cor.pg.slope * (a_axis_cor.pg.check_x - a_axis_cor.pg.x_zero);
+	if (!THEROBOT->compensationTransform || fabsf(added_check - expected) > 0.0005f + 0.001f * fabsf(expected)) {
+		THEKERNEL->streams->printf("ERROR: The pitch correction was not added to the leveling grid. %s not changed.\n", cor_wcs_name(a_axis_cor.wcs_index));
+		return;
+	}
+
+	THEKERNEL->streams->printf("Pitch grid: Z %.4f mm per 100 mm of X added, zero at the tool setter X%.3f\n",
+		a_axis_cor.pg.slope * 100.0f, a_axis_cor.pg.x_zero);
+
+	// Z0 stays on the axis at ref_x now that the grid adds the ramp there
+	const std::vector<Robot::wcs_t> wcs = THEROBOT->get_wcs_state();
+	const float tlo = std::get<Z_AXIS>(wcs.back());
+	cor_write_g59(a_axis_cor.pg.new_y, a_axis_cor.pg.ref_z - added_ref - tlo, a_axis_cor.pg.new_r, true, a_axis_cor.pg.ref_y);
+
+	this->script_queue.push("M374");
+	THEKERNEL->streams->printf("The grid is saved to the SD card. After a restart, M370 or auto-leveling,\n");
+	THEKERNEL->streams->printf("run M375 to load it again before 4th-axis work.\n");
+}
+
+// Print the WCS changes and, unless S0, write them
+void ATCHandler::cor_write_g59(float new_y, float new_z, float new_r, bool write_r, float axis_y)
+{
+	char buff[80];
+	const std::vector<Robot::wcs_t> wcs = THEROBOT->get_wcs_state();
+	const float old_y = std::get<Y_AXIS>(wcs[1 + a_axis_cor.wcs_index]);
+	const float old_z = std::get<Z_AXIS>(wcs[1 + a_axis_cor.wcs_index]);
+	const float old_r = THEROBOT->r[a_axis_cor.wcs_index];
+
+	const char *name = cor_wcs_name(a_axis_cor.wcs_index);
+	THEKERNEL->streams->printf("%s Y: %.4f -> %.4f (delta %.4f)\n", name, old_y, new_y, new_y - old_y);
+	THEKERNEL->streams->printf("%s Z: %.4f -> %.4f (delta %.4f)\n", name, old_z, new_z, new_z - old_z);
+	if (write_r) {
+		THEKERNEL->streams->printf("%s R: %.4f -> %.4f\n", name, old_r, new_r);
+	} else {
+		THEKERNEL->streams->printf("%s R: %.4f (not changed)\n", name, old_r);
+	}
+
+	if (a_axis_cor.save_mode == COR_REPORT_ONLY) {
+		THEKERNEL->streams->printf("Report only (S0): %s not changed\n", name);
+		return;
+	}
+
+	if (write_r) {
+		snprintf(buff, sizeof(buff), "G10 L2 P%d Y%.4f Z%.4f R%.5f", a_axis_cor.wcs_index + 1, new_y, new_z, new_r);
+	} else {
+		snprintf(buff, sizeof(buff), "G10 L2 P%d Y%.4f Z%.4f", a_axis_cor.wcs_index + 1, new_y, new_z);
+	}
+	this->script_queue.push(buff);
+
+	// The 4th-axis Z probe and M465 use the anchor-relative axis Y to position the probe
+	const float new_rot_y = axis_y - this->anchor1_y;
+	this->rotation_offset_y = new_rot_y;
+	THEKERNEL->streams->printf("%s needs no config change. Separately, rotation_offset_y (probe position for\n", name);
+	THEKERNEL->streams->printf("the 4th-axis Z probe and M465) is set to %.3f until reset. To keep it run:\n", new_rot_y);
+	THEKERNEL->streams->printf("config-set sd coordinate.rotation_offset_y %.3f\n", new_rot_y);
 }
 
 void ATCHandler::home_machine_with_pin(Gcode *gcode)//M469

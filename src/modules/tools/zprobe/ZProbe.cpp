@@ -1235,9 +1235,7 @@ bool ZProbe::fast_slow_probe_sequence(int axis, int direction){
     //store position
     THEROBOT->get_current_machine_position(mpos);
     // current_position/mpos includes the compensation transform so we need to get the inverse to get actual position
-    if(THEKERNEL->is_flex_compensation_active()) {
-        if(THEROBOT->compensationTransform) THEROBOT->compensationTransform(mpos, true, false); // get inverse compensation transform
-    }
+    if(THEROBOT->compensationTransform) THEROBOT->compensationTransform(mpos, true, false); // get inverse compensation transform
 
     // if probing x positive then the output goes to the positive out and vice versa
     if (axis == 0){
@@ -1435,9 +1433,7 @@ void ZProbe::probe_bore(bool calibration) //M461
     //save center position to use later
     THEROBOT->get_current_machine_position(mpos);
     // current_position/mpos includes the compensation transform so we need to get the inverse to get actual position
-    if(THEKERNEL->is_flex_compensation_active()) {
-        if(THEROBOT->compensationTransform) THEROBOT->compensationTransform(mpos, true, false); // get inverse compensation transform
-    }
+    if(THEROBOT->compensationTransform) THEROBOT->compensationTransform(mpos, true, false); // get inverse compensation transform
     out_coords.origin_x = mpos[0];
     out_coords.origin_y = mpos[1];
 
@@ -1572,9 +1568,7 @@ void ZProbe::probe_boss(bool calibration) //M462
     //save center position to use later
     THEROBOT->get_current_machine_position(mpos);
     // current_position/mpos includes the compensation transform so we need to get the inverse to get actual position
-    if(THEKERNEL->is_flex_compensation_active()) {
-        if(THEROBOT->compensationTransform) THEROBOT->compensationTransform(mpos, true, false); // get inverse compensation transform
-    }
+    if(THEROBOT->compensationTransform) THEROBOT->compensationTransform(mpos, true, false); // get inverse compensation transform
     out_coords.origin_x = mpos[0];
     this->out_coords.origin_y = mpos[1];
     this->param.clearance_world_pos = mpos[2]; //test old_mpos[2];
@@ -1734,9 +1728,7 @@ void ZProbe::probe_insideCorner() //M463
     //save center position to use later
     THEROBOT->get_current_machine_position(mpos);
     // current_position/mpos includes the compensation transform so we need to get the inverse to get actual position
-    if(THEKERNEL->is_flex_compensation_active()) {
-        if(THEROBOT->compensationTransform) THEROBOT->compensationTransform(mpos, true, false); // get inverse compensation transform
-    }
+    if(THEROBOT->compensationTransform) THEROBOT->compensationTransform(mpos, true, false); // get inverse compensation transform
     out_coords.origin_x = mpos[0];
     out_coords.origin_y = mpos[1];
 
@@ -1828,9 +1820,7 @@ void ZProbe::probe_outsideCorner() //M464
     //save center position to use later
     THEROBOT->get_current_machine_position(mpos);
     // current_position/mpos includes the compensation transform so we need to get the inverse to get actual position
-    if(THEKERNEL->is_flex_compensation_active()) {
-        if(THEROBOT->compensationTransform) THEROBOT->compensationTransform(mpos, true, false); // get inverse compensation transform
-    }
+    if(THEROBOT->compensationTransform) THEROBOT->compensationTransform(mpos, true, false); // get inverse compensation transform
     out_coords.origin_x = mpos[0];
     out_coords.origin_y = mpos[1];
     param.clearance_world_pos = mpos[2];
@@ -2007,9 +1997,7 @@ void ZProbe::probe_axisangle(bool probe_a_axis, bool probe_with_offset) //M465
     //save center position to use later
     THEROBOT->get_current_machine_position(mpos);    // current_position/mpos includes the compensation transform so we need to get the inverse to get actual position
     a_axis_pos = THEROBOT->actuators[3]->get_current_position();
-    if(THEKERNEL->is_flex_compensation_active()) {
-        if(THEROBOT->compensationTransform) THEROBOT->compensationTransform(mpos, true, false); // get inverse compensation transform
-    }
+    if(THEROBOT->compensationTransform) THEROBOT->compensationTransform(mpos, true, false); // get inverse compensation transform
     out_coords.origin_x = mpos[0];
     out_coords.origin_y = mpos[1];
     param.clearance_world_pos = mpos[2];
@@ -2252,9 +2240,7 @@ void ZProbe::probe_square(){
     //save center position to use later
     THEROBOT->get_current_machine_position(mpos);
     // current_position/mpos includes the compensation transform so we need to get the inverse to get actual position
-    if(THEKERNEL->is_flex_compensation_active()) {
-        if(THEROBOT->compensationTransform) THEROBOT->compensationTransform(mpos, true, false); // get inverse compensation transform
-    }
+    if(THEROBOT->compensationTransform) THEROBOT->compensationTransform(mpos, true, false); // get inverse compensation transform
 
     // used for starting position
     out_coords.origin_x = mpos[0];
