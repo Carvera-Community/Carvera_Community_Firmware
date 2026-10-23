@@ -1,4 +1,5 @@
 [unreleased]
+- Fixed: probe crash detection no longer stalls the machine
 - Changed: Analog spindle uses spindle.max_pwm. Auto-tune only tests up to max_pwm. CA1, Z1 and Z1Pro use 0.9 in their config.
 
 [2.3.0c-RC1]
