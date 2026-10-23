@@ -1,5 +1,5 @@
 [unreleased]
-- Fixed: Analog spindle auto-tune on the CA1. The PWM is limited to spindle.max_pwm, 0.9 in the CA1 config
+- Changed: Analog spindle uses spindle.max_pwm. Auto-tune only tests up to max_pwm. CA1, Z1 and Z1Pro use 0.9 in their config.
 
 [2.3.0c-RC1]
 - Enhancement: Analog spindle PWM has configurable top and bottom dead zones, offset, and scale. M959 sets or reports the map.
