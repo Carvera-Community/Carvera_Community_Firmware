@@ -2349,9 +2349,10 @@ void ATCHandler::on_gcode_received(void *argument)
 				}
 			}
 			uint8_t colletIndex = 0;
-			if (gcode->has_letter('S') && THEKERNEL->factory_set->FuncSetting & (1<<2)) {
-				colletIndex = gcode->get_value('S');
-				if (colletIndex < 1 || colletIndex > 5) {
+			// K, not S: S is the spindle speed word and is split off "T3M6 S4" before M6 sees it
+			if (gcode->has_letter('K') && THEKERNEL->factory_set->FuncSetting & (1<<2)) {
+				colletIndex = gcode->get_value('K');
+				if (colletIndex < COLLET_3 || colletIndex > COLLET_8) {
 					colletIndex = 0;
 				}
 			}
