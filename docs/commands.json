@@ -3736,7 +3736,7 @@
     },
     "M959": {
       "type": "mcode",
-      "description": "Set or report the analog spindle PWM map. Duty = offset + scale * (rpm / max_rpm), limited to [deadzone_bottom, 1 - deadzone_top] and to spindle.max_pwm. Analog spindle type only.",
+      "description": "Set or report the analog spindle PWM map. Duty = offset + scale * (rpm / max_rpm), limited to [deadzone_bottom, 1 - deadzone_top]. Analog spindle type only.",
       "parameters": {
         "L": {
           "required": false,
