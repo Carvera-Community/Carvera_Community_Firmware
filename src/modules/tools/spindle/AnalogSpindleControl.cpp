@@ -385,10 +385,7 @@ void AnalogSpindleControl::read_pwm_map()
     pwm_deadzone_top = THEKERNEL->config->value(spindle_checksum, spindle_pwm_deadzone_top_checksum)->as_number(0.0f);
     pwm_offset = THEKERNEL->config->value(spindle_checksum, spindle_pwm_offset_checksum)->as_number(0.0f);
     pwm_scale = THEKERNEL->config->value(spindle_checksum, spindle_pwm_scale_checksum)->as_number(1.0f);
-    // as in PWMSpindleControl: the Carvera Air spindle stops at full duty, so it is limited to 0.9
     max_pwm = THEKERNEL->config->value(spindle_checksum, spindle_max_pwm_checksum)->as_number(1.0f);
-    if (CARVERA_AIR == THEKERNEL->factory_set->MachineModel)
-        max_pwm = 0.9f;
     delay_s = THEKERNEL->config->value(spindle_checksum, spindle_delay_s_checksum)->as_int(0);
     delay_on_s = THEKERNEL->config->value(spindle_checksum, spindle_delay_on_s_checksum)->as_int(delay_s);
     delay_off_s = THEKERNEL->config->value(spindle_checksum, spindle_delay_off_s_checksum)->as_int(delay_s);
@@ -431,8 +428,8 @@ void AnalogSpindleControl::sanitize_pwm_map()
 
 void AnalogSpindleControl::report_map(StreamOutput *stream) const
 {
-    stream->printf("min_rpm: %d\nmax_rpm: %d\ndeadzone_bottom: %1.4f\ndeadzone_top: %1.4f\noffset: %1.4f\nscale: %1.4f\nmax_pwm: %1.4f\ndelay_s: %d\ndelay_on_s: %d\ndelay_off_s: %d\n",
-                   min_rpm, max_rpm, pwm_deadzone_bottom, pwm_deadzone_top, pwm_offset, pwm_scale, max_pwm, delay_s, delay_on_s, delay_off_s);
+    stream->printf("min_rpm: %d\nmax_rpm: %d\ndeadzone_bottom: %1.4f\ndeadzone_top: %1.4f\noffset: %1.4f\nscale: %1.4f\ndelay_s: %d\ndelay_on_s: %d\ndelay_off_s: %d\n",
+                   min_rpm, max_rpm, pwm_deadzone_bottom, pwm_deadzone_top, pwm_offset, pwm_scale, delay_s, delay_on_s, delay_off_s);
 }
 
 float AnalogSpindleControl::pwm_for_rpm(float rpm) const
