@@ -3,6 +3,7 @@
 - Enhancement: Added flex compensation version 2
 - Fixed: Fixed a bug that would lead to inconsistent positions after a powercycle and homing when using flex comp
 - Fixed: probe crash detection no longer stalls the machine
+- Fixed: M469.6 moves the probe between contacts on arcs around the artifact. Previously would crash on the chuck of the CA1/Z1.
 
 [2.3.0c-RC1]
 - Enhancement: Analog spindle PWM has configurable top and bottom dead zones, offset, and scale. M959 sets or reports the map.
