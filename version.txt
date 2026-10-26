@@ -1,5 +1,6 @@
 [unreleased]
 - Fixed: probe crash detection no longer stalls the machine
+- Fixed: M469.6 moves the probe between contacts on arcs around the artifact. Previously would crash on the chuck of the CA1/Z1.
 
 [2.2.0c]
 - Fixed: Arcs start at the current position after jogging, direct moves, and coordinate resets.
