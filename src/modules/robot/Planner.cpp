@@ -209,6 +209,24 @@ bool Planner::append_block( ActuatorCoordinates &actuator_pos, uint8_t n_motors,
             }
         }
     }
+
+    // A move of the A and B axes only has no unit vector, so the junction above is skipped and the
+    // block would start from standstill. When the previous block moved the same axes in the same
+    // directions, the junction is straight: keep the speed, so consecutive short moves such as
+    // continuous jogging of the A axis run smoothly.
+    if (unit_vec == nullptr && !block->primary_axis && !THECONVEYOR->is_queue_empty()) {
+        Block *prev_block = THECONVEYOR->queue.item_ref(THECONVEYOR->queue.prev(THECONVEYOR->queue.head_i));
+        bool straight = !prev_block->primary_axis && prev_block->nominal_speed > 0.0F;
+        for (size_t i = 0; straight && i < n_motors; i++) {
+            if ((block->steps[i] != 0) != (prev_block->steps[i] != 0) ||
+                (block->steps[i] != 0 && block->direction_bits[i] != prev_block->direction_bits[i])) {
+                straight = false;
+            }
+        }
+        if (straight) {
+            vmax_junction = std::min(prev_block->nominal_speed, block->nominal_speed);
+        }
+    }
     block->max_entry_speed = vmax_junction;
 
     // Initialize block entry speed. Compute based on deceleration to user-defined minimum_planner_speed.
