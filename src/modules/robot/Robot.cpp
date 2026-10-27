@@ -1006,6 +1006,8 @@ void Robot::process_buffered_command(Gcode *gcode)
             case 18:
                 if (gcode->g == 18) this->select_plane(X_AXIS, Z_AXIS, Y_AXIS);
                 else this->select_plane(Y_AXIS, Z_AXIS, X_AXIS);
+                    // No break here to allow fall-through to case 19 allowing immediate compensation logic after plane switching.
+                    // This fallthrough code is intended to be a temporary measure until full G18, 19 compensation handling is implemented.
             case 19:
                 if (compensation_preprocessor->is_active()) {
                     // Freeze the current compensation offset and
