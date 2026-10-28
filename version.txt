@@ -1,6 +1,7 @@
 [unreleased]
 - Fixed: probe crash detection no longer stalls the machine
 - Fixed: M469.6 moves the probe between contacts on arcs around the artifact. Previously would crash on the chuck of the CA1/Z1.
+- Changed: Analog spindle uses spindle.max_pwm. Auto-tune only tests up to max_pwm. CA1, Z1 and Z1Pro use 0.9 in their config.
 
 [2.3.0c-RC1]
 - Enhancement: Analog spindle PWM has configurable top and bottom dead zones, offset, and scale. M959 sets or reports the map.
