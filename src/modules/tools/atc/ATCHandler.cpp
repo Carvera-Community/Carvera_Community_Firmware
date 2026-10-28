@@ -102,6 +102,9 @@
 #define probe_mcs_z_checksum		CHECKSUM("probe_mcs_z")
 #define reference_tool_mz_checksum	CHECKSUM("reference_tool_mz")
 #define three_axis_probe_tlo_correction_checksum CHECKSUM("three_axis_probe_tlo_correction")
+#define use_3dtoolsetter_checksum CHECKSUM("use_3dtoolsetter")
+#define toolsetter_checksum CHECKSUM("3dtoolsetter")
+#define disk_diameter_checksum CHECKSUM("disk_diameter")
 
 ATCHandler::ATCHandler()
 {
@@ -1469,13 +1472,8 @@ void ATCHandler::fill_cali_scripts(bool is_probe, bool clear_z, int repeat_count
 		}
 		
 	}
-<<<<<<< HEAD
 	// check if wireless probe is will be triggered
 	if (validate_probe_trigger) {
-=======
-	// Legacy probe-tool flow verifies the wireless probe can trigger.
-	if (is_probe) {
->>>>>>> aa4116a9 (- fixed diameter duplication bug resulting in 2x bit diameter.)
 		this->script_queue.push("M492.3");
 	}
 	
@@ -1938,20 +1936,17 @@ void ATCHandler::on_config_reload(void *argument)
 
 	this->skip_path_origin = THEKERNEL->config->value(atc_checksum, skip_path_origin_checksum)->as_bool(false);
 	this->three_axis_probe_tlo_correction = THEKERNEL->config->value(zprobe_checksum, three_axis_probe_tlo_correction_checksum)->as_number(0.0f);
-<<<<<<< HEAD
 	this->require_probe_trigger_for_calibration = THEKERNEL->config->value(
 		zprobe_checksum, require_probe_trigger_for_calibration_checksum)->as_bool(true);
 	this->ref_tool_mz = THEKERNEL->config->value(
 		coordinate_checksum, reference_tool_mz_checksum)->as_number(-115.34F);
-=======
-	this->use_3dtoolsetter = THEKERNEL->config->value(zprobe_checksum, use_3dtoolsetter_checksum)->by_default(false)->as_bool();
-	this->toolsetter_disk_diameter = THEKERNEL->config->value(three_d_toolsetter_checksum, disk_diameter_checksum)->by_default(10.0f)->as_number();
+	this->use_3dtoolsetter = THEKERNEL->config->value(zprobe_checksum, use_3dtoolsetter_checksum)->as_bool(false);
+	this->toolsetter_disk_diameter = THEKERNEL->config->value(toolsetter_checksum, disk_diameter_checksum)->as_number(10.0f);
 	if(CARVERA == THEKERNEL->factory_set->MachineModel || CARVERA_AIR == THEKERNEL->factory_set->MachineModel){
 		this->ref_tool_mz = THEKERNEL->config->value(coordinate_checksum, reference_tool_mz_checksum)->as_number(-115.34f); // Represents the machine Z coordinate when the tool length is 0
 	}else{
 		this->ref_tool_mz = THEKERNEL->config->value(coordinate_checksum, reference_tool_mz_checksum)->as_number(-115.34f); // In preparation for the Z1. Update this value when the Z1 is implemented
 	}
->>>>>>> aa4116a9 (- fixed diameter duplication bug resulting in 2x bit diameter.)
 }
 
 void ATCHandler::on_halt(void* argument)
