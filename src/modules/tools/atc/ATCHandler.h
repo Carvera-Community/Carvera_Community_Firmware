@@ -128,10 +128,12 @@ private:
     void calibrate_a_axis_height(Gcode *gcode);
     void calibrate_a_axis_cor(Gcode *gcode);
     void calibrate_a_axis_cor_step();
-    void cor_queue_z_clearance();
-    void cor_queue_probe_y_front();
-    void cor_queue_probe_y_back();
-    void cor_queue_probe_z_top();
+    void cor_queue_orbit_top();
+    void cor_queue_arc(bool clockwise, float dy, float dz, float j, float k, float da);
+    void cor_queue_probe(char axis, float distance);
+    void cor_queue_to_front();
+    void cor_queue_to_back();
+    void cor_queue_to_top();
     void cor_queue_probe_module_ref();
     void home_machine_with_pin(Gcode *gcode);
     void calibrate_set_value(Gcode *gcode);
@@ -230,17 +232,14 @@ private:
         bool invert_probe;
         float artifact_dia;
         float tip_r;           // probe tip radius
-        float clearance;
         float probe_travel;    // clearance * 2
         float pos_feed;
-        float y_clr;           // Y offset from start to clearance
-        float z_clr;           // Z clearance above estimated CoR
+        float y_clr;           // orbit radius: axis to ball centre at the C clearance
         float z_ctr;           // ball-geometry Z offset for side probing
         float z_corr;          // three_axis_probe_tlo_correction
-        float z_est;           // estimated Z CoR in MCS (from initial Z probe)
-        float start_y;         // starting Y MCS
+        float start_y;         // orbit centre Y in MCS (axis estimate)
         float start_a;         // starting A MCS
-        float z_centerline;    // Z height used for Y probing
+        float z_centerline;    // orbit centre Z: tip Z for Y probing at the axis height
         float y1, y2;          // Y contacts (tip-radius compensated)
         float y_center;        // Y CoR in MCS
         float z_cor_mcs;       // Z CoR in MCS (from artifact probes)
