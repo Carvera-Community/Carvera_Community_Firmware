@@ -102,6 +102,9 @@
 #define probe_mcs_z_checksum		CHECKSUM("probe_mcs_z")
 #define reference_tool_mz_checksum	CHECKSUM("reference_tool_mz")
 #define three_axis_probe_tlo_correction_checksum CHECKSUM("three_axis_probe_tlo_correction")
+#define use_3dtoolsetter_checksum CHECKSUM("use_3dtoolsetter")
+#define toolsetter_checksum CHECKSUM("3dtoolsetter")
+#define disk_diameter_checksum CHECKSUM("disk_diameter")
 
 ATCHandler::ATCHandler()
 {
@@ -1388,7 +1391,7 @@ void ATCHandler::fill_pick_scripts(int new_tool, bool clear_z) {
 
 }
 
-void ATCHandler::fill_cali_scripts(bool is_probe, bool clear_z, int repeat_count,
+void ATCHandler::fill_cali_scripts(bool is_probe, bool clear_z, int repeat_count, bool measure_diameter,
                                    int pending_tool) {
 	char buff[100];
 	if (!THEROBOT->is_homed_all_axes()) {
@@ -1937,6 +1940,13 @@ void ATCHandler::on_config_reload(void *argument)
 		zprobe_checksum, require_probe_trigger_for_calibration_checksum)->as_bool(true);
 	this->ref_tool_mz = THEKERNEL->config->value(
 		coordinate_checksum, reference_tool_mz_checksum)->as_number(-115.34F);
+	this->use_3dtoolsetter = THEKERNEL->config->value(zprobe_checksum, use_3dtoolsetter_checksum)->as_bool(false);
+	this->toolsetter_disk_diameter = THEKERNEL->config->value(toolsetter_checksum, disk_diameter_checksum)->as_number(10.0f);
+	if(CARVERA == THEKERNEL->factory_set->MachineModel || CARVERA_AIR == THEKERNEL->factory_set->MachineModel){
+		this->ref_tool_mz = THEKERNEL->config->value(coordinate_checksum, reference_tool_mz_checksum)->as_number(-115.34f); // Represents the machine Z coordinate when the tool length is 0
+	}else{
+		this->ref_tool_mz = THEKERNEL->config->value(coordinate_checksum, reference_tool_mz_checksum)->as_number(-115.34f); // In preparation for the Z1. Update this value when the Z1 is implemented
+	}
 }
 
 void ATCHandler::on_halt(void* argument)
@@ -2934,11 +2944,56 @@ void ATCHandler::on_gcode_received(void *argument)
 					this->set_tlo_by_offset(gcode->get_value('H'));
 					THEROBOT->set_tool_not_calibrated(false);
 				}
+				if (gcode->has_letter('D')) { //set stored tool diameter
+					// Immutability latch: diameter must not change while G41/G42 is modal
+					if (THEROBOT->is_compensation_active()) {
+						bool is_playing = false;
+						PublicData::get_value(player_checksum, is_playing_checksum, &is_playing);
+						if (is_playing) {
+							THEKERNEL->streams->printf("ALARM: Cannot change tool diameter while G41/G42 compensation is active\n");
+							THEKERNEL->call_event(ON_HALT, nullptr);
+							THEKERNEL->set_halt_reason(MANUAL);
+							return;
+						} else {
+							THEKERNEL->streams->printf("WARNING: Tool diameter not changed - G41/G42 compensation is active. Issue G40 first.\n");
+							return;
+						}
+					}
+					float diameter = gcode->get_value('D');
+					if (diameter > 0.0f) {
+						THEKERNEL->eeprom_data->TOOL_DIA = diameter;
+						THEKERNEL->write_eeprom_data();
+						THEKERNEL->streams->printf("Nominal tool diameter set to %.3fmm\n", diameter);
+					} else {
+						THEKERNEL->streams->printf("WARNING: Tool diameter not changed - value must be > 0 (got %.3f)\n", diameter);
+					}
+				}
+				if (gcode->has_letter('W')) { // set additive diameter wear
+					if (THEROBOT->is_compensation_active()) {
+						bool is_playing = false;
+						PublicData::get_value(player_checksum, is_playing_checksum, &is_playing);
+						if (is_playing) {
+							THEKERNEL->streams->printf("ALARM: Cannot change tool diameter wear while G41/G42 compensation is active\n");
+							THEKERNEL->call_event(ON_HALT, nullptr);
+							THEKERNEL->set_halt_reason(MANUAL);
+							return;
+						} else {
+							THEKERNEL->streams->printf("WARNING: Tool diameter wear not changed - G41/G42 compensation is active. Issue G40 first.\n");
+							return;
+						}
+					}
+					float wear = gcode->get_value('W');
+					THEKERNEL->eeprom_data->TOOL_DIA_WEAR = wear;
+					THEKERNEL->write_eeprom_data();
+					THEKERNEL->streams->printf("Tool diameter wear set to %.3fmm\n", wear);
+				}
 
 
 				THEKERNEL->streams->printf("current tool offset [%.3f] , reference tool offset [%.3f]\n",cur_tool_mz,ref_tool_mz);
 			} else if (gcode->subcode == 4) { //report current TLO
 				THEKERNEL->streams->printf("current tool offset [%.3f] , reference tool offset [%.3f]\n",cur_tool_mz,ref_tool_mz);
+				THEKERNEL->streams->printf("stored tool diameter [%.3f]\n", THEKERNEL->eeprom_data->TOOL_DIA);
+				THEKERNEL->streams->printf("stored tool diameter wear [%.3f]\n", THEKERNEL->eeprom_data->TOOL_DIA_WEAR);
 				if (this->probe_oneoff_configured) {
 					THEKERNEL->streams->printf("one-off tool setter position offsets: X[%.3f] Y[%.3f] Z[%.3f]\n", this->probe_oneoff_x, this->probe_oneoff_y, this->probe_oneoff_z);
 				} else {

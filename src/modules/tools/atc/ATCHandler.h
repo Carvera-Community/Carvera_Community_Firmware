@@ -102,7 +102,7 @@ private:
     void fill_change_scripts(int new_tool, bool clear_z, int old_tool, bool wait_after_empty, uint8_t colletIndex, float custom_TLO, bool activate_tool = true);
     void fill_drop_scripts(int old_tool);
     void fill_pick_scripts(int new_tool, bool clear_z);
-    void fill_cali_scripts(bool is_probe, bool clear_z, int repeat_count = 1, int pending_tool = -1);
+    void fill_cali_scripts(bool is_probe, bool clear_z, int repeat_count = 1, bool measure_diameter = false, int pending_tool = -1);
 
     //
     void fill_manual_drop_scripts(int old_tool);
@@ -199,7 +199,8 @@ private:
     float probe_height_mm;
     float three_axis_probe_tlo_correction;
     bool require_probe_trigger_for_calibration;
-
+    bool use_3dtoolsetter;
+    float toolsetter_disk_diameter;  // Effective 3D toolsetter disk diameter for M491.3 measurement correction
     // Configurable probe position (absolute Machine Coordinate System)
     float probe_mcs_x;
     float probe_mcs_y;

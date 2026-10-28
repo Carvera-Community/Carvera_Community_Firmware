@@ -1,0 +1,34 @@
+(cutter compensation program 2.cnc)
+(T1  25mm Flute End Mill  D=3.175 CR=0 - ZMIN=-6 - flat end mill)
+G90 G94
+G17
+G21
+
+(2D Contour1)
+T1 M6
+S10000 M3
+G54
+G0 X-7.071 Y7.071
+Z15
+Z5
+G42 D3.175
+G1 Z0.635 F300
+Z-6
+G2 X7.071 Y-7.071 I7.071 J-7.071 F1000
+G2 X-7.071 Y7.071 I-7.071 J7.071
+G40
+G0 Z5
+X-12.426 Y20
+G1 Z0.635 F300
+Z-6
+G41 D3.175 
+X-20 F1000
+Y-20
+X20
+Y20
+X-12.426
+G40
+G0 Z15
+M5
+G28
+M30

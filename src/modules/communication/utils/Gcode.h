@@ -26,6 +26,11 @@ class Gcode {
         Gcode& operator= (const Gcode& to_copy);
         ~Gcode();
 
+        // Additive: re-initialize this Gcode in place from a new command string, reusing the
+        // existing object (and its stream). Used by the compensation preprocessor's preallocated
+        // pool to avoid per-move heap churn. Does not alter ctor/dtor/copy semantics.
+        void reset(const string& command, bool strip = true, unsigned int line = 0);
+
         const char* get_command() const { return command; }
         bool has_letter ( char letter ) const;
         // 2024
