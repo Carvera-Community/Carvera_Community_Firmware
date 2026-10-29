@@ -10,6 +10,7 @@
 
 
 using namespace std;
+#include <cstdint>
 #include <vector>
 #include <string>
 
