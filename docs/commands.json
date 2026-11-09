@@ -765,6 +765,53 @@
       "description": "Select workspace coordinate system 9 (modal).",
       "parameters": {}
     },
+    "G84": {
+      "type": "gcode",
+      "description": "Rigid tap for one hole on a Tonghang spindle. M3 taps clockwise in and M4 taps counter-clockwise in. Z keeps moving with the spindle at pitch F/S. The spindle slows for the last pitch and is held only once Z is at the end of the stroke, then the tool returns to the starting height. Not modal, so each hole is its own G84. A rejected G84 halts.",
+      "parameters": {
+        "X": {
+          "required": false,
+          "description": "Hole position. In G91 this is the distance from the current X, and K repeats step by the same amount.",
+          "default": null,
+          "unit": "mm"
+        },
+        "Y": {
+          "required": false,
+          "description": "Hole position. In G91 this is the distance from the current Y, and K repeats step by the same amount.",
+          "default": null,
+          "unit": "mm"
+        },
+        "Z": {
+          "required": true,
+          "description": "Hole bottom. Absolute in G90. In G91, the distance from R to the bottom, usually negative.",
+          "default": null,
+          "unit": "mm"
+        },
+        "R": {
+          "required": true,
+          "description": "Retract plane. Absolute in G90. In G91, the distance from the starting height to R, usually negative.",
+          "default": null,
+          "unit": "mm"
+        },
+        "P": {
+          "required": false,
+          "description": "Dwell at the bottom before the spindle reverses.",
+          "default": 0,
+          "unit": "ms"
+        },
+        "F": {
+          "required": false,
+          "description": "Feed. Pitch is this feed divided by the programmed spindle speed. Omit to use the current feed.",
+          "default": null,
+          "unit": "mm/min"
+        },
+        "K": {
+          "required": false,
+          "description": "Number of holes. K0 does nothing. In G90 every repeat uses the same XY.",
+          "default": 1
+        }
+      }
+    },
     "G90": {
       "type": "gcode",
       "description": "Absolute distance mode (default, modal).",

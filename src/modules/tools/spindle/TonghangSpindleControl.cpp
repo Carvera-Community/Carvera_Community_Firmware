@@ -3,7 +3,7 @@
  *
  * The adapter's serial settings are the reusable part. Another Modbus slave
  * on the same kind of adapter uses the same four link settings and its own
- * spindle type. This driver implements speed, direction, and orientation.
+ * spindle type. This driver implements speed, direction, orientation, and rigid tapping.
  *
  * The drive must already be in speed mode (P-004 = 1) and P-098 must be 0 so
  * Modbus can release the enable. Those are drive settings, not firmware ones.
@@ -38,10 +38,13 @@
 
 #include "Config.h"
 #include "ConfigValue.h"
+#include "Conveyor.h"
 #include "Gcode.h"
 #include "Pin.h"
 #include "PublicDataRequest.h"
+#include "Robot.h"
 #include "SpindlePublicAccess.h"
+#include "StepperMotor.h"
 #include "StreamOutputPool.h"
 #include "checksumm.h"
 #include "libs/Kernel.h"
@@ -66,6 +69,7 @@ constexpr uint16_t LOAD_REG = 0x1018;  // followed by output voltage, then alarm
 constexpr uint16_t CURRENT_REG = 0x101E;
 constexpr uint16_t POSITION_REG = 0x101F;
 constexpr uint16_t ALARM_REG = 0x101A;
+constexpr uint16_t CREEP_RPM = 30;
 constexpr float ORIENT_TOLERANCE_DEG = 2.0f;
 constexpr float ORIENT_SETTLE_DEG = 0.25f;
 // M577 measures a position read at about 5 ms. The orient loop also services
@@ -73,6 +77,10 @@ constexpr float ORIENT_SETTLE_DEG = 0.25f;
 // the tolerance in one sample. The last quarter degree is crept, because the
 // drive stops short when the hold is commanded at the edge of the tolerance.
 constexpr uint32_t ORIENT_SAMPLE_US = 5000;
+// One tap segment is longer than a position read, and three are queued before
+// Z starts, so the running block already has a successor and does not stop.
+constexpr uint32_t TAP_SEGMENT_US = 20000;
+constexpr int TAP_PRIME_SEGMENTS = 3;
 constexpr uint32_t ORIENT_LOOP_US = 10000;
 constexpr int ORIENT_CATCH_SAMPLES = 4;
 
@@ -156,6 +164,12 @@ uint32_t elapsed_us(const uint32_t start) {
   return static_cast<uint32_t>(us_ticker_read() - start);
 }
 
+uint32_t tap_budget_us(const float distance_mm, const float feed_mm_min) {
+  float seconds = distance_mm / feed_mm_min * 60.0f * 3.0f + 5.0f;
+  if (seconds > 180.0f) seconds = 180.0f;
+  return static_cast<uint32_t>(seconds * 1000000.0f);
+}
+
 float wrap_pm180(float degrees) {
   while (degrees > 180.0f) degrees -= 360.0f;
   while (degrees < -180.0f) degrees += 360.0f;
@@ -174,6 +188,22 @@ class BusLock {
   bool &locked_;
 };
 
+// Blocks stay planned, and the step timer does not start them, until release.
+class QueueHold {
+ public:
+  QueueHold() { THECONVEYOR->set_hold(true); }
+  ~QueueHold() { release(); }
+  void release() {
+    if (!held) return;
+    THECONVEYOR->set_hold(false);
+    held = false;
+  }
+  QueueHold(const QueueHold &) = delete;
+  QueueHold &operator=(const QueueHold &) = delete;
+
+ private:
+  bool held = true;
+};
 }  // namespace
 
 void TonghangSpindleControl::raise_alarm(const char *reason) {
@@ -708,6 +738,292 @@ void TonghangSpindleControl::on_spindle_angle(Gcode *gcode) {
     return;
   }
   gcode->stream->printf("A %.3f\n", static_cast<double>(spindle_angle(counts)));
+}
+
+float TonghangSpindleControl::work_z() const {
+  float mpos[k_max_actuators] = {};
+  THEROBOT->get_axis_position(mpos, THEROBOT->get_number_registered_motors());
+  return std::get<Z_AXIS>(THEROBOT->mcs2wcs(mpos));
+}
+
+bool TonghangSpindleControl::move_work(const float x, const float y, const float z, const float mm_min, const bool wait) {
+  float mpos[k_max_actuators] = {};
+  THEROBOT->get_axis_position(mpos, THEROBOT->get_number_registered_motors());
+  const auto current = THEROBOT->mcs2wcs(mpos);
+  const auto machine = THEROBOT->wcs2mcs(
+      Robot::wcs_t(x, y, z, std::get<A_AXIS>(current), std::get<B_AXIS>(current)));
+  const float delta[3] = {
+      std::get<X_AXIS>(machine) - mpos[X_AXIS],
+      std::get<Y_AXIS>(machine) - mpos[Y_AXIS],
+      std::get<Z_AXIS>(machine) - mpos[Z_AXIS],
+  };
+  if (fabsf(delta[0]) < 0.0005f && fabsf(delta[1]) < 0.0005f && fabsf(delta[2]) < 0.0005f) return true;
+  if (mm_min <= 0.0f || !THEROBOT->delta_move(delta, mm_min / 60.0f, 3)) return false;
+  if (wait) THECONVEYOR->wait_for_idle(true);
+  return !THEKERNEL->is_halted();
+}
+
+bool TonghangSpindleControl::jog(const uint16_t code, const uint16_t rpm) {
+  const uint16_t mag = rpm == 0 ? commanded_magnitude() : rpm;
+  if (mag == 0 || !write_reg(SPEED_REG, mag) || !write_reg(RUN_REG, code)) return false;
+  ccw = code == RUN_CW;
+  return true;
+}
+
+bool TonghangSpindleControl::tap_failed(const char *reason) {
+  write_reg(RUN_REG, HOLD_ZERO);
+  if (!THEKERNEL->is_halted()) raise_alarm(reason);
+  return false;
+}
+
+const char *TonghangSpindleControl::sync_z(const float x, const float y, const float z_plane, const float z_stop,
+                                     const float z_lo, const float z_hi, const int64_t origin, const float pitch,
+                                     const bool in_ccw, const bool down, const float mm_min, const uint32_t budget_us) {
+  const uint32_t started = us_ticker_read();
+  uint32_t still_since = started;
+  uint32_t last_alarm = started;
+  uint32_t window_start = started;
+  int64_t last_counts = origin;
+  bool seen_motion = false;
+  bool slowed = false;
+  bool resumed = false;
+  bool alarm_due = true;
+  bool finished = false;
+  int queued_segments = 0;
+  uint32_t resume_us = 0;
+  // Milestone Z, so the first segment starts from where the tool actually is.
+  float queued_z = work_z();
+  const float start_z = queued_z;
+  float last_segment_mm = 0.0f;
+  float peak_segment_mm = 0.0f;
+  const float lead_mm = pitch > 0.2f ? pitch : 0.2f;
+  const float z_actuator_start = THEROBOT->actuators[Z_AXIS]->get_current_position();
+  QueueHold hold;
+
+  while (elapsed_us(started) < budget_us) {
+    THEKERNEL->call_event(ON_IDLE, this);
+    if (THEKERNEL->is_halted()) return "";
+    if (alarm_due || elapsed_us(last_alarm) >= 250000) {
+      alarm_due = false;
+      last_alarm = us_ticker_read();
+      uint16_t code = 0;
+      if (!read_alarm(&code)) return "G84 lost the spindle";
+      if (code != 0) {
+        write_reg(RUN_REG, HOLD_ZERO);
+        note_alarm(code);
+        return "";
+      }
+    }
+    int64_t counts = 0;
+    if (!read_motor_counts(&counts)) return "G84 lost the spindle position";
+    const uint32_t stall_us = slowed ? 3000000 : 1000000;
+    if (counts != last_counts) {
+      last_counts = counts;
+      still_since = us_ticker_read();
+      seen_motion = true;
+    } else if (seen_motion && elapsed_us(still_since) > stall_us) {
+      return "G84 spindle stopped during the tap";
+    } else if (!seen_motion && elapsed_us(started) > 2000000) {
+      return "G84 spindle did not turn";
+    }
+
+    const float turned = in_ccw ? static_cast<float>(origin - counts) : static_cast<float>(counts - origin);
+    float z = z_plane - turned / static_cast<float>(counts_per_rev) * acc_ratio * pitch;
+    const bool reached = down ? z <= z_stop : z >= z_stop;
+    if (z < z_lo) z = z_lo;
+    if (z > z_hi) z = z_hi;
+
+    const bool window_elapsed = elapsed_us(window_start) >= TAP_SEGMENT_US;
+    if (!window_elapsed && !reached) continue;
+
+    const float pipeline_mm = queued_segments == 0 ? 0.0f : last_segment_mm * static_cast<float>(TAP_PRIME_SEGMENTS);
+    const float encoder_remaining = down ? (z - z_stop) : (z_stop - z);
+    if (!slowed && encoder_remaining <= lead_mm + pipeline_mm) {
+      if (!write_reg(SPEED_REG, CREEP_RPM)) return "G84 lost the spindle";
+      slowed = true;
+      still_since = us_ticker_read();
+    }
+    const uint32_t dt_us = elapsed_us(window_start);
+    const float dz = z - queued_z;
+    if (fabsf(dz) >= 0.001f && dt_us >= 1000) {
+      window_start = us_ticker_read();
+      const float dt_s = static_cast<float>(dt_us) / 1000000.0f;
+      float feed = fabsf(dz) / dt_s * 60.0f;
+      if (mm_min > 0.0f && feed > mm_min) return "G84 Z cannot keep up with the spindle";
+      if (feed < 1.0f) feed = 1.0f;
+      if (!move_work(x, y, z, feed, false)) return THEKERNEL->is_halted() ? "" : "G84 Z move failed";
+      last_segment_mm = fabsf(dz);
+      if (last_segment_mm > peak_segment_mm) peak_segment_mm = last_segment_mm;
+      queued_z = z;
+      queued_segments++;
+    } else if (!reached) {
+      if (window_elapsed) window_start = us_ticker_read();
+      continue;
+    }
+
+    // The retract fills its queue at a creep. Resume the programmed speed once that queue is moving.
+    if (!down && !resumed && !slowed && queued_segments >= TAP_PRIME_SEGMENTS) {
+      if (!write_reg(SPEED_REG, commanded_magnitude())) return "G84 lost the spindle";
+      resumed = true;
+      resume_us = us_ticker_read();
+    }
+
+    if (queued_segments >= TAP_PRIME_SEGMENTS || (reached && queued_segments > 0)) {
+      hold.release();
+      THECONVEYOR->force_queue();
+      const float encoder_from_start = start_z - z;
+      const float actuator_from_start = z_actuator_start - THEROBOT->actuators[Z_AXIS]->get_current_position();
+      const float lag = down ? (encoder_from_start - actuator_from_start) : (actuator_from_start - encoder_from_start);
+      const float segment_mm = peak_segment_mm > 0.0f ? peak_segment_mm : lead_mm;
+      const float allowed = segment_mm * static_cast<float>(TAP_PRIME_SEGMENTS + 1) + lead_mm;
+      // The retract leaves its creep here. Ignore that ramp; Z is still finishing the slow segments.
+      const bool leaving_creep = resume_us != 0 && elapsed_us(resume_us) < 150000;
+      if (!leaving_creep && lag > allowed) return "G84 Z fell behind the spindle";
+    }
+
+    if (reached && fabsf(queued_z - z) < 0.001f) {
+      finished = true;
+      break;
+    }
+  }
+
+  hold.release();
+  if (!finished) return "G84 timed out";
+  // The queued Z still has to reach the stop. The spindle keeps turning until it does,
+  // which uses up the samples that were waiting in the queue.
+  THECONVEYOR->force_queue();
+  THECONVEYOR->wait_for_idle(true);
+  if (THEKERNEL->is_halted()) return "";
+  if (!write_reg(RUN_REG, HOLD_ZERO)) return "G84 lost the spindle";
+  return nullptr;
+}
+
+void TonghangSpindleControl::on_rigid_tap(Gcode *gcode) {
+  if (THEKERNEL->is_halted()) return;
+  if (!ready) {
+    halt_for_command("ERROR: Tonghang spindle is not connected");
+    return;
+  }
+  if (!spindle_on) {
+    halt_for_command("ERROR: G84 requires the spindle to be on");
+    return;
+  }
+  if (!gcode->has_letter('Z') || !gcode->has_letter('R')) {
+    halt_for_command("ERROR: G84 requires Z and R");
+    return;
+  }
+  if (THEROBOT->inverse_time_mode) {
+    halt_for_command("ERROR: G84 requires G94 feed per minute");
+    return;
+  }
+  if (target_rpm <= 0 || commanded_magnitude() == 0) {
+    halt_for_command("ERROR: G84 requires a spindle speed");
+    return;
+  }
+
+  float feed = THEROBOT->get_linear_feed_rate();
+  if (gcode->has_letter('F')) feed = THEROBOT->to_millimeters(gcode->get_value('F'));
+  if (feed <= 0.0f) {
+    halt_for_command("ERROR: G84 requires a feed rate");
+    return;
+  }
+
+  int dwell_ms = 0;
+  if (gcode->has_letter('P')) dwell_ms = gcode->get_int('P');
+  if (dwell_ms < 0 || dwell_ms > 60000) {
+    halt_for_command("ERROR: G84 P must be 0 to 60000 milliseconds");
+    return;
+  }
+  int repeats = 1;
+  if (gcode->has_letter('K')) repeats = gcode->get_int('K');
+  if (repeats < 0 || repeats > 99) {
+    halt_for_command("ERROR: G84 K must be 0 to 99");
+    return;
+  }
+
+  float mpos[k_max_actuators] = {};
+  THEROBOT->get_axis_position(mpos, THEROBOT->get_number_registered_motors());
+  const auto start = THEROBOT->mcs2wcs(mpos);
+  const float x0 = std::get<X_AXIS>(start);
+  const float y0 = std::get<Y_AXIS>(start);
+  const float z0 = std::get<Z_AXIS>(start);
+  const bool has_x = gcode->has_letter('X');
+  const bool has_y = gcode->has_letter('Y');
+  const float x_word = has_x ? THEROBOT->to_millimeters(gcode->get_value('X')) : 0.0f;
+  const float y_word = has_y ? THEROBOT->to_millimeters(gcode->get_value('Y')) : 0.0f;
+  const float z_word = THEROBOT->to_millimeters(gcode->get_value('Z'));
+  const float r_word = THEROBOT->to_millimeters(gcode->get_value('R'));
+  const bool absolute = THEROBOT->absolute_mode;
+  const float r_plane = absolute ? r_word : z0 + r_word;
+  const float z_bottom = absolute ? z_word : r_plane + z_word;
+  if (z_bottom >= r_plane) {
+    halt_for_command("ERROR: G84 Z must be below R");
+    return;
+  }
+
+  if (gcode->has_letter('F')) THEROBOT->set_feed_rate(feed);
+  if (repeats == 0) return;
+
+  if (!wait_for_bus()) {
+    halt_for_command("ERROR: G84 spindle link is busy");
+    return;
+  }
+
+  const float pitch = feed / static_cast<float>(target_rpm);
+  const float zmax = THEROBOT->get_z_maxfeedrate() * 60.0f;
+  const float seek = 60000.0f;
+  const uint32_t budget = tap_budget_us(r_plane - z_bottom, feed);
+  const bool in_ccw = ccw;
+  const uint16_t in_code = in_ccw ? RUN_CW : RUN_CCW;
+  const uint16_t out_code = in_ccw ? RUN_CCW : RUN_CW;
+
+  bus_locked = true;
+  for (int i = 0; i < repeats; ++i) {
+    const float hx = absolute ? (has_x ? x_word : x0) : x0 + static_cast<float>(i + 1) * x_word;
+    const float hy = absolute ? (has_y ? y_word : y0) : y0 + static_cast<float>(i + 1) * y_word;
+    if (!move_work(hx, hy, z0, seek) || !move_work(hx, hy, r_plane, seek)) {
+      if (!THEKERNEL->is_halted()) tap_failed("G84 move failed");
+      break;
+    }
+    if (!jog(in_code)) {
+      tap_failed("G84 could not start the spindle");
+      break;
+    }
+    int64_t origin = 0;
+    if (!read_motor_counts(&origin)) {
+      tap_failed("G84 lost the spindle position");
+      break;
+    }
+    if (const char *err = sync_z(hx, hy, r_plane, z_bottom, z_bottom, r_plane, origin, pitch, in_ccw, true, zmax,
+                                budget)) {
+      if (err[0] != '\0') tap_failed(err);
+      break;
+    }
+    if (dwell_ms > 0) {
+      const uint32_t dwell_start = us_ticker_read();
+      const uint32_t dwell_us = static_cast<uint32_t>(dwell_ms) * 1000u;
+      while (elapsed_us(dwell_start) < dwell_us) {
+        THEKERNEL->call_event(ON_IDLE, this);
+        if (THEKERNEL->is_halted()) break;
+      }
+      if (THEKERNEL->is_halted()) break;
+    }
+    // Creep while the retract queue fills, so the spindle does not turn in place at the bottom.
+    if (!jog(out_code, CREEP_RPM)) {
+      tap_failed("G84 could not reverse the spindle");
+      break;
+    }
+    if (const char *err = sync_z(hx, hy, r_plane, r_plane, z_bottom, r_plane, origin, pitch, in_ccw, false, zmax,
+                                budget)) {
+      if (err[0] != '\0') tap_failed(err);
+      break;
+    }
+    if (!jog(in_code) || !move_work(hx, hy, z0, seek)) {
+      if (!THEKERNEL->is_halted()) tap_failed("G84 move failed");
+      break;
+    }
+  }
+  bus_locked = false;
 }
 
 void TonghangSpindleControl::report_speed() {

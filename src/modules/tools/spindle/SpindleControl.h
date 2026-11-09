@@ -56,6 +56,7 @@ class SpindleControl: public Module {
         virtual void on_modbus_parameter(Gcode *);
         virtual void on_spindle_orient(Gcode *);
         virtual void on_spindle_angle(Gcode *);
+        virtual void on_rigid_tap(Gcode *);
         virtual void on_link_check(Gcode *);
 
         virtual void set_factor(float) {};

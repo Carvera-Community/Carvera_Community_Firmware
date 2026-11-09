@@ -20,6 +20,10 @@
 void SpindleControl::on_gcode_received(void *argument)
 {
     Gcode *gcode = static_cast<Gcode *>(argument);
+    if (gcode->has_g && gcode->g == 84) {
+        on_rigid_tap(gcode);
+        return;
+    }
     if (!gcode->has_m)
         return;
 
@@ -201,6 +205,11 @@ void SpindleControl::halt_for_command(const char *message)
     THEKERNEL->set_halt_reason(MANUAL);
     THEKERNEL->call_event(ON_HALT, nullptr);
     THEKERNEL->streams->printf("%s\n", message);
+}
+
+void SpindleControl::on_rigid_tap(Gcode *gcode)
+{
+    halt_for_command("ERROR: G84 requires a Tonghang spindle");
 }
 
 void SpindleControl::on_link_check(Gcode *gcode)

@@ -1,7 +1,7 @@
 /*
  * Tonghang spindle over Modbus RTU on a USB CDC adapter.
  *
- * Speed, direction, and orientation. The drive jogs at parameter P-076.
+ * Speed, direction, orientation, and rigid tapping. The drive jogs at parameter P-076.
  */
 
 #ifndef TONGHANG_SPINDLE_CONTROL_H
@@ -40,6 +40,7 @@ class TonghangSpindleControl : public SpindleControl {
   uint32_t modbus_baud() const override;
   void on_spindle_orient(Gcode *gcode) override;
   void on_spindle_angle(Gcode *gcode) override;
+  void on_rigid_tap(Gcode *gcode) override;
 
   bool probe();
   void service();
@@ -57,6 +58,12 @@ class TonghangSpindleControl : public SpindleControl {
   void note_alarm(uint16_t code);
   float spindle_angle(int64_t counts) const;
   bool orient_to(float target_deg, int mode, float timeout_s);
+  bool move_work(float x, float y, float z, float mm_min, bool wait = true);
+  const char *sync_z(float x, float y, float z_plane, float z_stop, float z_lo, float z_hi, int64_t origin,
+                     float pitch, bool in_ccw, bool down, float mm_min, uint32_t budget_us);
+  bool jog(uint16_t code, uint16_t rpm = 0);
+  bool tap_failed(const char *reason);
+  float work_z() const;
   uint16_t commanded_magnitude() const;
   uint16_t run_code() const;
   float reported_rpm() const;
@@ -118,7 +125,7 @@ class TonghangSpindleControl : public SpindleControl {
   bool ready = false;
   bool comm_halted = false;
   uint8_t link_failures = 0;
-  // While set, on_idle does not start a telemetry read.
+  // While set, on_idle does not start a telemetry read. M577 and G84 hold the bus.
   bool bus_locked = false;
 };
 
