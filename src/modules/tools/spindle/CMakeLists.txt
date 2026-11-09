@@ -20,3 +20,9 @@ add_library(carvera_spindle_vesc_sources INTERFACE)
 target_sources(carvera_spindle_vesc_sources INTERFACE
     "${CMAKE_CURRENT_SOURCE_DIR}/VESCSpindleControl.cpp"
 )
+
+if(NOT NO_USB_HOST)
+    target_sources(carvera_usb_host_sources INTERFACE
+        "${CMAKE_CURRENT_SOURCE_DIR}/UsbModbusRTU.cpp"
+    )
+endif()

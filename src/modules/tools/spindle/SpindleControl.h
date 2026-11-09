@@ -8,6 +8,8 @@
 #ifndef SPINDLE_CONTROL_MODULE_H
 #define SPINDLE_CONTROL_MODULE_H
 
+#include <cstdint>
+
 #include "libs/Module.h"
 
 class Gcode;
@@ -35,6 +37,18 @@ class SpindleControl: public Module {
         virtual void set_d_term(float) {};
         virtual void report_settings(void) {};
         virtual void on_analog_settings(Gcode *);
+
+        virtual bool supports_modbus() const { return false; }
+        virtual bool modbus_ready() const { return false; }
+        // One holding-register read or write. out receives the register on a read.
+        virtual bool modbus_exchange(bool writing, uint16_t reg, uint16_t value, uint16_t *out);
+        // M577 when R is omitted. False means the command has to pass R.
+        virtual bool modbus_link_defaults(uint16_t *, uint16_t *) const { return false; }
+        virtual bool modbus_read(uint16_t reg, uint16_t words);
+        virtual bool modbus_wait() { return true; }
+        virtual void modbus_lock(bool) {}
+        virtual uint32_t modbus_baud() const { return 0; }
+        virtual void on_link_check(Gcode *);
 
         virtual void set_factor(float) {};
 };

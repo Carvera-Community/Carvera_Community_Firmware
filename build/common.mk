@@ -219,6 +219,7 @@ ifdef NO_USB_HOST
 CPPSRCS3 := $(filter-out \
   $(SRC)/libs/USBDevice/MSCFileSystem.cpp \
   $(SRC)/libs/USBDevice/USBHostCDC.cpp \
+  $(SRC)/modules/tools/spindle/UsbModbusRTU.cpp \
   $(SRC)/libs/USBDevice/USBHostLite/usbhost_lpc17xx.cpp \
   $(SRC)/libs/USBDevice/USBHostLite/usbhost_ms.cpp \
   ,$(CPPSRCS3))

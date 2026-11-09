@@ -14,6 +14,7 @@
 #include "libs/PublicData.h"
 #include "libs/StreamOutputPool.h"
 #include "modules/tools/accessories/SpindleAccessories.h"
+#include "us_ticker_api.h"
 
 void SpindleControl::on_gcode_received(void *argument)
 {
@@ -38,6 +39,10 @@ void SpindleControl::on_gcode_received(void *argument)
     }
     if (gcode->m == 959) {
         on_analog_settings(gcode);
+        return;
+    }
+    if (gcode->m == 577) {
+        on_link_check(gcode);
         return;
     }
     if (gcode->m == 223) {
@@ -95,6 +100,94 @@ void SpindleControl::on_gcode_received(void *argument)
 void SpindleControl::on_analog_settings(Gcode *gcode)
 {
     gcode->stream->printf("ERROR: M959 requires an analog spindle type\n");
+}
+
+bool SpindleControl::modbus_exchange(bool, uint16_t, uint16_t, uint16_t *)
+{
+    return false;
+}
+
+bool SpindleControl::modbus_read(uint16_t reg, uint16_t words)
+{
+    if (words != 1)
+        return false;
+    uint16_t value = 0;
+    return modbus_exchange(false, reg, 0, &value);
+}
+
+void SpindleControl::on_link_check(Gcode *gcode)
+{
+    if (!supports_modbus()) {
+        gcode->stream->printf("ERROR: M577 requires a Modbus spindle\n");
+        return;
+    }
+    if (!modbus_ready()) {
+        gcode->stream->printf("ERROR: Modbus spindle is not connected\n");
+        return;
+    }
+    int samples = 20;
+    if (gcode->has_letter('P'))
+        samples = gcode->get_int('P');
+    if (samples < 1 || samples > 50) {
+        gcode->stream->printf("ERROR: M577 P must be 1 to 50\n");
+        return;
+    }
+
+    uint16_t reg = 0;
+    uint16_t words = 1;
+    if (gcode->has_letter('R')) {
+        const float address = gcode->get_value('R');
+        if (address < 0.0F || address > 65535.0F) {
+            gcode->stream->printf("ERROR: register must be 0 to 65535\n");
+            return;
+        }
+        reg = static_cast<uint16_t>(address);
+        words = 1;
+    } else if (!modbus_link_defaults(&reg, &words)) {
+        gcode->stream->printf("ERROR: M577 requires R\n");
+        return;
+    }
+
+    if (!modbus_wait()) {
+        gcode->stream->printf("ERROR: M577 Modbus link is busy\n");
+        return;
+    }
+
+    modbus_lock(true);
+    uint32_t min_us = 0xFFFFFFFF;
+    uint32_t max_us = 0;
+    uint32_t sum_us = 0;
+    int ok = 0;
+    for (int i = 0; i < samples; ++i) {
+        THEKERNEL->call_event(ON_IDLE, this);
+        const uint32_t t0 = us_ticker_read();
+        if (!modbus_read(reg, words))
+            break;
+        const uint32_t dt = static_cast<uint32_t>(us_ticker_read() - t0);
+        if (dt < min_us)
+            min_us = dt;
+        if (dt > max_us)
+            max_us = dt;
+        sum_us += dt;
+        ++ok;
+    }
+    modbus_lock(false);
+
+    if (ok == 0) {
+        gcode->stream->printf("ERROR: M577 register %u read failed\n", reg);
+        return;
+    }
+    const float avg_ms = static_cast<float>(sum_us) / static_cast<float>(ok) / 1000.0F;
+    const uint32_t baud = modbus_baud();
+    if (baud != 0) {
+        gcode->stream->printf("M577: %d samples, min %.2f ms, avg %.2f ms, max %.2f ms, %lu baud\n", ok,
+                              static_cast<double>(min_us) / 1000.0, static_cast<double>(avg_ms),
+                              static_cast<double>(max_us) / 1000.0, static_cast<unsigned long>(baud));
+        return;
+    }
+    gcode->stream->printf("M577: %d samples, min %.2f ms, avg %.2f ms, max %.2f ms\n", ok,
+                          static_cast<double>(min_us) / 1000.0, static_cast<double>(avg_ms),
+                          static_cast<double>(max_us) / 1000.0);
 }
 
 void SpindleControl::on_halt(void *argument)
