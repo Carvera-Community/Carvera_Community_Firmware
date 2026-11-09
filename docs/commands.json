@@ -853,7 +853,7 @@
     },
     "M4": {
       "type": "mcode",
-      "description": "Start the spindle counter-clockwise when the spindle implementation supports direction.",
+      "description": "Start the spindle counter-clockwise. Spindles that cannot reverse report an error and halt.",
       "parameters": {
         "S": {
           "required": false,
@@ -3520,6 +3520,22 @@
       "description": "Same as M576.",
       "parameters": {}
     },
+    "M577": {
+      "type": "mcode",
+      "description": "Time a Modbus holding-register read. Reports min, average, and max. Modbus spindle only.",
+      "parameters": {
+        "P": {
+          "required": false,
+          "description": "Number of reads.",
+          "default": 20
+        },
+        "R": {
+          "required": false,
+          "description": "First holding register. Omit for the spindle default.",
+          "default": null
+        }
+      }
+    },
     "M600": {
       "type": "mcode",
       "description": "Suspend playback (controlled pause).",
@@ -3880,6 +3896,22 @@
           "description": "Scales duty across 0..max RPM. 1 with zero offset and dead zones matches rpm/max_rpm.",
           "default": 1,
           "default_source": "spindle.pwm_scale"
+        }
+      }
+    },
+    "M960": {
+      "type": "mcode",
+      "description": "Read or write one Modbus holding register on the spindle. Omit S to read. The write is sent to the drive immediately. Writes are refused while a job is playing. Modbus spindle only.",
+      "parameters": {
+        "P": {
+          "required": true,
+          "description": "Holding register address, 0 to 65535.",
+          "default": null
+        },
+        "S": {
+          "required": false,
+          "description": "16-bit register value, 0 to 65535. -32768 to -1 is stored as two's complement. Omit to read.",
+          "default": null
         }
       }
     },

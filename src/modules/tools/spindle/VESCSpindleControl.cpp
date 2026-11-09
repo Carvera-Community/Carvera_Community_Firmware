@@ -55,7 +55,6 @@
  * 9. Add the following to your config.txt (tweak as needed):
  *
  *   spindle.type                 vesc
- *   usb_msc.enable               false
  *   spindle.default_rpm          10000
  *   spindle.min_rpm              3000
  *   spindle.max_rpm              15000
@@ -210,15 +209,6 @@ void VESCSpindleControl::on_module_loaded() {
 
   spindle_on = false;
   target_rpm = default_rpm;
-
-  // The mass-storage module and this CDC driver both assume they own the one
-  // USB host controller. Do not try to arbitrate that at runtime; make the
-  // configuration error explicit and leave the machine halted.
-  if (THEKERNEL->config->value(CHECKSUM("usb_msc"), CHECKSUM("enable"))->as_bool(true)) {
-    THEKERNEL->streams->printf("ERROR: VESC spindle requires usb_msc.enable false\n");
-    failed_init = true;
-    return;
-  }
 
   // Power the external USB port before enumeration. On Carvera this enable pin
   // is active-low.
@@ -636,6 +626,8 @@ void VESCSpindleControl::on_get_public_data(void *argument) {
     t->target_rpm = static_cast<float>(this->target_rpm);
     t->current_pwm_value = 0;
     t->factor = this->factor;
+    t->has_additional_metrics = false;
+    t->additional_metrics[0] = '\0';
     pdr->set_taken();
   }
 }

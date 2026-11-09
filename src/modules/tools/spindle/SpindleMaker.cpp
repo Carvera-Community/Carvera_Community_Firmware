@@ -18,6 +18,9 @@
 #ifndef NO_VESC_SPINDLE
 #include "VESCSpindleControl.h"
 #endif
+#ifndef NO_TONGHANG_SPINDLE
+#include "TonghangSpindleControl.h"
+#endif
 #include "Config.h"
 #include "checksumm.h"
 #include "ConfigValue.h"
@@ -62,6 +65,10 @@ void SpindleMaker::load_spindle(){
 #ifndef NO_VESC_SPINDLE
     } else if ( spindle_type.compare("vesc") == 0 ) {
         spindle = new VESCSpindleControl();
+#endif
+#ifndef NO_TONGHANG_SPINDLE
+    } else if ( spindle_type.compare("tonghang") == 0 ) {
+        spindle = new TonghangSpindleControl();
 #endif
     } else {
         delete spindle;

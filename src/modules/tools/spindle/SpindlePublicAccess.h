@@ -15,6 +15,10 @@ struct spindle_status {
     float target_rpm;
     float current_pwm_value;
 	float factor;
+    // When set, additional_metrics is a complete status field, including its leading '|'.
+    // The spindle chooses the name and the values. Empty when the spindle has nothing to add.
+    bool has_additional_metrics;
+    char additional_metrics[64];
 };
 
 #endif

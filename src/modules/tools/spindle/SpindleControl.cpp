@@ -10,6 +10,7 @@
 #include "ATCHandlerPublicAccess.h"
 #include "Conveyor.h"
 #include "Gcode.h"
+#include "PlayerPublicAccess.h"
 #include "libs/Kernel.h"
 #include "libs/PublicData.h"
 #include "libs/StreamOutputPool.h"
@@ -41,6 +42,10 @@ void SpindleControl::on_gcode_received(void *argument)
         on_analog_settings(gcode);
         return;
     }
+    if (gcode->m == 960) {
+        on_modbus_parameter(gcode);
+        return;
+    }
     if (gcode->m == 577) {
         on_link_check(gcode);
         return;
@@ -56,12 +61,16 @@ void SpindleControl::on_gcode_received(void *argument)
         }
         return;
     }
-    if (gcode->m != 3 && gcode->m != 5)
+    if (gcode->m != 3 && gcode->m != 4 && gcode->m != 5)
         return;
-    if (handling_gcode || (gcode->m == 3 && THEKERNEL->is_halted()))
+    if (gcode->m == 4 && !supports_direction()) {
+        halt_for_command("ERROR: M4 requires a spindle that supports direction");
+        return;
+    }
+    if (handling_gcode || ((gcode->m == 3 || gcode->m == 4) && THEKERNEL->is_halted()))
         return;
 
-    if (gcode->m == 3) {
+    if (gcode->m == 3 || gcode->m == 4) {
         if (!THEKERNEL->get_laser_mode()) {
             tool_status tool{};
             const bool tool_ok = PublicData::get_value(atc_handler_checksum, get_tool_status_checksum, &tool) &&
@@ -77,10 +86,13 @@ void SpindleControl::on_gcode_received(void *argument)
         handling_gcode = true;
         if (!THEKERNEL->get_laser_mode()) {
             THECONVEYOR->wait_for_idle();
+            set_ccw(gcode->m == 4);
             if (gcode->has_letter('S'))
                 set_speed(gcode->get_value('S'));
             if (!spindle_on)
                 turn_on();
+            else
+                reassert_run();
         }
         THEKERNEL->spindle_accessories->spindle_started();
         handling_gcode = false;
@@ -113,6 +125,64 @@ bool SpindleControl::modbus_read(uint16_t reg, uint16_t words)
         return false;
     uint16_t value = 0;
     return modbus_exchange(false, reg, 0, &value);
+}
+
+void SpindleControl::on_modbus_parameter(Gcode *gcode)
+{
+    if (!supports_modbus()) {
+        gcode->stream->printf("ERROR: M960 requires a Modbus spindle\n");
+        return;
+    }
+    if (!modbus_ready()) {
+        gcode->stream->printf("ERROR: Modbus spindle is not connected\n");
+        return;
+    }
+    if (!gcode->has_letter('P')) {
+        gcode->stream->printf("M960 P<register> [S<value>]\n");
+        return;
+    }
+    const float address = gcode->get_value('P');
+    if (address < 0.0F || address > 65535.0F) {
+        gcode->stream->printf("ERROR: register must be 0 to 65535\n");
+        return;
+    }
+    const auto reg = static_cast<uint16_t>(address);
+    if (gcode->has_letter('S')) {
+        void *playing = nullptr;
+        if (PublicData::get_value(player_checksum, is_playing_checksum, &playing) && playing != nullptr &&
+            *static_cast<bool *>(playing)) {
+            gcode->stream->printf("ERROR: M960 cannot write registers while a job is playing\n");
+            return;
+        }
+        const float raw = gcode->get_value('S');
+        if (raw < -32768.0F || raw > 65535.0F) {
+            gcode->stream->printf("ERROR: value must fit in a 16-bit register\n");
+            return;
+        }
+        const auto word = raw < 0.0F ? static_cast<uint16_t>(static_cast<int16_t>(raw))
+                                      : static_cast<uint16_t>(raw);
+        if (!modbus_exchange(true, reg, word, nullptr)) {
+            gcode->stream->printf("ERROR: register %u write failed\n", reg);
+            return;
+        }
+        gcode->stream->printf("M960 P%u S%u\n", reg, word);
+        return;
+    }
+    uint16_t value = 0;
+    if (!modbus_exchange(false, reg, 0, &value)) {
+        gcode->stream->printf("ERROR: register %u read failed\n", reg);
+        return;
+    }
+    gcode->stream->printf("M960 P%u S%u\n", reg, value);
+}
+
+void SpindleControl::halt_for_command(const char *message)
+{
+    if (THEKERNEL->is_halted())
+        return;
+    THEKERNEL->set_halt_reason(MANUAL);
+    THEKERNEL->call_event(ON_HALT, nullptr);
+    THEKERNEL->streams->printf("%s\n", message);
 }
 
 void SpindleControl::on_link_check(Gcode *gcode)
