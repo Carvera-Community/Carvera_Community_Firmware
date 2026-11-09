@@ -46,6 +46,14 @@ void SpindleControl::on_gcode_received(void *argument)
         on_modbus_parameter(gcode);
         return;
     }
+    if (gcode->m == 19) {
+        on_spindle_orient(gcode);
+        return;
+    }
+    if (gcode->m == 961) {
+        on_spindle_angle(gcode);
+        return;
+    }
     if (gcode->m == 577) {
         on_link_check(gcode);
         return;
@@ -174,6 +182,16 @@ void SpindleControl::on_modbus_parameter(Gcode *gcode)
         return;
     }
     gcode->stream->printf("M960 P%u S%u\n", reg, value);
+}
+
+void SpindleControl::on_spindle_orient(Gcode *gcode)
+{
+    gcode->stream->printf("ERROR: M19 requires a spindle that can orient\n");
+}
+
+void SpindleControl::on_spindle_angle(Gcode *gcode)
+{
+    gcode->stream->printf("ERROR: M961 requires a Tonghang spindle\n");
 }
 
 void SpindleControl::halt_for_command(const char *message)

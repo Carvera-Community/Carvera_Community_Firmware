@@ -67,6 +67,14 @@ struct probe_parameters{
     float clearance_world_pos;
     float visualize_path_distance;
     float rotation_offset_per_probe;
+    float stylus_angle;
+    float orient_cumulative;
+    float orient_last_angle;
+    float orient_start_angle;
+    bool orient_stylus;
+    bool orient_has_angle;
+    bool same_stylus_side;
+    float stylus_repeat_offset;
     float extra_probe_distance;
     int repeat;
     int probe_g38_subcode;
@@ -132,9 +140,12 @@ private:
     void rotate(int axis, float axis_distance, float *y_x, float *y_y, float rotation_angle);
     void rotateXY(float x_in = NAN, float y_in = NAN, float *x_out = nullptr, float *y_out = nullptr, float rotation_angle = 0);
     float get_xyz_move_length(float x, float y, float z);
+    bool command_orient(float angle);
+    bool orient_probe_face(float x, float y);
     bool fast_slow_probe_sequence( int axis, int direction);
     int xy_probe_move_alarm_when_hit(int direction, int probe_g38_subcode, float x, float y, float feed_rate);
-    void z_probe_move_with_retract(int probe_g38_subcode, float z, float clearance_height, float feed_rate);
+    bool z_probe_move_with_retract(int probe_g38_subcode, float z, float clearance_height, float feed_rate, int face_axis = -1, int face_direction = 0);
+    void disable_probe_spindle();
     bool parse_parameters(Gcode *gcode, bool override_probe_check = false);
     void probe_bore(bool calibration = false);
     void probe_boss(bool calibration = false);

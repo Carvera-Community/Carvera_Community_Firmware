@@ -3,7 +3,7 @@
  *
  * The adapter's serial settings are the reusable part. Another Modbus slave
  * on the same kind of adapter uses the same four link settings and its own
- * spindle type. This driver implements speed and direction.
+ * spindle type. This driver implements speed, direction, and orientation.
  *
  * The drive must already be in speed mode (P-004 = 1) and P-098 must be 0 so
  * Modbus can release the enable. Those are drive settings, not firmware ones.
@@ -15,6 +15,8 @@
  *   spindle.modbus_slave     1
  *   spindle.acc_ratio        1
  *   spindle.overload_threshold 90     # 0 disables the torque halt
+ *   spindle.encoder_bits     17            # counts per turn is 2^bits
+ *   spindle.orient_rpm       300           # fastest jog while orienting
  *   spindle.default_rpm      1000
  *   spindle.max_rpm          6000
  *   spindle.delay_s          1
@@ -64,6 +66,15 @@ constexpr uint16_t LOAD_REG = 0x1018;  // followed by output voltage, then alarm
 constexpr uint16_t CURRENT_REG = 0x101E;
 constexpr uint16_t POSITION_REG = 0x101F;
 constexpr uint16_t ALARM_REG = 0x101A;
+constexpr float ORIENT_TOLERANCE_DEG = 2.0f;
+constexpr float ORIENT_SETTLE_DEG = 0.25f;
+// M577 measures a position read at about 5 ms. The orient loop also services
+// idle, so the catch window allows 10 ms per sample. Finish speed crosses half
+// the tolerance in one sample. The last quarter degree is crept, because the
+// drive stops short when the hold is commanded at the edge of the tolerance.
+constexpr uint32_t ORIENT_SAMPLE_US = 5000;
+constexpr uint32_t ORIENT_LOOP_US = 10000;
+constexpr int ORIENT_CATCH_SAMPLES = 4;
 
 const char *alarm_text(const uint16_t code) {
   switch (code) {
@@ -145,6 +156,24 @@ uint32_t elapsed_us(const uint32_t start) {
   return static_cast<uint32_t>(us_ticker_read() - start);
 }
 
+float wrap_pm180(float degrees) {
+  while (degrees > 180.0f) degrees -= 360.0f;
+  while (degrees < -180.0f) degrees += 360.0f;
+  return degrees;
+}
+
+// While this is alive, on_idle does not start a telemetry read.
+class BusLock {
+ public:
+  explicit BusLock(bool &locked) : locked_(locked) { locked_ = true; }
+  ~BusLock() { locked_ = false; }
+  BusLock(const BusLock &) = delete;
+  BusLock &operator=(const BusLock &) = delete;
+
+ private:
+  bool &locked_;
+};
+
 }  // namespace
 
 void TonghangSpindleControl::raise_alarm(const char *reason) {
@@ -174,7 +203,17 @@ void TonghangSpindleControl::on_module_loaded() {
   delay_s = THEKERNEL->config->value(spindle_cs, CHECKSUM("delay_s"))->as_int(1);
   acc_ratio = THEKERNEL->config->value(spindle_cs, CHECKSUM("acc_ratio"))->as_number(1.0f);
   overload_threshold = THEKERNEL->config->value(spindle_cs, CHECKSUM("overload_threshold"))->as_int(90);
+  const int encoder_bits = THEKERNEL->config->value(spindle_cs, CHECKSUM("encoder_bits"))->as_int(17);
+  orient_rpm = THEKERNEL->config->value(spindle_cs, CHECKSUM("orient_rpm"))->as_int(300);
   target_rpm = default_rpm;
+  if (encoder_bits < 1 || encoder_bits > 30) {
+    THEKERNEL->streams->printf("ERROR: spindle.encoder_bits must be 1 to 30\n");
+    failed_init = true;
+    return;
+  }
+  counts_per_rev = static_cast<int32_t>(1) << encoder_bits;
+  if (orient_rpm < 1) orient_rpm = 1;
+  if (orient_rpm > 32000) orient_rpm = 32000;
   if (acc_ratio <= 0.0f) {
     THEKERNEL->streams->printf("ERROR: spindle.acc_ratio must be greater than 0\n");
     failed_init = true;
@@ -399,12 +438,276 @@ bool TonghangSpindleControl::read_motor_counts(int64_t *counts) {
   return true;
 }
 
+bool TonghangSpindleControl::write_reg(const uint16_t reg, const uint16_t value) {
+  return transact(true, reg, value, 1, nullptr, 0);
+}
+
+bool TonghangSpindleControl::hold_stopped() {
+  if (!write_reg(RUN_REG, HOLD_ZERO)) return false;
+  const uint32_t start = us_ticker_read();
+  while (elapsed_us(start) < 1000000) {
+    uint8_t raw[2];
+    // A dropped frame is not a failed stop. Keep reading until the shaft is still.
+    if (!transact(false, RPM_REG, 0, 1, raw, sizeof raw)) continue;
+    const int16_t rpm = static_cast<int16_t>((static_cast<uint16_t>(raw[0]) << 8) | raw[1]);
+    if (std::abs(static_cast<int>(rpm)) <= STOPPED_RPM) return true;
+  }
+  return false;
+}
+
+bool TonghangSpindleControl::hold_position() {
+  // Same end state as M3 S0: enabled, zero speed, and no pending jog.
+  if (!write_reg(SPEED_REG, 0)) return false;
+  if (!hold_stopped()) return false;
+  target_rpm = 0;
+  spindle_on = true;
+  THEKERNEL->spindleon = true;
+  run_pending = false;
+  speed_pending = false;
+  stop_pending = false;
+  return true;
+}
+
+bool TonghangSpindleControl::release_drive() {
+  run_pending = false;
+  speed_pending = false;
+  stop_pending = false;
+  if (!hold_stopped()) return false;
+  if (!write_reg(RUN_REG, RELEASE)) return false;
+  spindle_on = false;
+  THEKERNEL->spindleon = false;
+  return true;
+}
+
 bool TonghangSpindleControl::read_alarm(uint16_t *code) {
   uint8_t raw[2];
   if (!transact(false, ALARM_REG, 0, 1, raw, sizeof raw)) return false;
   *code = static_cast<uint16_t>((static_cast<uint16_t>(raw[0]) << 8) | raw[1]);
   alarm_code = *code;
   return true;
+}
+
+float TonghangSpindleControl::spindle_angle(const int64_t counts) const {
+  const double revolutions =
+      static_cast<double>(counts) * static_cast<double>(acc_ratio) / static_cast<double>(counts_per_rev);
+  double fraction = revolutions - std::floor(revolutions);
+  if (fraction < 0.0) fraction += 1.0;
+  return static_cast<float>(fraction * 360.0);
+}
+
+bool TonghangSpindleControl::orient_to(const float target_deg, const int mode, const float timeout_s) {
+  if (!wait_for_bus()) return false;
+  const BusLock lock(bus_locked);
+  int64_t counts = 0;
+  if (!read_motor_counts(&counts)) return false;
+  float delta = wrap_pm180(target_deg - spindle_angle(counts));
+  if (mode == 1) {
+    if (delta < 0.0f) delta += 360.0f;
+  } else if (mode == 2 && delta > 0.0f) {
+    delta -= 360.0f;
+  }
+  // A fast jog moves farther than this between position samples.
+  if (fabsf(delta) <= ORIENT_SETTLE_DEG) {
+    if (!hold_position()) return false;
+    if (!read_motor_counts(&counts)) return false;
+    delta = wrap_pm180(target_deg - spindle_angle(counts));
+    if (mode == 1) {
+      if (delta < 0.0f) delta += 360.0f;
+    } else if (mode == 2 && delta > 0.0f) {
+      delta -= 360.0f;
+    }
+    if (fabsf(delta) <= ORIENT_SETTLE_DEG) return true;
+  }
+  const float motor_delta = delta / acc_ratio;
+  const int32_t delta_counts = static_cast<int32_t>(lroundf(motor_delta / 360.0f * static_cast<float>(counts_per_rev)));
+  if (delta_counts == 0) return hold_position();
+  const int64_t target = counts + delta_counts;
+  const uint32_t deadline = us_ticker_read() + static_cast<uint32_t>(timeout_s * 1000000.0f);
+  // Finish speed crosses half the tolerance in one position sample. The final
+  // quarter degree is slower, so the hold is not commanded while a degree of
+  // travel is still left. Approach speed minimises this move: a faster approach
+  // needs a longer catch window, and that window is then crossed at the finish
+  // speed. The run command latches P-076, so the speed for the distance already
+  // in hand is written before enable. Past the target, the jog turns around at
+  // the finish speed. Once the held angle is inside the settle band the drive
+  // stays enabled at zero speed, the same as M3 S0, until M5.
+  const float sample_s = static_cast<float>(ORIENT_SAMPLE_US) / 1000000.0f;
+  const float half_tol_deg = ORIENT_TOLERANCE_DEG * 0.5f / acc_ratio;
+  int finish_rpm_i = static_cast<int>(lroundf(half_tol_deg / 360.0f * 60.0f / sample_s));
+  if (finish_rpm_i < 1) finish_rpm_i = 1;
+  if (finish_rpm_i > 60) finish_rpm_i = 60;
+  if (finish_rpm_i > orient_rpm) finish_rpm_i = orient_rpm;
+  const uint16_t finish_rpm = static_cast<uint16_t>(finish_rpm_i);
+  const float settle_motor_deg = ORIENT_SETTLE_DEG / acc_ratio;
+  int settle_rpm_i = static_cast<int>(lroundf(settle_motor_deg / 360.0f * 60.0f / sample_s));
+  if (settle_rpm_i < 1) settle_rpm_i = 1;
+  if (settle_rpm_i > finish_rpm_i) settle_rpm_i = finish_rpm_i;
+  const uint16_t settle_rpm = static_cast<uint16_t>(settle_rpm_i);
+
+  int32_t tolerance_counts = static_cast<int32_t>(
+      lroundf(ORIENT_TOLERANCE_DEG / acc_ratio / 360.0f * static_cast<float>(counts_per_rev)));
+  if (tolerance_counts < 1) tolerance_counts = 1;
+  int32_t settle_counts = static_cast<int32_t>(
+      lroundf(ORIENT_SETTLE_DEG / acc_ratio / 360.0f * static_cast<float>(counts_per_rev)));
+  if (settle_counts < 1) settle_counts = 1;
+
+  const int32_t initial_distance = delta_counts < 0 ? -delta_counts : delta_counts;
+  const float distance_rev = static_cast<float>(initial_distance) / static_cast<float>(counts_per_rev);
+  const float finish_rps = static_cast<float>(finish_rpm) / 60.0f;
+  const float catch_s = static_cast<float>(ORIENT_CATCH_SAMPLES) * static_cast<float>(ORIENT_LOOP_US) / 1000000.0f;
+  int approach_rpm_i = finish_rpm_i;
+  if (distance_rev > 0.0f && catch_s > 0.0f) {
+    approach_rpm_i = static_cast<int>(lroundf(sqrtf(distance_rev * finish_rps / catch_s) * 60.0f));
+  }
+  if (approach_rpm_i < finish_rpm_i) approach_rpm_i = finish_rpm_i;
+  if (approach_rpm_i > orient_rpm) approach_rpm_i = orient_rpm;
+  const uint16_t approach_rpm = static_cast<uint16_t>(approach_rpm_i);
+
+  int32_t slow_counts = static_cast<int32_t>(
+      lroundf(static_cast<float>(approach_rpm) / 60.0f * catch_s * static_cast<float>(counts_per_rev)));
+  if (slow_counts < tolerance_counts) slow_counts = tolerance_counts;
+
+  bool finishing = initial_distance <= slow_counts;
+  bool settling = false;
+  bool jogging = false;
+  int dir = delta_counts > 0 ? 1 : -1;
+  uint16_t commanded_rpm = approach_rpm;
+  if (initial_distance <= slow_counts) commanded_rpm = finish_rpm;
+  if (initial_distance <= tolerance_counts) commanded_rpm = settle_rpm;
+  if (!write_reg(SPEED_REG, commanded_rpm)) return false;
+  if (!write_reg(RUN_REG, dir > 0 ? RUN_CCW : RUN_CW)) return false;
+  jogging = true;
+  spindle_on = true;
+  THEKERNEL->spindleon = true;
+  ccw = dir < 0;
+
+  while (static_cast<int32_t>(us_ticker_read() - deadline) < 0) {
+    THEKERNEL->call_event(ON_IDLE, this);
+    if (THEKERNEL->is_halted()) {
+      release_drive();
+      return false;
+    }
+    int64_t pos = 0;
+    if (!read_motor_counts(&pos)) {
+      release_drive();
+      return false;
+    }
+    int64_t error = target - pos;
+    int64_t distance = error < 0 ? -error : error;
+    int want_dir = error > 0 ? 1 : (error < 0 ? -1 : dir);
+
+    if (settling) {
+      uint8_t raw[2];
+      if (!transact(false, RPM_REG, 0, 1, raw, sizeof raw)) {
+        release_drive();
+        return false;
+      }
+      const int16_t rpm = static_cast<int16_t>((static_cast<uint16_t>(raw[0]) << 8) | raw[1]);
+      if (std::abs(static_cast<int>(rpm)) > 1) continue;
+      if (!read_motor_counts(&pos)) {
+        release_drive();
+        return false;
+      }
+      error = target - pos;
+      distance = error < 0 ? -error : error;
+      if (distance <= settle_counts) return hold_position();
+      settling = false;
+      commanded_rpm = 0;
+      finishing = true;
+      want_dir = error > 0 ? 1 : (error < 0 ? -1 : dir);
+    } else if (distance <= settle_counts && commanded_rpm == settle_rpm && want_dir == dir) {
+      if (!hold_stopped()) {
+        release_drive();
+        return false;
+      }
+      settling = true;
+      jogging = false;
+      continue;
+    }
+
+    if (want_dir != dir) finishing = true;
+    if (!finishing && distance <= slow_counts) finishing = true;
+
+    uint16_t want_rpm = finishing ? finish_rpm : approach_rpm;
+    if (distance <= tolerance_counts) want_rpm = settle_rpm;
+
+    // P-076 updates a jog that is already running. The run register is written
+    // when the jog starts or the direction changes.
+    const bool write_speed = want_rpm != commanded_rpm;
+    const bool write_run = want_dir != dir || !jogging;
+    if (write_speed || write_run) {
+      if (write_speed && !write_reg(SPEED_REG, want_rpm)) {
+        release_drive();
+        return false;
+      }
+      if (write_run && !write_reg(RUN_REG, want_dir > 0 ? RUN_CCW : RUN_CW)) {
+        release_drive();
+        return false;
+      }
+      commanded_rpm = want_rpm;
+      dir = want_dir;
+      ccw = dir < 0;
+      jogging = true;
+    }
+  }
+  release_drive();
+  return false;
+}
+
+void TonghangSpindleControl::on_spindle_orient(Gcode *gcode) {
+  if (!ready) {
+    gcode->stream->printf("ERROR: Tonghang spindle is not connected\n");
+    return;
+  }
+  if (THEKERNEL->is_halted()) return;
+  if (!gcode->has_letter('R')) {
+    gcode->stream->printf("ERROR: M19 requires R\n");
+    return;
+  }
+  float angle = gcode->get_value('R');
+  if (angle < 0.0f || angle > 360.0f) {
+    gcode->stream->printf("ERROR: M19 R must be 0 to 360\n");
+    return;
+  }
+  if (angle == 360.0f) angle = 0.0f;
+  int mode = 0;
+  if (gcode->has_letter('P')) mode = static_cast<int>(gcode->get_value('P'));
+  if (mode < 0 || mode > 2) {
+    gcode->stream->printf("ERROR: M19 P must be 0, 1, or 2\n");
+    return;
+  }
+  float timeout_s = 30.0f;
+  if (gcode->has_letter('Q')) timeout_s = gcode->get_value('Q');
+  if (!(timeout_s > 0.0f) || timeout_s > 120.0f) {
+    gcode->stream->printf("ERROR: M19 Q must be greater than 0 and at most 120 seconds\n");
+    return;
+  }
+  if (!orient_to(angle, mode, timeout_s)) {
+    gcode->stream->printf("ERROR: M19 orient failed\n");
+    THEKERNEL->set_halt_reason(SPINDLE_ALARM);
+    THEKERNEL->call_event(ON_HALT, nullptr);
+    return;
+  }
+  int64_t counts = 0;
+  if (!read_motor_counts(&counts)) return;
+  gcode->stream->printf("oriented A %.3f\n", static_cast<double>(spindle_angle(counts)));
+}
+
+void TonghangSpindleControl::on_spindle_angle(Gcode *gcode) {
+  if (!ready) {
+    gcode->stream->printf("ERROR: Tonghang spindle is not connected\n");
+    return;
+  }
+  if (!wait_for_bus()) {
+    gcode->stream->printf("ERROR: spindle angle read failed\n");
+    return;
+  }
+  int64_t counts = 0;
+  if (!read_motor_counts(&counts)) {
+    gcode->stream->printf("ERROR: spindle angle read failed\n");
+    return;
+  }
+  gcode->stream->printf("A %.3f\n", static_cast<double>(spindle_angle(counts)));
 }
 
 void TonghangSpindleControl::report_speed() {
@@ -629,6 +932,14 @@ void TonghangSpindleControl::on_idle(void *) {
 void TonghangSpindleControl::on_get_public_data(void *argument) {
   auto *pdr = static_cast<PublicDataRequest *>(argument);
   if (!pdr->starts_with(pwm_spindle_control_checksum)) return;
+  if (pdr->second_element_is(get_spindle_angle_checksum)) {
+    if (!ready || !wait_for_bus()) return;
+    int64_t counts = 0;
+    if (!read_motor_counts(&counts)) return;
+    *static_cast<float *>(pdr->get_data_ptr()) = spindle_angle(counts);
+    pdr->set_taken();
+    return;
+  }
   if (!pdr->second_element_is(get_spindle_status_checksum)) return;
 
   const auto status = static_cast<spindle_status *>(pdr->get_data_ptr());
@@ -637,6 +948,7 @@ void TonghangSpindleControl::on_get_public_data(void *argument) {
   status->target_rpm = static_cast<float>(target_rpm);
   status->current_pwm_value = 0;
   status->factor = factor;
+  status->can_orient = true;
   status->has_additional_metrics = true;
   snprintf(status->additional_metrics, sizeof status->additional_metrics, "|TH:%.0f,%.2f,%.0f,%d",
            static_cast<double>(torque_pct), static_cast<double>(current_raw) * 0.01, static_cast<double>(load_pct),

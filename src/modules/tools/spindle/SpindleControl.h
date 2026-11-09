@@ -32,7 +32,8 @@ class SpindleControl: public Module {
         virtual void turn_on(void) {};
         virtual void turn_off(void) {};
         virtual void set_ccw(bool) {};
-        // M3 or M4 while the spindle is already on.
+        // M3/M4 while the spindle is already on. The hold after an orient is "on"
+        // but not turning; this is what starts it again.
         virtual void reassert_run() {};
         virtual bool supports_direction() const { return false; }
         virtual void set_speed(int) {};
@@ -53,6 +54,8 @@ class SpindleControl: public Module {
         virtual void modbus_lock(bool) {}
         virtual uint32_t modbus_baud() const { return 0; }
         virtual void on_modbus_parameter(Gcode *);
+        virtual void on_spindle_orient(Gcode *);
+        virtual void on_spindle_angle(Gcode *);
         virtual void on_link_check(Gcode *);
 
         virtual void set_factor(float) {};

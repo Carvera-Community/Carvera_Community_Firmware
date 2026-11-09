@@ -24,6 +24,7 @@
 #include "EndstopsPublicAccess.h"
 #include "ZProbePublicAccess.h"
 #include "PublicData.h"
+#include "SpindlePublicAccess.h"
 #include "LevelingStrategy.h"
 #include "StepTicker.h"
 #include "utils.h"
@@ -37,6 +38,9 @@
 #endif
 #include "CartGridStrategy.h"
 
+#include <cstdio>
+#include <cmath>
+#include <string>
 #include <vector>
 
 #define enable_checksum          CHECKSUM("enable")
@@ -78,6 +82,31 @@
 #define Z_STEPS_PER_MM STEPS_PER_MM(Z_AXIS)
 
 constexpr double pi = 3.141592653589793;
+
+namespace {
+bool spindle_can_orient() {
+    spindle_status status{};
+    return PublicData::get_value(pwm_spindle_control_checksum, get_spindle_status_checksum, &status) &&
+           status.can_orient;
+}
+
+// P with no number means the current spindle angle. P90 is an explicit angle.
+bool stylus_p(const char *command, bool *use_current) {
+    for (const char *p = command; *p != '\0'; ++p) {
+        if (*p != 'P') continue;
+        const char *q = p + 1;
+        while (*q == ' ') ++q;
+        const bool number = (*q >= '0' && *q <= '9') || *q == '-' || *q == '+' || *q == '.' || *q == '[';
+        *use_current = !number;
+        return true;
+    }
+    return false;
+}
+
+bool current_spindle_angle(float *angle) {
+    return PublicData::get_value(pwm_spindle_control_checksum, get_spindle_angle_checksum, angle);
+}
+}  // namespace
 
 void ZProbe::on_module_loaded()
 {
@@ -229,6 +258,7 @@ void ZProbe::on_main_loop(void *argument)
         for (int i = 0; i < 6; ++i) THEKERNEL->probe_outputs[i] = -1.0e6f;
     }
 
+    const bool ran_probe_cycle = probing_cycle != NONE;
     switch(probing_cycle)
     {
         case CALIBRATE_PROBE_BORE:
@@ -278,6 +308,7 @@ void ZProbe::on_main_loop(void *argument)
         default:
             break;
     }
+    if (ran_probe_cycle) disable_probe_spindle();
 }
 
 // Finishes a crash halt that read_probe started. ON_IDLE also runs while the main loop waits for the
@@ -836,13 +867,43 @@ bool ZProbe::probe_XYZ(Gcode *gcode)
     // Apply wcs rotation for G38
     rotateXY(x, y, &x, &y, THEROBOT->r[THEROBOT->get_current_wcs()]);
 
+    const bool orient_this = gcode->has_letter('P');
+    if (orient_this) {
+        if (!spindle_can_orient()) {
+            gcode->stream->printf("ERROR: P requires a spindle that can orient\n");
+            THEKERNEL->call_event(ON_HALT, nullptr);
+            THEKERNEL->set_halt_reason(PROBE_FAIL);
+            return false;
+        }
+        param.orient_stylus = true;
+        bool use_current = false;
+        if (!stylus_p(gcode->get_command(), &use_current)) return false;
+        if (use_current) {
+            float current = 0.0f;
+            if (!current_spindle_angle(&current)) {
+                gcode->stream->printf("ERROR: Probe fail: spindle angle unknown\n");
+                THEKERNEL->call_event(ON_HALT, nullptr);
+                THEKERNEL->set_halt_reason(PROBE_FAIL);
+                return false;
+            }
+            param.stylus_angle = current;
+        } else {
+            param.stylus_angle = gcode->get_value('P');
+        }
+        if (!orient_probe_face(x, y)) {
+            disable_probe_spindle();
+            return false;
+        }
+    }
+
     if(x == 0 && y == 0 && z == 0) {
         gcode->stream->printf("error:at least one of X Y or Z must be specified, and be > or < 0\n");
+        if (orient_this) disable_probe_spindle();
         return false;
     }
 
     // get probe feedrate in mm/min and convert to mm/sec if specified
-    float rate = (gcode->has_letter('F')) ? gcode->get_value('F')/60 : this->slow_feedrate;
+    float rate = gcode->has_letter('F') ? gcode->get_value('F') / 60 : this->slow_feedrate;
 
     // first wait for all moves to finish
     THEKERNEL->conveyor->wait_for_idle();
@@ -852,6 +913,7 @@ bool ZProbe::probe_XYZ(Gcode *gcode)
         THEKERNEL->set_halt_reason(PROBE_FAIL);
         THEKERNEL->call_event(ON_HALT, nullptr);
         THEKERNEL->set_halt_reason(PROBE_FAIL);
+        if (orient_this) disable_probe_spindle();
         return false;
     }
     
@@ -872,6 +934,7 @@ bool ZProbe::probe_XYZ(Gcode *gcode)
         THEKERNEL->call_event(ON_HALT, nullptr);
         probing = false;
         THEKERNEL->set_zprobing(false);
+        if (orient_this) disable_probe_spindle();
         return false;
     }
     THEKERNEL->set_zprobing(false);
@@ -902,11 +965,14 @@ bool ZProbe::probe_XYZ(Gcode *gcode)
         gcode->stream->printf("ERROR: Probe failed to trigger\n");
         THEKERNEL->set_halt_reason(PROBE_FAIL);
         THEKERNEL->call_event(ON_HALT, nullptr);
+        if (orient_this) disable_probe_spindle();
         return false; //probe was not activated but failed due to subcodes
     }
     if(probeok == 0){
+        if (orient_this) disable_probe_spindle();
         return false; // probe was not activated but did not fail
     }
+    if (orient_this) disable_probe_spindle();
     return true; //probe was activated
 }
 
@@ -1152,6 +1218,66 @@ float ZProbe::get_xyz_move_length(float x, float y, float z){
     return sqrt(pow(x, 2) + pow(y, 2) + pow(z, 2));
 }
 
+void ZProbe::disable_probe_spindle() {
+    if (!param.orient_stylus) return;
+    if (param.orient_has_angle) command_orient(param.orient_start_angle);
+    param.orient_stylus = false;
+    Gcode stop("M5", &StreamOutput::NullStream);
+    THEKERNEL->call_event(ON_GCODE_RECEIVED, &stop);
+}
+
+bool ZProbe::command_orient(float angle) {
+    angle = fmodf(angle, 360.0f);
+    if (angle < 0.0f) angle += 360.0f;
+    // The other direction is a full turn the opposite way. Take it when that
+    // leaves less total rotation, so the probe cord does not keep wrapping.
+    int mode = 0;
+    if (param.orient_has_angle) {
+        float short_delta = angle - param.orient_last_angle;
+        while (short_delta > 180.0f) short_delta -= 360.0f;
+        while (short_delta < -180.0f) short_delta += 360.0f;
+        float other = short_delta > 0.0f ? short_delta - 360.0f : short_delta + 360.0f;
+        if (short_delta == 0.0f) other = param.orient_cumulative > 0.0f ? -360.0f : 360.0f;
+        const float chosen = fabsf(param.orient_cumulative + other) < fabsf(param.orient_cumulative + short_delta) ? other : short_delta;
+        // A half turn or less is left to M19, which takes the shorter arc.
+        // Forcing a direction there turns a fraction of a degree into a full revolution.
+        if (fabsf(chosen) > 180.0f) mode = chosen > 0.0f ? 1 : 2;
+        param.orient_cumulative += chosen;
+        param.orient_last_angle = angle;
+    }
+    char line[40];
+    snprintf(line, sizeof line, "M19 R%.3f P%d", angle, mode);
+    Gcode orient(line, &StreamOutput::NullStream);
+    THEKERNEL->call_event(ON_GCODE_RECEIVED, &orient);
+    if (THEKERNEL->is_halted()) {
+        THEKERNEL->streams->printf("ERROR: Probe fail: spindle orient failed\n");
+        THEKERNEL->streams->printf("ERROR: M19 orient failed\n");
+        return false;
+    }
+    return true;
+}
+
+bool ZProbe::orient_probe_face(float x, float y) {
+    if (!param.orient_stylus) return true;
+    if (!param.orient_has_angle) {
+        float start = 0.0f;
+        if (PublicData::get_value(pwm_spindle_control_checksum, get_spindle_angle_checksum, &start)) {
+            param.orient_start_angle = start;
+            param.orient_last_angle = start;
+            param.orient_cumulative = 0.0f;
+            param.orient_has_angle = true;
+        }
+    }
+    float angle = param.stylus_angle;
+    if (fabsf(x) > 0.0001f || fabsf(y) > 0.0001f) {
+        // atan2 is counter-clockwise from +X. The spindle angle increases clockwise.
+        const float approach = atan2f(y, x) * (180.0f / static_cast<float>(pi));
+        angle = param.stylus_angle - approach;
+    }
+    angle += param.stylus_repeat_offset;
+    return command_orient(angle);
+}
+
 bool ZProbe::fast_slow_probe_sequence(int axis, int direction){
     const uint32_t initial_probe_crash_count = probe_crash_count;
     float moveBuffer[3];
@@ -1210,6 +1336,8 @@ bool ZProbe::fast_slow_probe_sequence(int axis, int direction){
         // rotate the retraction again, because the delta move is in mcs and not wcs
         rotateXY(retractx, retracty, &retractx, &retracty, THEROBOT->r[THEROBOT->get_current_wcs()]);
     }
+
+    if (!orient_probe_face(x, y)) return false;
 
     // do positive probe
     memset(&this->buff, 0 , sizeof(this->buff));
@@ -1295,8 +1423,15 @@ int ZProbe::xy_probe_move_alarm_when_hit(int direction, int probe_g38_subcode, f
     return 0;
 }
 
-void ZProbe::z_probe_move_with_retract(int probe_g38_subcode, float z, float clearance_height, float feed_rate){
+bool ZProbe::z_probe_move_with_retract(int probe_g38_subcode, float z, float clearance_height, float feed_rate, int face_axis, int face_direction){
     float moveBuffer[3];
+    float face_x = 0;
+    float face_y = 0;
+    if (face_axis == X_AXIS || face_axis == Y_AXIS) {
+        const float distance = face_direction * (face_axis == X_AXIS ? param.x_axis_distance : param.y_axis_distance);
+        rotate(face_axis, distance, &face_x, &face_y, param.rotation_angle);
+    }
+    if (!orient_probe_face(face_x, face_y)) return false;
 
     // do z probe with slow speed
     THEKERNEL->streams->printf("Probing Z with a distance of %.3f\n", z);
@@ -1312,6 +1447,7 @@ void ZProbe::z_probe_move_with_retract(int probe_g38_subcode, float z, float cle
         THECONVEYOR->wait_for_idle();
     }
     delete gcodeBuffer;
+    return true;
 }
 
 bool ZProbe::parse_parameters(Gcode *gcode, bool override_probe_check){
@@ -1351,6 +1487,29 @@ bool ZProbe::parse_parameters(Gcode *gcode, bool override_probe_check){
     }
     if (gcode->has_letter('Z')) { //radius y
         param.z_axis_distance = gcode->get_value('Z');
+    }
+    if (gcode->has_letter('P')) { //stylus contact angle at spindle zero
+        if (!spindle_can_orient()) {
+            gcode->stream->printf("ERROR: P requires a spindle that can orient\n");
+            THEKERNEL->call_event(ON_HALT, nullptr);
+            THEKERNEL->set_halt_reason(PROBE_FAIL);
+            return false;
+        }
+        param.orient_stylus = true;
+        bool use_current = false;
+        if (!stylus_p(gcode->get_command(), &use_current)) return false;
+        if (use_current) {
+            float current = 0.0f;
+            if (!current_spindle_angle(&current)) {
+                gcode->stream->printf("ERROR: Probe fail: spindle angle unknown\n");
+                THEKERNEL->call_event(ON_HALT, nullptr);
+                THEKERNEL->set_halt_reason(PROBE_FAIL);
+                return false;
+            }
+            param.stylus_angle = current;
+        } else {
+            param.stylus_angle = gcode->get_value('P');
+        }
     }
     if (gcode->has_letter('Q')) { //add a rotation angle to the currently active angle (wcs)
         param.rotation_angle = gcode->get_value('Q');
@@ -1430,10 +1589,11 @@ void ZProbe::probe_bore(bool calibration) //M461
         THEKERNEL->set_halt_reason(PROBE_FAIL);
         return;
     }
+    if (!calibration && param.x_axis_distance != 0 && param.y_axis_distance != 0) param.same_stylus_side = true;
 
 	//slow zprobe without alarm to probe_height. Skip if probe height is 0
 	if (param.probe_height != 0){
-        z_probe_move_with_retract(param.probe_g38_subcode, -param.probe_height, param.clearance_height, param.feed_rate);
+        if (!z_probe_move_with_retract(param.probe_g38_subcode, -param.probe_height, param.clearance_height, param.feed_rate)) return;
     }
     // always wait for idle before getting the machine pos
     THECONVEYOR->wait_for_idle();
@@ -1448,6 +1608,7 @@ void ZProbe::probe_bore(bool calibration) //M461
 
 	//setup repeat
 	for(int i=0; i< param.repeat; i++) {
+        param.stylus_repeat_offset = (param.orient_stylus && !param.same_stylus_side && param.repeat > 1) ? i * (360.0f / param.repeat) : 0.0f;
         if (param.x_axis_distance != 0) {
             // probe in positive x direction
             if (!fast_slow_probe_sequence(X_AXIS, POS)) return;
@@ -1536,6 +1697,7 @@ void ZProbe::probe_boss(bool calibration) //M462
     if (param.y_axis_distance != 0){
         probe_y_axis = true;
     }
+    if (!calibration && probe_x_axis && probe_y_axis) param.same_stylus_side = true;
 
     // Only modify axis distances for axes that are actually being probed
     if (probe_x_axis) {
@@ -1585,6 +1747,7 @@ void ZProbe::probe_boss(bool calibration) //M462
     this->param.clearance_world_pos = mpos[2]; //test old_mpos[2];
 	//setup repeat
 	for(int i=0; i< repeat_count; i++) {
+        param.stylus_repeat_offset = (param.orient_stylus && !param.same_stylus_side && param.repeat > 1) ? i * (360.0f / param.repeat) : 0.0f;
         //goto clearance height
         coordinated_move(NAN, NAN, param.clearance_world_pos, param.rapid_rate);
         THECONVEYOR->wait_for_idle();
@@ -1595,9 +1758,9 @@ void ZProbe::probe_boss(bool calibration) //M462
             }
             //probe z no hit no alarm -side_depth, retract slightly if probe point hit
             if (param.probe_height != 0){
-                z_probe_move_with_retract(param.probe_g38_subcode, -(param.side_depth + param.clearance_height + param.tool_dia/2.0), 1.0, param.rapid_rate);
+                if (!z_probe_move_with_retract(param.probe_g38_subcode, -(param.side_depth + param.clearance_height + param.tool_dia/2.0), 1.0, param.rapid_rate, X_AXIS, NEG)) return;
             }else{
-                z_probe_move_with_retract(param.probe_g38_subcode, -(param.side_depth + param.tool_dia/2.0), 1.0, param.rapid_rate);
+                if (!z_probe_move_with_retract(param.probe_g38_subcode, -(param.side_depth + param.tool_dia/2.0), 1.0, param.rapid_rate, X_AXIS, NEG)) return;
             }
 
             // probe in negative x direction
@@ -1617,9 +1780,9 @@ void ZProbe::probe_boss(bool calibration) //M462
 
             //probe z no hit no alarm -side_depth, retract slightly if probe point hit
             if (param.probe_height != 0){
-                z_probe_move_with_retract(param.probe_g38_subcode, -(param.side_depth + param.clearance_height + param.tool_dia/2.0), 1.0, param.rapid_rate);
+                if (!z_probe_move_with_retract(param.probe_g38_subcode, -(param.side_depth + param.clearance_height + param.tool_dia/2.0), 1.0, param.rapid_rate, X_AXIS, POS)) return;
             }else{
-                z_probe_move_with_retract(param.probe_g38_subcode, -(param.side_depth + param.tool_dia/2.0), 1.0, param.rapid_rate);
+                if (!z_probe_move_with_retract(param.probe_g38_subcode, -(param.side_depth + param.tool_dia/2.0), 1.0, param.rapid_rate, X_AXIS, POS)) return;
             }
 
             // probe in positive x direction
@@ -1652,9 +1815,9 @@ void ZProbe::probe_boss(bool calibration) //M462
 
             //probe z no hit no alarm -side_depth, retract slightly if probe point hit
             if (param.probe_height != 0){
-                z_probe_move_with_retract(param.probe_g38_subcode, -(param.side_depth + param.clearance_height + param.tool_dia/2.0), 1.0, param.rapid_rate);
+                if (!z_probe_move_with_retract(param.probe_g38_subcode, -(param.side_depth + param.clearance_height + param.tool_dia/2.0), 1.0, param.rapid_rate, Y_AXIS, NEG)) return;
             }else{
-                z_probe_move_with_retract(param.probe_g38_subcode, -(param.side_depth + param.tool_dia/2.0), 1.0, param.rapid_rate);
+                if (!z_probe_move_with_retract(param.probe_g38_subcode, -(param.side_depth + param.tool_dia/2.0), 1.0, param.rapid_rate, Y_AXIS, NEG)) return;
             }
             
             // probe in negative y direction
@@ -1674,9 +1837,9 @@ void ZProbe::probe_boss(bool calibration) //M462
 
             //probe z no hit no alarm -side_depth, retract slightly if probe point hit
             if (param.probe_height != 0){
-                z_probe_move_with_retract(param.probe_g38_subcode, -(param.side_depth + param.clearance_height + param.tool_dia/2.0), 1.0, param.rapid_rate);
+                if (!z_probe_move_with_retract(param.probe_g38_subcode, -(param.side_depth + param.clearance_height + param.tool_dia/2.0), 1.0, param.rapid_rate, Y_AXIS, POS)) return;
             }else{
-                z_probe_move_with_retract(param.probe_g38_subcode, -(param.side_depth + param.tool_dia/2.0), 1.0, param.rapid_rate);
+                if (!z_probe_move_with_retract(param.probe_g38_subcode, -(param.side_depth + param.tool_dia/2.0), 1.0, param.rapid_rate, Y_AXIS, POS)) return;
             }
 
             // probe in positive y direction
@@ -1732,7 +1895,7 @@ void ZProbe::probe_insideCorner() //M463
     
 	//slow zprobe without alarm to probe_height. Skip if probe height is 0
 	if (param.probe_height != 0){
-		z_probe_move_with_retract(param.probe_g38_subcode, -param.probe_height, param.clearance_height, param.feed_rate);
+		if (!z_probe_move_with_retract(param.probe_g38_subcode, -param.probe_height, param.clearance_height, param.feed_rate)) return;
     }
     // always wait for idle before getting the machine pos
     THECONVEYOR->wait_for_idle();
@@ -1752,6 +1915,7 @@ void ZProbe::probe_insideCorner() //M463
 
 	//setup repeat
 	for(int i=0; i< param.repeat; i++) {
+        param.stylus_repeat_offset = (param.orient_stylus && param.repeat > 1) ? i * (360.0f / param.repeat) : 0.0f;
         
         if (!fast_slow_probe_sequence(X_AXIS, POS)) return;
 
@@ -1842,6 +2006,7 @@ void ZProbe::probe_outsideCorner() //M464
 
 	//setup repeat
 	for(int i=0; i< param.repeat; i++) {
+        param.stylus_repeat_offset = (param.orient_stylus && param.repeat > 1) ? i * (360.0f / param.repeat) : 0.0f;
 
         coordinated_move(NAN, NAN, param.clearance_world_pos, param.rapid_rate);
 
@@ -1852,9 +2017,9 @@ void ZProbe::probe_outsideCorner() //M464
         
         //probe z no hit no alarm -side_depth, retract slightly if probe point hit
         if (param.probe_height != 0){
-            z_probe_move_with_retract(param.probe_g38_subcode, -(param.side_depth + param.clearance_height + param.tool_dia/2.0), 1.0, param.rapid_rate);
+            if (!z_probe_move_with_retract(param.probe_g38_subcode, -(param.side_depth + param.clearance_height + param.tool_dia/2.0), 1.0, param.rapid_rate, X_AXIS, POS)) return;
         }else{
-            z_probe_move_with_retract(param.probe_g38_subcode, -(param.side_depth + param.tool_dia/2.0), 1.0, param.rapid_rate);
+            if (!z_probe_move_with_retract(param.probe_g38_subcode, -(param.side_depth + param.tool_dia/2.0), 1.0, param.rapid_rate, X_AXIS, POS)) return;
         }
         
         // probe in positive x direction
@@ -1878,9 +2043,9 @@ void ZProbe::probe_outsideCorner() //M464
 
         //probe z no hit no alarm -side_depth, retract slightly if probe point hit
         if (param.probe_height != 0){
-            z_probe_move_with_retract(param.probe_g38_subcode, -(param.side_depth + param.clearance_height + param.tool_dia/2.0), 1.0, param.rapid_rate);
+            if (!z_probe_move_with_retract(param.probe_g38_subcode, -(param.side_depth + param.clearance_height + param.tool_dia/2.0), 1.0, param.rapid_rate, Y_AXIS, POS)) return;
         }else{
-            z_probe_move_with_retract(param.probe_g38_subcode, -(param.side_depth + param.tool_dia/2.0), 1.0, param.rapid_rate);
+            if (!z_probe_move_with_retract(param.probe_g38_subcode, -(param.side_depth + param.tool_dia/2.0), 1.0, param.rapid_rate, Y_AXIS, POS)) return;
         }
 
         // probe in positive y direction
@@ -2002,7 +2167,7 @@ void ZProbe::probe_axisangle(bool probe_a_axis, bool probe_with_offset) //M465
 	//slow zprobe without alarm to probe_height. Skip if probe height is 0
 	if (param.probe_height != 0 && !probe_a_axis){
 		// do z probe with slow speed
-        z_probe_move_with_retract(param.probe_g38_subcode, -param.probe_height, param.clearance_height, param.feed_rate);
+        if (!z_probe_move_with_retract(param.probe_g38_subcode, -param.probe_height, param.clearance_height, param.feed_rate)) return;
     }
 
     rotate(X_AXIS, param.x_axis_distance, &param.x_rotated_x, &param.x_rotated_y, param.rotation_angle);
@@ -2024,6 +2189,7 @@ void ZProbe::probe_axisangle(bool probe_a_axis, bool probe_with_offset) //M465
 
 	//setup repeat
 	for(int i=0; i< param.repeat; i++) {
+        param.stylus_repeat_offset = (param.orient_stylus && param.repeat > 1) ? i * (360.0f / param.repeat) : 0.0f;
         
         //goto clearance height
         //coordinated_move(NAN, NAN, clearance_world_pos, rapid_rate);
@@ -2287,6 +2453,7 @@ void ZProbe::probe_square(){
     int max_z_index = 0;
 
     for (int i = 0; i < param.repeat; i++){
+        param.stylus_repeat_offset = (param.orient_stylus && param.repeat > 1) ? i * (360.0f / param.repeat) : 0.0f;
         // go to starting position
         coordinated_move(out_coords.origin_x, out_coords.origin_y, out_coords.origin_z, param.rapid_rate);
         for (int j = 0; j < 4; j++){
@@ -2482,6 +2649,7 @@ void ZProbe::single_axis_probe_double_tap(){
     vector<float> probe_position_stack_z;
 
     for(int i=0; i < param.repeat; i++) {
+        param.stylus_repeat_offset = (param.orient_stylus && param.repeat > 1) ? i * (360.0f / param.repeat) : 0.0f;
 
         THECONVEYOR->wait_for_idle();
         // POS doesn't do anything here since it's a XYZ Probe move

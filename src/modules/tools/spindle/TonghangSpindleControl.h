@@ -1,7 +1,7 @@
 /*
  * Tonghang spindle over Modbus RTU on a USB CDC adapter.
  *
- * Speed and direction. The drive jogs at parameter P-076.
+ * Speed, direction, and orientation. The drive jogs at parameter P-076.
  */
 
 #ifndef TONGHANG_SPINDLE_CONTROL_H
@@ -38,6 +38,8 @@ class TonghangSpindleControl : public SpindleControl {
   bool modbus_wait() override;
   void modbus_lock(bool locked) override;
   uint32_t modbus_baud() const override;
+  void on_spindle_orient(Gcode *gcode) override;
+  void on_spindle_angle(Gcode *gcode) override;
 
   bool probe();
   void service();
@@ -47,8 +49,14 @@ class TonghangSpindleControl : public SpindleControl {
   // One blocking Modbus transaction. Does not touch the run state machine.
   bool transact(bool writing, uint16_t reg, uint16_t value, uint16_t words, uint8_t *data, uint8_t data_len);
   bool read_motor_counts(int64_t *counts);
+  bool write_reg(uint16_t reg, uint16_t value);
+  bool hold_stopped();
+  bool hold_position();
+  bool release_drive();
   bool read_alarm(uint16_t *code);
   void note_alarm(uint16_t code);
+  float spindle_angle(int64_t counts) const;
+  bool orient_to(float target_deg, int mode, float timeout_s);
   uint16_t commanded_magnitude() const;
   uint16_t run_code() const;
   float reported_rpm() const;
@@ -76,10 +84,12 @@ class TonghangSpindleControl : public SpindleControl {
   int delay_s = 1;
   float acc_ratio = 1.0f;
   int overload_threshold = 90;
+  int32_t counts_per_rev = 131072;
   // Drive position is 32 bits. unwrapped_counts adds the short step from the last sample.
   int64_t unwrapped_counts = 0;
   uint32_t last_raw_counts = 0;
   bool have_unwrapped_counts = false;
+  int orient_rpm = 300;
   // True selects jog code 0x2222 (M4). False selects 0x1111 (M3).
   bool ccw = false;
 

@@ -354,6 +354,7 @@ void AnalogSpindleControl::on_get_public_data(void* argument)
         t->target_rpm = this->target_rpm;
         t->current_pwm_value = this->current_pwm_value;
         t->factor= this->factor;
+        t->can_orient = false;
         t->has_additional_metrics = false;
         t->additional_metrics[0] = '\0';
         pdr->set_taken();
