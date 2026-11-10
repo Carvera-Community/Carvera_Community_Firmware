@@ -357,6 +357,7 @@ e_stop_pin									0.20^			# Emergency stop pin
 # spindle_suspend_restore_enable              true            # On suspend: if spindle is running, stop it and remember RPM. On resume: restore only if it was running.
 spindle.pwm_pin								2.5				# Big Mosfet Q7. Pin must be hardware PWM capable.
 spindle.pwm_period							10000			# default 1000, sets the PWM frequency
+spindle.max_pwm								0.9				# highest PWM duty the spindle driver accepts
 spindle.feedback_pin						2.7				# Pin must be interrupt capable. 
 spindle.pulses_per_rev						2				#12				# default 1. Defines the number of pulses occur for each rotation 
 # spindle.default_rpm							10000			# default 10000. Defines a default RPM value in case no RPM value is provided.
