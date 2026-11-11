@@ -2388,7 +2388,7 @@ void ZProbe::calibrate_probe_bore() //M460.1
     //THEKERNEL->probe_tip_diameter = knownDiameter - ave;
     THEKERNEL->streams->printf("New Probe Tip Diameter is: %.3f\n", (knownDiameter - ave));
     if (param.save_position > 0){
-        //TODO actually save the positon
+        //TODO actually save the position
     }else{
         THEKERNEL->streams->printf("This value is temporary \n and will neeed to be saved to the config file with \n config-set sd zprobe.probe_tip_diameter %.3f \n", (knownDiameter - ave));
     }
@@ -2448,7 +2448,7 @@ void ZProbe::calibrate_probe_boss() //M460.2
     THEKERNEL->streams->printf("New Probe Tip Diameter is: %.3f\n", (ave - knownDiameter));
 
     if (param.save_position > 0){
-        //TODO actually save the positon
+        //TODO actually save the position
     }else{
         THEKERNEL->streams->printf("This value is temporary \n and will neeed to be saved to the config file with \n config-set sd zprobe.probe_tip_diameter %.3f \n", (ave - knownDiameter));
     }
@@ -2554,9 +2554,9 @@ void ZProbe::single_axis_probe_double_tap(){
     }
     if (param.z_axis_distance != 0){
         THEKERNEL->streams->printf("--- Machine Coordinates ---\n");
-        THEKERNEL->streams->printf("Final Positon Z: %.3f\n", ave_z);
+        THEKERNEL->streams->printf("Final Position Z: %.3f\n", ave_z);
         THEKERNEL->streams->printf("--- Work Coordinates ---\n");
-        THEKERNEL->streams->printf("Final Positon Z: %.3f\n", std::get<Z_AXIS>(pos));
+        THEKERNEL->streams->printf("Final Position Z: %.3f\n", std::get<Z_AXIS>(pos));
         THEKERNEL->probe_outputs[5] = ave_z;
         if (param.save_position == 2 && check_last_probe_ok()){
             THEROBOT->set_wcs_by_mpos( NAN, NAN, THEKERNEL->probe_outputs[5]);
