@@ -250,7 +250,7 @@ bool CartGridStrategy::handleConfig()
         flex_compensation_active = false;
         return false;
     }
-    
+
 
     if(flex_compensation_data == nullptr) {
         THEKERNEL->streams->printf("Error: Not enough memory for flex compensation data\n");
@@ -314,7 +314,7 @@ void CartGridStrategy::save_grid(StreamOutput *stream)
         fwfs::fclose(fp);
         return;
     }
-    
+
     if(fwfs::fwrite(&y_start, sizeof(float), 1, fp) != 1)  {
         stream->printf("error:Failed to write y_start\n");
         fwfs::fclose(fp);
@@ -695,7 +695,7 @@ void CartGridStrategy::setAdjustFunction(bool on)
 }
 
 void CartGridStrategy::updateCompensationTransform()
-{   
+{
     if(flex_compensation_active) {
         THEKERNEL->set_flex_compensation_active(true);
     } else {
@@ -776,7 +776,7 @@ bool CartGridStrategy::scan_bed(Gcode *gc)
             if(!zprobe->doProbeAt(mm, x - X_PROBE_OFFSET_FROM_EXTRUDER, y - Y_PROBE_OFFSET_FROM_EXTRUDER)) return false;
             float z = (gc->has_letter('H') ? gc->get_value('H') : zprobe->getProbeHeight()) - mm;
             max_z = (z > max_z ) ? z : max_z;
-            min_z = (z < min_z ) ? z : min_z;	
+            min_z = (z < min_z ) ? z : min_z;
             z = z - z_reference;
             char buf[16];
             size_t n= snprintf(buf, sizeof(buf), "%1.3f ", z);
@@ -910,7 +910,7 @@ bool CartGridStrategy::doProbe(Gcode *gc)
 
             float measured_z = (gc->has_letter('H') ? gc->get_value('H') : zprobe->getProbeHeight()) - mm; // this is the delta z from bed at 0,0
             max_z = (measured_z > max_z ) ? measured_z : max_z;
-            min_z = (measured_z < min_z ) ? measured_z : min_z;	
+            min_z = (measured_z < min_z ) ? measured_z : min_z;
             measured_z = measured_z - z_reference;
             gc->stream->printf("DEBUG: X%1.3f, Y%1.3f, Z%1.3f\n", xProbe, yProbe, measured_z);
             grid[xCount + (this->current_grid_x_size * yCount)] = measured_z;
@@ -950,7 +950,7 @@ void CartGridStrategy::doCompensation(float *target, bool inverse, bool debug)
         int triangle_y_int = 900000;            // Y distance between the plane through both rods to the center of the spindle (90.0 * 10000)
         int machine_offset_z_int = 510000;      // Z distance between the centerplane between the rods and the end of the spindle (51.0 * 10000)
         int sensor_machine_z_int = -1153400;   // Z machine coordinate if the tool length would be 0 (-115.36 * 10000)
-        int refmz_int = (int)(THEKERNEL->eeprom_data->REFMZ * 10000.0f);                  
+        int refmz_int = (int)(THEKERNEL->eeprom_data->REFMZ * 10000.0f);
         int TLO_int = (int)(THEKERNEL->eeprom_data->TLO * 10000.0f);
         float interpolated_delta = 0.0;
 
@@ -967,13 +967,13 @@ void CartGridStrategy::doCompensation(float *target, bool inverse, bool debug)
             // Calculate grid spacing using integers
             int flex_x_size_int = (int)(flex_x_size * 10000.0f);
             int grid_spacing_int = flex_x_size_int / (flex_current_x_points - 1);
-            
+
             // Find which grid segment the target falls into
             int target_x_int = (int)(target[X_AXIS] * 10000.0f);
             int flex_x_start_int = (int)(flex_x_start * 10000.0f);
             int relative_x_int = target_x_int - flex_x_start_int;
             int grid_index = relative_x_int / grid_spacing_int;
-            
+
             // Clamp grid_index to valid range
             if (grid_index >= flex_current_x_points - 1) {
                 grid_index = flex_current_x_points - 2;  // Use last segment
@@ -981,23 +981,23 @@ void CartGridStrategy::doCompensation(float *target, bool inverse, bool debug)
             if (grid_index < 0) {
                 grid_index = 0;  // Use first segment
             }
-            
+
             // Calculate interpolation factor using integers
             int grid_x_low_int = flex_x_start_int + grid_index * grid_spacing_int;
             int grid_x_high_int = flex_x_start_int + (grid_index + 1) * grid_spacing_int;
             int t_numerator = target_x_int - grid_x_low_int;
             int t_denominator = grid_x_high_int - grid_x_low_int;
-            
+
             // Calculate interpolation factor t (0 to 10000 for 0.0 to 1.0)
             int t_int = 0;
             if (t_denominator != 0) {
                 t_int = (t_numerator * 10000) / t_denominator;
             }
-            
+
             // Clamp t_int to [0, 10000] range
             if (t_int < 0) t_int = 0;
             if (t_int > 10000) t_int = 10000;
-            
+
             // Linear interpolation between two grid points using integers
             float delta_low = flex_compensation_data[grid_index];
             float delta_high = flex_compensation_data[grid_index + 1];
@@ -1221,7 +1221,7 @@ bool CartGridStrategy::doFlexMeasurement(Gcode *gc)
     int rod_distance_int = 900000;
     int machine_offset_z_int = 510000;      // Z distance between the centerplane between the rods and the end of the spindle (51.0 * 10000)
     int sensor_machine_z_int = -1153400;   // Z machine coordinate if the tool length would be 0 (-115.36 * 10000)
-    int refmz_int = (int)(THEKERNEL->eeprom_data->REFMZ * 10000.0f);                  
+    int refmz_int = (int)(THEKERNEL->eeprom_data->REFMZ * 10000.0f);
     int TLO_int = (int)(THEKERNEL->eeprom_data->TLO * 10000.0f);
 
     int triangle_y_int = 900000;            // Y distance between the plane through both rods to the center of the spindle (90.0 * 10000)
@@ -1244,7 +1244,7 @@ bool CartGridStrategy::doFlexMeasurement(Gcode *gc)
     params.y_axis_distance = y_coordinate;
     params.feed_rate = (gc->has_letter('F')) ? gc->get_value('F') : 600;
     params.rapid_rate = (gc->has_letter('R')) ? gc->get_value('R') : 800;
-    
+
     for(int r = 1; r <= repeat; r++) {
         zprobe->coordinated_move(current_x, current_y, NAN, params.rapid_rate / 60);
         // Probe at each point along X-axis
@@ -1255,19 +1255,19 @@ bool CartGridStrategy::doFlexMeasurement(Gcode *gc)
             }
             float probe_x = current_x + (i * x_step);
             zprobe->coordinated_move(probe_x, NAN, NAN, params.rapid_rate / 60);
-            
+
             // Use ZProbe's internal fast_slow_probe_sequence for Y-axis
             if (!zprobe->fast_slow_probe_sequence_public(Y_AXIS, 1)) return false;
-            
+
             // Get the result from ZProbe's output coordinates
             xy_output_coordinates& coords = zprobe->get_output_coordinates();
             float measured_y = coords.y_positive_y_out;
-            
+
             if(isnan(measured_y)) {
                 gc->stream->printf("ERROR: Failed to probe at point %d\n", i);
                 return false;
             }
-            
+
             if (i == 0){
                 reference_y = measured_y;
             }
@@ -1278,7 +1278,7 @@ bool CartGridStrategy::doFlexMeasurement(Gcode *gc)
             }else{
                 flex_compensation_data[i] = delta / (triangle_length_float * cos(atan((triangle_y_int / 10000.0f) / (triangle_z_int / 10000.0f))));
             }
-            
+
             gc->stream->printf("RUN: %d | POINT: %d | X: %1.3f | PROBED Y: %1.3f, DELTA Y: %1.3f\n", r, i, probe_x, measured_y, delta);
         }
     }
@@ -1489,12 +1489,12 @@ void CartGridStrategy::print_flex_compensation_data(StreamOutput *stream)
 
     // Get current machine position
     float current_z = THEROBOT->get_axis_position(Z_AXIS);
-    
+
     int machine_offset_z_int = 510000;      // Z distance between the centerplane between the rods and the end of the spindle (51.0 * 10000)
     int sensor_machine_z_int = -1153400;   // Z machine coordinate if the tool length would be 0 (-115.36 * 10000)
-    int refmz_int = (int)(THEKERNEL->eeprom_data->REFMZ * 10000.0f);                  
+    int refmz_int = (int)(THEKERNEL->eeprom_data->REFMZ * 10000.0f);
     int TLO_int = (int)(THEKERNEL->eeprom_data->TLO * 10000.0f);
- 
+
     int triangle_y_int = 900000;            // Y distance between the plane through both rods to the center of the spindle (90.0 * 10000)
     int triangle_z_int = abs(current_z * 10000.0f	) + machine_offset_z_int + TLO_int + refmz_int - sensor_machine_z_int;
 
@@ -1506,13 +1506,13 @@ void CartGridStrategy::print_flex_compensation_data(StreamOutput *stream)
     for (int i = 0; i < flex_current_x_points; i++) {
         THEKERNEL->streams->printf("%1.3f, %1.3f\n", this->flex_x_start + (i * (this->flex_x_size / (flex_current_x_points - 1))), flex_compensation_data[i] * triangle_length_float);
     }
-    
+
     THEKERNEL->streams->printf("--- Average delta Y measurement at current Z height (x, y) ---\n");
 
     for (int i = 0; i < flex_current_x_points; i++) {
         THEKERNEL->streams->printf("%1.3f, %1.3f\n", this->flex_x_start + (i * (this->flex_x_size / (flex_current_x_points - 1))), flex_compensation_data[i] * cos(atan((triangle_y_int / 10000.0f) / (triangle_z_int / 10000.0f))) * triangle_length_float);
     }
-    
+
     THEKERNEL->streams->printf("--- Average delta Z_rotational calculation at current Z height (x, z) ---\n");
     for (int i = 0; i < flex_current_x_points; i++) {
         THEKERNEL->streams->printf("%1.3f, %1.3f\n", this->flex_x_start + (i * (this->flex_x_size / (flex_current_x_points - 1))), flex_compensation_data[i] * sin(atan((triangle_y_int / 10000.0f) / (triangle_z_int / 10000.0f))) * triangle_length_float);
@@ -1551,7 +1551,7 @@ void CartGridStrategy::save_flex_compensation_data(StreamOutput *stream)
             break;
         }
     }
-    
+
     if(!has_valid_data) {
         stream->printf("error: No valid flex compensation data to save\n");
         return;
@@ -1600,7 +1600,7 @@ void CartGridStrategy::save_flex_compensation_data(StreamOutput *stream)
     }
 
     stream->printf("Flex compensation data saved to %s (format v%d)\n", FLEX_COMPENSATION_FILE, FLEX_COMPENSATION_VERSION);
-    stream->printf("Saved: flex_x_start=%.3f, flex_grid_size=%d, flex_x_size=%.3f\n", 
+    stream->printf("Saved: flex_x_start=%.3f, flex_grid_size=%d, flex_x_size=%.3f\n",
                    flex_x_start, flex_current_x_points, flex_x_size);
     fwfs::fclose(fp);
 #endif
@@ -1661,7 +1661,7 @@ bool CartGridStrategy::load_flex_compensation_data(StreamOutput *stream)
 
     // Validate grid size
     if(load_flex_current_x_points > flex_x_points) {
-        stream->printf("error: Loaded flex grid size %d exceeds maximum configured size %d\n", 
+        stream->printf("error: Loaded flex grid size %d exceeds maximum configured size %d\n",
                       load_flex_current_x_points, flex_x_points);
         fwfs::fclose(fp);
         return false;
@@ -1711,7 +1711,7 @@ bool CartGridStrategy::load_flex_compensation_data(StreamOutput *stream)
     updateCompensationTransform();
 
     stream->printf("Flex compensation data loaded from %s\n", FLEX_COMPENSATION_FILE);
-    stream->printf("Loaded: flex_x_start=%.3f, flex_grid_size=%d, flex_x_size=%.3f\n", 
+    stream->printf("Loaded: flex_x_start=%.3f, flex_grid_size=%d, flex_x_size=%.3f\n",
                    flex_x_start, flex_current_x_points, flex_x_size);
     fwfs::fclose(fp);
     return true;
