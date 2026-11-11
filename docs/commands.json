@@ -1520,6 +1520,78 @@
       "description": "Print the current bed-leveling grid to the console.",
       "parameters": {}
     },
+    "M375.2": {
+      "type": "mcode",
+      "description": "Create an empty in-memory autoleveling grid. Compensation remains disabled.",
+      "parameters": {
+        "X": {
+          "required": true,
+          "description": "Grid start X in MCS.",
+          "default": null,
+          "unit": "mm"
+        },
+        "Y": {
+          "required": true,
+          "description": "Grid start Y in MCS.",
+          "default": null,
+          "unit": "mm"
+        },
+        "A": {
+          "required": true,
+          "description": "Grid width.",
+          "default": null,
+          "unit": "mm"
+        },
+        "B": {
+          "required": true,
+          "description": "Grid length.",
+          "default": null,
+          "unit": "mm"
+        },
+        "I": {
+          "required": true,
+          "description": "Number of points in X, at least 2.",
+          "default": null
+        },
+        "J": {
+          "required": true,
+          "description": "Number of points in Y, at least 2.",
+          "default": null
+        }
+      }
+    },
+    "M375.3": {
+      "type": "mcode",
+      "description": "Set one point in the current in-memory autoleveling grid.",
+      "parameters": {
+        "I": {
+          "required": true,
+          "description": "Zero-based X point index.",
+          "default": null
+        },
+        "J": {
+          "required": true,
+          "description": "Zero-based Y point index.",
+          "default": null
+        },
+        "Z": {
+          "required": true,
+          "description": "Z compensation at this point.",
+          "default": null,
+          "unit": "mm"
+        }
+      }
+    },
+    "M375.4": {
+      "type": "mcode",
+      "description": "Validate and enable compensation with the current in-memory autoleveling grid.",
+      "parameters": {}
+    },
+    "M375.5": {
+      "type": "mcode",
+      "description": "Disable the current autoleveling grid compensation. Unlike M370, no grid clearing is performed: may be useful for tool change since TLO computation is affected by the grid.",
+      "parameters": {}
+    },
     "M380": {
       "type": "mcode",
       "description": "Disable X-axis flex compensation.",

@@ -76,6 +76,10 @@
     M374.1 delete /sd/cartesian.grid
     M375 Load the grid from /sd/cartesian.grid and enable compensation
     M375.1 display the current grid
+    M375.2 Xn Yn An Bn In Jn configure an in-memory grid and clear its points
+    M375.3 In Jn Zn set one in-memory grid point by zero-based index
+    M375.4 validate and enable the in-memory grid
+    M375.5 turns off compensation (without clearing the grid). Note: can be useful for tool change, since the grid affects TLO.
     M561 clears the grid and turns off compensation
     M565 defines the probe offsets from the nozzle or tool head
 
@@ -134,8 +138,6 @@
 #define FLEX_COMPENSATION_FILE "/sd/flex_compensation.dat"
 
 #define FLEX_COMPENSATION_VERSION 2
-
-#define PI 3.14159265358979323846F
 
 CartGridStrategy::CartGridStrategy(ZProbe *zprobe) : LevelingStrategy(zprobe)
 {
@@ -601,11 +603,117 @@ bool CartGridStrategy::handleGcode(Gcode *gcode)
 
             return true;
 
-        } else if(gcode->m == 375) { // M375: load grid, M375.1 display grid
+        } else if(gcode->m == 375) { // Grid load/display/in-memory construction
             if(gcode->subcode == 1) {
+                // M375.1: display the current grid.
                 print_bed_level(gcode->stream);
+
+            } else if(gcode->subcode == 2) {
+                // M375.2 Xstart Ystart Xsize Ysize Xpoints Ypoints: start grid definition.
+                // Example: M375.2 X-181.6 Y-131 A46 B20 I2 J2
+                if(!gcode->has_letter('X') || !gcode->has_letter('Y') ||
+                   !gcode->has_letter('A') || !gcode->has_letter('B') ||
+                   !gcode->has_letter('I') || !gcode->has_letter('J')) {
+                    gcode->stream->printf("ERROR: M375.2 requires X Y A B I J\n");
+                    return true;
+                }
+
+                const int nx = gcode->get_int('I');
+                const int ny = gcode->get_int('J');
+                const float width = gcode->get_value('A');
+                const float height = gcode->get_value('B');
+
+                if(nx < 2 || ny < 2) {
+                    gcode->stream->printf("ERROR: M375.2 grid must be at least 2x2\n");
+                    return true;
+                }
+                if(nx > configured_grid_x_size || ny > configured_grid_y_size) {
+                    gcode->stream->printf(
+                        "ERROR: M375.2 grid %dx%d exceeds configured maximum %dx%d\n",
+                        nx, ny, configured_grid_x_size, configured_grid_y_size);
+                    return true;
+                }
+                if(width == 0.0F || height == 0.0F) {
+                    gcode->stream->printf("ERROR: M375.2 A and B must be non-zero\n");
+                    return true;
+                }
+
+                cartesian_grid_active = false;
+                updateCompensationTransform();
+                current_grid_x_size = nx;
+                current_grid_y_size = ny;
+                x_start = gcode->get_value('X');
+                y_start = gcode->get_value('Y');
+                x_size = width;
+                y_size = height;
+                reset_bed_level(); // Set every point to NAN until explicitly supplied.
+
+            } else if(gcode->subcode == 3) {
+                // M375.3 I<x-index> J<y-index> Z<offset>: set grid point.
+                if(!gcode->has_letter('I') || !gcode->has_letter('J') || !gcode->has_letter('Z')) {
+                    gcode->stream->printf("ERROR: M375.3 requires I J Z\n");
+                    return true;
+                }
+
+                if(cartesian_grid_active) {
+                    gcode->stream->printf("ERROR: Disable the grid before changing points\n");
+                    return true;
+                }
+
+                const int x = gcode->get_int('I');
+                const int y = gcode->get_int('J');
+                if(x < 0 || x >= current_grid_x_size || y < 0 || y >= current_grid_y_size) {
+                    gcode->stream->printf(
+                        "ERROR: M375.3 point I%d J%d outside grid %dx%d\n",
+                        x, y, current_grid_x_size, current_grid_y_size);
+                    return true;
+                }
+
+                const float z = gcode->get_value('Z');
+                if(isnan(z) || isinf(z)) {
+                    gcode->stream->printf("ERROR: M375.3 Z must be finite\n");
+                    return true;
+                }
+
+                grid[x + current_grid_x_size * y] = z;
+
+            } else if(gcode->subcode == 4) {
+                // M375.4: validate all points and enable compensation.
+                float min_z = 0.0F;
+                float max_z = 0.0F;
+                bool first = true;
+
+                for(int y = 0; y < current_grid_y_size; ++y) {
+                    for(int x = 0; x < current_grid_x_size; ++x) {
+                        const float z = grid[x + current_grid_x_size * y];
+                        if(isnan(z) || isinf(z)) {
+                            gcode->stream->printf(
+                                "ERROR: M375.4 grid point I%d J%d is unset\n", x, y);
+                            return true;
+                        }
+                        if(first) {
+                            min_z = max_z = z;
+                            first = false;
+                        } else {
+                            min_z = std::min(min_z, z);
+                            max_z = std::max(max_z, z);
+                        }
+                    }
+                }
+
+                const float max_delta = fabs(max_z - min_z);
+                THEROBOT->set_max_delta(max_delta);
+                cartesian_grid_active = true;
+                updateCompensationTransform();
+
+            } else if(gcode->subcode == 5) {
+                // M375.5: disable grid
+                cartesian_grid_active = false;
+                updateCompensationTransform();
+
             } else {
-                if (load_grid(gcode->stream)) {
+                // M375: load the saved grid and enable compensation.
+                if(load_grid(gcode->stream)) {
                     cartesian_grid_active = true;
                     updateCompensationTransform();
                 }
