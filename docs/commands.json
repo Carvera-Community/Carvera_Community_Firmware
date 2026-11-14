@@ -574,6 +574,12 @@
           "description": "Probe feed rate.",
           "default": null,
           "unit": "mm/min"
+        },
+        "P": {
+          "required": false,
+          "description": "Stylus contact angle at spindle zero. A spindle that can orient turns that point toward the probe move. A spindle that cannot orient halts.",
+          "default": null,
+          "unit": "deg"
         }
       }
     },
@@ -606,6 +612,12 @@
           "description": "Probe feed rate.",
           "default": null,
           "unit": "mm/min"
+        },
+        "P": {
+          "required": false,
+          "description": "Stylus contact angle at spindle zero. A spindle that can orient turns that point toward the probe move. A spindle that cannot orient halts.",
+          "default": null,
+          "unit": "deg"
         }
       }
     },
@@ -638,6 +650,12 @@
           "description": "Probe feed rate.",
           "default": null,
           "unit": "mm/min"
+        },
+        "P": {
+          "required": false,
+          "description": "Stylus contact angle at spindle zero. A spindle that can orient turns that point toward the probe move. A spindle that cannot orient halts.",
+          "default": null,
+          "unit": "deg"
         }
       }
     },
@@ -670,6 +688,12 @@
           "description": "Probe feed rate.",
           "default": null,
           "unit": "mm/min"
+        },
+        "P": {
+          "required": false,
+          "description": "Stylus contact angle at spindle zero. A spindle that can orient turns that point toward the probe move. A spindle that cannot orient halts.",
+          "default": null,
+          "unit": "deg"
         }
       }
     },
@@ -740,6 +764,53 @@
       "type": "gcode",
       "description": "Select workspace coordinate system 9 (modal).",
       "parameters": {}
+    },
+    "G84": {
+      "type": "gcode",
+      "description": "Rigid tap for one hole on a Tonghang spindle. M3 taps clockwise in and M4 taps counter-clockwise in. Z keeps moving with the spindle at pitch F/S. The spindle slows for the last pitch and is held only once Z is at the end of the stroke, then the tool returns to the starting height. Not modal, so each hole is its own G84. A rejected G84 halts.",
+      "parameters": {
+        "X": {
+          "required": false,
+          "description": "Hole position. In G91 this is the distance from the current X, and K repeats step by the same amount.",
+          "default": null,
+          "unit": "mm"
+        },
+        "Y": {
+          "required": false,
+          "description": "Hole position. In G91 this is the distance from the current Y, and K repeats step by the same amount.",
+          "default": null,
+          "unit": "mm"
+        },
+        "Z": {
+          "required": true,
+          "description": "Hole bottom. Absolute in G90. In G91, the distance from R to the bottom, usually negative.",
+          "default": null,
+          "unit": "mm"
+        },
+        "R": {
+          "required": true,
+          "description": "Retract plane. Absolute in G90. In G91, the distance from the starting height to R, usually negative.",
+          "default": null,
+          "unit": "mm"
+        },
+        "P": {
+          "required": false,
+          "description": "Dwell at the bottom before the spindle reverses.",
+          "default": 0,
+          "unit": "ms"
+        },
+        "F": {
+          "required": false,
+          "description": "Feed. Pitch is this feed divided by the programmed spindle speed. Omit to use the current feed.",
+          "default": null,
+          "unit": "mm/min"
+        },
+        "K": {
+          "required": false,
+          "description": "Number of holes. K0 does nothing. In G90 every repeat uses the same XY.",
+          "default": 1
+        }
+      }
     },
     "G90": {
       "type": "gcode",
@@ -853,7 +924,7 @@
     },
     "M4": {
       "type": "mcode",
-      "description": "Start the spindle counter-clockwise when the spindle implementation supports direction.",
+      "description": "Start the spindle counter-clockwise. Spindles that cannot reverse report an error and halt.",
       "parameters": {
         "S": {
           "required": false,
@@ -957,6 +1028,29 @@
           "required": false,
           "description": "Disable A if present.",
           "default": null
+        }
+      }
+    },
+    "M19": {
+      "type": "mcode",
+      "description": "Orient a spindle that can orient to an angle and leave it enabled, holding zero speed. M5 releases it.",
+      "parameters": {
+        "R": {
+          "required": true,
+          "description": "Target angle in degrees, from 0 to 360. 0 is the encoder zero. A belt ratio in spindle.acc_ratio scales this to the spindle shaft.",
+          "default": null,
+          "unit": "deg"
+        },
+        "P": {
+          "required": false,
+          "description": "Direction. 0 takes the shortest move. 1 always turns clockwise, the same way as M3. 2 always turns counter-clockwise, the same way as M4.",
+          "default": 0
+        },
+        "Q": {
+          "required": false,
+          "description": "Seconds to wait for the angle. The move fails and the machine halts if the spindle is not within 0.25 degrees in this time. At most 120.",
+          "default": 30,
+          "unit": "s"
         }
       }
     },
@@ -1584,6 +1678,12 @@
           "default": 300,
           "unit": "mm/min"
         },
+        "P": {
+          "required": false,
+          "description": "Angle of the stylus contact point when the spindle is at 0. Before each touch a spindle that can orient turns so that point faces the move. The direction is whichever leaves less total rotation, so the probe cord is not wrapped around the part. M461 and M462 with both X and Y keep that side for every hit. Other routines with L greater than 1 space that side by 360/L degrees on each repeat, so two repeats are 180 degrees apart and three are 120 degrees apart. The spindle returns to its starting angle at the end, then M5 releases it. A downward probe uses this angle. With no number, P uses the current spindle angle. A spindle that cannot orient halts instead of probing.",
+          "default": null,
+          "unit": "deg"
+        },
         "K": {
           "required": false,
           "description": "Rapid feed rate for positioning moves.",
@@ -1658,6 +1758,12 @@
           "description": "Probing feed rate.",
           "default": 300,
           "unit": "mm/min"
+        },
+        "P": {
+          "required": false,
+          "description": "Angle of the stylus contact point when the spindle is at 0. Before each touch a spindle that can orient turns so that point faces the move. The direction is whichever leaves less total rotation, so the probe cord is not wrapped around the part. M461 and M462 with both X and Y keep that side for every hit. Other routines with L greater than 1 space that side by 360/L degrees on each repeat, so two repeats are 180 degrees apart and three are 120 degrees apart. The spindle returns to its starting angle at the end, then M5 releases it. A downward probe uses this angle. With no number, P uses the current spindle angle. A spindle that cannot orient halts instead of probing.",
+          "default": null,
+          "unit": "deg"
         },
         "K": {
           "required": false,
@@ -1746,6 +1852,12 @@
           "default": 300,
           "unit": "mm/min"
         },
+        "P": {
+          "required": false,
+          "description": "Angle of the stylus contact point when the spindle is at 0. Before each touch a spindle that can orient turns so that point faces the move. The direction is whichever leaves less total rotation, so the probe cord is not wrapped around the part. M461 and M462 with both X and Y keep that side for every hit. Other routines with L greater than 1 space that side by 360/L degrees on each repeat, so two repeats are 180 degrees apart and three are 120 degrees apart. The spindle returns to its starting angle at the end, then M5 releases it. A downward probe uses this angle. With no number, P uses the current spindle angle. A spindle that cannot orient halts instead of probing.",
+          "default": null,
+          "unit": "deg"
+        },
         "K": {
           "required": false,
           "description": "Rapid feed rate for positioning moves.",
@@ -1832,6 +1944,12 @@
           "description": "Probing feed rate.",
           "default": 300,
           "unit": "mm/min"
+        },
+        "P": {
+          "required": false,
+          "description": "Angle of the stylus contact point when the spindle is at 0. Before each touch a spindle that can orient turns so that point faces the move. The direction is whichever leaves less total rotation, so the probe cord is not wrapped around the part. M461 and M462 with both X and Y keep that side for every hit. Other routines with L greater than 1 space that side by 360/L degrees on each repeat, so two repeats are 180 degrees apart and three are 120 degrees apart. The spindle returns to its starting angle at the end, then M5 releases it. A downward probe uses this angle. With no number, P uses the current spindle angle. A spindle that cannot orient halts instead of probing.",
+          "default": null,
+          "unit": "deg"
         },
         "K": {
           "required": false,
@@ -1921,6 +2039,12 @@
           "default": 300,
           "unit": "mm/min"
         },
+        "P": {
+          "required": false,
+          "description": "Angle of the stylus contact point when the spindle is at 0. Before each touch a spindle that can orient turns so that point faces the move. The direction is whichever leaves less total rotation, so the probe cord is not wrapped around the part. M461 and M462 with both X and Y keep that side for every hit. Other routines with L greater than 1 space that side by 360/L degrees on each repeat, so two repeats are 180 degrees apart and three are 120 degrees apart. The spindle returns to its starting angle at the end, then M5 releases it. A downward probe uses this angle. With no number, P uses the current spindle angle. A spindle that cannot orient halts instead of probing.",
+          "default": null,
+          "unit": "deg"
+        },
         "K": {
           "required": false,
           "description": "Rapid feed rate for positioning moves.",
@@ -1996,6 +2120,12 @@
           "description": "Probing feed rate.",
           "default": 300,
           "unit": "mm/min"
+        },
+        "P": {
+          "required": false,
+          "description": "Angle of the stylus contact point when the spindle is at 0. Before each touch a spindle that can orient turns so that point faces the move. The direction is whichever leaves less total rotation, so the probe cord is not wrapped around the part. M461 and M462 with both X and Y keep that side for every hit. Other routines with L greater than 1 space that side by 360/L degrees on each repeat, so two repeats are 180 degrees apart and three are 120 degrees apart. The spindle returns to its starting angle at the end, then M5 releases it. A downward probe uses this angle. With no number, P uses the current spindle angle. A spindle that cannot orient halts instead of probing.",
+          "default": null,
+          "unit": "deg"
         },
         "K": {
           "required": false,
@@ -2079,6 +2209,12 @@
           "default": 300,
           "unit": "mm/min"
         },
+        "P": {
+          "required": false,
+          "description": "Angle of the stylus contact point when the spindle is at 0. Before each touch a spindle that can orient turns so that point faces the move. The direction is whichever leaves less total rotation, so the probe cord is not wrapped around the part. M461 and M462 with both X and Y keep that side for every hit. Other routines with L greater than 1 space that side by 360/L degrees on each repeat, so two repeats are 180 degrees apart and three are 120 degrees apart. The spindle returns to its starting angle at the end, then M5 releases it. A downward probe uses this angle. With no number, P uses the current spindle angle. A spindle that cannot orient halts instead of probing.",
+          "default": null,
+          "unit": "deg"
+        },
         "K": {
           "required": false,
           "description": "Rapid feed rate for positioning moves.",
@@ -2156,6 +2292,12 @@
           "description": "Probing feed rate.",
           "default": 300,
           "unit": "mm/min"
+        },
+        "P": {
+          "required": false,
+          "description": "Angle of the stylus contact point when the spindle is at 0. Before each touch a spindle that can orient turns so that point faces the move. The direction is whichever leaves less total rotation, so the probe cord is not wrapped around the part. M461 and M462 with both X and Y keep that side for every hit. Other routines with L greater than 1 space that side by 360/L degrees on each repeat, so two repeats are 180 degrees apart and three are 120 degrees apart. The spindle returns to its starting angle at the end, then M5 releases it. A downward probe uses this angle. With no number, P uses the current spindle angle. A spindle that cannot orient halts instead of probing.",
+          "default": null,
+          "unit": "deg"
         },
         "K": {
           "required": false,
@@ -2336,6 +2478,12 @@
           "default": 300,
           "unit": "mm/min"
         },
+        "P": {
+          "required": false,
+          "description": "Angle of the stylus contact point when the spindle is at 0. Before each touch a spindle that can orient turns so that point faces the move. The direction is whichever leaves less total rotation, so the probe cord is not wrapped around the part. M461 and M462 with both X and Y keep that side for every hit. Other routines with L greater than 1 space that side by 360/L degrees on each repeat, so two repeats are 180 degrees apart and three are 120 degrees apart. The spindle returns to its starting angle at the end, then M5 releases it. A downward probe uses this angle. With no number, P uses the current spindle angle. A spindle that cannot orient halts instead of probing.",
+          "default": null,
+          "unit": "deg"
+        },
         "L": {
           "required": false,
           "description": "Number of repeat measurements.",
@@ -2392,6 +2540,12 @@
           "description": "Probing feed rate.",
           "default": 300,
           "unit": "mm/min"
+        },
+        "P": {
+          "required": false,
+          "description": "Angle of the stylus contact point when the spindle is at 0. Before each touch a spindle that can orient turns so that point faces the move. The direction is whichever leaves less total rotation, so the probe cord is not wrapped around the part. M461 and M462 with both X and Y keep that side for every hit. Other routines with L greater than 1 space that side by 360/L degrees on each repeat, so two repeats are 180 degrees apart and three are 120 degrees apart. The spindle returns to its starting angle at the end, then M5 releases it. A downward probe uses this angle. With no number, P uses the current spindle angle. A spindle that cannot orient halts instead of probing.",
+          "default": null,
+          "unit": "deg"
         },
         "K": {
           "required": false,
@@ -3520,6 +3674,22 @@
       "description": "Same as M576.",
       "parameters": {}
     },
+    "M577": {
+      "type": "mcode",
+      "description": "Time a Modbus holding-register read. Reports min, average, and max. Modbus spindle only.",
+      "parameters": {
+        "P": {
+          "required": false,
+          "description": "Number of reads.",
+          "default": 20
+        },
+        "R": {
+          "required": false,
+          "description": "First holding register. Omit for the spindle default.",
+          "default": null
+        }
+      }
+    },
     "M600": {
       "type": "mcode",
       "description": "Suspend playback (controlled pause).",
@@ -3882,6 +4052,27 @@
           "default_source": "spindle.pwm_scale"
         }
       }
+    },
+    "M960": {
+      "type": "mcode",
+      "description": "Read or write one Modbus holding register on the spindle. Omit S to read. The write is sent to the drive immediately. Writes are refused while a job is playing. Modbus spindle only.",
+      "parameters": {
+        "P": {
+          "required": true,
+          "description": "Holding register address, 0 to 65535.",
+          "default": null
+        },
+        "S": {
+          "required": false,
+          "description": "16-bit register value, 0 to 65535. -32768 to -1 is stored as two's complement. Omit to read.",
+          "default": null
+        }
+      }
+    },
+    "M961": {
+      "type": "mcode",
+      "description": "Report the current spindle angle in degrees, 0 to 360. Tonghang spindle only.",
+      "parameters": {}
     },
     "M959.1": {
       "type": "mcode",

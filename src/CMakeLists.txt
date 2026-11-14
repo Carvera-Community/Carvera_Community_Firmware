@@ -99,6 +99,12 @@ else()
     target_link_libraries(carvera_sources PRIVATE carvera_spindle_vesc_sources)
 endif()
 
+if(NO_TONGHANG_SPINDLE)
+    target_compile_definitions(carvera_sources PUBLIC NO_TONGHANG_SPINDLE)
+else()
+    target_link_libraries(carvera_sources PRIVATE carvera_spindle_tonghang_sources)
+endif()
+
 if(NO_USB_HOST)
     target_compile_definitions(carvera_sources PUBLIC NO_USB_HOST)
 else()

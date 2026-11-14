@@ -82,6 +82,7 @@ CANOPEN_SUPPORT := 1
 SERIAL_RX_DMA := 1
 NO_USB_HOST := 1
 NO_VESC_SPINDLE := 1
+NO_TONGHANG_SPINDLE := 1
 NO_SD_CARD := 1
 NO_WIRELESS_PROBE := 1
 NO_WIFI_PROVIDER := 1
@@ -206,6 +207,7 @@ endif
 # NO_VESC_SPINDLE: exclude VESC USB spindle driver
 ifdef NO_USB_HOST
 NO_VESC_SPINDLE := 1
+NO_TONGHANG_SPINDLE := 1
 endif
 
 ifdef NO_VESC_SPINDLE
@@ -213,6 +215,14 @@ CPPSRCS3 := $(filter-out \
   $(SRC)/modules/tools/spindle/VESCSpindleControl.cpp \
   ,$(CPPSRCS3))
 DEFINES += -DNO_VESC_SPINDLE
+endif
+
+ifdef NO_TONGHANG_SPINDLE
+CPPSRCS3 := $(filter-out \
+  $(SRC)/modules/tools/spindle/TonghangSpindleControl.cpp \
+  $(SRC)/modules/tools/spindle/UsbModbusRTU.cpp \
+  ,$(CPPSRCS3))
+DEFINES += -DNO_TONGHANG_SPINDLE
 endif
 
 ifdef NO_USB_HOST

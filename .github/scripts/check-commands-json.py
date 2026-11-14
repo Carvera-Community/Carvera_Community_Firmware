@@ -61,6 +61,38 @@ def run_git(args: list[str]) -> str:
     )
 
 
+def ref_exists(ref: str) -> bool:
+    try:
+        run_git(["cat-file", "-e", f"{ref}^{{commit}}"])
+    except subprocess.CalledProcessError:
+        return False
+    return True
+
+
+def fetch_base_ref(base_ref: str) -> bool:
+    # Fork checkouts do not contain the base repository's Dev branch.
+    repo = os_environ_get("GITHUB_REPOSITORY")
+    if not repo:
+        return False
+    try:
+        subprocess.run(
+            [
+                "git",
+                "fetch",
+                "--no-tags",
+                f"https://github.com/{repo}.git",
+                f"{base_ref}:refs/remotes/origin/{base_ref}",
+            ],
+            cwd=REPO_ROOT,
+            check=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+    except subprocess.CalledProcessError:
+        return False
+    return ref_exists(f"origin/{base_ref}")
+
+
 def discover_diff_range() -> str | None:
     explicit = os_environ_get("COMMANDS_JSON_DIFF_RANGE")
     if explicit:
@@ -76,14 +108,14 @@ def discover_diff_range() -> str | None:
             payload = {}
         base_ref = (payload.get("pull_request") or {}).get("base", {}).get("ref")
         base_sha = (payload.get("pull_request") or {}).get("base", {}).get("sha")
-        if base_sha:
-            try:
-                run_git(["cat-file", "-e", f"{base_sha}^{{commit}}"])
-                return f"{base_sha}...HEAD"
-            except subprocess.CalledProcessError:
-                pass
+        if base_sha and ref_exists(base_sha):
+            return f"{base_sha}...HEAD"
         if base_ref:
-            return f"origin/{base_ref}...HEAD"
+            ref = f"origin/{base_ref}"
+            if not ref_exists(ref):
+                fetch_base_ref(base_ref)
+            if ref_exists(ref):
+                return f"{ref}...HEAD"
 
     for candidate in ("upstream/Dev", "origin/Dev"):
         try:
@@ -267,7 +299,13 @@ def load_documented() -> set[str]:
 
 
 def check(diff_range: str) -> int:
-    if not changed_source_files(diff_range):
+    try:
+        source_files = changed_source_files(diff_range)
+    except subprocess.CalledProcessError:
+        print("Could not determine a base revision. Skipping commands.json check.")
+        return 0
+
+    if not source_files:
         print("No files changed in src/. Skipping commands.json check.")
         return 0
 

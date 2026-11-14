@@ -52,6 +52,8 @@ class Robot : public Module {
         void set_tool_not_calibrated(bool value);
         bool get_tool_not_calibrated();
         float get_feed_rate() const;
+        float get_linear_feed_rate() const { return feed_rate; }
+        void set_feed_rate(float mm_per_min) { feed_rate = mm_per_min; }
         float get_s_value() const { return s_value; }
         void set_s_value(float s) { s_value= s; }
         float get_max_delta() const { return max_delta; }
