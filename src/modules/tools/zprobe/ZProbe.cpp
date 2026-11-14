@@ -50,6 +50,8 @@
 #define probe_tip_diameter_checksum CHECKSUM("probe_tip_diameter")
 #define probe_calibration_safety_margin_checksum CHECKSUM("calibration_safety_margin")
 #define require_probe_trigger_for_calibration_checksum CHECKSUM("require_probe_trigger_for_calibration")
+#define probe_safe_margin_checksum CHECKSUM("probe_safe_margin")
+#define use_3dtoolsetter_checksum CHECKSUM("use_3dtoolsetter")
 #define toolZeroIs3Axis_checksum  CHECKSUM("tool_zero_is_3axis")
 #define gamma_max_checksum       CHECKSUM("gamma_max")
 #define max_z_checksum           CHECKSUM("max_z")
@@ -122,7 +124,6 @@ void ZProbe::config_load()
         zprobe_checksum, require_probe_trigger_for_calibration_checksum)->as_bool(true);
     this->halt_pending = false;
     this->probe_triggered = false;
-    this->probe_crash_count = 0;
 
     // get strategies to load
     vector<uint16_t> modules;
@@ -364,10 +365,13 @@ uint32_t ZProbe::read_calibrate(uint32_t dummy)
                 calibrate_pin_position = STEPPER[Z_AXIS]->get_current_position();
             }
 
-            if (!probing || probe_detected) {
+            if (!probing || probe_detected || (tlo_calibrating && probe_tool_tlo_toolsetter_only && check_probe_tool() > 0)) {
                 // if we are not probing, e.g. doing a regular TLO calibration,
                 // or the configured trigger condition is met, stop all motors
                 // as it may be a delta.
+                // or we are probing and the probe was detected, or this probe-tool
+                // TLO calibration is configured to stop on the toolsetter alone,
+                // then we signal the motors to stop.
                 for (auto &a : THEROBOT->actuators) a->stop_moving();
                 cali_debounce = 0;
             } else {

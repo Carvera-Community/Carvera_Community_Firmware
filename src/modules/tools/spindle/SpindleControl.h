@@ -11,6 +11,8 @@
 #include "libs/Module.h"
 
 class Gcode;
+class Pin;
+class StreamOutput;
 
 class SpindleControl: public Module {
     public:

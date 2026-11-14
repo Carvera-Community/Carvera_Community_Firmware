@@ -56,6 +56,7 @@ Gcode::Gcode(const Gcode &to_copy)
     this->subcode               = to_copy.subcode;
     this->add_nl                = to_copy.add_nl;
     this->is_error              = to_copy.is_error;
+    this->line                  = to_copy.line;
     this->stream                = to_copy.stream;
     this->txt_after_ok.assign( to_copy.txt_after_ok );
 }
@@ -71,10 +72,30 @@ Gcode &Gcode::operator= (const Gcode &to_copy)
         this->subcode               = to_copy.subcode;
         this->add_nl                = to_copy.add_nl;
         this->is_error              = to_copy.is_error;
+        this->line                  = to_copy.line;
         this->stream                = to_copy.stream;
         this->txt_after_ok.assign( to_copy.txt_after_ok );
     }
     return *this;
+}
+
+// Additive in-place re-initialization. Mirrors the constructor body but reuses the existing
+// object and keeps its stream, so a preallocated pool can be recycled without new/delete.
+void Gcode::reset(const string &command, bool strip, unsigned int line)
+{
+    if(this->command != nullptr) {
+        free(this->command);
+    }
+    this->command = strdup(command.c_str());
+    this->m = 0;
+    this->g = 0;
+    this->subcode = 0;
+    this->add_nl = false;
+    this->is_error = false;
+    this->txt_after_ok.clear();
+    prepare_cached_values(strip);
+    this->stripped = strip;
+    this->line = line;
 }
 
 
