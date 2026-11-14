@@ -341,7 +341,7 @@
         },
         "R": {
           "required": false,
-          "description": "1 skips the home move before probing.",
+          "description": "1 uses the current position as the grid origin.",
           "default": null
         }
       }
@@ -413,7 +413,7 @@
         },
         "R": {
           "required": false,
-          "description": "1 skips the home move before probing.",
+          "description": "1 uses the current position as the grid origin.",
           "default": null
         }
       }
@@ -462,7 +462,7 @@
         },
         "R": {
           "required": false,
-          "description": "1 skips the home move before probing.",
+          "description": "1 uses the current position as the grid origin.",
           "default": null
         }
       }
