@@ -72,6 +72,7 @@ enum HALT_REASON {
 	POWER_OVERHEATED		= 14,
 	NON_HOME				= 15,
 	CRASH_DETECTED			= 16,
+	ATC_UNCLAMP_FAIL		= 17,
 	// Need to reset when triggered
 	HARD_LIMIT				= 21,
 	MOTOR_ERROR_X			= 22,

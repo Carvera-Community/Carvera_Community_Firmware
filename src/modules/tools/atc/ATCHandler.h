@@ -83,7 +83,8 @@ private:
     // clamp actions
     void clamp_tool();
     void loose_tool();
-    void home_clamp();
+    bool home_clamp();
+    bool move_atc(float distance, float rate, bool stop_on_switch);
 
     // laser detect
     bool laser_detect();
