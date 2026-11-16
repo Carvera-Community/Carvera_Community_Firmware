@@ -1983,6 +1983,7 @@ void ATCHandler::abort(){
 		THEROBOT->set_tool_not_calibrated(true);
 	}
 	this->atc_status = NONE;
+	this->atc_homing = false;
 	this->a_axis_cor.phase = 0;
 	this->a_axis_cor.pass = 0;
 	this->clear_script_queue();
@@ -2142,71 +2143,97 @@ bool ATCHandler::probe_detect() {
     return false;
 }
 
-void ATCHandler::home_clamp()
+// Moves the ATC axis and waits for the move to end. With stop_on_switch the
+// move stops when the ATC switch triggers and atc_home_info.triggered is set.
+// Returns false if the machine was halted.
+bool ATCHandler::move_atc(float distance, float rate, bool stop_on_switch)
+{
+	if (distance == 0.0F) return !THEKERNEL->is_halted();
+
+	atc_home_info.triggered = false;
+	debounce = 0;
+	atc_homing = stop_on_switch;
+
+	float delta[ATC_AXIS + 1];
+	for (size_t i = 0; i <= ATC_AXIS; i++) delta[i] = 0;
+	delta[ATC_AXIS] = distance;
+	THEROBOT->delta_move(delta, rate, ATC_AXIS + 1);
+	THECONVEYOR->wait_for_idle();
+
+	atc_homing = false;
+	return !THEKERNEL->is_halted();
+}
+
+// Returns true if the ATC is now at the clamp stop and marked clamped.
+bool ATCHandler::home_clamp()
 {
 	THEKERNEL->streams->printf("Homing atc...\n");
     // First wait for the queue to be empty
     THECONVEYOR->wait_for_idle();
 
-    atc_home_info.triggered = false;
     atc_home_info.clamp_status = UNHOMED;
-    debounce = 0;
-    atc_homing = true;
 
-    // home atc
-	float delta[ATC_AXIS + 1];
-	for (size_t i = 0; i <= ATC_AXIS; i++) delta[i] = 0;
-	delta[ATC_AXIS]= atc_home_info.max_travel; // we go the max
-	THEROBOT->delta_move(delta, atc_home_info.homing_rate, ATC_AXIS + 1);
-	// wait for it
-	THECONVEYOR->wait_for_idle();
-	if(THEKERNEL->is_halted()) return;
+    // Already on the switch: do not drive further into it
+    if (!atc_home_info.pin.get()) {
+        if (!move_atc(atc_home_info.max_travel, atc_home_info.homing_rate, true)) return false;
 
-	atc_homing = false;
-
-    if (!atc_home_info.triggered) {
-        THEKERNEL->set_halt_reason(ATC_HOME_FAIL);
-		THEKERNEL->streams->printf("ERROR: Homing atc failed - check the atc max travel settings\n");
-        THEKERNEL->call_event(ON_HALT, nullptr);
-        return;
-    } else {
-    	THEROBOT->reset_position_from_current_actuator_position();
+        if (!atc_home_info.triggered) {
+            THEKERNEL->set_halt_reason(ATC_HOME_FAIL);
+            THEKERNEL->streams->printf("ERROR: Homing atc failed - check the atc max travel settings\n");
+            THEKERNEL->call_event(ON_HALT, nullptr);
+            return false;
+        }
+        THEROBOT->reset_position_from_current_actuator_position();
     }
 
-    // Move back
-	for (size_t i = 0; i <= ATC_AXIS; i++) delta[i] = 0;
-	delta[ATC_AXIS] = -atc_home_info.retract; // we go to retract position
-	THEROBOT->delta_move(delta, atc_home_info.homing_rate, ATC_AXIS + 1);
-	// wait for it
-	THECONVEYOR->wait_for_idle();
-	if(THEKERNEL->is_halted()) return;
+    // Move back to the retract position
+    if (!move_atc(-atc_home_info.retract, atc_home_info.homing_rate, false)) return false;
 
 	atc_home_info.clamp_status = CLAMPED;
 	THEKERNEL->streams->printf("ATC homed!\r\n");
-
+	return true;
 }
 
 void ATCHandler::clamp_tool()
 {
-	if (atc_home_info.clamp_status == CLAMPED) {
+	// First wait for the queue to be empty
+	THECONVEYOR->wait_for_idle();
+
+	// On the switch: this is the clamp stop, do not drive further into it.
+	// Without a retract this already is the clamped position.
+	if (atc_home_info.pin.get()) {
+		if (atc_home_info.clamp_status == CLAMPED && atc_home_info.retract <= 0) {
+			THEKERNEL->streams->printf("Already clamped!\n");
+			return;
+		}
+		if (!move_atc(-atc_home_info.retract, atc_home_info.homing_rate, false)) return;
+		atc_home_info.clamp_status = CLAMPED;
+		THEKERNEL->streams->printf("ATC clamped!\r\n");
+		return;
+	}
+
+	// With a retract, the clamped position is short of the switch. Without one
+	// it is on the switch, so an open switch means the position is not known.
+	if (atc_home_info.clamp_status == CLAMPED && atc_home_info.retract > 0) {
 		THEKERNEL->streams->printf("Already clamped!\n");
 		return;
 	}
-	if (atc_home_info.clamp_status == UNHOMED) {
+	if (atc_home_info.clamp_status != LOOSED) {
 		home_clamp();
 		return;
 	}
 
-    // First wait for the queue to be empty
-    THECONVEYOR->wait_for_idle();
+	if (!move_atc(atc_home_info.action_dist, atc_home_info.homing_rate, true)) return;
 
-	float delta[ATC_AXIS + 1];
-	for (size_t i = 0; i <= ATC_AXIS; i++) delta[i] = 0;
-	delta[4] = atc_home_info.action_dist;
-	THEROBOT->delta_move(delta, atc_home_info.homing_rate, ATC_AXIS + 1);
-	// wait for it
-	THECONVEYOR->wait_for_idle();
-	if(THEKERNEL->is_halted()) return;
+	if (atc_home_info.triggered) {
+		// The switch stopped the move, so the planner must follow the real position
+		THEROBOT->reset_axis_position(STEPPER[ATC_AXIS]->get_current_position(), ATC_AXIS);
+		if (!move_atc(-atc_home_info.retract, atc_home_info.homing_rate, false)) return;
+	} else if (atc_home_info.retract <= 0 && !atc_home_info.pin.get()) {
+		// The move ended short of the switch, find it
+		home_clamp();
+		return;
+	}
 
 	// change clamp status
 	atc_home_info.clamp_status = CLAMPED;
@@ -2215,16 +2242,19 @@ void ATCHandler::clamp_tool()
 
 void ATCHandler::loose_tool()
 {
-	if (atc_home_info.clamp_status == LOOSED) {
+	// First wait for the queue to be empty
+	THECONVEYOR->wait_for_idle();
+
+	if (atc_home_info.clamp_status == LOOSED && !atc_home_info.pin.get()) {
 		THEKERNEL->streams->printf("Already loosed!\n");
 		return;
 	}
-	if (atc_home_info.clamp_status == UNHOMED) {
-		home_clamp();
-	}
 
-	// First wait for the queue to be empty
-    THECONVEYOR->wait_for_idle();
+	// Loosed with the switch active is contradictory, so the position is
+	// not known either.
+	if (atc_home_info.clamp_status == UNHOMED || atc_home_info.clamp_status == LOOSED) {
+		if (!home_clamp()) return;
+	}
 
 	float delta[ATC_AXIS + 1];
 	for (size_t i = 0; i <= ATC_AXIS; i++) delta[i] = 0;
@@ -2233,6 +2263,15 @@ void ATCHandler::loose_tool()
 	// wait for it
 	THECONVEYOR->wait_for_idle();
 	if(THEKERNEL->is_halted()) return;
+
+	if (atc_home_info.pin.get()) {
+		// The position is no longer known, so the next clamp action homes again
+		atc_home_info.clamp_status = UNHOMED;
+		THEKERNEL->set_halt_reason(ATC_UNCLAMP_FAIL);
+		THEKERNEL->streams->printf("ERROR: ATC unclamp failed - the ATC switch is still active\n");
+		THEKERNEL->call_event(ON_HALT, nullptr);
+		return;
+	}
 
 	// change clamp status
 	atc_home_info.clamp_status = LOOSED;
