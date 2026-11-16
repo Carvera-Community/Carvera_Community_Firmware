@@ -691,6 +691,38 @@
         }
       }
     },
+    "G40": {
+      "type": "gcode",
+      "description": "Cancel cutter compensation. Finishes moves still held for lookahead, then motion follows the programmed path.",
+      "parameters": {},
+      "notes": "Also clears an XY offset held across G18/G19. A halt cancels compensation."
+    },
+    "G41": {
+      "type": "gcode",
+      "description": "Cutter compensation on, tool to the left of travel. Requires G17 and G90.",
+      "parameters": {
+        "D": {
+          "required": false,
+          "description": "Nominal cutter diameter. If omitted, the diameter stored by M493.3 is used. Stored wear is added either way, and the sum must be greater than 0.",
+          "default": null,
+          "unit": "mm"
+        }
+      },
+      "notes": "The first moves are held until the corner can be offset; G40 runs what remains. G2/G3 must use I/J. R, A, or an inward arc no larger than the tool radius halts and cancels compensation. G18/G19 hold the current XY offset until G17. G10, G53, G92, a workspace or distance-mode change, and M3, M4, M5, M6, and M30 also halt and cancel it."
+    },
+    "G42": {
+      "type": "gcode",
+      "description": "Cutter compensation on, tool to the right of travel. Requires G17 and G90.",
+      "parameters": {
+        "D": {
+          "required": false,
+          "description": "Nominal cutter diameter. If omitted, the diameter stored by M493.3 is used. Stored wear is added either way, and the sum must be greater than 0.",
+          "default": null,
+          "unit": "mm"
+        }
+      },
+      "notes": "The first moves are held until the corner can be offset; G40 runs what remains. G2/G3 must use I/J. R, A, or an inward arc no larger than the tool radius halts and cancels compensation. G18/G19 hold the current XY offset until G17. G10, G53, G92, a workspace or distance-mode change, and M3, M4, M5, M6, and M30 also halt and cancel it."
+    },
     "G53": {
       "type": "gcode",
       "description": "Next move uses machine coordinates. Must be alone or the first G code on the line, followed by G0/G1.",
@@ -775,7 +807,7 @@
           "description": "Target or offset on A (rotary), if present.",
           "default": null
         }
-      }
+        }
     },
     "G92.1": {
       "type": "gcode",
@@ -816,7 +848,7 @@
           "description": "With A, take the short rotation onto that position.",
           "default": null
         }
-      }
+        }
     },
     "G93": {
       "type": "gcode",
@@ -849,7 +881,7 @@
           "unit": "rpm",
           "default_source": "spindle.default_rpm"
         }
-      }
+        }
     },
     "M4": {
       "type": "mcode",
@@ -862,7 +894,7 @@
           "unit": "rpm",
           "default_source": "spindle.default_rpm"
         }
-      }
+        }
     },
     "M5": {
       "type": "mcode",
@@ -917,7 +949,7 @@
           "default": null,
           "unit": "mm"
         }
-      }
+        }
     },
     "M7": {
       "type": "mcode",
@@ -1021,7 +1053,7 @@
           "description": "File to delete when used as an SD remove command.",
           "default": null
         }
-      }
+        }
     },
     "M32": {
       "type": "mcode",
@@ -3167,10 +3199,10 @@
     },
     "M493.3": {
       "type": "mcode",
-      "description": "Set TLO directly.",
+      "description": "Set tool length, stored cutter diameter, or diameter wear.",
       "parameters": {
         "Z": {
-          "required": true,
+          "required": false,
           "description": "TLO value.",
           "default": null,
           "unit": "mm"
@@ -3180,8 +3212,25 @@
           "description": "Set tool length from the current Z, as a height above Z0.",
           "default": null,
           "unit": "mm"
+        },
+        "D": {
+          "required": false,
+          "description": "Stored nominal cutter diameter used by G41/G42 when they omit D. Must be greater than 0.",
+          "default": null,
+          "unit": "mm"
+        },
+        "W": {
+          "required": false,
+          "description": "Diameter wear added to the nominal diameter when G41/G42 starts. May be negative.",
+          "default": null,
+          "unit": "mm"
         }
       }
+    },
+    "M493.4": {
+      "type": "mcode",
+      "description": "Report tool length, stored cutter diameter, diameter wear, and the tool-setter position.",
+      "parameters": {}
     },
     "M493.5": {
       "type": "mcode",
