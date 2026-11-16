@@ -329,20 +329,31 @@ try_again:
 								if (gcode->has_letter('P')) {
 									float final_value = gcode->get_value('P');
 									size_t ppos = single_command.find_first_of("P");
-									if (ppos == string::npos || ppos + 1 >= single_command.length()) {
+									string str;
+									if (ppos != string::npos && ppos + 1 < single_command.length()) {
+										str = single_command.substr(ppos + 1);
+									}
+									str += possible_command;
+									// The received line still has its line ending. Drop it so the expression and value stay on one line.
+									while (!str.empty() && (str.back() == '\n' || str.back() == '\r')) {
+										str.pop_back();
+									}
+									if (str.empty()) {
 										THEKERNEL->streams->printf("no value for M118.1 command\r\n");
 										delete gcode;
 										return;
 									}
-									string str = single_command.substr(ppos + 1);
-									str += possible_command;
-									THEKERNEL->streams->printf(" %s = %.3f \r\n", str.c_str(), final_value); // the space at the start is important for variable displays
+									THEKERNEL->streams->printf("%s = %.3f\r\n", str.c_str(), final_value);
 									delete gcode;
 									return;
 								}
 							}
-							
+
 							string str= single_command.substr(4) + possible_command;
+							// The received line still has its line ending. Drop it so the message stays on one line.
+							while (!str.empty() && (str.back() == '\n' || str.back() == '\r')) {
+								str.pop_back();
+							}
 							delete gcode;
 							THEKERNEL->streams->printf("%s \r\n", str.c_str());
 							return;
