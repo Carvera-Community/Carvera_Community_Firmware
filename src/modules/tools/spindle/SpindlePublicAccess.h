@@ -7,6 +7,7 @@
 
 #define pwm_spindle_control_checksum		CHECKSUM("pwm_spindle_control")
 #define get_spindle_status_checksum    CHECKSUM("get_spindle_status")
+#define get_spindle_angle_checksum     CHECKSUM("get_spindle_angle")
 #define turn_off_spindle_checksum    CHECKSUM("turn_off_spindle_status")
 
 struct spindle_status {
@@ -15,6 +16,12 @@ struct spindle_status {
     float target_rpm;
     float current_pwm_value;
 	float factor;
+    // Set by a spindle that implements M19 orientation. Only the Tonghang spindle does today.
+    bool can_orient;
+    // When set, additional_metrics is a complete status field, including its leading '|'.
+    // The spindle chooses the name and the values. Empty when the spindle has nothing to add.
+    bool has_additional_metrics;
+    char additional_metrics[64];
 };
 
 #endif

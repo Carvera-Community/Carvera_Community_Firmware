@@ -28,6 +28,15 @@ class USBHostCDC {
  public:
   USBHostCDC();
 
+  /** Serial settings used by SET_LINE_CODING during init().
+   *  stop_bits: 0 = 1 stop bit, 2 = 2 stop bits.
+   *  parity: 0 = none, 1 = odd, 2 = even.
+   *  Defaults are 115200 8N1. Call this before init(). */
+  void set_serial(uint32_t baud, uint8_t stop_bits, uint8_t parity, uint8_t data_bits = 8);
+
+  /** Send SET_LINE_CODING again after init(), using the current set_serial() values. */
+  bool apply_serial();
+
   /** Blocking setup path: initialise the host, enumerate the device, and
    *  configure the CDC interface. The board-specific VBUS-enable pin must
    *  already be asserted.
@@ -88,6 +97,11 @@ class USBHostCDC {
   uint32_t _xfer_start;
   uint32_t _xfer_max_len;
   uint32_t _rx_actual;
+
+  uint32_t _baud;
+  uint8_t _stop_bits;
+  uint8_t _parity;
+  uint8_t _data_bits;
 };
 
 #endif  // USBHOST_CDC_H
