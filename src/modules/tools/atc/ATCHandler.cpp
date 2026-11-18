@@ -3322,10 +3322,10 @@ void ATCHandler::on_gcode_received(void *argument)
 
 			}
 		} else if ( gcode->m == 887 ) {
-			THEROBOT->override_homed_check(false);
+			THEROBOT->override_homed_check(true);
 			THEKERNEL->streams->printf("Home Check Disabled\n");
 		} else if ( gcode->m == 888 ) {
-			THEROBOT->override_homed_check(true);
+			THEROBOT->override_homed_check(false);
 			THEKERNEL->streams->printf("Home Check Enabled\n");
 		} else if ( gcode->m == 889 ) {
 			// M889 - Display current tool configuration
