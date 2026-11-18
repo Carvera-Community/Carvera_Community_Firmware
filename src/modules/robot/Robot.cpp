@@ -146,7 +146,7 @@ Robot::Robot()
     this->n_motors= 0;
     memset(this->sin_r, 0, sizeof sin_r);
     memset(this->r, 0, sizeof r);
-    
+
     // Initialize cutter compensation preprocessor
     this->compensation_preprocessor = new CompensationPreprocessor();
     this->comp_suspended = false;
@@ -176,14 +176,14 @@ void Robot::on_module_loaded()
     }
     else
     {
-        this->current_wcs = 0;  
+        this->current_wcs = 0;
     }
 
     // init
     for (unsigned int i = 0; i < 9UL; i++){
         this->cos_r[i] = 1;
     }
-   
+
     // load wcs data from eeprom
     for (int wcs_index = 0; wcs_index < 6; wcs_index++){
         wcs_offsets[wcs_index] = wcs_t(THEKERNEL->eeprom_data->WCScoord[wcs_index][0] , THEKERNEL->eeprom_data->WCScoord[wcs_index][1] , THEKERNEL->eeprom_data->WCScoord[wcs_index][2] , THEKERNEL->eeprom_data->WCScoord[wcs_index][3],0);
@@ -223,7 +223,7 @@ void Robot::load_config()
     if (!THEKERNEL->config->is_config_cache_loaded()) {
         return;
     }
-    
+
     // Arm solutions are used to convert positions in millimeters into position in steps for each stepper motor.
     // While for a cartesian arm solution, this is a simple multiplication, in other, less simple cases, there is some serious math to be done.
     // To make adding those solution easier, they have their own, separate object.
@@ -815,13 +815,13 @@ void Robot::on_gcode_received(void *argument)
         THEKERNEL->call_event(ON_HALT, nullptr);
         return;
     }
-    
+
     // Buffer commands when compensation is ON
-    COMPENSATION_TRACE_PRINTF(gcode->stream, ">>BUFFER: %s (count=%d, comp=%s)\n", 
-        gcode->get_command(), 
+    COMPENSATION_TRACE_PRINTF(gcode->stream, ">>BUFFER: %s (count=%d, comp=%s)\n",
+        gcode->get_command(),
         compensation_preprocessor->get_buffer_count(),
         compensation_preprocessor->is_active() ? "ON" : "OFF");
-        
+
     Gcode* output = compensation_preprocessor->buffer_gcode(gcode);
 
     if (output != nullptr) {
@@ -908,7 +908,7 @@ void Robot::process_buffered_command(Gcode *gcode)
                             this->r[n] = gcode->get_value('R');
                             this->cos_r[n] = cos(this->r[n] * (PI / 180.0));
                             this->sin_r[n] = sin(this->r[n] * (PI / 180.0));
-                        } 
+                        }
                         if(gcode->get_int('L') == 20) {
                             // this makes the current machine position (less compensation transform) the offset
                             // get current position in WC
@@ -925,16 +925,16 @@ void Robot::process_buffered_command(Gcode *gcode)
                                 x = machine_position[X_AXIS] - this->cos_r[n] * std::get<X_AXIS>(pos) + this->sin_r[n] * to_millimeters(gcode->get_value('Y'));
                                 y = machine_position[Y_AXIS] - this->cos_r[n] * to_millimeters(gcode->get_value('Y')) - this->sin_r[n] * std::get<X_AXIS>(pos);
                             }
-                            
+
                             if(gcode->has_letter('Z')) {
                                 z = machine_position[Z_AXIS] - to_millimeters(gcode->get_value('Z')) - std::get<Z_AXIS>(tool_offset);
                             }
-                            
+
                             if(gcode->has_letter('A')) {
                                 //a -= to_millimeters(gcode->get_value('A')) - std::get<A_AXIS>(pos);
                                 a -= gcode->get_value('A') - std::get<A_AXIS>(pos);
                             }
-                            
+
                             if(gcode->has_letter('B')) {
                                 //b -= to_millimeters(gcode->get_value('B')) - std::get<B_AXIS>(pos);
                                 b -= gcode->get_value('B') - std::get<B_AXIS>(pos);
@@ -961,7 +961,7 @@ void Robot::process_buffered_command(Gcode *gcode)
                             }*/
                         }
                         wcs_offsets[n] = wcs_t(x, y, z, a, b);
-                        
+
                 		// save wcs data to eeprom
                         if (n <= 5) {
                             THEKERNEL->eeprom_data->WCScoord[n][0] = x;
@@ -980,7 +980,7 @@ void Robot::process_buffered_command(Gcode *gcode)
                 break;
 
             case 17:
-                // If compensation was frozen by a G18/G19 plane switch, 
+                // If compensation was frozen by a G18/G19 plane switch,
                 // resume live solving here. This is NOT full mixed-plane
                 // compensation — it just restores the live G17 solver after the switch.
                 if (this->comp_suspended) {
@@ -1012,7 +1012,7 @@ void Robot::process_buffered_command(Gcode *gcode)
                 if (compensation_preprocessor->is_active()) {
                     // Freeze the current compensation offset and
                     // carry it as a fixed XY translation through the G18/G19 plane
-                    // Live solving resumes on G17. 
+                    // Live solving resumes on G17.
                     // Keeps offset constant during Z-dominant moves(lead ins);
                     this->suspended_comp_type   = compensation_preprocessor->get_comp_type();
                     this->suspended_comp_radius = compensation_preprocessor->get_comp_radius();
@@ -1051,7 +1051,7 @@ void Robot::process_buffered_command(Gcode *gcode)
                 return;
             }
             case 21: this->inch_mode = false;   break;
-            
+
             // Cutter compensation commands
             case 40: // G40 - Compensation Off
             {
@@ -1091,7 +1091,7 @@ void Robot::process_buffered_command(Gcode *gcode)
                 this->comp_suspended = false;
             }
             break;
-                
+
             case 41: // G41 - Compensation Left
             case 42: // G42 - Compensation Right
             {
@@ -1120,14 +1120,14 @@ void Robot::process_buffered_command(Gcode *gcode)
                 }
                 COMPENSATION_TRACE_PRINTF(gcode->stream, ">>G%d: resolved radius=%.3f\n", gcode->g, radius);
                 CompensationType type = (gcode->g == 41) ? CompensationType::LEFT : CompensationType::RIGHT;
-                COMPENSATION_TRACE_PRINTF(gcode->stream, ">>G%d: Compensation %s, radius=%.3f\n", 
+                COMPENSATION_TRACE_PRINTF(gcode->stream, ">>G%d: Compensation %s, radius=%.3f\n",
                     gcode->g, (type == CompensationType::LEFT ? "LEFT" : "RIGHT"), radius);
 
                 // Start a fresh metrics window for this compensation run.
 #if CUTTER_COMPENSATION_METRICS_ENABLED
                 compensation_preprocessor->reset_load_balance_metrics();
 #endif
-                
+
                 // CRITICAL: Initialize uncompensated position to current WCS position
                 // Must convert from MCS to WCS because G-code coordinates are in WCS
                 wcs_t wcs_pos = mcs2wcs(machine_position);
@@ -1193,18 +1193,18 @@ void Robot::process_buffered_command(Gcode *gcode)
 								ma = ma - deltwa;
 								THEROBOT->reset_axis_position(ma, A_AXIS);
 							}
-                    	} else if(gcode->has_letter('R')){                    		 
+                    	} else if(gcode->has_letter('R')){
                     		float x, y, z, a, b;
-                        	std::tie(x, y, z, a, b) = wcs_offsets[current_wcs];    
+                        	std::tie(x, y, z, a, b) = wcs_offsets[current_wcs];
                     		// first shrink A value
                     		float ma = actuators[A_AXIS]->get_current_position();
                     		ma = fmodf(ma, 360.0);
                     		THEROBOT->reset_axis_position(ma, A_AXIS);
-                    		
+
                     		// second cal the target actuators[A_AXIS]
                     		float mb = gcode->get_value('A') + a;
                     		float mc = fmodf(mb, 360.0);
-                    		
+
                     		float delta[A_AXIS+1];
                     		for (size_t j = 0; j <= A_AXIS; ++j) delta[j]= 0;
                     		delta[A_AXIS]= mc - ma; // we go the max
@@ -1212,7 +1212,7 @@ void Robot::process_buffered_command(Gcode *gcode)
                     		// wait for A moving
         					THECONVEYOR->wait_for_idle();
                     		// third
-                    		THEROBOT->reset_axis_position(gcode->get_value('A')+a, A_AXIS);  
+                    		THEROBOT->reset_axis_position(gcode->get_value('A')+a, A_AXIS);
                             if (current_wcs <= 5) {
                                 THEKERNEL->eeprom_data->WCScoord[current_wcs][0] = x;
                                 THEKERNEL->eeprom_data->WCScoord[current_wcs][1] = y;
@@ -1220,7 +1220,7 @@ void Robot::process_buffered_command(Gcode *gcode)
                                 THEKERNEL->eeprom_data->WCScoord[current_wcs][3] = a;
                                 THEKERNEL->write_eeprom_data();
                             }
-                    		
+
                     	} else {
                         	THEROBOT->reset_axis_position(gcode->get_value('A'), A_AXIS);
                     	}
@@ -1636,7 +1636,7 @@ void Robot::process_buffered_command(Gcode *gcode)
     } else {
         is_g123= false;
     }
-    
+
     current_motion_mode = motion_mode;
 
     next_command_is_MCS = false; // must be on same line as G0 or G1
@@ -1657,7 +1657,7 @@ void Robot::rotate(float *x, float *y, float *z)
     float y_old = *y;
     *x = x_old * cos_r[current_wcs] - y_old * sin_r[current_wcs];
     *y = x_old * sin_r[current_wcs] + y_old * cos_r[current_wcs];
-}   
+}
 
 void Robot::unrotate(float *x, float *y, float *z)
 {
@@ -1709,8 +1709,8 @@ void Robot::process_move(Gcode *gcode, enum MOTION_MODE_T motion_mode)
             }
             /*
             While compensation offset is frozen for a G18/G19 plane movements, carry the frozen XY
-            offset as a fixed translation. Only explicit G17 plane gets the offset added / modified. 
-            This is to help with typical multiplane lead in / out styles from CAM software. 
+            offset as a fixed translation. Only explicit G17 plane gets the offset added / modified.
+            This is to help with typical multiplane lead in / out styles from CAM software.
             */
             if (this->comp_suspended) {
                 if (gcode->has_letter('X')) param[X_AXIS] += this->comp_frozen_offset[X_AXIS];
@@ -1724,15 +1724,15 @@ void Robot::process_move(Gcode *gcode, enum MOTION_MODE_T motion_mode)
             // rotate the parameters
             // param[x-z] after rotation is the vector from wcs origin to target in the machine coordinate system
             rotate(&param[X_AXIS], &param[Y_AXIS], &param[Z_AXIS]);
-            
+
             target[X_AXIS] = ROUND_NEAR_HALF(std::get<X_AXIS>(wcs_offsets[current_wcs]) + param[X_AXIS]);
             target[Y_AXIS] = ROUND_NEAR_HALF(std::get<Y_AXIS>(wcs_offsets[current_wcs]) + param[Y_AXIS]);
             target[Z_AXIS] = ROUND_NEAR_HALF(std::get<Z_AXIS>(wcs_offsets[current_wcs]) + param[Z_AXIS]);
 
-                        
+
             arc_target_unrotated[X_AXIS] = target[X_AXIS] - machine_position[X_AXIS];
             arc_target_unrotated[Y_AXIS] = target[Y_AXIS] - machine_position[Y_AXIS];
-            arc_target_unrotated[Z_AXIS] = target[Z_AXIS] - machine_position[Z_AXIS];            
+            arc_target_unrotated[Z_AXIS] = target[Z_AXIS] - machine_position[Z_AXIS];
             unrotate(&arc_target_unrotated[X_AXIS], &arc_target_unrotated[Y_AXIS], &arc_target_unrotated[Z_AXIS]);
             arc_target_unrotated[X_AXIS] = ROUND_NEAR_HALF(arc_target_unrotated[X_AXIS] + machine_position[X_AXIS]);
             arc_target_unrotated[Y_AXIS] = ROUND_NEAR_HALF(arc_target_unrotated[Y_AXIS] + machine_position[Y_AXIS]);
@@ -1814,7 +1814,7 @@ void Robot::process_move(Gcode *gcode, enum MOTION_MODE_T motion_mode)
             if(!isnan(param[A_AXIS])) {
                 target[A_AXIS]= ROUND_NEAR_HALF(param[A_AXIS] + std::get<A_AXIS>(wcs_offsets[current_wcs]) - std::get<A_AXIS>(g92_offset) + std::get<A_AXIS>(tool_offset));
             }
-                	                	
+
             if(!isnan(param[B_AXIS])) {
                 target[B_AXIS]= ROUND_NEAR_HALF(param[B_AXIS] + std::get<B_AXIS>(wcs_offsets[current_wcs]) - std::get<B_AXIS>(g92_offset) + std::get<B_AXIS>(tool_offset));
 
@@ -1831,7 +1831,7 @@ void Robot::process_move(Gcode *gcode, enum MOTION_MODE_T motion_mode)
             if(!isnan(param[i])) target[i] = ROUND_NEAR_HALF(param[i]);
         }
     }
-    
+
     #endif
 
     // G0 is non-modal for feed: without F use default seek rate; F on G0 applies only to that line
@@ -2133,9 +2133,9 @@ bool Robot::append_milestone(const float target[], float feed_rate, unsigned int
         for (int i = 0; i <= Z_AXIS; ++i) {
             if(!is_homed(i)) continue;
             const float minimum = i == Y_AXIS ? effective_y_min : soft_endstop_min[i];
-            if( 
+            if(
                 ( (!isnan(minimum) && transformed_target[i] < minimum) && deltas[i] < 0 )
-                || 
+                ||
                 ( (!isnan(soft_endstop_max[i]) && transformed_target[i] > soft_endstop_max[i]) && deltas[i] > 0 )
             ) {
                 if(soft_endstop_halt && !THECONVEYOR->is_continuous_mode()) {
@@ -2271,7 +2271,7 @@ bool Robot::append_milestone(const float target[], float feed_rate, unsigned int
 			float abs_y_wcs = fabsf(std::get<Y_AXIS>(curr_wpos));
 			float abs_z_wcs = fabsf(std::get<Z_AXIS>(curr_wpos));
 			float rotation_radius = (abs_y_wcs > 0.00001 || abs_z_wcs > 0.00001) ? sqrtf(powf(abs_y_wcs, 2) + powf(abs_z_wcs, 2)) : 0;
-            
+
             // FIX: Changed 1.0 to 0.1 to allow small radius compensation
 			if (rotation_radius > 0.1) {
 				a_perimeter = PI * 2 * rotation_radius;
@@ -2294,12 +2294,12 @@ bool Robot::append_milestone(const float target[], float feed_rate, unsigned int
 				// A axis move along with other axis
                 // Fix: Speed UP or DOWN to match surface speed
 				float mm_per_sec = actuator_rate * a_perimeter / 360;
-                
+
                 // Allow compensation in BOTH directions if the difference is significant
 				if (!this->inverse_time_mode && fabsf(mm_per_sec - rate_mm_s) > 0.001 && mm_per_sec > 0.00001) {
                     // Calculate ratio to match target surface speed
                     float ratio = rate_mm_s / mm_per_sec;
-                    
+
 					actuator_rate *= ratio;
 					rate_mm_s *= ratio;
 					isecs = d / rate_mm_s;
@@ -2519,7 +2519,7 @@ bool Robot::append_arc(Gcode * gcode, const float target[], const float rotated_
     // Scary math.
     // We need to use arc_milestone here to get accurate arcs as previous machine_position may have been skipped due to small movements
     // Center of the arc
-    arc_center[this->plane_axis_0] = this->arc_milestone[this->plane_axis_0] + offset_rotated[this->plane_axis_0]; 
+    arc_center[this->plane_axis_0] = this->arc_milestone[this->plane_axis_0] + offset_rotated[this->plane_axis_0];
     arc_center[this->plane_axis_1] = this->arc_milestone[this->plane_axis_1] + offset_rotated[this->plane_axis_1];
     arc_center[this->plane_axis_2] = this->arc_milestone[this->plane_axis_2] + offset_rotated[this->plane_axis_2];
     // Linear vector from start to target
@@ -2527,10 +2527,10 @@ bool Robot::append_arc(Gcode * gcode, const float target[], const float rotated_
     // Rotate the linear vector here already
     rotate(&linear_vector[0], &linear_vector[1], &linear_vector[2]);
     // Radius vector from center to start position
-    arc_start_vector[this->plane_axis_0] = -offset[this->plane_axis_0]; 
+    arc_start_vector[this->plane_axis_0] = -offset[this->plane_axis_0];
     arc_start_vector[this->plane_axis_1] = -offset[this->plane_axis_1];
     // Radius vector from center to target position
-    arc_target_vector[this->plane_axis_0] = target[this->plane_axis_0] - this->arc_milestone[this->plane_axis_0] - offset[this->plane_axis_0]; 
+    arc_target_vector[this->plane_axis_0] = target[this->plane_axis_0] - this->arc_milestone[this->plane_axis_0] - offset[this->plane_axis_0];
     arc_target_vector[this->plane_axis_1] = target[this->plane_axis_1] - this->arc_milestone[this->plane_axis_1] - offset[this->plane_axis_1];
 
     float angular_travel = 0;
@@ -2546,7 +2546,7 @@ bool Robot::append_arc(Gcode * gcode, const float target[], const float rotated_
         // CCW angle between position and target from circle center. Only one atan2() trig computation required.
         // Only run if not a full circle or angular travel will incorrectly result in 0.0f
         angular_travel = atan2f(arc_start_vector[this->plane_axis_0] * arc_target_vector[this->plane_axis_1] - arc_start_vector[this->plane_axis_1] * arc_target_vector[this->plane_axis_0], arc_start_vector[this->plane_axis_0] * arc_target_vector[this->plane_axis_0] + arc_start_vector[this->plane_axis_1] * arc_target_vector[this->plane_axis_1]);
-        
+
         if (plane_axis_2 == Y_AXIS) { is_clockwise = !is_clockwise; }  //Math for XZ plane is reverse of other 2 planes
         if (is_clockwise) { // adjust angular_travel to be in the range of -2pi to 0 for clockwise arcs
            if (angular_travel > 0) { angular_travel -= (2 * PI); }
@@ -2656,7 +2656,7 @@ bool Robot::append_arc(Gcode * gcode, const float target[], const float rotated_
                 arc_start_vector[this->plane_axis_1] = -offset[this->plane_axis_0] * sin_Ti - offset[this->plane_axis_1] * cos_Ti;
                 count = 0;
             }
-            
+
             memcpy(arc_target_vector, arc_start_vector, 3*sizeof(float));
             rotate(&arc_target_vector[0], &arc_target_vector[1], &arc_target_vector[2]);
             arc_target[this->plane_axis_0] = arc_center[this->plane_axis_0] + arc_target_vector[this->plane_axis_0] + i * linear_vector[this->plane_axis_0];

@@ -216,8 +216,8 @@ class Robot : public Module {
         float rotary_clearance_y_min;
 
         uint8_t n_motors;                                    //count of the motors/axis registered
-        
-       
+
+
         CompensationPreprocessor* compensation_preprocessor;
 
         // Compensation suspend state — set when G18/G19 is issued + comp is active,
