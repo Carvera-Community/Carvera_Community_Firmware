@@ -2811,6 +2811,17 @@ void Robot::override_homed_check(bool home_override_value) {
     return;
 }
 
+void Robot::report_homing_status()
+{
+    THEKERNEL->streams->printf(
+        "Initial homing status: X:%s Y:%s Z:%s OVERRIDE:%s\n",
+        this->is_homed(X_AXIS) ? "YES" : "NO",
+        this->is_homed(Y_AXIS) ? "YES" : "NO",
+        this->is_homed(Z_AXIS) ? "YES" : "NO",
+        this->home_override ? "YES" : "NO"
+    );
+}
+
 void Robot::set_tool_not_calibrated(bool value)
 {
     tool_not_calibrated = value;

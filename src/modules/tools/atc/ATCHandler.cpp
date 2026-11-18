@@ -3375,6 +3375,8 @@ void ATCHandler::on_gcode_received(void *argument)
 			this->remove_custom_tool_slot(tool_num);
 			this->save_custom_tool_slots_to_file();
 #endif
+		} else if ( gcode->m == 892 ) {
+			THEROBOT->report_homing_status();
 		}
 
     } else if (gcode->has_g && gcode->g == 28 && gcode->subcode == 0) {

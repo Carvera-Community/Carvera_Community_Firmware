@@ -3824,6 +3824,11 @@
         }
       }
     },
+    "M892": {
+      "type": "mcode",
+      "description": "Reports the machine initial home status for each axis, and the homed-before-move check status",
+      "parameters": {}
+    },
     "M940": {
       "type": "mcode",
       "description": "Report CANopen configuration, bus state, and remote-device status.",

@@ -83,6 +83,7 @@ class Robot : public Module {
 
         bool is_homed_all_axes();
         void override_homed_check(bool home_override_value);
+        void report_homing_status();
 
         // Cutter compensation state query (avoids exposing the preprocessor pointer)
         bool is_compensation_active() const;
