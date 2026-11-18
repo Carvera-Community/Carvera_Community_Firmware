@@ -1176,6 +1176,17 @@
         }
       }
     },
+    "M118.1": {
+      "type": "mcode",
+      "description": "Print an expression and its value on one line, as [expression] = value.",
+      "parameters": {
+        "P": {
+          "required": true,
+          "description": "Expression to evaluate and print.",
+          "default": null
+        }
+      }
+    },
     "M119": {
       "type": "mcode",
       "description": "Report endstop and probe pin states.",
