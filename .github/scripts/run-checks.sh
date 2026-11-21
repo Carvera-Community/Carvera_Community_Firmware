@@ -123,13 +123,18 @@ for script in "$ROOT"/check-*.sh; do
         echo "   ⚠️  Failed to create check run (API error). Check failed locally."
         CAN_CREATE_CHECK_RUNS=false  # Disable future attempts
       fi
-    else
+    fi
+    if [[ "$CAN_CREATE_CHECK_RUNS" != "true" ]]; then
       echo "   ℹ️  Check failed locally (check runs disabled due to permissions)."
+      echo "   Since check runs are disabled, here is the output of the '$title' run:"
+      echo "==================== $title log START"
+      echo "$output"
+      echo "==================== $title log END"
     fi
   fi
 done
 
-# --- Generate Job Summary --- 
+# --- Generate Job Summary ---
 summary_content="## Check Run Summary\n\n"
 
 # Add context about check run creation status
