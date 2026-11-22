@@ -1003,21 +1003,19 @@ void Robot::process_buffered_command(Gcode *gcode)
                 }
                 this->select_plane(X_AXIS, Y_AXIS, Z_AXIS);
                 break;
+            // Temporary until full G18/G19 compensation handling is implemented.
+            // Both planes share this handler and freeze the XY offset instead.
             case 18:
-                if (gcode->g == 18) this->select_plane(X_AXIS, Z_AXIS, Y_AXIS);
-                else this->select_plane(Y_AXIS, Z_AXIS, X_AXIS);
-                    // No break here to allow fall-through to case 19 allowing immediate compensation logic after plane switching.
-                    // This fallthrough code is intended to be a temporary measure until full G18, 19 compensation handling is implemented.
-            case 19:
+            case 19: {
+                // Drain compensated motion before changing plane. Buffered arcs still
+                // belong to the plane that was active when they were queued.
                 if (compensation_preprocessor->is_active()) {
                     // Freeze the current compensation offset and
                     // carry it as a fixed XY translation through the G18/G19 plane
-                    // Live solving resumes on G17. 
+                    // Live solving resumes on G17.
                     // Keeps offset constant during Z-dominant moves(lead ins);
                     this->suspended_comp_type   = compensation_preprocessor->get_comp_type();
                     this->suspended_comp_radius = compensation_preprocessor->get_comp_radius();
-                    // Flush remaining buffered XY moves so the machine is at the last fully
-                    // compensated point before the plane changes.
                     compensation_preprocessor->flush();
                     while (compensation_preprocessor->get_buffer_count() > 0) {
                         Gcode* flushed = compensation_preprocessor->get_compensated_gcode();
@@ -1041,7 +1039,10 @@ void Robot::process_buffered_command(Gcode *gcode)
                     THEKERNEL->streams->printf("INFO: G41/G42 compensation frozen for G%d plane "
                         "(offset carried as fixed translation; live compensation resumes on G17)\n", gcode->g);
                 }
+                if (gcode->g == 18) this->select_plane(X_AXIS, Z_AXIS, Y_AXIS);
+                else this->select_plane(Y_AXIS, Z_AXIS, X_AXIS);
                 break;
+            }
             // Inch mode is broken see https://github.com/Carvera-Community/Carvera_Community_Firmware/issues/209
             // case 20: this->inch_mode = true;   break;
             case 20: {
