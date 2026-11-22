@@ -1391,7 +1391,7 @@ void ATCHandler::fill_pick_scripts(int new_tool, bool clear_z) {
 
 }
 
-void ATCHandler::fill_cali_scripts(bool is_probe, bool clear_z, int repeat_count, bool measure_diameter,
+void ATCHandler::fill_cali_scripts(bool is_probe, bool clear_z, int repeat_count,
                                    int pending_tool) {
 	char buff[100];
 	if (!THEROBOT->is_homed_all_axes()) {

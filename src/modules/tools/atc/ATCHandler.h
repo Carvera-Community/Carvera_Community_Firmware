@@ -102,7 +102,7 @@ private:
     void fill_change_scripts(int new_tool, bool clear_z, int old_tool, bool wait_after_empty, uint8_t colletIndex, float custom_TLO, bool activate_tool = true);
     void fill_drop_scripts(int old_tool);
     void fill_pick_scripts(int new_tool, bool clear_z);
-    void fill_cali_scripts(bool is_probe, bool clear_z, int repeat_count = 1, bool measure_diameter = false, int pending_tool = -1);
+    void fill_cali_scripts(bool is_probe, bool clear_z, int repeat_count = 1, int pending_tool = -1);
 
     //
     void fill_manual_drop_scripts(int old_tool);
