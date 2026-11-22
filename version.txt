@@ -1,3 +1,6 @@
+[unreleased]
+- Changed: The A axis now homes after Z, X, and Y have finished homing. Previously it was homed at the same time as Z/X/Y which risked crashes.
+
 [2.3.0c-RC2]
 - Fixed: probe crash detection no longer stalls the machine
 - Fixed: M469.6 moves the probe between contacts on arcs around the artifact. Previously would crash on the chuck of the CA1/Z1.

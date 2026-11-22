@@ -32,6 +32,12 @@ class Endstops : public Module{
         using axis_bitmap_t = std::bitset<6>;
         void home(axis_bitmap_t a);
         void home_xy();
+        void probe_rotary_presence(axis_bitmap_t axes);
+        void fast_home_rotary(bool only_if_detected);
+        void retract_and_approach(axis_bitmap_t axes);
+        bool linear_endstops_triggered();
+        bool rotary_endstops_triggered();
+        void fail_home();
         void back_off_home(axis_bitmap_t axis);
         void move_to_origin(axis_bitmap_t axis);
         void on_get_public_data(void* argument);
