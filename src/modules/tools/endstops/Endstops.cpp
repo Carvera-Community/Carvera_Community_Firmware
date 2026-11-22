@@ -929,208 +929,224 @@ void Endstops::check_4th(char *data)
 		this->status = status;
 	}
 }
+void Endstops::fail_home()
+{
+    this->status = NOT_HOMING;
+    THEKERNEL->set_halt_reason(HOME_FAIL);
+    THEKERNEL->call_event(ON_HALT, nullptr);
+    THEROBOT->disable_segmentation = false;
+}
+
+bool Endstops::linear_endstops_triggered()
+{
+    // With deltas all three actuators move for a Z home, so every XYZ endstop must trip
+    // when at least one of XYZ was requested.
+    if(!(axis_to_home[X_AXIS] || axis_to_home[Y_AXIS] || axis_to_home[Z_AXIS])) return true;
+
+    for (size_t i = X_AXIS; i <= Z_AXIS; ++i) {
+        if((axis_to_home[i] || this->is_delta || this->is_rdelta) && !homing_axis[i].pin_info->triggered) {
+            return false;
+        }
+    }
+    return true;
+}
+
+bool Endstops::rotary_endstops_triggered()
+{
+    if(homing_axis.size() <= 3) return true;
+
+    for (size_t i = A_AXIS; i < homing_axis.size(); ++i) {
+        if(axis_to_home[i] && !homing_axis[i].pin_info->triggered && THEKERNEL->axis_is_on[i]) {
+            return false;
+        }
+    }
+    return true;
+}
+
+void Endstops::probe_rotary_presence(axis_bitmap_t axes)
+{
+    // The A/B/C trigger band is wide, so back off farther than a normal retract and see
+    // whether the switch releases. A switch that releases, or that was already open, means
+    // that axis is fitted.
+    if(homing_axis.size() <= 3 || axes.none()) return;
+
+    bool any = false;
+    for (size_t i = A_AXIS; i < homing_axis.size(); ++i) {
+        if(axes[i] && axis_to_home[i]) {
+            any = true;
+            break;
+        }
+    }
+    if(!any) return;
+
+    this->status = MOVING_BACK;
+    for (size_t i = A_AXIS; i < homing_axis.size(); ++i) {
+        if(!axes[i] || !axis_to_home[i]) continue;
+
+        float delta[i + 1];
+        for (size_t j = 0; j <= i; ++j) delta[j] = 0;
+        delta[i] = homing_axis[i].retract * 50; // retract*50 should clear the triggering gap
+        if(!homing_axis[i].home_direction) delta[i] = -delta[i];
+        THEROBOT->delta_move(delta, homing_axis[i].fast_rate, i + 1);
+        THECONVEYOR->wait_for_idle();
+
+        if(homing_axis[i].pin_info->pin.get()) {
+            for (size_t j = 0; j <= i; ++j) delta[j] = 0;
+            delta[i] = homing_axis[i].retract * 50;
+            if(!homing_axis[i].home_direction) delta[i] = -delta[i];
+            THEROBOT->delta_move(delta, homing_axis[i].fast_rate, i + 1);
+            THECONVEYOR->wait_for_idle();
+            if(!homing_axis[i].pin_info->pin.get()) {
+                THEKERNEL->axis_is_on[i] = true;
+            }
+        } else {
+            THEKERNEL->axis_is_on[i] = true;
+        }
+    }
+}
+
+void Endstops::fast_home_rotary(bool only_if_detected)
+{
+    if(homing_axis.size() <= 3) return;
+
+    this->status = MOVING_TO_ENDSTOP_FAST;
+    for (size_t i = A_AXIS; i < homing_axis.size(); ++i) {
+        if(!axis_to_home[i]) continue;
+        if(only_if_detected && !THEKERNEL->axis_is_on[i]) continue;
+
+        float delta[i + 1];
+        for (size_t j = 0; j <= i; ++j) delta[j] = 0;
+        delta[i] = homing_axis[i].max_travel;
+        if(homing_axis[i].home_direction) delta[i] = -delta[i];
+        THEROBOT->delta_move(delta, homing_axis[i].fast_rate, i + 1);
+        THECONVEYOR->wait_for_idle();
+    }
+}
+
+void Endstops::retract_and_approach(axis_bitmap_t axes)
+{
+    if(axes.none() || homing_axis.empty()) return;
+
+    float delta[homing_axis.size()];
+    for (size_t i = 0; i < homing_axis.size(); ++i) delta[i] = 0;
+
+    // Shared moves use the slowest feed rate of the axes selected for this cycle.
+    float feed_rate = homing_axis[X_AXIS].slow_rate;
+    bool moving = false;
+    for (auto& h : homing_axis) {
+        int c = h.axis_index;
+        if(axis_to_home[c]) feed_rate = std::min(h.slow_rate, feed_rate);
+        if(!axes[c]) continue;
+        delta[c] = h.retract;
+        if(!h.home_direction) delta[c] = -delta[c];
+        moving = true;
+    }
+    if(!moving) return;
+
+    if(!is_scara) {
+        // The fast seek stops short of the commanded distance when the endstop trips.
+        THEROBOT->reset_position_from_current_actuator_position();
+    }
+
+    this->status = MOVING_BACK;
+    THEROBOT->delta_move(delta, feed_rate, homing_axis.size());
+    THECONVEYOR->wait_for_idle();
+
+    this->status = MOVING_TO_ENDSTOP_SLOW;
+    for (auto& h : homing_axis) {
+        int c = h.axis_index;
+        if(axes[c]) {
+            delta[c] = h.retract * 2; // move further than the backoff so the switch trips cleanly
+            if(h.home_direction) delta[c] = -delta[c];
+        } else {
+            delta[c] = 0;
+        }
+    }
+    THEROBOT->delta_move(delta, feed_rate, homing_axis.size());
+    THECONVEYOR->wait_for_idle();
+
+    THEROBOT->reset_position_from_current_actuator_position();
+}
+
 void Endstops::home(axis_bitmap_t a)
 {
-	for (size_t i = X_AXIS; i < homing_axis.size(); ++i)
-	{
-		if (a[i]) THEKERNEL->axis_is_on[i] = false;
-	}
-	
-    // reset debounce counts for all endstops
+    for (size_t i = X_AXIS; i < homing_axis.size(); ++i) {
+        if(a[i]) THEKERNEL->axis_is_on[i] = false;
+    }
+
     for(auto& e : endstops) {
-       e->debounce= 0;
-       e->triggered= false;
+        e->debounce = 0;
+        e->triggered = false;
     }
 
-    if (is_scara) {
-        THEROBOT->disable_arm_solution = true;  // Polar bots has to home in the actuator space.  Arm solution disabled.
+    if(is_scara) {
+        THEROBOT->disable_arm_solution = true;  // Polar bots home in actuator space.
     }
 
-    this->axis_to_home= a;
-
-    // Start moving the axes to the origin
+    this->axis_to_home = a;
     this->status = MOVING_TO_ENDSTOP_FAST;
+    THEROBOT->disable_segmentation = true; // segmentation breaks endstop preemption
 
-    THEROBOT->disable_segmentation= true; // we must disable segmentation as this won't work with it enabled
+    const bool rotary_home_enabled = (THEKERNEL->factory_set->FuncSetting & (1 << 0)) != 0;
 
-    const bool detect_rotary_before_xy = !isnan(rotary_clearance_y_min);
+    axis_bitmap_t linear_axes;
+    axis_bitmap_t rotary_axes;
+    for (size_t i = X_AXIS; i < homing_axis.size(); ++i) {
+        if(!axis_to_home[i]) continue;
+        if(i <= Z_AXIS) linear_axes.set(i);
+        else rotary_axes.set(i);
+    }
 
+    // Z, then X and Y, through the slow approach. Rotary axes home after that.
     if(!home_z_first) home_xy();
 
     if(axis_to_home[Z_AXIS]) {
-        // now home z
-        float delta[3] {0, 0, homing_axis[Z_AXIS].max_travel}; // we go the max z
-        if(homing_axis[Z_AXIS].home_direction) delta[Z_AXIS]= -delta[Z_AXIS];
+        float delta[3] {0, 0, homing_axis[Z_AXIS].max_travel};
+        if(homing_axis[Z_AXIS].home_direction) delta[Z_AXIS] = -delta[Z_AXIS];
         THEROBOT->delta_move(delta, homing_axis[Z_AXIS].fast_rate, 3);
-        // wait for Z
         THECONVEYOR->wait_for_idle();
         if(!homing_axis[Z_AXIS].pin_info->triggered) {
-            this->status = NOT_HOMING;
-            THEKERNEL->set_halt_reason(HOME_FAIL);
-            THEKERNEL->call_event(ON_HALT, nullptr);
-            THEROBOT->disable_segmentation = false;
+            fail_home();
             return;
         }
     }
 
-    if(home_z_first && !detect_rotary_before_xy) home_xy();
-    if(THEKERNEL->factory_set->FuncSetting & (1<<0))	//A axis home enabled
-    {
-    	//We first move A B and C back a certain distance because the triggering gap of the A B and C is relatively long
-		// Start moving the axes back
-		this->status = MOVING_BACK;
-		if(homing_axis.size() > 3)
-		{
-	        for (size_t i = A_AXIS; i < homing_axis.size(); ++i) {
-	            if(axis_to_home[i]) {
-	                // now home A B or C
-	                float delta[i+1];
-	                for (size_t j = 0; j <= i; ++j) delta[j]= 0;
-	                delta[i]= homing_axis[i].retract*50; // retract*50 shoud > the whole triggering gap
-	                if(!homing_axis[i].home_direction) delta[i]= -delta[i];
-	                THEROBOT->delta_move(delta, homing_axis[i].fast_rate, i+1);
-	                // wait for it
-	                THECONVEYOR->wait_for_idle();
-	                // Check if the endstop is triggered
-	                if(homing_axis[i].pin_info->pin.get())
-	                {
-	                	for (size_t j = 0; j <= i; ++j) delta[j]= 0;
-		                delta[i]= homing_axis[i].retract*50; // retract*50 shoud > the whole triggering gap
-		                if(!homing_axis[i].home_direction) delta[i]= -delta[i];
-		                THEROBOT->delta_move(delta, homing_axis[i].fast_rate, i+1);
-		                // wait for it
-		                THECONVEYOR->wait_for_idle();
-		                if(!homing_axis[i].pin_info->pin.get())
-		                {
-                            THEKERNEL->axis_is_on[i] = true;
-		                }
-	                }
-	                else
-	                {
-                        THEKERNEL->axis_is_on[i] = true;
-	                }
-	            }
-	        }
-    	}
-    	// Start moving the axes to the origin
-    	this->status = MOVING_TO_ENDSTOP_FAST;
-    	// potentially home A B and C individually
-	    if(homing_axis.size() > 3){
-	        for (size_t i = A_AXIS; i < homing_axis.size(); ++i) {
-	            if(axis_to_home[i] && (THEKERNEL->axis_is_on[i] == true)) {
-	                // now home A B or C
-	                float delta[i+1];
-	                for (size_t j = 0; j <= i; ++j) delta[j]= 0;
-	                delta[i]= homing_axis[i].max_travel; // we go the max
-	                if(homing_axis[i].home_direction) delta[i]= -delta[i];
-	                THEROBOT->delta_move(delta, homing_axis[i].fast_rate, i+1);
-	                // wait for it
-	                THECONVEYOR->wait_for_idle();
-	            }
-	        }
-	    }
-    	
-    }
-    else
-    {
-	    // potentially home A B and C individually
-	    if(homing_axis.size() > 3){
-	        for (size_t i = A_AXIS; i < homing_axis.size(); ++i) {
-	            if(axis_to_home[i]) {
-	                // now home A B or C
-	                float delta[i+1];
-	                for (size_t j = 0; j <= i; ++j) delta[j]= 0;
-	                delta[i]= homing_axis[i].max_travel; // we go the max
-	                if(homing_axis[i].home_direction) delta[i]= -delta[i];
-	                THEROBOT->delta_move(delta, homing_axis[i].fast_rate, i+1);
-	                // wait for it
-	                THECONVEYOR->wait_for_idle();
-	            }
-	        }
-	    }
-	}
+    if(home_z_first) home_xy();
 
-    if(home_z_first && detect_rotary_before_xy) home_xy();
-
-    // check that the endstops were hit and it did not stop short for some reason
-    // if the endstop is not triggered then enter ALARM state
-    // with deltas we check all three axis were triggered, but at least one of XYZ must be set to home
-    if(axis_to_home[X_AXIS] || axis_to_home[Y_AXIS] || axis_to_home[Z_AXIS]) {
-        for (size_t i = X_AXIS; i <= Z_AXIS; ++i) {
-            if((axis_to_home[i] || this->is_delta || this->is_rdelta) && !homing_axis[i].pin_info->triggered) {
-                this->status = NOT_HOMING;
-                THEKERNEL->set_halt_reason(HOME_FAIL);
-                THEKERNEL->call_event(ON_HALT, nullptr);
-                THEROBOT->disable_segmentation= false;
-                return;
-            }
+    if(!linear_axes.none()) {
+        if(!linear_endstops_triggered()) {
+            fail_home();
+            return;
         }
+        retract_and_approach(linear_axes);
     }
 
-    // also check ABC
-    if(homing_axis.size() > 3){
-        for (size_t i = A_AXIS; i < homing_axis.size(); ++i) {
-            if(axis_to_home[i] && !homing_axis[i].pin_info->triggered && (THEKERNEL->axis_is_on[i] == true)) {
-                this->status = NOT_HOMING;
-                THEKERNEL->set_halt_reason(HOME_FAIL);
-                THEKERNEL->call_event(ON_HALT, nullptr);
-                THEROBOT->disable_segmentation = false;
-                return;
-            }
+    if(THEKERNEL->is_halted()) {
+        this->status = NOT_HOMING;
+        THEROBOT->disable_segmentation = false;
+        if(is_scara) THEROBOT->disable_arm_solution = false;
+        return;
+    }
+
+    if(!rotary_axes.none()) {
+        if(rotary_home_enabled) {
+            probe_rotary_presence(rotary_axes);
+            fast_home_rotary(true);
+        } else {
+            fast_home_rotary(false);
         }
-    }
 
-    if (!is_scara) {
-        // Only for non polar bots
-        // we did not complete movement the full distance if we hit the endstops
-        // TODO Maybe only reset axis involved in the homing cycle
-        THEROBOT->reset_position_from_current_actuator_position();
-    }
-
-    // Move back a small distance for all homing axis
-    this->status = MOVING_BACK;
-    float delta[homing_axis.size()];
-    for (size_t i = 0; i < homing_axis.size(); ++i) delta[i]= 0;
-
-    // use minimum feed rate of all axes that are being homed (sub optimal, but necessary)
-    float feed_rate= homing_axis[X_AXIS].slow_rate;
-    for (auto& i : homing_axis) {
-        int c= i.axis_index;
-        if(axis_to_home[c]) {
-            delta[c]= i.retract;
-            if(!i.home_direction) delta[c]= -delta[c];
-            feed_rate= std::min(i.slow_rate, feed_rate);
+        if(!rotary_endstops_triggered()) {
+            fail_home();
+            return;
         }
+        retract_and_approach(rotary_axes);
     }
 
-    THEROBOT->delta_move(delta, feed_rate, homing_axis.size());
-    // wait until finished
-    THECONVEYOR->wait_for_idle();
-
-    // Start moving the axes towards the endstops slowly
-    this->status = MOVING_TO_ENDSTOP_SLOW;
-    for (auto& i : homing_axis) {
-        int c= i.axis_index;
-        if(axis_to_home[c]) {
-            delta[c]= i.retract*2; // move further than we moved off to make sure we hit it cleanly
-            if(i.home_direction) delta[c]= -delta[c];
-        }else{
-            delta[c]= 0;
-        }
+    THEROBOT->disable_segmentation = false;
+    if(is_scara) {
+        THEROBOT->disable_arm_solution = false;
     }
-    THEROBOT->delta_move(delta, feed_rate, homing_axis.size());
-    // wait until finished
-    THECONVEYOR->wait_for_idle();
-
-    // we did not complete movement the full distance if we hit the endstops
-    // TODO Maybe only reset axis involved in the homing cycle
-    THEROBOT->reset_position_from_current_actuator_position();
-
-    THEROBOT->disable_segmentation= false;
-    if (is_scara) {
-        THEROBOT->disable_arm_solution = false;  // Arm solution enabled again.
-    }
-
     this->status = NOT_HOMING;
 }
 
