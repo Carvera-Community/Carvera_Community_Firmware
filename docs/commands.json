@@ -807,7 +807,7 @@
           "description": "Target or offset on A (rotary), if present.",
           "default": null
         }
-        }
+      }
     },
     "G92.1": {
       "type": "gcode",
@@ -848,7 +848,7 @@
           "description": "With A, take the short rotation onto that position.",
           "default": null
         }
-        }
+      }
     },
     "G93": {
       "type": "gcode",
@@ -881,7 +881,7 @@
           "unit": "rpm",
           "default_source": "spindle.default_rpm"
         }
-        }
+      }
     },
     "M4": {
       "type": "mcode",
@@ -894,7 +894,7 @@
           "unit": "rpm",
           "default_source": "spindle.default_rpm"
         }
-        }
+      }
     },
     "M5": {
       "type": "mcode",
@@ -949,7 +949,7 @@
           "default": null,
           "unit": "mm"
         }
-        }
+      }
     },
     "M7": {
       "type": "mcode",
@@ -1053,7 +1053,7 @@
           "description": "File to delete when used as an SD remove command.",
           "default": null
         }
-        }
+      }
     },
     "M32": {
       "type": "mcode",
@@ -3823,6 +3823,11 @@
           "default": null
         }
       }
+    },
+    "M892": {
+      "type": "mcode",
+      "description": "Reports the machine initial home status for each axis, and the homed-before-move check status",
+      "parameters": {}
     },
     "M940": {
       "type": "mcode",

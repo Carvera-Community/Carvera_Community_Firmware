@@ -83,6 +83,7 @@ class Robot : public Module {
 
         bool is_homed_all_axes();
         void override_homed_check(bool home_override_value);
+        void report_homing_status();
 
         // Cutter compensation state query (avoids exposing the preprocessor pointer)
         bool is_compensation_active() const;
@@ -216,8 +217,8 @@ class Robot : public Module {
         float rotary_clearance_y_min;
 
         uint8_t n_motors;                                    //count of the motors/axis registered
-        
-       
+
+
         CompensationPreprocessor* compensation_preprocessor;
 
         // Compensation suspend state — set when G18/G19 is issued + comp is active,
