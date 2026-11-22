@@ -95,6 +95,7 @@ class ZProbe: public Module
 public:
     ZProbe() : invert_override(false),invert_probe(false) {
         probe_calibration_safety_margin = 0.1F;
+        probe_crash_count = 0;
         reset_probe_tracking();
     };
 
@@ -213,7 +214,6 @@ private:
     // zprobe.probe_safe_margin - separate margin for M491.2 probe-safe measurements
     // zprobe.probe_safe_margin - separate margin for M491.3 probe-safe measurements
     float probe_safe_margin;
-    bool probe_tool_tlo_toolsetter_only;
     // Z position when probe pin triggered        
     volatile float probe_pin_position;
     volatile float calibrate_current_z;
