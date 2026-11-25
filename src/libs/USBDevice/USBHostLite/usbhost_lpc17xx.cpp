@@ -26,6 +26,7 @@
 
 #include "libs/compiler.h"
 #include "wait_api.h"
+#include <lpc17xx_wdt.h>
 
 /*
 **************************************************************************************************************
@@ -83,6 +84,9 @@ void  Host_DelayMS (USB_INT32U  delay)
 
     for (i = 0; i < delay; i++) {
         Host_DelayUS(1000);
+        // Enumeration sits in this delay. The watchdog is fed from the idle
+        // loop, which does not run while this waits.
+        WDT_Feed();
     }
 }
 

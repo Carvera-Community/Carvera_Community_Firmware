@@ -464,7 +464,7 @@ std::string Kernel::get_query_string()
     str.append(buf, n);
 
     // current spindle rpm and request rpm and override
-    struct spindle_status ss;
+    struct spindle_status ss{};
     ok = PublicData::get_value(pwm_spindle_control_checksum, get_spindle_status_checksum, &ss);
     if (ok) {
         n = snprintf(buf, sizeof(buf), "|S:%1.1f,%1.1f,%1.1f,%d", ss.current_rpm, ss.target_rpm, ss.factor,
@@ -500,6 +500,10 @@ std::string Kernel::get_query_string()
 #endif
     if(n > sizeof(buf)) n= sizeof(buf);
     str.append(buf, n);
+
+    if (ss.has_additional_metrics && ss.additional_metrics[0] != '\0') {
+        str.append(ss.additional_metrics);
+    }
 
     // current tool number and tool offset
     struct tool_status tool;

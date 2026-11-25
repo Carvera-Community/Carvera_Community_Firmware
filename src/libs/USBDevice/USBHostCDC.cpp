@@ -24,10 +24,6 @@ constexpr uint32_t CDC_PORT_RESET_TIMEOUT_MS = 500;
 constexpr uint16_t CDC_CONFIGURATION_DESCRIPTOR_MAX = 128;
 constexpr uint32_t CDC_BULK_TRANSFER_MAX = 128;
 constexpr uint32_t CDC_ABORT_SETTLE_MS = 2;
-constexpr uint32_t CDC_BAUD_RATE = 115200;
-constexpr uint8_t CDC_STOP_BITS_1 = 0;
-constexpr uint8_t CDC_PARITY_NONE = 0;
-constexpr uint8_t CDC_DATA_BITS_8 = 8;
 constexpr uint16_t CDC_CONTROL_LINE_DTR_RTS = 0x0003;
 constexpr uint8_t CDC_REQUEST_TYPE_HOST_TO_INTERFACE =
     USB_HOST_TO_DEVICE | USB_REQUEST_TYPE_CLASS | USB_RECIPIENT_INTERFACE;
@@ -41,7 +37,26 @@ USBHostCDC::USBHostCDC()
       _data_iface(0),
       _xfer_start(0),
       _xfer_max_len(0),
-      _rx_actual(0) {}
+      _rx_actual(0),
+      _baud(115200),
+      _stop_bits(0),
+      _parity(0),
+      _data_bits(8) {}
+
+void USBHostCDC::set_serial(const uint32_t baud, const uint8_t stop_bits, const uint8_t parity,
+                            const uint8_t data_bits) {
+  _baud = baud;
+  _stop_bits = stop_bits;
+  _parity = parity;
+  _data_bits = data_bits;
+}
+
+bool USBHostCDC::apply_serial() {
+  if (!_connected) return false;
+  if (set_line_coding() != OK) return false;
+  Host_DelayMS(20);
+  return true;
+}
 
 bool USBHostCDC::init(const uint32_t timeout_ms) {
   Host_Init();
@@ -170,13 +185,13 @@ USB_INT32S USBHostCDC::parse_cdc_configuration(const uint16_t fetched_len) {
 
 USB_INT32S USBHostCDC::set_line_coding() const {
   uint8_t lc[7];
-  lc[0] = static_cast<uint8_t>(CDC_BAUD_RATE);
-  lc[1] = static_cast<uint8_t>(CDC_BAUD_RATE >> 8);
-  lc[2] = static_cast<uint8_t>(CDC_BAUD_RATE >> 16);
-  lc[3] = static_cast<uint8_t>(CDC_BAUD_RATE >> 24);
-  lc[4] = CDC_STOP_BITS_1;
-  lc[5] = CDC_PARITY_NONE;
-  lc[6] = CDC_DATA_BITS_8;
+  lc[0] = static_cast<uint8_t>(_baud);
+  lc[1] = static_cast<uint8_t>(_baud >> 8);
+  lc[2] = static_cast<uint8_t>(_baud >> 16);
+  lc[3] = static_cast<uint8_t>(_baud >> 24);
+  lc[4] = _stop_bits;
+  lc[5] = _parity;
+  lc[6] = _data_bits;
   return Host_CtrlSend(CDC_REQUEST_TYPE_HOST_TO_INTERFACE, CDC_SET_LINE_CODING, 0, _cdc_iface, sizeof(lc), lc);
 }
 

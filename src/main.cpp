@@ -81,6 +81,8 @@
 // #define dfu_enable_checksum  CHECKSUM("dfu_enable")
 #define usb_msc_checksum       CHECKSUM("usb_msc")
 #define enable_checksum        CHECKSUM("enable")
+#define spindle_checksum       CHECKSUM("spindle")
+#define spindle_type_checksum  CHECKSUM("type")
 #define watchdog_timeout_checksum  CHECKSUM("watchdog_timeout")
 
 #if !defined(NO_SD_CARD)
@@ -202,8 +204,13 @@ void init() {
     kernel->add_module(kernel->spindle_accessories);
 
 #if !defined(NO_USB_HOST)
-    // This module owns the USB host controller while enabled.
-    if (kernel->config->value(usb_msc_checksum, enable_checksum)->as_bool(true)) {
+    // The mass-storage host and a USB spindle share one host controller.
+    // spindle.type tonghang or vesc takes it, so usb_msc.enable does not have to be set as well.
+    const std::string spindle_type = kernel->config->value(spindle_checksum, spindle_type_checksum)->as_string("pwm");
+    const bool spindle_uses_usb = spindle_type == "tonghang" || spindle_type == "vesc";
+    if (spindle_uses_usb) {
+        kernel->streams->printf("NOTE: USB mass storage host is off because spindle.type is %s\n", spindle_type.c_str());
+    } else if (kernel->config->value(usb_msc_checksum, enable_checksum)->as_bool(true)) {
         kernel->add_module( new MSCFileSystem("ud") );
     } else {
         kernel->streams->printf("NOTE: USB mass storage host is disabled\n");

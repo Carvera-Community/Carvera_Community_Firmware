@@ -1,6 +1,7 @@
 [unreleased]
 - Enhancement: CAM probing helper macro. Optionally sets WCS from last probe operation using an offset. Optionally compares last probe operation against supplied values and errors if outside a supplied tolerance value. Can be run silently
 - Enhancement: Added flex compensation version 2
+- Enhancement: New spindle type to support TongHang AC servo motors
 - Fixed: Fixed a bug that would lead to inconsistent positions after a powercycle and homing when using flex comp
 - Fixed: probe crash detection no longer stalls the machine
 - Fixed: M469.6 moves the probe between contacts on arcs around the artifact. Previously would crash on the chuck of the CA1/Z1.
