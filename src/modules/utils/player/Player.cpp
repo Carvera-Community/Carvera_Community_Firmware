@@ -772,6 +772,10 @@ void Player::play_command( string parameters, StreamOutput *stream )
 #if defined(STREAMED_JOB_PLAYBACK)
 void Player::start_streamed_playback(StreamOutput *stream, const string& options)
 {
+    // Give the ESP32 time to open the job before requesting the stream.
+    safe_delay_ms(300);
+    if (THEKERNEL->is_halted()) return;
+
     this->close_line_source();
     this->filename_crc = crc16::ccitt(
         reinterpret_cast<const uint8_t *>(this->filename.data()), this->filename.size());
